@@ -89,9 +89,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun showBookInfo(book: Book) {
         if (book.bookUrl.contains("::")){
             startActivity<ExploreShowActivity> {
-                putExtra("exploreName", book.name.split("::")[0])
+                putExtra("exploreName", book.bookUrl.split("::")[0])
                 putExtra("sourceUrl", intent.getStringExtra("sourceUrl"))
-                putExtra("exploreUrl", book.name.split("::")[1])
+                putExtra("exploreUrl", book.bookUrl.split("::")[1])
             }
         }else{
         startActivity<BookInfoActivity> {
