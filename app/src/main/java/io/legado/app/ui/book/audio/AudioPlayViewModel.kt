@@ -26,7 +26,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
-            val bookUrl = intent.getStringExtra("bookUrl") ?: return@execute
+            val bookUrl = intent.getStringExtra("bookUrl") ?: book?.bookUrl ?: return@execute
             val book = appDb.bookDao.getBook(bookUrl) ?: return@execute
             inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             initBook(book)
@@ -71,7 +71,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             if (oldBook.bookUrl == book.bookUrl) {
                 appDb.bookDao.update(book)
             } else {
-                appDb.bookDao.insert(book)
+                appDb.bookDao.replace(oldBook, book)
             }
             appDb.bookChapterDao.delByBook(book.bookUrl)
             appDb.bookChapterDao.insert(*cList.toTypedArray())
