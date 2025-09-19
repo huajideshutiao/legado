@@ -9,7 +9,11 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.SeekBar
 import androidx.activity.viewModels
+import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
+import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -46,7 +50,10 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.views.onLongClick
@@ -64,6 +71,8 @@ class AudioPlayActivity :
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
     override val viewModel by viewModels<AudioPlayViewModel>()
     private val timerSliderPopup by lazy { TimerSliderPopup(this) }
+    private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
+    private val adapter = LrcAdapter(mutableListOf())
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 
@@ -140,6 +149,23 @@ class AudioPlayActivity :
         return super.onCompatOptionsItemSelected(item)
     }
 
+    private val scroller by lazy {   object : LinearSmoothScroller(this) {
+//        override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float {
+//            return 100f / displayMetrics.densityDpi // 调整滚动速度
+//            return 1f / displayMetrics.density
+//        }
+        override fun calculateTimeForScrolling(dx: Int): Int {
+//            val baseTime = super.calculateTimeForScrolling(dx)
+//            // 应用插值器
+//            return (baseTime * AccelerateDecelerateInterpolator().getInterpolation(dx.toFloat() / binding.ivLrc.width)).toInt()
+            return 300
+        }
+        override fun calculateDtToFit(viewStart: Int, viewEnd: Int, boxStart: Int, boxEnd: Int, snapPreference: Int): Int {
+            return ((boxEnd + boxStart) - (viewEnd + viewStart))/ 2
+        }
+    }
+    }
+
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
             AudioPlay.changePlayMode()
@@ -182,19 +208,45 @@ class AudioPlayActivity :
             }
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            binding.ivFastRewind.invisible()
             binding.ivFastForward.invisible()
         }
         binding.ivFastForward.setOnClickListener {
-            AudioPlay.adjustSpeed(0.1f)
-        }
-        binding.ivFastRewind.setOnClickListener {
-            AudioPlay.adjustSpeed(-0.1f)
+            speedSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.ivTimer.setOnClickListener {
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.llPlayMenu.applyNavigationBarPadding()
+
+        binding.ivLrc.layoutManager= LinearLayoutManager(this)
+
+        viewModel.lrcData.observe(this) {
+            adapter.setData(it)
+            adapter.update(-1)
+            binding.ivLrc.adapter = adapter
+        }
+        binding.ivLrc.itemAnimator = null
+        binding.ivLrc.post{
+            binding.ivLrc.setPadding(24.dpToPx(),binding.ivLrc.height/2,24.dpToPx(),binding.ivLrc.height/2)
+        }
+
+        binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            private var job: Job? = null
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                when (newState) {
+                    RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
+                    else -> job?.cancel()
+                }
+            }
+            private fun scheduleAction() {
+                job?.cancel()
+                job = CoroutineScope(lifecycle.coroutineScope.coroutineContext).launch {
+                    delay(5000)
+                    scroller.targetPosition = adapter.update()
+                    binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+                }
+            }
+        })
     }
 
     private fun updatePlayModeIcon() {
@@ -255,7 +307,10 @@ class AudioPlayActivity :
                     AudioPlay.inBookshelf = true
                     setResult(RESULT_OK)
                 }
-                noButton { viewModel.removeFromBookshelf { super.finish() } }
+                noButton {
+                    viewModel.removeFromBookshelf { super.finish() }
+                    AudioPlay.stop()
+                }
             }
         }
     }
@@ -294,8 +349,14 @@ class AudioPlayActivity :
             binding.tvAllTime.text = progressTimeFormat.format(it.toLong())
         }
         observeEventSticky<Int>(EventBus.AUDIO_PROGRESS) {
-            if (!adjustProgress) binding.playerProgress.progress = it
-            binding.tvDurTime.text = progressTimeFormat.format(it.toLong())
+            if (!adjustProgress){
+                binding.playerProgress.progress = it
+                binding.tvDurTime.text = progressTimeFormat.format(it.toLong())
+                if (adapter.update(it)){
+                    scroller.targetPosition = adapter.update()
+                    binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+                }
+            }
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
@@ -314,6 +375,7 @@ class AudioPlayActivity :
     override fun upLoading(loading: Boolean) {
         runOnUiThread {
             binding.progressLoading.visible(loading)
+            if(loading)viewModel.refreshData()
         }
     }
 

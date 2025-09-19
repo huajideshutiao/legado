@@ -350,6 +350,8 @@ class BookSourceEditActivity :
             add(EditEntity("imageStyle", cr.imageStyle, R.string.rule_image_style))
             add(EditEntity("imageDecode", cr.imageDecode, R.string.rule_image_decode))
             add(EditEntity("payAction", cr.payAction, R.string.rule_pay_action))
+            add(EditEntity("lrcRule", cr.lrcRule, "lyrics file rule(lrcRule)"))
+            add(EditEntity("musicCover", cr.musicCover, "music cover rule(musicCover)"))
         }
         // 段评
 //        val rr = bs.getReviewRule()
@@ -540,6 +542,8 @@ class BookSourceEditActivity :
                 "imageStyle" -> contentRule.imageStyle = it.value
                 "imageDecode" -> contentRule.imageDecode = it.value
                 "payAction" -> contentRule.payAction = it.value
+                "lrcRule" -> contentRule.lrcRule = it.value
+                "musicCover" -> contentRule.musicCover = it.value
             }
         }
 //        reviewEntities.forEach {

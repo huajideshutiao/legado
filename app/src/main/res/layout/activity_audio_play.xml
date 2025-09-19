@@ -19,7 +19,7 @@
         android:id="@+id/vw_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#50000000" />
+        android:background="#50818181" />
 
     <io.legado.app.ui.widget.TitleBar
         android:id="@+id/title_bar"
@@ -41,7 +41,7 @@
         app:drawableLeftCompat="@drawable/ic_timer_black_24dp"
         app:drawableTint="@color/md_white_1000"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/title_bar" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_sub_title" />
 
     <TextView
         android:id="@+id/tv_speed"
@@ -54,34 +54,20 @@
         android:textColor="@color/md_white_1000"
         android:visibility="invisible"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/title_bar" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_sub_title" />
 
     <io.legado.app.ui.widget.image.CircleImageView
         android:id="@+id/iv_cover"
-        android:layout_width="260dp"
-        android:layout_height="260dp"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_marginTop="16dp"
         android:contentDescription="@string/img_cover"
         android:scaleType="centerCrop"
         app:civ_border_color="@color/accent"
         app:civ_border_width="2dp"
-        app:layout_constraintBottom_toTopOf="@+id/ll_player_progress"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar" />
-
-    <io.legado.app.ui.widget.image.ImageButton
-            android:id="@+id/iv_play_mode"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:background="@drawable/selector_circle_btn_bg"
-            android:contentDescription="@string/play_mode"
-            android:padding="5dp"
-            android:src="@drawable/ic_play_mode_list_end_stop"
-            android:layout_marginStart="16dp"
-            app:tint="@color/md_white_1000"
-            app:layout_constraintBottom_toTopOf="@+id/tv_sub_title"
-            app:layout_constraintStart_toStartOf="parent"
-            tools:ignore="ImageContrastCheck" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_sub_title" />
 
     <TextView
         android:id="@+id/tv_sub_title"
@@ -93,7 +79,7 @@
         android:paddingEnd="16dp"
         android:paddingBottom="6dp"
         android:textColor="@color/md_white_1000"
-        app:layout_constraintBottom_toTopOf="@+id/ll_player_progress" />
+        app:layout_constraintTop_toBottomOf="@+id/title_bar" />
 
     <LinearLayout
         android:id="@+id/ll_player_progress"
@@ -157,13 +143,13 @@
             android:layout_weight="1" />
 
         <io.legado.app.ui.widget.image.ImageButton
-            android:id="@+id/iv_fast_rewind"
+            android:id="@+id/iv_fast_forward"
             android:layout_width="46dp"
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_previous"
             android:padding="5dp"
-            android:src="@drawable/ic_fast_rewind"
+            android:src="@drawable/ic_fast_forward"
             app:tint="@color/md_white_1000"
             tools:ignore="ImageContrastCheck" />
 
@@ -236,13 +222,13 @@
             android:layout_weight="1" />
 
         <io.legado.app.ui.widget.image.ImageButton
-            android:id="@+id/iv_fast_forward"
+            android:id="@+id/iv_play_mode"
             android:layout_width="46dp"
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_next"
-            android:padding="5dp"
-            android:src="@drawable/ic_fast_forward"
+            android:padding="7dp"
+            android:src="@drawable/ic_play_mode_list_end_stop"
             app:tint="@color/md_white_1000"
             tools:ignore="ImageContrastCheck" />
 
@@ -263,5 +249,16 @@
             tools:ignore="ImageContrastCheck" />
 
     </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/iv_lrc"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp"
+        android:clipToPadding="false"
+        app:layout_constraintBottom_toTopOf="@+id/ll_player_progress"
+        app:layout_constraintTop_toBottomOf="@+id/iv_cover"
+        tools:layout_editor_absoluteX="1dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

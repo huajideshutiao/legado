@@ -75,6 +75,9 @@ class AudioPlayService : BaseService(),
         @JvmStatic
         var timeMinute: Int = 0
 
+        @JvmStatic
+        var playSpeed: Float = 1f
+
         var url: String = ""
             private set
 
@@ -113,7 +116,7 @@ class AudioPlayService : BaseService(),
     private var dsJob: Job? = null
     private var upNotificationJob: Coroutine<*>? = null
     private var upPlayProgressJob: Job? = null
-    private var playSpeed: Float = 1f
+    private var upPlayProgressForLrcJob: Job? = null
     private var cover: Bitmap =
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
 
@@ -146,6 +149,7 @@ class AudioPlayService : BaseService(),
                 IntentAction.play -> {
                     exoPlayer.stop()
                     upPlayProgressJob?.cancel()
+                    upPlayProgressForLrcJob?.cancel()
                     pause = false
                     position = AudioPlay.book?.durChapterPos ?: 0
                     url = AudioPlay.durPlayUrl
@@ -155,6 +159,7 @@ class AudioPlayService : BaseService(),
                 IntentAction.playNew -> {
                     exoPlayer.stop()
                     upPlayProgressJob?.cancel()
+                    upPlayProgressForLrcJob?.cancel()
                     pause = false
                     position = 0
                     url = AudioPlay.durPlayUrl
@@ -164,6 +169,7 @@ class AudioPlayService : BaseService(),
                 IntentAction.stopPlay -> {
                     exoPlayer.stop()
                     upPlayProgressJob?.cancel()
+                    upPlayProgressForLrcJob?.cancel()
                     AudioPlay.status = Status.STOP
                     postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 }
@@ -222,6 +228,7 @@ class AudioPlayService : BaseService(),
             AudioPlay.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
             upPlayProgressJob?.cancel()
+            upPlayProgressForLrcJob?.cancel()
             val analyzeUrl = AnalyzeUrl(
                 url,
                 source = AudioPlay.bookSource,
@@ -254,6 +261,7 @@ class AudioPlayService : BaseService(),
                 abandonFocus()
             }
             upPlayProgressJob?.cancel()
+            upPlayProgressForLrcJob?.cancel()
             position = exoPlayer.currentPosition.toInt()
             if (exoPlayer.isPlaying) exoPlayer.pause()
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
@@ -310,7 +318,7 @@ class AudioPlayService : BaseService(),
         kotlin.runCatching {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                playSpeed += adjust
+                playSpeed = adjust
                 exoPlayer.setPlaybackSpeed(playSpeed)
                 postEvent(EventBus.AUDIO_SPEED, playSpeed)
             }
@@ -344,12 +352,14 @@ class AudioPlayService : BaseService(),
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaMetadata()
                 upPlayProgress()
+                upPlayProgressForLrc()
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
             Player.STATE_ENDED -> {
                 // 结束
                 upPlayProgressJob?.cancel()
+                upPlayProgressForLrcJob?.cancel()
                 AudioPlay.playPositionChanged(exoPlayer.duration.toInt())
                 AudioPlay.next()
             }
@@ -432,10 +442,20 @@ class AudioPlayService : BaseService(),
                 //更新buffer位置
                 AudioPlay.playPositionChanged(exoPlayer.currentPosition.toInt())
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
-                postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
+//                postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 delay(1000)
+            }
+        }
+    }
+
+    private fun upPlayProgressForLrc() {
+        upPlayProgressForLrcJob?.cancel()
+        upPlayProgressForLrcJob = lifecycleScope.launch {
+            while (isActive) {
+                postEvent(EventBus.AUDIO_PROGRESS, exoPlayer.currentPosition.toInt())
+                delay(100)
             }
         }
     }

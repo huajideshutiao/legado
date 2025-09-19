@@ -2,6 +2,7 @@ package io.legado.app.ui.book.audio
 
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
@@ -12,17 +13,28 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.model.AudioPlay
+import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
+import kotlin.coroutines.coroutineContext
+import kotlin.sequences.forEach
 
 class AudioPlayViewModel(application: Application) : BaseViewModel(application) {
     val titleData = MutableLiveData<String>()
     val coverData = MutableLiveData<String>()
+    val lrcData = MutableLiveData<MutableList<Pair<Int, String>>>()
+    private lateinit var coverUrl : String
+    private val source by lazy { AudioPlay.bookSource ?: throw NoStackTraceException("no book source")}
+    private val lrcRule by lazy { source.getContentRule().lrcRule }
+    private val musicCover by lazy { source.getContentRule().musicCover }
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
@@ -43,13 +55,47 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             AudioPlay.resetData(book)
         }
         titleData.postValue(book.name)
-        coverData.postValue(book.getDisplayCover())
+        coverUrl = AudioPlay.book!!.getDisplayCover()?:""
+        refresh()
         if (book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
         }
         if (AudioPlay.chapterSize == 0 && !loadChapterList(book)) {
             return
         }
+    }
+    fun refreshData() = AudioPlay.apply {
+        execute {
+            refresh()
+        }
+    }
+    private suspend fun refresh(){
+        var lrcContent = "暂无数据"
+        val chapter = appDb.bookChapterDao.getChapter(AudioPlay.book!!.bookUrl, AudioPlay.durChapterIndex)!!
+        if (!lrcRule.isNullOrBlank()) {
+                val analyzeRule = AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
+                analyzeRule.setCoroutineContext(coroutineContext)
+                analyzeRule.setBaseUrl(chapter.url)
+                analyzeRule.setChapter(chapter)
+                lrcContent = analyzeRule.evalJS(lrcRule!!).toString()
+                if (!musicCover.isNullOrBlank()) {
+                    coverUrl = analyzeRule.evalJS(musicCover!!).toString()
+                }
+            }
+        val timeRegex = Regex("""\[(\d+):(..).(\d+)]""")
+        val tmp= mutableListOf<Pair<Int, String>>()
+        lrcContent.lineSequence().forEach { line ->
+            val matcher = timeRegex.findAll(line)
+            val textPart = line.substringAfterLast("]")
+            matcher.forEach { match ->
+                val (min, sec, ms) = match.destructured
+                val time =
+                    min.toInt() * 60_000 + sec.toInt() * 1000 + ms.toInt() *(if(3==ms.length)1 else 10) + 50
+                tmp.add(Pair(time, textPart))
+            }
+        }
+        lrcData.postValue(tmp)
+        coverData.postValue(coverUrl)
     }
 
     private suspend fun loadBookInfo(book: Book): Boolean {
