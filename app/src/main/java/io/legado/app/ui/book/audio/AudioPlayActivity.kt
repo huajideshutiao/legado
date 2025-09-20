@@ -9,6 +9,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.SeekBar
 import androidx.activity.viewModels
+import androidx.core.view.isGone
 import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -169,6 +170,10 @@ class AudioPlayActivity :
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
             AudioPlay.changePlayMode()
+        }
+        binding.ivCover.setOnClickListener {
+            it.isGone =true
+            binding.ivLrc.setPadding(24.dpToPx(),binding.ivLrc.height/2,24.dpToPx(),binding.ivLrc.height/2)
         }
 
         observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {

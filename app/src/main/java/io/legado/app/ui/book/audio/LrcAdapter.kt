@@ -42,8 +42,8 @@ class LrcAdapter(private var lyrics: MutableList<Pair<Int, String>>) :
   override fun getItemCount() = lyrics.size
   override fun onBindViewHolder(holder: ViewHolder, position: Int) {
     val item = lyrics[position]
-    holder.textView.text = item.second
-      animator(holder,position)
+    holder.textView.text = item.second.trim()
+    animator(holder,position)
       holder.textView.setOnClickListener {
         AudioPlay.adjustProgress(item.first)
       }

@@ -2,7 +2,6 @@ package io.legado.app.ui.book.audio
 
 import android.app.Application
 import android.content.Intent
-import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
@@ -24,14 +23,14 @@ import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
+import org.mozilla.javascript.NativeArray
 import kotlin.coroutines.coroutineContext
 import kotlin.sequences.forEach
 
 class AudioPlayViewModel(application: Application) : BaseViewModel(application) {
     val titleData = MutableLiveData<String>()
-    val coverData = MutableLiveData<String>()
+    val coverData = MutableLiveData<String?>()
     val lrcData = MutableLiveData<MutableList<Pair<Int, String>>>()
-    private lateinit var coverUrl : String
     private val source by lazy { AudioPlay.bookSource ?: throw NoStackTraceException("no book source")}
     private val lrcRule by lazy { source.getContentRule().lrcRule }
     private val musicCover by lazy { source.getContentRule().musicCover }
@@ -55,7 +54,6 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             AudioPlay.resetData(book)
         }
         titleData.postValue(book.name)
-        coverUrl = AudioPlay.book!!.getDisplayCover()?:""
         refresh()
         if (book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
@@ -70,32 +68,47 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
         }
     }
     private suspend fun refresh(){
-        var lrcContent = "暂无数据"
+        var lrcContent : NativeArray ?= null
         val chapter = appDb.bookChapterDao.getChapter(AudioPlay.book!!.bookUrl, AudioPlay.durChapterIndex)!!
         if (!lrcRule.isNullOrBlank()) {
                 val analyzeRule = AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
                 analyzeRule.setCoroutineContext(coroutineContext)
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
-                lrcContent = analyzeRule.evalJS(lrcRule!!).toString()
                 if (!musicCover.isNullOrBlank()) {
-                    coverUrl = analyzeRule.evalJS(musicCover!!).toString()
+                    coverData.postValue(analyzeRule.evalJS(musicCover!!).toString())
+                }
+            lrcContent = analyzeRule.evalJS(lrcRule!!) as NativeArray
+            }
+        if(coverData.value==null)coverData.postValue(AudioPlay.book!!.getDisplayCover()?:"")
+        val tmp= mutableListOf<Pair<Int, String>>()
+        if(lrcContent!=null) {
+            for (i in lrcContent.indices){
+                var oldIndex = 0
+            (lrcContent[i] as String ).trim().lineSequence().forEach { line ->
+            val split = line.indexOf("]")
+            if (line[1].isDigit()) {
+                val textPart = line.substring(split+1)
+                val min = line.substring(1, 3).toInt()
+                val sec = line.substring(4, 6).toInt()
+                var ms = 0
+                if (split != 6) {
+                    ms = line.substring(7,split).toIntOrNull() ?: 0
+                    ms = ms * (if(split==10)1 else 10)
+                }
+                val time = min * 60_000 + sec * 1000 + ms
+                if (i != 0) {
+                    val index = tmp.subList(oldIndex,tmp.size).indexOfFirst { it.first == time }
+                    oldIndex += index
+                    tmp[oldIndex] = Pair(time, "${tmp[oldIndex].second}\n$textPart")
+                } else {
+                    tmp.add(Pair(time, textPart))
                 }
             }
-        val timeRegex = Regex("""\[(\d+):(..).(\d+)]""")
-        val tmp= mutableListOf<Pair<Int, String>>()
-        lrcContent.lineSequence().forEach { line ->
-            val matcher = timeRegex.findAll(line)
-            val textPart = line.substringAfterLast("]")
-            matcher.forEach { match ->
-                val (min, sec, ms) = match.destructured
-                val time =
-                    min.toInt() * 60_000 + sec.toInt() * 1000 + ms.toInt() *(if(3==ms.length)1 else 10) + 50
-                tmp.add(Pair(time, textPart))
+        }
             }
         }
         lrcData.postValue(tmp)
-        coverData.postValue(coverUrl)
     }
 
     private suspend fun loadBookInfo(book: Book): Boolean {
