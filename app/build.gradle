@@ -204,6 +204,7 @@ dependencies {
     implementation(libs.media.media)
     // For media playback using ExoPlayer
     implementation(libs.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
     // For exposing and controlling media sessions

@@ -54,6 +54,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Light"
         tools:ignore="AllowBackup,GoogleAppIndexingWarning,UnusedAttribute">
+        <activity
+            android:name=".ui.book.video.VideoPlayActivity"
+            android:exported="false" />
         <!-- 主入口 -->
         <activity
             android:name=".ui.welcome.WelcomeActivity"
@@ -250,9 +253,7 @@
         <activity
             android:name=".ui.book.import.remote.RemoteBookActivity"
             android:launchMode="singleTop" /> <!-- 发现界面 -->
-        <activity
-            android:name=".ui.book.explore.ExploreShowActivity" />
-<!--            android:launchMode="singleTop" /> &lt;!&ndash; 订阅源调试 &ndash;&gt;-->
+        <activity android:name=".ui.book.explore.ExploreShowActivity" /> <!-- android:launchMode="singleTop" /> &lt;!&ndash; 订阅源调试 &ndash;&gt; -->
         <activity
             android:name=".ui.rss.source.debug.RssSourceDebugActivity"
             android:launchMode="singleTop" /> <!-- Rss收藏 -->
