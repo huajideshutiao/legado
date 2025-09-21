@@ -12,40 +12,45 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.update
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
 class VideoViewModel(application: Application) : BaseViewModel(application) {
-    val videoUrl = MutableLiveData<String>()
+
     val bookTitle = MutableLiveData<String>()
     val videoTitle = MutableLiveData<String>()
-    val bookSource = MutableLiveData<BookSource>()
-    private var book: Book? = null
+    val videoUrl = MutableLiveData<String>()
+    val position = MutableLiveData<Long>()
+    var bookSource: BookSource? = null
+    private lateinit var book: Book
     private var inBookshelf = false
     private var oldChapterIndex: Int? = null
 
     fun initData(intent: Intent) {
         val bookUrl = intent.getStringExtra("bookUrl") ?: return
         execute {
-            book = appDb.bookDao.getBook(bookUrl)
-            if (book == null) {
-                appCtx.toastOnUi("book or source is null")
+            val tmp = appDb.bookDao.getBook(bookUrl)
+            if (tmp == null) {
+                appCtx.toastOnUi("book is null")
                 return@execute
             }
-            bookSource.postValue(book!!.getBookSource())
-            bookTitle.postValue(book!!.name)
+            book = tmp
+            bookSource = book.getBookSource()
+            bookTitle.postValue(book.name)
+            position.postValue(book.durChapterPos.toLong())
             inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            if (oldChapterIndex == null) oldChapterIndex = book!!.durChapterIndex
-            initChapter(book!!)
+            if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
+            initChapter(book)
         }
     }
 
     private fun initChapter(book: Book) {
         val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)
         chapter?.let {
-            videoTitle.postValue(  chapter.title)
-            WebBook.getContent(viewModelScope, bookSource.value!!, book, it)
+            videoTitle.postValue(chapter.title)
+            WebBook.getContent(viewModelScope, bookSource!!, book, it)
                 .onSuccess { content ->
                     if (content.isEmpty()) {
                         appCtx.toastOnUi("未获取到资源链接")
@@ -61,34 +66,52 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun initChapter() {
         execute {
-            initChapter(book!!)
+            initChapter(book)
         }
     }
 
     fun upSource() {
         execute {
-            val book = book ?: return@execute
-            bookSource.value = book.getBookSource()
+            bookSource = book.getBookSource()
         }
     }
 
-    fun saveRead() {
-        val book = book ?: return
-        execute {
-            book.lastCheckCount = 0
-            book.durChapterTime = System.currentTimeMillis()
-            val chapterChanged = book.durChapterIndex != oldChapterIndex
-            if (chapterChanged) {
-                appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
-                    book.durChapterTitle = it.getDisplayTitle(
-                        ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
-                        book.getUseReplaceRule()
-                    )
-                }
+//    fun saveRead(position: Long) {
+//        val book = book ?: return
+//        execute {
+//            book.lastCheckCount = 0
+//            book.durChapterTime = System.currentTimeMillis()
+//            book.durChapterPos = position.toInt()
+//            val chapterChanged = book.durChapterIndex != oldChapterIndex
+//            if (chapterChanged) {
+//                appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
+//                    book.durChapterTitle = it.getDisplayTitle(
+//                        ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
+//                        book.getUseReplaceRule()
+//                    )
+//                }
+//            }
+//            book.update()
+//        }
+//    }
+fun saveRead(position  : Long) {
+    Coroutine.async {
+        book.lastCheckCount = 0
+        book.durChapterTime = System.currentTimeMillis()
+        val chapterChanged = book.durChapterIndex != oldChapterIndex
+//        book.durChapterIndex = durChapterIndex
+        book.durChapterPos = position.toInt()
+        if (chapterChanged) {
+            appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
+                book.durChapterTitle = it.getDisplayTitle(
+                    ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
+                    book.getUseReplaceRule()
+                )
             }
-            book.update()
         }
+        book.update()
     }
+}
 
 //    private suspend fun loadChapterList(book: Book): Boolean {
 //        val bookSource = AudioPlay.bookSource ?: return true

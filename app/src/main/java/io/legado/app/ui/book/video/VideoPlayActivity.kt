@@ -17,7 +17,6 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.Theme
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
@@ -31,7 +30,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(toolBarTheme = Theme.Dark) {
+) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>() {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
@@ -64,24 +63,24 @@ class VideoPlayActivity(
             @SuppressLint("UnsafeOptInUsageError")
             binding.ivPlayer.controllerAutoShow = false
             playWhenReady = true
-            if (position != 0L) seekTo(position)
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.setBackgroundResource(R.color.transparent)
+        viewModel.initData(intent)
         viewModel.videoTitle.observe(this) {
             binding.titleBar.title = it
         }
         viewModel.videoUrl.observe(this) {
             refreshPlayer(it)
         }
-        viewModel.initData(intent)
     }
 
-    fun refreshPlayer(videoUrl: String) {
+    @SuppressLint("SetTextI18n")
+    private fun refreshPlayer(videoUrl: String) {
         player.apply {
             setMediaItem(MediaItem.fromUri(videoUrl))
+            if (viewModel.position.value != 0L) seekTo(viewModel.position.value!!)
             prepare()
         }
         val gestureDetector =
@@ -92,9 +91,21 @@ class VideoPlayActivity(
                     currentSpeed = originalSpeed * 2f
                     player.playbackParameters =
                         PlaybackParameters(currentSpeed, player.playbackParameters.pitch)
-                    binding.tvVideoSpeed.text = "${currentSpeed}x"
+                    binding.tvVideoSpeed.text = "${currentSpeed}X"
                     binding.tvVideoSpeed.visibility = View.VISIBLE
                 }
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    if (player.isPlaying) player.pause() else player.play()
+//                    isPlay = !isPlay
+                    return true
+                }
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    binding.ivPlayer.performClick()
+                    return true
+                }
+
 
                 override fun onScroll(
                     e1: MotionEvent?,
@@ -104,10 +115,10 @@ class VideoPlayActivity(
                 ): Boolean {
                     if (abs(distanceX) > abs(distanceY)) {
                         isScroll = true
-                        val currentPosition = player.currentPosition
+                        player.pause()
                         endX += distanceX
-                        position = (currentPosition - (endX / screenWidth) * 120000).toLong()
-                            .coerceIn(0, player.duration )
+                        position = (player.currentPosition - (endX / screenWidth) * 120000).toLong()
+                            .coerceIn(0, player.duration)
                         binding.tvVideoSpeed.text = progressTimeFormat.format(position)
                         binding.tvVideoSpeed.visibility = View.VISIBLE
                         return true
@@ -115,33 +126,39 @@ class VideoPlayActivity(
                     return false
                 }
 
-                override fun onDown(e: MotionEvent): Boolean = true
+//                override fun onDown(e: MotionEvent): Boolean = true
+//                override fun onSingleTapUp(e: MotionEvent): Boolean {
+//
+//
+//                    return super.onSingleTapUp(e)
+//                }
             })
 
         // 设置全屏按钮点击事件
         //binding.fullscreenButton.setOnClickListener {
         //    toggleFullscreen()
         //}
-
+        @SuppressLint("ClickableViewAccessibility")
         binding.ivPlayer.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
             when (event.action) {
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (isScroll || isPress) {
-                        if (isScroll) {
-                            isScroll = false
-                            endX = 0F
-                            player.seekTo(position)
-                        }
-                        if (isPress) {
-                            isPress = false
-                            player.playbackParameters = PlaybackParameters(
-                                originalSpeed,
-                                player.playbackParameters.pitch
-                            )
-                        }
-                        binding.tvVideoSpeed.visibility = View.GONE
-                    } else v.performClick()
+                MotionEvent.ACTION_UP -> {
+
+                    if (isScroll) {
+                        isScroll = false
+                        endX = 0F
+                        player.seekTo(position)
+                        player.play()
+                    }
+                    if (isPress) {
+                        isPress = false
+                        player.playbackParameters = PlaybackParameters(
+                            originalSpeed,
+                            player.playbackParameters.pitch
+                        )
+                    }
+                    binding.tvVideoSpeed.visibility = View.GONE
+
                 }
             }
             true
@@ -156,18 +173,18 @@ class VideoPlayActivity(
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.bookSource.value?.loginUrl.isNullOrBlank()
+            !viewModel.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_wake_lock)?.isVisible = false
-//        menu.findItem(R.id.menu_change_source).isVisible = false
+        menu.findItem(R.id.menu_change_source).isVisible = false
         return super.onMenuOpened(featureId, menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_change_source -> {
-            }
+//            R.id.menu_change_source -> {
+//            }
 
-            R.id.menu_login -> viewModel.bookSource.value?.let {
+            R.id.menu_login -> viewModel.bookSource?.let {
                 startActivity<SourceLoginActivity> {
                     putExtra("type", "bookSource")
                     putExtra("key", it.bookSourceUrl)
@@ -175,7 +192,7 @@ class VideoPlayActivity(
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it) }
-            R.id.menu_edit_source -> viewModel.bookSource.value?.let {
+            R.id.menu_edit_source -> viewModel.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
                 }
@@ -210,8 +227,8 @@ class VideoPlayActivity(
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        viewModel.saveRead()
+        viewModel.saveRead(player.currentPosition)
         player.release()
+        super.onDestroy()
     }
 }
