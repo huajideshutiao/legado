@@ -6,6 +6,18 @@
     android:layout_height="match_parent"
     tools:context=".ui.book.video.VideoPlayActivity">
 
+    <TextView
+        android:id="@+id/tv_sub_title2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingStart="16dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="6dp"
+        android:textColor="@color/md_white_1000"
+        app:layout_constraintTop_toBottomOf="@+id/iv_player" />
+
     <io.legado.app.ui.widget.TitleBar
         android:id="@+id/title_bar"
         android:layout_width="match_parent"
@@ -14,6 +26,19 @@
         app:themeMode="dark">
 
     </io.legado.app.ui.widget.TitleBar>
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/iv_player"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintDimensionRatio="h,16:9"
+        app:layout_constraintTop_toBottomOf="@+id/title_bar"
+        app:resize_mode="fit"
+        app:show_buffering="when_playing"
+        app:use_controller="true"
+        tools:layout_editor_absoluteX="0dp">
+
+    </androidx.media3.ui.PlayerView>
 
     <TextView
         android:id="@+id/tv_video_speed"
@@ -31,18 +56,5 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/title_bar" />
-
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/iv_player"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar"
-        app:resize_mode="fit"
-        app:show_buffering="when_playing"
-        app:use_controller="true"
-        tools:layout_editor_absoluteX="0dp">
-
-    </androidx.media3.ui.PlayerView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -31,9 +31,6 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
     val titleData = MutableLiveData<String>()
     val coverData = MutableLiveData<String?>()
     val lrcData = MutableLiveData<MutableList<Pair<Int, String>>>()
-    private val source by lazy { AudioPlay.bookSource ?: throw NoStackTraceException("no book source")}
-    private val lrcRule by lazy { source.getContentRule().lrcRule }
-    private val musicCover by lazy { source.getContentRule().musicCover }
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
@@ -70,15 +67,18 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
     private suspend fun refresh(){
         var lrcContent : NativeArray ?= null
         val chapter = appDb.bookChapterDao.getChapter(AudioPlay.book!!.bookUrl, AudioPlay.durChapterIndex)!!
+        val source =  AudioPlay.bookSource ?: throw NoStackTraceException("no book source")
+        val lrcRule = source.getContentRule().lrcRule
+        val musicCover = source.getContentRule().musicCover
         if (!lrcRule.isNullOrBlank()) {
                 val analyzeRule = AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
                 analyzeRule.setCoroutineContext(coroutineContext)
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
                 if (!musicCover.isNullOrBlank()) {
-                    coverData.postValue(analyzeRule.evalJS(musicCover!!).toString())
+                    coverData.postValue(analyzeRule.evalJS(musicCover).toString())
                 }
-            lrcContent = analyzeRule.evalJS(lrcRule!!) as NativeArray
+            lrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
             }
         if(coverData.value==null)coverData.postValue(AudioPlay.book!!.getDisplayCover()?:"")
         val tmp= mutableListOf<Pair<Int, String>>()

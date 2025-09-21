@@ -251,6 +251,7 @@ class BookSourceEditActivity :
             binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
             binding.spType.setSelection(
                 when (it.bookSourceType) {
+                    BookSourceType.video -> 4
                     BookSourceType.file -> 3
                     BookSourceType.image -> 2
                     BookSourceType.audio -> 1
@@ -350,8 +351,8 @@ class BookSourceEditActivity :
             add(EditEntity("imageStyle", cr.imageStyle, R.string.rule_image_style))
             add(EditEntity("imageDecode", cr.imageDecode, R.string.rule_image_decode))
             add(EditEntity("payAction", cr.payAction, R.string.rule_pay_action))
-            add(EditEntity("lrcRule", cr.lrcRule, "lyrics file rule(lrcRule)"))
-            add(EditEntity("musicCover", cr.musicCover, "music cover rule(musicCover)"))
+            add(EditEntity("lrcRule", cr.lrcRule, R.string.rule_lrc_rule))
+            add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
         }
         // 段评
 //        val rr = bs.getReviewRule()
@@ -378,6 +379,7 @@ class BookSourceEditActivity :
         source.enabledExplore = binding.cbIsEnableExplore.isChecked
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
+            4 -> BookSourceType.video
             3 -> BookSourceType.file
             2 -> BookSourceType.image
             1 -> BookSourceType.audio

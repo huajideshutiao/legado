@@ -30,6 +30,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -54,6 +55,7 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
@@ -713,7 +715,8 @@ class BookInfoActivity :
             else -> readBookResult.launch(
                 Intent(
                     this,
-                    if (!book.isLocal && book.isImage && AppConfig.showMangaUi) ReadMangaActivity::class.java
+                    if (book.isVideo) VideoPlayActivity::class.java
+                    else if (!book.isLocal && book.isImage && AppConfig.showMangaUi) ReadMangaActivity::class.java
                     else ReadBookActivity::class.java
                 )
                     .putExtra("bookUrl", book.bookUrl)
