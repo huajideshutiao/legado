@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.video
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.icu.text.SimpleDateFormat
 import android.os.Build
@@ -11,11 +12,14 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -34,11 +38,11 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
-
 
 class VideoPlayActivity(
 ) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(), ChapterListAdapter.Callback {
@@ -46,7 +50,7 @@ class VideoPlayActivity(
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
     private val adapter by lazy { ChapterListAdapter(this, this) }
-    private var isFullscreen = false
+    private var isFullScreen = false
     private var currentSpeed = 1f
     private var originalSpeed = 1f
     private var position = 0L
@@ -85,14 +89,19 @@ class VideoPlayActivity(
         ).build().apply {
             binding.ivPlayer.player = this
             binding.ivPlayer.controllerAutoShow = false
-//            playWhenReady = true
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    super.onPlaybackStateChanged(playbackState)
+                    if (playbackState == Player.STATE_ENDED&& viewModel.chapterList.value!!.size!=viewModel.book.durChapterIndex) {
+                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex+1])
+                    }
+                }
+            })
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData(intent)
-        binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
-        binding.recyclerView.adapter = adapter
         viewModel.bookTitle.observe(this) {
             binding.titleBar.title = it
         }
@@ -101,19 +110,31 @@ class VideoPlayActivity(
         }
         viewModel.chapterList.observe(this) {
             if (it.size > 1) {
-                    (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
-                        dimensionRatio = "h,16:9"
-                    }
+                (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
+                    dimensionRatio = "h,16:9"
+//                    matchConstraintMaxHeight = screenWidth
+                }
+//                binding.ivPlayer.maxHeight = screenWidth
+                binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
+                binding.recyclerView.adapter = adapter
                 adapter.setItems(it)
                 binding.recyclerView.scrollToPosition(viewModel.book.durChapterIndex)
                 adapter.upDisplayTitles(viewModel.book.durChapterIndex)
             } else {
-                    (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
-                        bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-                    }
+                (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
+                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                }
                 binding.recyclerView.visibility = View.GONE
             }
         }
+        onBackPressedDispatcher.addCallback(this) {
+            if (isFullScreen) {
+                toggleFullScreen()
+                return@addCallback
+            }
+            finish()
+        }
+
     }
 
     @SuppressLint("SetTextI18n")
@@ -168,19 +189,7 @@ class VideoPlayActivity(
                     }
                     return false
                 }
-
-//                override fun onDown(e: MotionEvent): Boolean = true
-//                override fun onSingleTapUp(e: MotionEvent): Boolean {
-//
-//
-//                    return super.onSingleTapUp(e)
-//                }
             })
-
-        // 设置全屏按钮点击事件
-        //binding.fullscreenButton.setOnClickListener {
-        //    toggleFullscreen()
-        //}
         @SuppressLint("ClickableViewAccessibility")
         binding.ivPlayer.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
@@ -215,7 +224,6 @@ class VideoPlayActivity(
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
-//        menu.findItem(R.id.menu_change_source).isVisible = false
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -223,52 +231,59 @@ class VideoPlayActivity(
         when (item.itemId) {
 //            R.id.menu_change_source -> {
 //            }
-
+            R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_login -> viewModel.bookSource?.let {
                 startActivity<SourceLoginActivity> {
                     putExtra("type", "bookSource")
                     putExtra("key", it.bookSourceUrl)
                 }
             }
-
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
             R.id.menu_edit_source -> viewModel.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
                 }
             }
-
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun toggleFullscreen() {
-        isFullscreen = !isFullscreen
-        if (isFullscreen) {
-            // 进入全屏
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            binding.ivPlayer.layoutParams = binding.ivPlayer.layoutParams.apply {
-                width = WindowManager.LayoutParams.MATCH_PARENT
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        when (newConfig.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> isFullScreen = false
+            Configuration.ORIENTATION_PORTRAIT -> isFullScreen = true
+        }
+        toggleFullScreen()
+        super.onConfigurationChanged(newConfig)
+    }
+
+    private fun toggleFullScreen() {
+        isFullScreen = !isFullScreen
+        toggleSystemBar(!isFullScreen)
+        if (isFullScreen) {
+            supportActionBar?.hide()
+            binding.ivPlayer.layoutParams.apply {
                 height = WindowManager.LayoutParams.MATCH_PARENT
             }
-            //        binding.fullscreenButton.setImageResource(R.drawable.ic_exit_fullscreen)
+            binding.recyclerView.isVisible = false
         } else {
-            // 退出全屏
-            window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            supportActionBar?.show()
             binding.ivPlayer.layoutParams = binding.ivPlayer.layoutParams.apply {
-                width = WindowManager.LayoutParams.MATCH_PARENT
                 height = WindowManager.LayoutParams.WRAP_CONTENT
             }
-            //        binding.fullscreenButton.setImageResource(R.drawable.ic_enter_fullscreen)
+            binding.recyclerView.isVisible = true
         }
     }
 
     override fun onDestroy() {
         viewModel.saveRead(player.currentPosition)
         player.release()
+        setResult(RESULT_OK
+//            , intent.apply {
+//
+//        }
+        )
         super.onDestroy()
     }
 

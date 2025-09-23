@@ -34,6 +34,7 @@
         android:layout_height="0dp"
 
 
+        android:background="#000000"
         app:layout_constraintTop_toBottomOf="@+id/title_bar"
         app:resize_mode="fit"
         app:show_buffering="when_playing"
@@ -66,7 +67,9 @@
         android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/iv_player"
-        tools:layout_editor_absoluteX="1dp" />
+        tools:layout_editor_absoluteX="1dp" >
+
+    </androidx.recyclerview.widget.RecyclerView>
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>

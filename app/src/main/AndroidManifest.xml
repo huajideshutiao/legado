@@ -56,6 +56,7 @@
         tools:ignore="AllowBackup,GoogleAppIndexingWarning,UnusedAttribute">
         <activity
             android:name=".ui.book.video.VideoPlayActivity"
+            android:configChanges="orientation"
             android:exported="false" />
         <!-- 主入口 -->
         <activity

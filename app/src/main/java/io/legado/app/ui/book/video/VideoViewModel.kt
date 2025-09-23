@@ -26,8 +26,8 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     var position: Long = 0L
     var bookSource: BookSource? = null
     lateinit var book: Book
-    var oldChapterIndex: Int? = null
-    private var inBookshelf = false
+    private var oldChapterIndex: Int? = null
+//    private var inBookshelf = false
 
     fun initData(intent: Intent) {
         val bookUrl = intent.getStringExtra("bookUrl") ?: return
@@ -41,7 +41,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             bookSource = book.getBookSource()
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
-            inBookshelf = intent.getBooleanExtra("inBookshelf", true)
+//            inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
             val tmp1 = appDb.bookChapterDao.getChapterList(book.bookUrl)
             chapterList.postValue(tmp1)

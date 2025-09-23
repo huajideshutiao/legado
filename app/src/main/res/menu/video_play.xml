@@ -10,6 +10,12 @@
 <!--        android:title="@string/change_origin" />-->
 
     <item
+        android:id="@+id/menu_full_screen"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:title="@string/full_screen"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/menu_refresh"
         android:icon="@drawable/ic_refresh_black_24dp"
         android:title="@string/refresh"
