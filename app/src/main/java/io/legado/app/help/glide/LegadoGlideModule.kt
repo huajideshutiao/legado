@@ -23,7 +23,7 @@ class MultiDiskCacheFactory(
     defaults: Long
 ): DiskCache.Factory{
 
-    private val coversCache = DiskLruCacheWrapper.create(createFolderIfNotExist(File(context.filesDir,"covers")),256*1024*100)
+    private val coversCache = DiskLruCacheWrapper.create(createFolderIfNotExist(File(context.filesDir,"covers")),256*1024*1000)
     private val defaultsCache = DiskLruCacheWrapper.create(createFolderIfNotExist(File(context.cacheDir,DiskCache.Factory.DEFAULT_DISK_CACHE_DIR)),defaults)
 
     override fun build(): DiskCache? {
