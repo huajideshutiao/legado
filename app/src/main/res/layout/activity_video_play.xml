@@ -16,6 +16,7 @@
         android:paddingEnd="16dp"
         android:paddingBottom="6dp"
         android:textColor="@color/md_white_1000"
+        android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@+id/iv_player" />
 
     <io.legado.app.ui.widget.TitleBar
@@ -31,12 +32,14 @@
         android:id="@+id/iv_player"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintDimensionRatio="h,16:9"
+
+
         app:layout_constraintTop_toBottomOf="@+id/title_bar"
         app:resize_mode="fit"
         app:show_buffering="when_playing"
         app:use_controller="true"
         tools:layout_editor_absoluteX="0dp">
+        <!--        app:layout_constraintBottom_toBottomOf="parent"-->
 
     </androidx.media3.ui.PlayerView>
 
@@ -56,5 +59,14 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/title_bar" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/iv_player"
+        tools:layout_editor_absoluteX="1dp" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>
