@@ -164,9 +164,9 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             binding.llRetry.isGone = true
             ReadManga.loadOrUpContent()
         }
-        mAdapter.addFooterView {
-            ViewLoadMoreBinding.bind(loadMoreView)
-        }
+//        mAdapter.addFooterView {
+//            ViewLoadMoreBinding.bind(loadMoreView)
+//        }
         loadMoreView.setOnClickListener {
             if (!loadMoreView.isLoading && ReadManga.hasNextChapter) {
                 loadMoreView.startLoad()

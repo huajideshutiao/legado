@@ -150,21 +150,29 @@ class AudioPlayActivity :
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private val scroller by lazy {   object : LinearSmoothScroller(this) {
-//        override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float {
+    private val scroller by lazy {
+        object : LinearSmoothScroller(this) {
+            //        override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float {
 //            return 100f / displayMetrics.densityDpi // 调整滚动速度
 //            return 1f / displayMetrics.density
 //        }
-        override fun calculateTimeForScrolling(dx: Int): Int {
+            override fun calculateTimeForScrolling(dx: Int): Int {
 //            val baseTime = super.calculateTimeForScrolling(dx)
 //            // 应用插值器
 //            return (baseTime * AccelerateDecelerateInterpolator().getInterpolation(dx.toFloat() / binding.ivLrc.width)).toInt()
-            return 300
+                return 300
+            }
+
+            override fun calculateDtToFit(
+                viewStart: Int,
+                viewEnd: Int,
+                boxStart: Int,
+                boxEnd: Int,
+                snapPreference: Int
+            ): Int {
+                return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
+            }
         }
-        override fun calculateDtToFit(viewStart: Int, viewEnd: Int, boxStart: Int, boxEnd: Int, snapPreference: Int): Int {
-            return ((boxEnd + boxStart) - (viewEnd + viewStart))/ 2
-        }
-    }
     }
 
     private fun initView() {
@@ -172,8 +180,13 @@ class AudioPlayActivity :
             AudioPlay.changePlayMode()
         }
         binding.ivCover.setOnClickListener {
-            it.isGone =true
-            binding.ivLrc.setPadding(24.dpToPx(),binding.ivLrc.height/2,24.dpToPx(),binding.ivLrc.height/2)
+            it.isGone = true
+            binding.ivLrc.post {
+                binding.ivLrc.setPadding(24.dpToPx(), binding.ivLrc.height / 2, 24.dpToPx(), binding.ivLrc.height / 2
+                )
+                scroller.targetPosition = adapter.update()
+                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+            }
         }
 
         observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
@@ -223,18 +236,20 @@ class AudioPlayActivity :
         }
         binding.llPlayMenu.applyNavigationBarPadding()
 
-        binding.ivLrc.layoutManager= LinearLayoutManager(this)
+        binding.ivLrc.layoutManager = LinearLayoutManager(this)
 
         viewModel.lrcData.observe(this) {
             adapter.setData(it)
             adapter.update(-1)
             binding.ivLrc.adapter = adapter
+            binding.ivLrc.setPadding(
+                24.dpToPx(),
+                binding.ivLrc.height / 2,
+                24.dpToPx(),
+                binding.ivLrc.height / 2
+            )
         }
         binding.ivLrc.itemAnimator = null
-        binding.ivLrc.post{
-            binding.ivLrc.setPadding(24.dpToPx(),binding.ivLrc.height/2,24.dpToPx(),binding.ivLrc.height/2)
-        }
-
         binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             private var job: Job? = null
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
@@ -354,10 +369,10 @@ class AudioPlayActivity :
             binding.tvAllTime.text = progressTimeFormat.format(it.toLong())
         }
         observeEventSticky<Int>(EventBus.AUDIO_PROGRESS) {
-            if (!adjustProgress){
+            if (!adjustProgress) {
                 binding.playerProgress.progress = it
                 binding.tvDurTime.text = progressTimeFormat.format(it.toLong())
-                if (adapter.update(it)){
+                if (adapter.update(it+20)) {
                     scroller.targetPosition = adapter.update()
                     binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
                 }
@@ -380,7 +395,7 @@ class AudioPlayActivity :
     override fun upLoading(loading: Boolean) {
         runOnUiThread {
             binding.progressLoading.visible(loading)
-            if(loading)viewModel.refreshData()
+            if (loading) viewModel.refreshData()
         }
     }
 

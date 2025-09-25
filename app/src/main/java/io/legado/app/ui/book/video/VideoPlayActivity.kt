@@ -92,7 +92,7 @@ class VideoPlayActivity(
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == Player.STATE_ENDED&& viewModel.chapterList.value!!.size!=viewModel.book.durChapterIndex) {
+                    if (playbackState == Player.STATE_ENDED&& viewModel.chapterList.value!!.size!=viewModel.book.durChapterIndex+1) {
                         openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex+1])
                     }
                 }
@@ -277,13 +277,13 @@ class VideoPlayActivity(
     }
 
     override fun onDestroy() {
-        viewModel.saveRead(player.currentPosition)
+        viewModel.saveRead(if(player.currentPosition==player.duration)0L else player.currentPosition)
         player.release()
-        setResult(RESULT_OK
+//        setResult(RESULT_OK
 //            , intent.apply {
 //
 //        }
-        )
+//        )
         super.onDestroy()
     }
 
