@@ -15,7 +15,6 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.AudioFocusRequestCompat
@@ -36,7 +35,6 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.AudioPlay.callback
 import io.legado.app.model.AudioPlay.durCoverUrl
 import io.legado.app.model.AudioPlay.durLrcData
 import io.legado.app.model.analyzeRule.AnalyzeUrl
