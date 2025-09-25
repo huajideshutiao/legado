@@ -109,18 +109,12 @@ class LrcAdapter(private var lyrics: MutableList<Pair<Int, String>>) :
 
 }
   // 更新当前行
-  fun update(time :Int): Boolean {
-    var position: Int? = null
-    for (i in lyrics.indices) {
-      if (lyrics[i].first <= time) {
-        position = i
-      }else break
-    }
+  fun update(position: Int): Boolean {
     if (position != currentIndex) {
       oldIndex = currentIndex
       currentIndex = position
       oldIndex?.let { notifyItemChanged(it) }
-      position?.let { notifyItemChanged(it) }
+        notifyItemChanged(position)
       return true
     }
     return false

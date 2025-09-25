@@ -28,6 +28,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.Theme
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.ui.about.AppLogDialog
@@ -45,7 +46,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(), ChapterListAdapter.Callback {
+) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(toolBarTheme = Theme.Dark), ChapterListAdapter.Callback {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()

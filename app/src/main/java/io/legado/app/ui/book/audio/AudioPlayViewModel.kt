@@ -12,26 +12,18 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
-import org.mozilla.javascript.NativeArray
-import kotlin.coroutines.coroutineContext
-import kotlin.sequences.forEach
 
 class AudioPlayViewModel(application: Application) : BaseViewModel(application) {
     val titleData = MutableLiveData<String>()
-    val coverData = MutableLiveData<String?>()
-    val lrcData = MutableLiveData<MutableList<Pair<Int, String>>>()
+//    val coverData = MutableLiveData<String?>()
+//    val lrcData = MutableLiveData<MutableList<Pair<Int, String>>>()
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
@@ -52,64 +44,13 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             AudioPlay.resetData(book)
         }
         titleData.postValue(book.name)
-        refresh()
         if (book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
         }
         if (AudioPlay.chapterSize == 0 && !loadChapterList(book)) {
             return
         }
-    }
-    fun refreshData() = AudioPlay.apply {
-        execute {
-            refresh()
-        }
-    }
-    private suspend fun refresh(){
-        var lrcContent : NativeArray ?= null
-        val chapter = appDb.bookChapterDao.getChapter(AudioPlay.book!!.bookUrl, AudioPlay.durChapterIndex)!!
-        val source =  AudioPlay.bookSource ?: throw NoStackTraceException("no book source")
-        val lrcRule = source.getContentRule().lrcRule
-        val musicCover = source.getContentRule().musicCover
-        if (!lrcRule.isNullOrBlank()) {
-                val analyzeRule = AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
-                analyzeRule.setCoroutineContext(coroutineContext)
-                analyzeRule.setBaseUrl(chapter.url)
-                analyzeRule.setChapter(chapter)
-                if (!musicCover.isNullOrBlank()) {
-                    coverData.postValue(analyzeRule.evalJS(musicCover).toString())
-                }
-            lrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
-            }
-        if(coverData.value==null)coverData.postValue(AudioPlay.book!!.getDisplayCover()?:"")
-        val tmp= mutableListOf<Pair<Int, String>>()
-        if(lrcContent!=null) {
-            for (i in lrcContent.indices){
-                var oldIndex = 0
-            (lrcContent[i] as String ).trim().lineSequence().forEach { line ->
-            val split = line.indexOf("]")
-            if (line[1].isDigit()) {
-                val textPart = line.substring(split+1)
-                val min = line.substring(1, 3).toInt()
-                val sec = line.substring(4, 6).toInt()
-                var ms = 0
-                if (split != 6) {
-                    ms = line.substring(7,split).toIntOrNull() ?: 0
-                    ms = ms * (if(split==10)1 else 10)
-                }
-                val time = min * 60_000 + sec * 1000 + ms
-                if (i != 0) {
-                    val index = tmp.subList(oldIndex,tmp.size).indexOfFirst { it.first == time }
-                    oldIndex += index
-                    tmp[oldIndex] = Pair(time, "${tmp[oldIndex].second}\n$textPart")
-                } else {
-                    tmp.add(Pair(time, textPart))
-                }
-            }
-        }
-            }
-        }
-        lrcData.postValue(tmp)
+        AudioPlay.loadOrUpPlayUrl()
     }
 
     private suspend fun loadBookInfo(book: Book): Boolean {

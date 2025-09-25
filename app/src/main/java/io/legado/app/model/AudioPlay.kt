@@ -18,6 +18,9 @@ import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
@@ -26,6 +29,7 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancelChildren
+import org.mozilla.javascript.NativeArray
 import splitties.init.appCtx
 
 @SuppressLint("StaticFieldLeak")
@@ -63,6 +67,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapterPos = 0
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
+    var durCoverUrl: String? = null
+    var durLrcData: MutableList<Pair<Int, String>>? = null
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -152,6 +158,71 @@ object AudioPlay : CoroutineScope by MainScope() {
                         if (content.isEmpty()) {
                             appCtx.toastOnUi("未获取到资源链接")
                         } else {
+
+                            Coroutine.async {
+                                val lrcRule = bookSource.getContentRule().lrcRule
+                                val musicCover = bookSource.getContentRule().musicCover
+                                var durLrcContent: NativeArray? = null
+                                if (!musicCover.isNullOrBlank()) {
+                                    val analyzeRule =
+                                        AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
+                                    analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
+                                    analyzeRule.setBaseUrl(chapter.url)
+                                    analyzeRule.setChapter(chapter)
+                                    durCoverUrl = analyzeRule.evalJS(musicCover).toString()
+//                                    context.startService<AudioPlayService> {
+//                                        action = IntentAction.playData
+//                                    }
+                                    callback?.upCover(durCoverUrl!!)
+                                    if (!lrcRule.isNullOrBlank() && context == activityContext) {
+                                        durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
+                                    }
+
+                                }
+                                val tmp = mutableListOf<Pair<Int, String>>()
+                                durLrcContent?.let { it1 ->
+                                    for (i in it1.indices) {
+                                        var oldIndex = 0
+                                        (durLrcContent[i] as String).trim().lineSequence()
+                                            .forEach { line ->
+                                                val split = line.indexOf("]")
+                                                if (line[1].isDigit()) {
+                                                    val textPart = line.substring(split + 1)
+                                                    val min = line.substring(1, 3).toInt()
+                                                    val sec = line.substring(4, 6).toInt()
+                                                    var ms = 0
+                                                    if (split != 6) {
+                                                        ms = line.substring(7, split).toIntOrNull()
+                                                            ?: 0
+                                                        ms = ms * (if (split == 10) 1 else 10)
+                                                    }
+                                                    val time = min * 60_000 + sec * 1000 + ms
+                                                    if (i != 0) {
+                                                        val index =
+                                                            tmp.subList(oldIndex, tmp.size)
+                                                                .indexOfFirst { it.first == time }
+                                                        oldIndex += index
+                                                        tmp[oldIndex] = Pair(
+                                                            time,
+                                                            "${tmp[oldIndex].second}\n$textPart"
+                                                        )
+                                                    } else {
+                                                        tmp.add(Pair(time, textPart))
+                                                    }
+                                                }
+                                            }
+                                    }
+                                }
+                                durLrcData = tmp
+//                                context.startService<AudioPlayService> {
+//                                    action = IntentAction.playData
+//                                }
+                                callback?.upLrc(tmp)
+                            }.onSuccess {
+                                context.startService<AudioPlayService> {
+                                    action = IntentAction.playData
+                                }
+                            }
                             contentLoadFinish(chapter, content)
                         }
                     }.onError {
@@ -398,6 +469,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
+        durCoverUrl?.let { callback?.upCover(it) }
+        durLrcData?.let { callback?.upLrc(it) }
     }
 
     fun unregister(context: Context) {
@@ -419,6 +492,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     interface CallBack {
 
         fun upLoading(loading: Boolean)
+        fun upCover(url: String)
+        fun upLrc(lrc: MutableList<Pair<Int, String>>)
 
     }
 

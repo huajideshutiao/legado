@@ -59,6 +59,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.views.onLongClick
 import java.util.Locale
+import kotlin.Int
+import kotlin.Pair
 
 /**
  * 音频播放
@@ -105,9 +107,6 @@ class AudioPlayActivity :
         AudioPlay.register(this)
         viewModel.titleData.observe(this) {
             binding.titleBar.title = it
-        }
-        viewModel.coverData.observe(this) {
-            upCover(it)
         }
         viewModel.initData(intent)
         initView()
@@ -237,18 +236,6 @@ class AudioPlayActivity :
         binding.llPlayMenu.applyNavigationBarPadding()
 
         binding.ivLrc.layoutManager = LinearLayoutManager(this)
-
-        viewModel.lrcData.observe(this) {
-            adapter.setData(it)
-            adapter.update(-1)
-            binding.ivLrc.adapter = adapter
-            binding.ivLrc.setPadding(
-                24.dpToPx(),
-                binding.ivLrc.height / 2,
-                24.dpToPx(),
-                binding.ivLrc.height / 2
-            )
-        }
         binding.ivLrc.itemAnimator = null
         binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             private var job: Job? = null
@@ -273,11 +260,13 @@ class AudioPlayActivity :
         binding.ivPlayMode.setImageResource(playMode.iconRes)
     }
 
-    private fun upCover(path: String?) {
-        BookCover.load(this, path, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
-            BookCover.loadBlur(this, path, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                .into(binding.ivBg)
-        }.into(binding.ivCover)
+    override fun upCover(url: String) {
+        runOnUiThread {
+            BookCover.load(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
+                BookCover.loadBlur(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+                    .into(binding.ivBg)
+            }.into(binding.ivCover)
+        }
     }
 
     private fun playButton() {
@@ -359,6 +348,7 @@ class AudioPlayActivity :
             }
         }
         observeEventSticky<String>(EventBus.AUDIO_SUB_TITLE) {
+//            viewModel.refreshData()
             binding.tvSubTitle.text = it
             binding.ivSkipPrevious.isEnabled = AudioPlay.durChapterIndex > 0
             binding.ivSkipNext.isEnabled =
@@ -372,11 +362,12 @@ class AudioPlayActivity :
             if (!adjustProgress) {
                 binding.playerProgress.progress = it
                 binding.tvDurTime.text = progressTimeFormat.format(it.toLong())
-                if (adapter.update(it+20)) {
-                    scroller.targetPosition = adapter.update()
-                    binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-                }
             }
+        }
+        observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
+            adapter.update(it)
+            scroller.targetPosition = adapter.update()
+            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
@@ -395,7 +386,19 @@ class AudioPlayActivity :
     override fun upLoading(loading: Boolean) {
         runOnUiThread {
             binding.progressLoading.visible(loading)
-            if (loading) viewModel.refreshData()
+        }
+    }
+    override fun upLrc(lrc: MutableList<Pair<Int, String>>) {
+        runOnUiThread {
+            adapter.setData(lrc)
+//            adapter.update(-1)
+            binding.ivLrc.adapter = adapter
+            binding.ivLrc.setPadding(
+                24.dpToPx(),
+                binding.ivLrc.height / 2,
+                24.dpToPx(),
+                binding.ivLrc.height / 2
+            )
         }
     }
 

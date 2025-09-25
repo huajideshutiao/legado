@@ -15,6 +15,7 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.AudioFocusRequestCompat
@@ -36,6 +37,8 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.AudioPlay.callback
+import io.legado.app.model.AudioPlay.durCoverUrl
+import io.legado.app.model.AudioPlay.durLrcData
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
 import io.legado.app.receiver.MediaButtonReceiver
@@ -48,6 +51,7 @@ import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -83,9 +87,11 @@ class AudioPlayService : BaseService(),
             private set
 
         private const val MEDIA_SESSION_ACTIONS = (PlaybackStateCompat.ACTION_PLAY
-                or PlaybackStateCompat.ACTION_PAUSE
-                or PlaybackStateCompat.ACTION_PLAY_PAUSE
-                or PlaybackStateCompat.ACTION_SEEK_TO)
+            or PlaybackStateCompat.ACTION_PAUSE
+            or PlaybackStateCompat.ACTION_PLAY_PAUSE
+            or PlaybackStateCompat.ACTION_SEEK_TO
+            or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
 
         private const val APP_ACTION_STOP = "Stop"
         private const val APP_ACTION_TIMER = "Timer"
@@ -155,6 +161,24 @@ class AudioPlayService : BaseService(),
                     position = AudioPlay.book?.durChapterPos ?: 0
                     url = AudioPlay.durPlayUrl
                     play()
+                }
+
+                IntentAction.playData -> {
+                    if (!durCoverUrl.isNullOrBlank()) {
+                        execute {
+                            ImageLoader
+                                .loadBitmap(this@AudioPlayService, durCoverUrl)
+                                .submit()
+                                .get()
+                        }.onSuccess {
+                            if (it.width > 16 && it.height > 16) {
+                                cover = it
+                                upMediaMetadata()
+                                upAudioPlayNotification()
+                            }
+                        }
+                    }
+                    if (!durLrcData.isNullOrEmpty()) upPlayProgressForLrc()
                 }
 
                 IntentAction.playNew -> {
@@ -353,7 +377,7 @@ class AudioPlayService : BaseService(),
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaMetadata()
                 upPlayProgress()
-                if (callback!=null)upPlayProgressForLrc()else upPlayProgressForLrcJob?.cancel()
+//                if (callback != null) upPlayProgressForLrc() else upPlayProgressForLrcJob?.cancel()
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
@@ -443,7 +467,7 @@ class AudioPlayService : BaseService(),
                 //更新buffer位置
                 AudioPlay.playPositionChanged(exoPlayer.currentPosition.toInt())
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
-//                postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
+                postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 delay(1000)
@@ -454,10 +478,21 @@ class AudioPlayService : BaseService(),
     private fun upPlayProgressForLrc() {
         upPlayProgressForLrcJob?.cancel()
         upPlayProgressForLrcJob = lifecycleScope.launch {
-            while (isActive) {
-                postEvent(EventBus.AUDIO_PROGRESS, exoPlayer.currentPosition.toInt())
-                delay(100)
-            }
+            var position: Int? = null
+                for (i in durLrcData!!.indices) {
+                    if (durLrcData!![i].first <= exoPlayer.currentPosition) {
+                        position = i
+                    } else break
+                }
+                postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                while (isActive) {
+                    if (position!! > durLrcData!!.size - 2) this.cancel()
+                    if (durLrcData!![position + 1].first <= exoPlayer.currentPosition) {
+                        position += 1
+                        postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                    }
+                    delay(50)
+                }
         }
     }
 
@@ -503,7 +538,9 @@ class AudioPlayService : BaseService(),
             override fun onPlay() = resume()
 
             override fun onPause() = pause()
+            override fun onSkipToNext() = AudioPlay.next()
 
+            override fun onSkipToPrevious()= AudioPlay.prev()
             override fun onCustomAction(action: String?, extras: Bundle?) {
                 action ?: return
 
@@ -622,9 +659,19 @@ class AudioPlayService : BaseService(),
             getString(R.string.set_timer),
             servicePendingIntent<AudioPlayService>(IntentAction.addTimer)
         )
+        builder.addAction(
+            R.drawable.ic_skip_previous,
+            getString(R.string.pref_media_button_per_next),
+            servicePendingIntent<AudioPlayService>(IntentAction.prev)
+        )
+        builder.addAction(
+            R.drawable.ic_skip_next,
+            getString(R.string.pref_media_button_per_next_summary),
+            servicePendingIntent<AudioPlayService>(IntentAction.next)
+        )
         builder.setStyle(
             androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2)
+                .setShowActionsInCompactView(0, 1, 2, 3, 4)
                 .setMediaSession(mediaSessionCompat?.sessionToken)
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

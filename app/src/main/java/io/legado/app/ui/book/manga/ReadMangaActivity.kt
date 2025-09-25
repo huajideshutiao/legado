@@ -31,7 +31,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityMangaBinding
-import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -164,9 +163,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             binding.llRetry.isGone = true
             ReadManga.loadOrUpContent()
         }
-//        mAdapter.addFooterView {
-//            ViewLoadMoreBinding.bind(loadMoreView)
-//        }
         loadMoreView.setOnClickListener {
             if (!loadMoreView.isLoading && ReadManga.hasNextChapter) {
                 loadMoreView.startLoad()
