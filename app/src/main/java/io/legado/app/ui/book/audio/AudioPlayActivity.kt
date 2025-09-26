@@ -234,7 +234,12 @@ class AudioPlayActivity :
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.llPlayMenu.applyNavigationBarPadding()
-
+        binding.ivLrc.post { binding.ivLrc.setPadding(
+            24.dpToPx(),
+            binding.ivLrc.height / 2,
+            24.dpToPx(),
+            binding.ivLrc.height / 2
+        ) }
         binding.ivLrc.layoutManager = LinearLayoutManager(this)
         binding.ivLrc.itemAnimator = null
         binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -259,16 +264,6 @@ class AudioPlayActivity :
     private fun updatePlayModeIcon() {
         binding.ivPlayMode.setImageResource(playMode.iconRes)
     }
-
-    override fun upCover(url: String) {
-        runOnUiThread {
-            BookCover.load(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
-                BookCover.loadBlur(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                    .into(binding.ivBg)
-            }.into(binding.ivCover)
-        }
-    }
-
     private fun playButton() {
         when (AudioPlay.status) {
             Status.PLAY -> AudioPlay.pause(this)
@@ -366,7 +361,7 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
             adapter.update(it)
-            scroller.targetPosition = adapter.update()
+            scroller.targetPosition = it
             binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
@@ -388,17 +383,18 @@ class AudioPlayActivity :
             binding.progressLoading.visible(loading)
         }
     }
-    override fun upLrc(lrc: MutableList<Pair<Int, String>>) {
+    override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
             adapter.setData(lrc)
-//            adapter.update(-1)
             binding.ivLrc.adapter = adapter
-            binding.ivLrc.setPadding(
-                24.dpToPx(),
-                binding.ivLrc.height / 2,
-                24.dpToPx(),
-                binding.ivLrc.height / 2
-            )
+        }
+    }
+    override fun upCover(url: String) {
+        runOnUiThread {
+            BookCover.load(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
+                BookCover.loadBlur(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+                    .into(binding.ivBg)
+            }.into(binding.ivCover)
         }
     }
 

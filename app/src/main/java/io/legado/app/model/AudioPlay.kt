@@ -68,7 +68,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
     var durCoverUrl: String? = null
-    var durLrcData: MutableList<Pair<Int, String>>? = null
+    var durLrcData: List<Pair<Int, String>>? = null
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -137,6 +137,86 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
+    private fun getCoverUrl(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter
+    ) {
+        Coroutine.async {
+            val musicCover = bookSource.getContentRule().musicCover
+            if (!musicCover.isNullOrBlank()) {
+                val analyzeRule = AnalyzeRule(book, bookSource)
+                analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
+                analyzeRule.setBaseUrl(chapter.url)
+                analyzeRule.setChapter(chapter)
+                durCoverUrl = analyzeRule.evalJS(musicCover).toString()
+            }
+        }.onSuccess {
+            callback?.upCover(durCoverUrl!!)
+            context.startService<AudioPlayService> {
+                action = IntentAction.playData
+            }
+        }
+    }
+
+    private fun getLrcData(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter
+    ) {
+        Coroutine.async {
+            val lrcRule = bookSource.getContentRule().lrcRule
+            var durLrcContent: NativeArray?
+
+            if (!lrcRule.isNullOrBlank() && context == activityContext) {
+                val analyzeRule = AnalyzeRule(book, bookSource)
+                analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
+                analyzeRule.setBaseUrl(chapter.url)
+                analyzeRule.setChapter(chapter)
+                durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
+            } else return@async
+
+            val tmp = mutableListOf<Pair<Int, String>>()
+            for (i in durLrcContent.indices) {
+                var oldIndex = 0
+                (durLrcContent[i] as String).trim().lineSequence().forEach { line ->
+                    val split = line.indexOf("]")
+                    if (line[1].isDigit()) {
+                        val textPart = line.substring(split + 1)
+                        val min = line.substring(1, 3).toInt()
+                        val sec = line.substring(4, 6).toInt()
+                        var ms = 0
+                        if (split > 6) {
+                            ms = line.substring(7, split).toIntOrNull()
+                                ?: 0
+                            ms = ms * (if (split == 10) 1 else 10)
+                        }
+                        val time = min * 60_000 + sec * 1000 + ms
+                        if (i != 0) {
+                            val index =
+                                tmp.subList(oldIndex, tmp.size)
+                                    .indexOfFirst { it.first == time }
+                            oldIndex += index
+                            tmp[oldIndex] = Pair(
+                                time,
+                                "${tmp[oldIndex].second}\n$textPart"
+                            )
+                        } else {
+                            tmp.add(Pair(time, textPart))
+                        }
+                    }
+                }
+            }
+            durLrcData = tmp
+//                .toList()
+        }.onSuccess {
+            callback?.upLrc(durLrcData!!)
+            context.startService<AudioPlayService> {
+                action = IntentAction.playData
+            }
+        }
+    }
+
     /**
      * 加载播放URL
      */
@@ -158,71 +238,9 @@ object AudioPlay : CoroutineScope by MainScope() {
                         if (content.isEmpty()) {
                             appCtx.toastOnUi("未获取到资源链接")
                         } else {
-
-                            Coroutine.async {
-                                val lrcRule = bookSource.getContentRule().lrcRule
-                                val musicCover = bookSource.getContentRule().musicCover
-                                var durLrcContent: NativeArray? = null
-                                if (!musicCover.isNullOrBlank()) {
-                                    val analyzeRule =
-                                        AnalyzeRule(AudioPlay.book, AudioPlay.bookSource)
-                                    analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
-                                    analyzeRule.setBaseUrl(chapter.url)
-                                    analyzeRule.setChapter(chapter)
-                                    durCoverUrl = analyzeRule.evalJS(musicCover).toString()
-//                                    context.startService<AudioPlayService> {
-//                                        action = IntentAction.playData
-//                                    }
-                                    callback?.upCover(durCoverUrl!!)
-                                    if (!lrcRule.isNullOrBlank() && context == activityContext) {
-                                        durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
-                                    }
-
-                                }
-                                val tmp = mutableListOf<Pair<Int, String>>()
-                                durLrcContent?.let { it1 ->
-                                    for (i in it1.indices) {
-                                        var oldIndex = 0
-                                        (durLrcContent[i] as String).trim().lineSequence()
-                                            .forEach { line ->
-                                                val split = line.indexOf("]")
-                                                if (line[1].isDigit()) {
-                                                    val textPart = line.substring(split + 1)
-                                                    val min = line.substring(1, 3).toInt()
-                                                    val sec = line.substring(4, 6).toInt()
-                                                    var ms = 0
-                                                    if (split != 6) {
-                                                        ms = line.substring(7, split).toIntOrNull()
-                                                            ?: 0
-                                                        ms = ms * (if (split == 10) 1 else 10)
-                                                    }
-                                                    val time = min * 60_000 + sec * 1000 + ms
-                                                    if (i != 0) {
-                                                        val index =
-                                                            tmp.subList(oldIndex, tmp.size)
-                                                                .indexOfFirst { it.first == time }
-                                                        oldIndex += index
-                                                        tmp[oldIndex] = Pair(
-                                                            time,
-                                                            "${tmp[oldIndex].second}\n$textPart"
-                                                        )
-                                                    } else {
-                                                        tmp.add(Pair(time, textPart))
-                                                    }
-                                                }
-                                            }
-                                    }
-                                }
-                                durLrcData = tmp
-//                                context.startService<AudioPlayService> {
-//                                    action = IntentAction.playData
-//                                }
-                                callback?.upLrc(tmp)
-                            }.onSuccess {
-                                context.startService<AudioPlayService> {
-                                    action = IntentAction.playData
-                                }
-                            }
+                            getCoverUrl(bookSource, book, chapter)
+                            durLrcData = null
+                            getLrcData(bookSource, book, chapter)
                             contentLoadFinish(chapter, content)
                         }
                     }.onError {
@@ -283,7 +301,10 @@ object AudioPlay : CoroutineScope by MainScope() {
         val book = book ?: return
         durChapter = appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         durAudioSize = durChapter?.end?.toInt() ?: 0
-        postEvent(EventBus.AUDIO_SUB_TITLE, durChapter?.title ?: appCtx.getString(R.string.data_loading))
+        postEvent(
+            EventBus.AUDIO_SUB_TITLE,
+            durChapter?.title ?: appCtx.getString(R.string.data_loading)
+        )
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
@@ -463,14 +484,21 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     private fun isPlayToEnd(): Boolean {
         return durChapterIndex + 1 == simulatedChapterSize
-                && durChapterPos == durAudioSize
+            && durChapterPos == durAudioSize
     }
 
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
         durCoverUrl?.let { callback?.upCover(it) }
-        durLrcData?.let { callback?.upLrc(it) }
+        durLrcData?.let { callback?.upLrc(it)
+            context.startService<AudioPlayService> {
+                action = IntentAction.playData
+            }
+        }
+        if (book != null && durLrcData == null) {
+            getLrcData(bookSource!!, book!!, durChapter!!)
+        }
     }
 
     fun unregister(context: Context) {
@@ -493,7 +521,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
         fun upLoading(loading: Boolean)
         fun upCover(url: String)
-        fun upLrc(lrc: MutableList<Pair<Int, String>>)
+        fun upLrc(lrc: List<Pair<Int, String>>)
 
     }
 

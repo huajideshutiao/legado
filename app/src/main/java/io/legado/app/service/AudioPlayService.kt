@@ -49,7 +49,6 @@ import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -176,7 +175,7 @@ class AudioPlayService : BaseService(),
                             }
                         }
                     }
-                    if (!durLrcData.isNullOrEmpty()) upPlayProgressForLrc()
+                    upPlayProgressForLrc(durLrcData)
                 }
 
                 IntentAction.playNew -> {
@@ -315,6 +314,7 @@ class AudioPlayService : BaseService(),
                 exoPlayer.play()
             }
             upPlayProgress()
+            upPlayProgressForLrc(durLrcData)
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
             AudioPlay.status = Status.PLAY
             postEvent(EventBus.AUDIO_STATE, Status.PLAY)
@@ -376,6 +376,7 @@ class AudioPlayService : BaseService(),
                 upMediaMetadata()
                 upPlayProgress()
 //                if (callback != null) upPlayProgressForLrc() else upPlayProgressForLrcJob?.cancel()
+                upPlayProgressForLrc(durLrcData)
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
@@ -473,24 +474,27 @@ class AudioPlayService : BaseService(),
         }
     }
 
-    private fun upPlayProgressForLrc() {
+    private fun upPlayProgressForLrc(lrc: List<Pair<Int, String>>?) {
+        if (lrc == null) return
         upPlayProgressForLrcJob?.cancel()
         upPlayProgressForLrcJob = lifecycleScope.launch {
             var position: Int? = null
-                for (i in durLrcData!!.indices) {
-                    if (durLrcData!![i].first <= exoPlayer.currentPosition) {
-                        position = i
-                    } else break
-                }
-                postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                while (isActive) {
-                    if (position!! > durLrcData!!.size - 2) this.cancel()
-                    if (durLrcData!![position + 1].first <= exoPlayer.currentPosition) {
+            for (i in lrc.indices) {
+                if (lrc[i].first <= exoPlayer.currentPosition) {
+                    position = i
+                } else break
+            }
+            postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+            while (isActive) {
+                position?.let {
+                    if (it > lrc.size - 2) break
+                    if (lrc[it + 1].first <= exoPlayer.currentPosition + 15) {
                         position += 1
                         postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                     }
-                    delay(50)
                 }
+                delay(50)
+            }
         }
     }
 
@@ -538,7 +542,7 @@ class AudioPlayService : BaseService(),
             override fun onPause() = pause()
             override fun onSkipToNext() = AudioPlay.next()
 
-            override fun onSkipToPrevious()= AudioPlay.prev()
+            override fun onSkipToPrevious() = AudioPlay.prev()
             override fun onCustomAction(action: String?, extras: Bundle?) {
                 action ?: return
 

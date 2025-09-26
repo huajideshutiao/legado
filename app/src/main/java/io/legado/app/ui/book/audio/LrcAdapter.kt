@@ -15,7 +15,7 @@ import io.legado.app.R
 import io.legado.app.model.AudioPlay
 import kotlin.apply
 
-class LrcAdapter(private var lyrics: MutableList<Pair<Int, String>>) :
+class LrcAdapter(private var lyrics: List<Pair<Int, String>>) :
   RecyclerView.Adapter<LrcAdapter.ViewHolder>() {
 
   private var currentIndex: Int? = null
@@ -109,22 +109,20 @@ class LrcAdapter(private var lyrics: MutableList<Pair<Int, String>>) :
 
 }
   // 更新当前行
-  fun update(position: Int): Boolean {
+  fun update(position: Int){
     if (position != currentIndex) {
       oldIndex = currentIndex
       currentIndex = position
       oldIndex?.let { notifyItemChanged(it) }
         notifyItemChanged(position)
-      return true
     }
-    return false
   }
 
   fun update(): Int {
     return currentIndex?:0
   }
 
-  fun setData(newData: MutableList<Pair<Int, String>>) {
+  fun setData(newData: List<Pair<Int, String>>) {
     this.lyrics = newData
     notifyDataSetChanged()
   }
