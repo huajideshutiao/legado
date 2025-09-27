@@ -205,6 +205,7 @@ class AudioPlayService : BaseService(),
                 IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
                 IntentAction.adjustProgress -> {
                     adjustProgress(intent.getIntExtra("position", position))
+                    upPlayProgressForLrc(durLrcData)
                 }
 
                 IntentAction.stop -> stopSelf()
@@ -475,8 +476,8 @@ class AudioPlayService : BaseService(),
     }
 
     private fun upPlayProgressForLrc(lrc: List<Pair<Int, String>>?) {
-        if (lrc == null) return
         upPlayProgressForLrcJob?.cancel()
+        if (lrc == null) return
         upPlayProgressForLrcJob = lifecycleScope.launch {
             var position: Int? = null
             for (i in lrc.indices) {
@@ -488,7 +489,7 @@ class AudioPlayService : BaseService(),
             while (isActive) {
                 position?.let {
                     if (it > lrc.size - 2) break
-                    if (lrc[it + 1].first <= exoPlayer.currentPosition + 15) {
+                    if (lrc[it + 1].first <= exoPlayer.currentPosition + 10) {
                         position += 1
                         postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                     }

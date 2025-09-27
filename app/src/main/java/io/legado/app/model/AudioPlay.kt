@@ -93,8 +93,9 @@ object AudioPlay : CoroutineScope by MainScope() {
             durChapterPos = book.durChapterPos
             durPlayUrl = ""
             durAudioSize = 0
+            upDurChapter()
         }
-        upDurChapter()
+
     }
 
     fun resetData(book: Book) {
@@ -196,6 +197,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                             val index =
                                 tmp.subList(oldIndex, tmp.size)
                                     .indexOfFirst { it.first == time }
+                            if (index==-1) return@forEach
                             oldIndex += index
                             tmp[oldIndex] = Pair(
                                 time,
