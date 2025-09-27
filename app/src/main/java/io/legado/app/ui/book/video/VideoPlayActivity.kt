@@ -31,6 +31,8 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.Theme
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
+import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
@@ -46,7 +48,8 @@ import java.util.Locale
 import kotlin.math.abs
 
 class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(toolBarTheme = Theme.Dark), ChapterListAdapter.Callback {
+) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(toolBarTheme = Theme.Dark),
+    ChapterListAdapter.Callback {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
@@ -93,8 +96,8 @@ class VideoPlayActivity(
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == Player.STATE_ENDED&& viewModel.chapterList.value!!.size!=viewModel.book.durChapterIndex+1) {
-                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex+1])
+                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
+                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                     }
                 }
             })
@@ -225,6 +228,7 @@ class VideoPlayActivity(
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
+        menu.findItem(R.id.menu_shelf).setIcon(if (viewModel.inBookshelf) R.drawable.ic_star else R.drawable.ic_star_border)
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -232,6 +236,38 @@ class VideoPlayActivity(
         when (item.itemId) {
 //            R.id.menu_change_source -> {
 //            }
+            R.id.menu_shelf -> {
+                if (viewModel.inBookshelf) {
+                    if (LocalConfig.bookInfoDeleteAlert) {
+                        alert(
+                            titleResource = R.string.draw,
+                            messageResource = R.string.sure_del
+                        ) {
+                            yesButton {
+                                viewModel.delBook {
+                                    setResult(RESULT_OK)
+                                    finish()
+                                }
+                            }
+                            noButton()
+                        }
+                    } else {
+                        viewModel.delBook {
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                    }
+                } else {
+                    viewModel.addToBookshelf {
+                        if (viewModel.inBookshelf) {
+                            item.setIcon(R.drawable.ic_star)
+                        } else {
+                            item.setIcon(R.drawable.ic_star_border)
+                        }
+                    }
+                }
+            }
+
             R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_login -> viewModel.bookSource?.let {
                 startActivity<SourceLoginActivity> {
@@ -239,12 +275,14 @@ class VideoPlayActivity(
                     putExtra("key", it.bookSourceUrl)
                 }
             }
+
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
             R.id.menu_edit_source -> viewModel.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
                 }
             }
+
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
@@ -278,13 +316,8 @@ class VideoPlayActivity(
     }
 
     override fun onDestroy() {
-        viewModel.saveRead(if(player.currentPosition==player.duration)0L else player.currentPosition)
+        viewModel.saveRead(if (player.currentPosition == player.duration) 0L else player.currentPosition)
         player.release()
-//        setResult(RESULT_OK
-//            , intent.apply {
-//
-//        }
-//        )
         super.onDestroy()
     }
 

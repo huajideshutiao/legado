@@ -10,11 +10,14 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -87,18 +90,21 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     override fun showBookInfo(book: Book) {
-        if (book.bookUrl.contains("::")){
+        if (book.bookUrl.contains("::")) {
             startActivity<ExploreShowActivity> {
                 putExtra("exploreName", book.bookUrl.split("::")[0])
                 putExtra("sourceUrl", intent.getStringExtra("sourceUrl"))
                 putExtra("exploreUrl", book.bookUrl.split("::")[1])
             }
-        }else{
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-        }
+        } else {
+            if (book.isVideo&& AppConfig.showVideoUi)startActivityForBook(book){
+                putExtra("name", book.name)
+                putExtra("from", "search")
+            }else startActivity<BookInfoActivity> {
+                putExtra("name", book.name)
+                putExtra("author", book.author)
+                putExtra("bookUrl", book.bookUrl)
+            }
         }
     }
 }

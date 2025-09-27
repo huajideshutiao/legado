@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
@@ -74,7 +75,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.name, it.author, it.bookUrl)
+                callBack.showBookInfo(it.toBook())
             }
         }
     }
@@ -154,6 +155,6 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         /**
          * 显示书籍详情
          */
-        fun showBookInfo(name: String, author: String, bookUrl: String)
+        fun showBookInfo(book: Book)
     }
 }
