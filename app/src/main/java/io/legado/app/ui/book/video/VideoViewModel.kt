@@ -15,12 +15,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.isSameNameAuthor
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.AudioPlay
-import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.toastOnUi
@@ -32,14 +30,15 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     var position: Long = 0L
     var bookSource: BookSource? = null
     lateinit var book: Book
-    var inBookshelf = false
+    var inBookshelf = MutableLiveData<Boolean>()
     private var oldChapterIndex: Int? = null
 
 
     fun initData(intent: Intent) {
         val bookUrl = intent.getStringExtra("bookUrl") ?: return
         val tmp = intent.getStringExtra("from") == "search"
-        inBookshelf = intent.getBooleanExtra("inBookshelf", false)
+        //只有从详情页跳转才会有inBookshelf
+        inBookshelf.postValue(intent.getBooleanExtra("inBookshelf", false))
         execute {
             var tmp0 = appDb.bookDao.getBook(bookUrl)
             if (tmp && tmp0 == null)tmp0 = appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()
@@ -48,6 +47,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 return@execute
             }
             book = tmp0
+            inBookshelf.postValue(book.isNotShelf)
             bookSource = book.getBookSource() ?: return@execute
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
@@ -95,7 +95,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun addToBookshelf(success: (() -> Unit)?) {
         execute {
-
             book.removeType(BookType.notShelf)
             if (book.order == 0) {
                 book.order = appDb.bookDao.minOrder - 1
@@ -105,17 +104,11 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 book.durChapterPos = it.durChapterPos
                 book.durChapterTitle = it.durChapterTitle
             }
-            if (ReadBook.book?.isSameNameAuthor(book) == true) {
-                ReadBook.book = book
-            } else if (AudioPlay.book?.isSameNameAuthor(book) == true) {
-                AudioPlay.book = book
-            }
             book.save()
-
             chapterList.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())
             }
-            inBookshelf = true
+            inBookshelf.postValue(true)
         }.onSuccess {
             success?.invoke()
         }
@@ -131,7 +124,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 if (future.get().exists()) future.get().delete()
                 Glide.with(context).clear(future)
             }
-            inBookshelf = false
+            inBookshelf.postValue(false)
 
         }.onSuccess {
             success?.invoke()

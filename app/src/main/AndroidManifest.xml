@@ -56,8 +56,8 @@
         tools:ignore="AllowBackup,GoogleAppIndexingWarning,UnusedAttribute">
         <activity
             android:name=".ui.book.video.VideoPlayActivity"
-            android:configChanges="orientation"
-            android:exported="false" />
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:launchMode="standard" />
         <!-- 主入口 -->
         <activity
             android:name=".ui.welcome.WelcomeActivity"

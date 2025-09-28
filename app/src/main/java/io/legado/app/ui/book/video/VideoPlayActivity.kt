@@ -28,7 +28,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.Theme
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.config.LocalConfig
@@ -48,7 +47,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(toolBarTheme = Theme.Dark),
+) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(),
     ChapterListAdapter.Callback {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
@@ -106,6 +105,9 @@ class VideoPlayActivity(
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData(intent)
+        viewModel.inBookshelf.observe(this) {
+            binding.titleBar.menu.findItem(R.id.menu_shelf)
+        }
         viewModel.bookTitle.observe(this) {
             binding.titleBar.title = it
         }
@@ -224,12 +226,10 @@ class VideoPlayActivity(
         menuInflater.inflate(R.menu.video_play, menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
-        menu.findItem(R.id.menu_shelf).setIcon(if (viewModel.inBookshelf) R.drawable.ic_star else R.drawable.ic_star_border)
-        return super.onMenuOpened(featureId, menu)
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
@@ -237,7 +237,7 @@ class VideoPlayActivity(
 //            R.id.menu_change_source -> {
 //            }
             R.id.menu_shelf -> {
-                if (viewModel.inBookshelf) {
+                if (viewModel.inBookshelf.value == true) {
                     if (LocalConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw,
@@ -258,13 +258,7 @@ class VideoPlayActivity(
                         }
                     }
                 } else {
-                    viewModel.addToBookshelf {
-                        if (viewModel.inBookshelf) {
-                            item.setIcon(R.drawable.ic_star)
-                        } else {
-                            item.setIcon(R.drawable.ic_star_border)
-                        }
-                    }
+                    viewModel.addToBookshelf {item.setIcon(R.drawable.ic_star)}
                 }
             }
 
