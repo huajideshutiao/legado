@@ -18,13 +18,17 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -40,6 +44,7 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
@@ -98,6 +103,18 @@ class VideoPlayActivity(
                     if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
                         openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                     }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    if (error is ExoPlaybackException) {
+                        this@VideoPlayActivity.toastOnUi(
+                        when (error.sourceException) {
+                            is UnrecognizedInputFormatException -> "不是视频链接"
+                            is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
+                            else -> "视频播放出错"
+                        })
+                    }
+                    super.onPlayerError(error)
                 }
             })
         }
@@ -226,6 +243,7 @@ class VideoPlayActivity(
         menuInflater.inflate(R.menu.video_play, menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
+
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
@@ -258,7 +276,7 @@ class VideoPlayActivity(
                         }
                     }
                 } else {
-                    viewModel.addToBookshelf {item.setIcon(R.drawable.ic_star)}
+                    viewModel.addToBookshelf { item.setIcon(R.drawable.ic_star) }
                 }
             }
 
@@ -310,7 +328,7 @@ class VideoPlayActivity(
     }
 
     override fun onDestroy() {
-        viewModel.saveRead(if (player.currentPosition == player.duration) 0L else player.currentPosition)
+        viewModel.saveRead(if (player.currentPosition > player.duration - 1000) 0L else player.currentPosition)
         player.release()
         super.onDestroy()
     }

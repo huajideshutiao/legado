@@ -185,13 +185,15 @@ object AudioPlay : CoroutineScope by MainScope() {
                     if (line[1].isDigit()) {
                         val textPart = line.substring(split + 1)
                         val min = line.substring(1, 3).toInt()
-                        val sec = line.substring(4, 6).toInt()
+                        var sec = line.substring(4, 6).toInt()
                         var ms = 0
                         if (split > 6) {
-                            ms = line.substring(7, split).toIntOrNull()
-                                ?: 0
+                            ms = line.substring(7, split).toInt()
+//                                .toIntOrNull()
+//                                ?: 0
                             ms = ms * (if (split == 10) 1 else 10)
                         }
+                        if (split==8)sec = line[4].code
                         val time = min * 60_000 + sec * 1000 + ms
                         if (i != 0) {
                             val index =
