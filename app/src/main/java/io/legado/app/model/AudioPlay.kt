@@ -168,7 +168,6 @@ object AudioPlay : CoroutineScope by MainScope() {
         Coroutine.async {
             val lrcRule = bookSource.getContentRule().lrcRule
             var durLrcContent: NativeArray?
-
             if (!lrcRule.isNullOrBlank() && context == activityContext) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
                 analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
@@ -176,11 +175,11 @@ object AudioPlay : CoroutineScope by MainScope() {
                 analyzeRule.setChapter(chapter)
                 durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
             } else return@async
-
             val tmp = mutableListOf<Pair<Int, String>>()
             for (i in durLrcContent.indices) {
                 var oldIndex = 0
-                (durLrcContent[i] as String).trim().lineSequence().forEach { line ->
+                (durLrcContent[i] as String).lineSequence().forEach { line ->
+                    if (line.length < 3) return@forEach
                     val split = line.indexOf("]")
                     if (line[1].isDigit()) {
                         val textPart = line.substring(split + 1)
@@ -189,17 +188,15 @@ object AudioPlay : CoroutineScope by MainScope() {
                         var ms = 0
                         if (split > 6) {
                             ms = line.substring(7, split).toInt()
-//                                .toIntOrNull()
-//                                ?: 0
                             ms = ms * (if (split == 10) 1 else 10)
                         }
-                        if (split==8)sec = line[4].code
+                        if (split == 8) sec = line[4].code
                         val time = min * 60_000 + sec * 1000 + ms
                         if (i != 0) {
                             val index =
                                 tmp.subList(oldIndex, tmp.size)
                                     .indexOfFirst { it.first == time }
-                            if (index==-1) return@forEach
+                            if (index == -1) return@forEach
                             oldIndex += index
                             tmp[oldIndex] = Pair(
                                 time,
@@ -495,7 +492,8 @@ object AudioPlay : CoroutineScope by MainScope() {
         activityContext = context
         callback = context as CallBack
         durCoverUrl?.let { callback?.upCover(it) }
-        durLrcData?.let { callback?.upLrc(it)
+        durLrcData?.let {
+            callback?.upLrc(it)
             context.startService<AudioPlayService> {
                 action = IntentAction.playData
             }
