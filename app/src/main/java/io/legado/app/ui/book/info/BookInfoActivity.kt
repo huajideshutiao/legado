@@ -572,7 +572,9 @@ class BookInfoActivity :
             viewModel.bookSource?.getKey() -> viewModel.bookSource?.setVariable(variable)
             viewModel.bookData.value?.bookUrl -> viewModel.bookData.value?.let {
                 it.putCustomVariable(variable)
-                viewModel.saveBook(it)
+                if (viewModel.inBookshelf) {
+                    viewModel.saveBook(it)
+                }
             }
         }
     }
