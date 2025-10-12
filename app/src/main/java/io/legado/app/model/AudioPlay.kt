@@ -179,6 +179,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             for (i in durLrcContent.indices) {
                 var oldIndex = 0
                 (durLrcContent[i] as String).lineSequence().forEach { line ->
+                    val line = line.trim()
                     if (line.length < 3) return@forEach
                     val split = line.indexOf("]")
                     if (line[1].isDigit()) {

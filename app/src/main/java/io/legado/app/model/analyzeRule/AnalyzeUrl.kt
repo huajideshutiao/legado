@@ -12,6 +12,7 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppConst.UA_NAME
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.constant.AppPattern.dataUriRegex
@@ -46,6 +47,7 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
+import io.legado.app.utils.has
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
@@ -120,16 +122,47 @@ class AnalyzeUrl(
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
         val urlMatcher = paramPattern.matcher(baseUrl)
         if (urlMatcher.find()) baseUrl = baseUrl.substring(0, urlMatcher.start())
+        initUrl()
         (headerMapF ?: runScriptWithContext(coroutineContext) {
-            source?.getHeaderMap(hasLoginHeader)
-        })?.let {
+            HashMap<String, String>().apply {
+                source?.header?.let {
+                    try {
+                        val json = when {
+                            it.startsWith("@js:", true) -> evalJS(it.substring(4)).toString()
+                            it.startsWith("<js>", true) -> evalJS(
+                                it.substring(4, it.lastIndexOf("<"))
+                            ).toString()
+
+                            else -> it
+                        }
+                        GSONStrict.fromJsonObject<Map<String, String>>(json).getOrNull()
+                            ?.let { map ->
+                                putAll(map)
+                            } ?: GSON.fromJsonObject<Map<String, String>>(json).getOrNull()
+                            ?.let { map ->
+                                log("请求头规则 JSON 格式不规范，请改为规范格式")
+                                putAll(map)
+                            }
+                    } catch (e: Exception) {
+                        AppLog.put("执行请求头规则出错\n$e", e)
+                    }
+                }
+                if (!has(UA_NAME, true)) {
+                    put(UA_NAME, AppConfig.userAgent)
+                }
+                if (hasLoginHeader) {
+                    source?.getLoginHeaderMap()?.let {
+                        putAll(it)
+                    }
+                }
+            }
+        }).let {
             headerMap.putAll(it)
             if (it.containsKey("proxy")) {
                 proxy = it["proxy"]
                 headerMap.remove("proxy")
             }
         }
-        initUrl()
         domain = NetworkUtils.getSubDomain(source?.getKey() ?: url)
     }
 
