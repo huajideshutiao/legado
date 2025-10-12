@@ -1,6 +1,7 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -232,6 +233,13 @@ object WebBook {
         return kotlin.runCatching {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
+            }
+            val oldChapter = book.latestChapterTitle
+            if (!bookSource.ruleBookInfo?.lastChapter.isNullOrBlank()){
+                getBookInfoAwait(bookSource, book, canReName = false)
+            }
+            if (oldChapter == book.latestChapterTitle){
+                return Result.success(appDb.bookChapterDao.getChapterList(book.bookUrl))
             }
             if (book.bookUrl == book.tocUrl && !book.tocHtml.isNullOrEmpty()) {
                 BookChapterList.analyzeChapterList(

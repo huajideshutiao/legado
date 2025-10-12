@@ -333,7 +333,7 @@ object ReadManga : CoroutineScope by MainScope() {
                 book.durChapterTime = System.currentTimeMillis()
                 val chapterChanged = book.durChapterIndex != durChapterIndex
                 book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos
+                book.durChapterPos = durChapterPos * (if(curMangaChapter?.imageCount ==durChapterPos+1) -1 else 1)
                 if (!pageChanged || chapterChanged) {
                     appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
                         book.durChapterTitle = it.getDisplayTitle(

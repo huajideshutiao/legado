@@ -316,6 +316,9 @@ class AnalyzeRule(
         } else {
             resultStr
         }
+        if (str.indexOf("::")>-1){
+            return str
+        }
         if (isUrl) {
             return if (str.isBlank()) {
                 baseUrl ?: ""

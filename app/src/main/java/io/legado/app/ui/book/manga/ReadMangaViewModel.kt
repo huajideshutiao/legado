@@ -21,6 +21,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadManga
+import io.legado.app.model.ReadManga.curMangaChapter
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.mapParallelSafe
@@ -258,7 +259,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         if (index < ReadManga.chapterSize) {
             ReadManga.showLoading()
             ReadManga.durChapterIndex = index
-            ReadManga.durChapterPos = durChapterPos
+            ReadManga.durChapterPos = durChapterPos * (if(durChapterPos<0) -1 else 1)
             ReadManga.saveRead()
             ReadManga.loadContent()
         }

@@ -539,7 +539,11 @@ class AnalyzeUrl(
         val dataUriFindResult = dataUriRegex.find(urlNoQuery)
         if (dataUriFindResult != null) {
             val dataUriBase64 = dataUriFindResult.groupValues[1]
-            val byteArray = Base64.decode(dataUriBase64, Base64.DEFAULT)
+            val byteArray: ByteArray? = try {
+                Base64.decode(dataUriBase64, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                null
+            }
             return byteArray
         }
         return null

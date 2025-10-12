@@ -160,7 +160,7 @@ data class Book(
 
     fun getRealAuthor() = author.replace(AppPattern.authorRegex, "")
 
-    fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex - 1, 0)
+    fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex +( if (durChapterPos<0)-1 else 0 ), 0)
 
     fun getDisplayCover() = if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
 
