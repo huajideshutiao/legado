@@ -1,7 +1,6 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource

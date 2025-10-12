@@ -443,7 +443,7 @@ object ReadBook : CoroutineScope by MainScope() {
             clearTextChapter()
             callBack?.upContent()
             durChapterIndex = index
-            ReadBook.durChapterPos = durChapterPos
+            ReadBook.durChapterPos = durChapterPos * (if(durChapterPos<0) -1 else 1)
             saveRead()
             loadContent(resetPageOffset = true) {
                 success?.invoke()
@@ -864,7 +864,8 @@ object ReadBook : CoroutineScope by MainScope() {
                 book.durChapterTime = System.currentTimeMillis()
                 val chapterChanged = book.durChapterIndex != durChapterIndex
                 book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos
+                book.durChapterPos = durChapterPos * (if(curTextChapter?.pageSize == curTextChapter?.getPageIndexByCharIndex(durChapterPos)
+                        ?.plus(1)) -1 else 1)
                 if (!pageChanged || chapterChanged) {
                     appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
                         book.durChapterTitle = it.getDisplayTitle(
