@@ -10,7 +10,6 @@ import cn.hutool.core.util.HexUtil
 import com.bumptech.glide.load.model.GlideUrl
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
-import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -123,8 +122,8 @@ class AnalyzeUrl(
         val urlMatcher = paramPattern.matcher(baseUrl)
         if (urlMatcher.find()) baseUrl = baseUrl.substring(0, urlMatcher.start())
         initUrl()
-        (headerMapF ?: runScriptWithContext(coroutineContext) {
-            HashMap<String, String>().apply {
+        if (headerMapF.isNullOrEmpty()) {
+            headerMap.apply {
                 source?.header?.let {
                     try {
                         val json = when {
@@ -155,13 +154,13 @@ class AnalyzeUrl(
                         putAll(it)
                     }
                 }
+                if (containsKey("proxy")) {
+                    proxy = this["proxy"]
+                    remove("proxy")
+                }
             }
-        }).let {
-            headerMap.putAll(it)
-            if (it.containsKey("proxy")) {
-                proxy = it["proxy"]
-                headerMap.remove("proxy")
-            }
+        } else {
+            headerMap.putAll(headerMapF)
         }
         domain = NetworkUtils.getSubDomain(source?.getKey() ?: url)
     }
