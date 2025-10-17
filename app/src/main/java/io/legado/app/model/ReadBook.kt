@@ -97,7 +97,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         contentProcessor = ContentProcessor.get(book)
         durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos
+        durChapterPos = book.durChapterPos  * (if (book.durChapterPos<0)-1 else 1)
         isLocalBook = book.isLocal
         clearTextChapter()
         callBack?.upContent()
@@ -124,8 +124,8 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         if (durChapterIndex != book.durChapterIndex) {
             durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos
-            clearTextChapter()
+            durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
+                clearTextChapter()
         }
         if (curTextChapter?.isCompleted == false) {
             curTextChapter = null
@@ -443,7 +443,7 @@ object ReadBook : CoroutineScope by MainScope() {
             clearTextChapter()
             callBack?.upContent()
             durChapterIndex = index
-            ReadBook.durChapterPos = durChapterPos * (if(durChapterPos<0) -1 else 1)
+            ReadBook.durChapterPos = durChapterPos
             saveRead()
             loadContent(resetPageOffset = true) {
                 success?.invoke()
@@ -864,8 +864,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 book.durChapterTime = System.currentTimeMillis()
                 val chapterChanged = book.durChapterIndex != durChapterIndex
                 book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos * (if(curTextChapter?.pageSize == curTextChapter?.getPageIndexByCharIndex(durChapterPos)
-                        ?.plus(1)) -1 else 1)
+                book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
                 if (!pageChanged || chapterChanged) {
                     appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
                         book.durChapterTitle = it.getDisplayTitle(
