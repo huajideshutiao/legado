@@ -574,7 +574,7 @@ class AnalyzeUrl(
             val byteArray: ByteArray? = try {
                 Base64.decode(dataUriBase64, Base64.DEFAULT)
             } catch (e: IllegalArgumentException) {
-                null
+                byteArrayOf()
             }
             return byteArray
         }
