@@ -379,7 +379,7 @@ class AnalyzeUrl(
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
             bindings["java"] = this
-            bindings["baseUrl"] = baseUrl
+            bindings["baseUrl"] = url
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
             bindings["page"] = page
