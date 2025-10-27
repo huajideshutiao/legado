@@ -94,12 +94,12 @@ class AnalyzeUrl(
     var ruleUrl = ""
         private set
     var url: String = ""
-        //private set
+        private set
     var type: String? = null
         private set
     val headerMap = LinkedHashMap<String, String>()
     private var body: String? = null
-    private var urlNoQuery: String = ""
+    var urlNoQuery: String = ""
     private var encodedForm: String? = null
     private var encodedQuery: String? = null
     private var charset: String? = null
