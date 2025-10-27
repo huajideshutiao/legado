@@ -24,9 +24,9 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                 "rssSource" -> source = appDb.rssSourceDao.getByKey(sourceKey)
                 "httpTts" -> source = appDb.httpTTSDao.get(sourceKey.toLong())
             }
-            headerMap = runScriptWithContext {
-                source?.getHeaderMap(true) ?: emptyMap()
-            }
+            //headerMap = runScriptWithContext {
+            //    source?.getHeaderMap(true) ?: emptyMap()
+            //}
             source
         }.onSuccess {
             if (it != null) {
