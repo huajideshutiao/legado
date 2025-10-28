@@ -232,7 +232,7 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun startBrowser(url: String, title: String) {
         rhinoContext.ensureActive()
-        SourceVerificationHelp.startBrowser(getSource(), url, title)
+        SourceVerificationHelp.startBrowser(getSource(), url, title, refetchAfterSuccess = false)
     }
 
     /**

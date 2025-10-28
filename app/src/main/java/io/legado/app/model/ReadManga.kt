@@ -79,7 +79,7 @@ object ReadManga : CoroutineScope by MainScope() {
             chapterSize
         }
         durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos
+        durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
         clearMangaChapter()
         upWebBook(book)
         synchronized(this) {
@@ -100,7 +100,7 @@ object ReadManga : CoroutineScope by MainScope() {
 
         if (durChapterIndex != book.durChapterIndex) {
             durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos
+            durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
             clearMangaChapter()
         }
         upWebBook(book)

@@ -94,7 +94,7 @@ class AnalyzeUrl(
     var ruleUrl = ""
         private set
     var url: String = ""
-        private set
+        //private set
     var type: String? = null
         private set
     val headerMap = LinkedHashMap<String, String>()

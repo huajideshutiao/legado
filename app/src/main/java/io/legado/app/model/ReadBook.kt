@@ -125,7 +125,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (durChapterIndex != book.durChapterIndex) {
             durChapterIndex = book.durChapterIndex
             durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
-                clearTextChapter()
+            clearTextChapter()
         }
         if (curTextChapter?.isCompleted == false) {
             curTextChapter = null
