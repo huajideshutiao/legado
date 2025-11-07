@@ -22,6 +22,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
+import java.io.IOException
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
 
@@ -66,13 +67,18 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = coroutineContext
         )
-        var res = analyzeUrl.getStrResponseAwait()
+        var tmp: Exception? = null
+        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+            tmp = e
+            null
+        }
         //检测书源是否已登录
         bookSource.loginCheckJs?.let { checkJs ->
             if (checkJs.isNotBlank()) {
-                res = analyzeUrl.evalJS(checkJs, res) as StrResponse
+                res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
             }
         }
+        if (res == null)throw tmp as Throwable
         checkRedirect(bookSource, res)
         return BookList.analyzeBookList(
             bookSource = bookSource,
@@ -116,13 +122,18 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = coroutineContext
         )
-        var res = analyzeUrl.getStrResponseAwait()
+        var tmp: Exception? = null
+        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+            tmp = e
+            null
+        }
         //检测书源是否已登录
         bookSource.loginCheckJs?.let { checkJs ->
             if (checkJs.isNotBlank()) {
-                res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
+                res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
             }
         }
+        if (res == null)throw tmp as Throwable
         checkRedirect(bookSource, res)
         return BookList.analyzeBookList(
             bookSource = bookSource,
@@ -173,13 +184,18 @@ object WebBook {
                 ruleData = book,
                 coroutineContext = coroutineContext
             )
-            var res = analyzeUrl.getStrResponseAwait()
+            var tmp: Exception? = null
+            var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+                tmp = e
+                null
+            }
             //检测书源是否已登录
             bookSource.loginCheckJs?.let { checkJs ->
                 if (checkJs.isNotBlank()) {
-                    res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
+                    res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                 }
             }
+            if (res == null)throw tmp as Throwable
             checkRedirect(bookSource, res)
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -256,13 +272,18 @@ object WebBook {
                     ruleData = book,
                     coroutineContext = coroutineContext
                 )
-                var res = analyzeUrl.getStrResponseAwait()
+                var tmp: Exception? = null
+                var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+                    tmp = e
+                    null
+                }
                 //检测书源是否已登录
                 bookSource.loginCheckJs?.let { checkJs ->
                     if (checkJs.isNotBlank()) {
-                        res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
+                        res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                     }
                 }
+                if (res == null)throw tmp as Throwable
                 checkRedirect(bookSource, res)
                 BookChapterList.analyzeChapterList(
                     bookSource = bookSource,
@@ -338,16 +359,21 @@ object WebBook {
                 chapter = bookChapter,
                 coroutineContext = coroutineContext
             )
-            var res = analyzeUrl.getStrResponseAwait(
+            var tmp: Exception? = null
+            var res = try{analyzeUrl.getStrResponseAwait(
                 jsStr = bookSource.getContentRule().webJs,
                 sourceRegex = bookSource.getContentRule().sourceRegex
-            )
+            )}catch (e: Exception){
+                tmp = e
+                null
+            }
             //检测书源是否已登录
             bookSource.loginCheckJs?.let { checkJs ->
                 if (checkJs.isNotBlank()) {
-                    res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
+                    res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                 }
             }
+            if (res == null)throw tmp as Throwable
             checkRedirect(bookSource, res)
             BookContent.analyzeContent(
                 bookSource = bookSource,
