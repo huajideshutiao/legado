@@ -50,10 +50,10 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             sourceType = intent.getIntExtra("sourceType", SourceType.book)
             sourceVerificationEnable = intent.getBooleanExtra("sourceVerificationEnable", false)
             refetchAfterSuccess = intent.getBooleanExtra("refetchAfterSuccess", true)
-            if (!url.startsWith("data")&&!url.startsWith("http")) {
-                html = url
-                return@execute
-            }
+//            if (!url.startsWith("data")&&!url.startsWith("http")) {
+//                html = url
+//                return@execute
+//            }
             val source = SourceHelp.getSource(sourceOrigin, sourceType)
             val analyzeUrl = AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
             baseUrl = analyzeUrl.headerMap.get("Origin")?:analyzeUrl.url
