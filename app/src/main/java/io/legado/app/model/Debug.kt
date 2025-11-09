@@ -214,7 +214,7 @@ object Debug {
                     log(debugSource, "︽发现页解析完成")
                     log(debugSource, showTime = false)
                     val book = exploreBooks[0]
-                    if(book.bookUrl.contains("::"))exploreDebug(scope, bookSource, book.bookUrl)
+                    if(book.bookUrl.contains("::"))exploreDebug(scope, bookSource, book.bookUrl.substringAfter("::"))
                     else infoDebug(scope, bookSource, book.toBook())
                 } else {
                     log(debugSource, "︽未获取到书籍", state = -1)
