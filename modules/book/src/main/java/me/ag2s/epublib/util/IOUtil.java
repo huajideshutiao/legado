@@ -206,7 +206,7 @@ public class IOUtil {
      */
     public static void copy(final InputStream input, final Writer output, final Charset inputCharset)
             throws IOException {
-        final InputStreamReader in = new InputStreamReader(input, inputCharset.name());
+        final InputStreamReader in = new InputStreamReader(input, inputCharset);
         copy(in, output);
     }
 
@@ -336,7 +336,7 @@ public class IOUtil {
      */
     public static void copy(final Reader input, final OutputStream output, final Charset outputCharset)
             throws IOException {
-        final OutputStreamWriter out = new OutputStreamWriter(output, outputCharset.name());
+        final OutputStreamWriter out = new OutputStreamWriter(output, outputCharset);
         copy(input, out);
         // XXX Unless anyone is planning on rewriting OutputStreamWriter,
         // we have to flush here.

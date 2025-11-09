@@ -225,7 +225,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 AppLog.put("替换规则管理界面更新数据出错", it)
             }.flowOn(IO).conflate().collect {
                 if (dataInit) {
-                    setResult(Activity.RESULT_OK)
+                    setResult(RESULT_OK)
                 }
                 adapter.setItems(it, adapter.diffItemCallBack)
                 dataInit = true

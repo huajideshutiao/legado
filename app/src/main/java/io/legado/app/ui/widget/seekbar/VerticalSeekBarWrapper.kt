@@ -39,7 +39,7 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
             val vPadding = paddingTop + paddingBottom
             val lp = seekBar.layoutParams as LayoutParams
 
-            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
+            lp.width = LayoutParams.WRAP_CONTENT
             lp.height = max(0, h - vPadding)
             seekBar.layoutParams = lp
 
@@ -115,9 +115,9 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
             }
 
             val measuredWidth =
-                View.resolveSizeAndState(seekBarWidth + hPadding, widthMeasureSpec, 0)
+                resolveSizeAndState(seekBarWidth + hPadding, widthMeasureSpec, 0)
             val measuredHeight =
-                View.resolveSizeAndState(seekBarHeight + vPadding, heightMeasureSpec, 0)
+                resolveSizeAndState(seekBarHeight + vPadding, heightMeasureSpec, 0)
 
             setMeasuredDimension(measuredWidth, measuredHeight)
         } else {
@@ -145,7 +145,7 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
             val lp = seekBar.layoutParams
 
             lp.width = max(0, h - vPadding)
-            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            lp.height = LayoutParams.WRAP_CONTENT
 
             seekBar.layoutParams = lp
 

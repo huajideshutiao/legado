@@ -295,7 +295,7 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
         fun init(cx: Context, scope: Scriptable, sealed: Boolean) {
             val obj = JSAdapter(cx.newObject(scope))
             obj.parentScope = scope
-            obj.setPrototype(getFunctionPrototype(scope))
+            obj.prototype = getFunctionPrototype(scope)
             obj.isPrototype = true
             ScriptableObject.defineProperty(scope, "JSAdapter", obj, 2)
         }

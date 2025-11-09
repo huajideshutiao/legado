@@ -126,8 +126,8 @@ public class Identifier implements Serializable {
     @Override
     public String toString() {
         if (StringUtil.isBlank(scheme)) {
-            return "" + value;
+            return value;
         }
-        return "" + scheme + ":" + value;
+        return scheme + ":" + value;
     }
 }

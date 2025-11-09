@@ -295,7 +295,7 @@ public class AndroidZipEntry implements ZipConstants, Cloneable {
                         long time = ((extra[pos + 1] & 0xff)
                                 | (extra[pos + 2] & 0xff) << 8
                                 | (extra[pos + 3] & 0xff) << 16
-                                | (extra[pos + 4] & 0xff) << 24);
+                                | (long) (extra[pos + 4] & 0xff) << 24);
                         setTime(time);
                     }
                 }
@@ -303,7 +303,6 @@ public class AndroidZipEntry implements ZipConstants, Cloneable {
             }
         } catch (ArrayIndexOutOfBoundsException ex) {
             /* be lenient */
-            return;
         }
     }
 

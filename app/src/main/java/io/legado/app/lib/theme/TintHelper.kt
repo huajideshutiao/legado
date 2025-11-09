@@ -77,8 +77,8 @@ object TintHelper {
         when (view) {
             is Button -> {
                 sl = getDisabledColorStateList(color, disabled)
-                if (view.getBackground() is RippleDrawable) {
-                    val rd = view.getBackground() as RippleDrawable
+                if (view.background is RippleDrawable) {
+                    val rd = view.background as RippleDrawable
                     rd.setColor(ColorStateList.valueOf(rippleColor))
                 }
                 // Disabled text color state for buttons, may get overridden later by ATE tags
@@ -86,7 +86,7 @@ object TintHelper {
                     getDisabledColorStateList(
                         textColor,
                         ContextCompat.getColor(
-                            view.getContext(),
+                            view.context,
                             if (useDarkTheme) R.color.ate_button_text_disabled_dark else R.color.ate_button_text_disabled_light
                         )
                     )
@@ -132,7 +132,7 @@ object TintHelper {
                 getDisabledColorStateList(
                     textColor,
                     ContextCompat.getColor(
-                        view.getContext(),
+                        view.context,
                         if (isColorLight) R.color.ate_text_disabled_light else R.color.ate_text_disabled_dark
                     )
                 )

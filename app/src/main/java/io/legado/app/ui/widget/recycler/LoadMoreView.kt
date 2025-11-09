@@ -40,7 +40,7 @@ class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+        layoutParams.width = LayoutParams.MATCH_PARENT
     }
 
     fun startLoad() {

@@ -146,10 +146,9 @@ public class ByteOrderMark implements Serializable {
      */
     @Override
     public boolean equals(final Object obj) {
-        if (!(obj instanceof ByteOrderMark)) {
+        if (!(obj instanceof ByteOrderMark bom)) {
             return false;
         }
-        final ByteOrderMark bom = (ByteOrderMark) obj;
         if (bytes.length != bom.length()) {
             return false;
         }

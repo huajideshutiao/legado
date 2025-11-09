@@ -63,8 +63,8 @@ class FilletImageView @JvmOverloads constructor(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        width = getWidth().toFloat()
-        height = getHeight().toFloat()
+        width = width.toFloat()
+        height = height.toFloat()
     }
 
     override fun onDraw(canvas: Canvas) {

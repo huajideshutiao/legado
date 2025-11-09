@@ -45,7 +45,7 @@ class CronetCoroutineInterceptor(private val cookieJar: CookieJar) : Interceptor
 
             val newReq = builder.build()
             val timeout = chain.call().timeout().timeoutNanos() / 1000000
-            runBlocking() {
+            runBlocking {
                 if (timeout > 0) {
                     withTimeout(timeout) {
                         proceedWithCronet(newReq, chain.call(), chain.readTimeoutMillis()).also { response ->

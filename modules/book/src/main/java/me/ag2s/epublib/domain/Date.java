@@ -106,7 +106,7 @@ public class Date implements Serializable {
         if (event == null) {
             return dateString;
         }
-        return "" + event + ":" + dateString;
+        return event + ":" + dateString;
     }
 }
 

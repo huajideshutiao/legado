@@ -66,7 +66,7 @@ public class URLEncodeUtil {
                           + " is high surrogate");
                         */
                         if ((i + 1) < s.length()) {
-                            int d = (int) s.charAt(i + 1);
+                            int d = s.charAt(i + 1);
                             /*
                               System.out.println("\tExamining "
                               + Integer.toHexString(d));
@@ -83,7 +83,7 @@ public class URLEncodeUtil {
                         }
                     }
                     i++;
-                } while (i < s.length() && !dontNeedEncoding.get((c = (int) s.charAt(i))));
+                } while (i < s.length() && !dontNeedEncoding.get((c = s.charAt(i))));
 
                 charArrayWriter.flush();
                 String str = new String(charArrayWriter.toCharArray());

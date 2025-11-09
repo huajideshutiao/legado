@@ -55,10 +55,9 @@ public class Author implements Serializable {
     }
 
     public boolean equals(Object authorObject) {
-        if (!(authorObject instanceof Author)) {
+        if (!(authorObject instanceof Author other)) {
             return false;
         }
-        Author other = (Author) authorObject;
         return StringUtil.equals(firstname, other.firstname)
                 && StringUtil.equals(lastname, other.lastname);
     }
