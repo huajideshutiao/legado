@@ -213,7 +213,9 @@ object Debug {
                 if (exploreBooks.isNotEmpty()) {
                     log(debugSource, "︽发现页解析完成")
                     log(debugSource, showTime = false)
-                    infoDebug(scope, bookSource, exploreBooks[0].toBook())
+                    val book = exploreBooks[0].toBook()
+                    if(book.bookUrl.contains("::"))tocDebug(scope, bookSource, book)
+                    else infoDebug(scope, bookSource, book)
                 } else {
                     log(debugSource, "︽未获取到书籍", state = -1)
                 }
