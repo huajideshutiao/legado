@@ -3,7 +3,6 @@ package io.legado.app.ui.widget.recycler
 import android.content.Context
 import android.util.AttributeSet
 import android.view.LayoutInflater
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.ColorRes
 import io.legado.app.R

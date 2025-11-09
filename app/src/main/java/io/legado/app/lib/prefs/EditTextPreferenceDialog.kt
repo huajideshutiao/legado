@@ -6,7 +6,6 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
-import androidx.preference.PreferenceDialogFragmentCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor

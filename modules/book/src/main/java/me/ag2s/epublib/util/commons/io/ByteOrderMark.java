@@ -17,6 +17,7 @@ package me.ag2s.epublib.util.commons.io;
  * limitations under the License.
  */
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Locale;
 
@@ -31,6 +32,7 @@ import java.util.Locale;
  */
 public class ByteOrderMark implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /**

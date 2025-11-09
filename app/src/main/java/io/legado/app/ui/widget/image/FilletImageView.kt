@@ -61,12 +61,6 @@ class FilletImageView @JvmOverloads constructor(
         array.recycle()
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        width = width.toFloat()
-        height = height.toFloat()
-    }
-
     override fun onDraw(canvas: Canvas) {
         //这里做下判断，只有图片的宽高大于设置的圆角距离的时候才进行裁剪
         val maxLeft = max(leftTopRadius, leftBottomRadius)

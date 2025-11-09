@@ -1,7 +1,6 @@
 package io.legado.app.ui.replace
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem

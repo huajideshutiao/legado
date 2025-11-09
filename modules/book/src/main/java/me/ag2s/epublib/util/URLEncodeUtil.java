@@ -88,16 +88,16 @@ public class URLEncodeUtil {
                 charArrayWriter.flush();
                 String str = new String(charArrayWriter.toCharArray());
                 byte[] ba = str.getBytes(charset);
-                for (int j = 0; j < ba.length; j++) {
+                for (byte b : ba) {
                     out.append('%');
-                    char ch = Character.forDigit((ba[j] >> 4) & 0xF, 16);
+                    char ch = Character.forDigit((b >> 4) & 0xF, 16);
                     // converting to use uppercase letter as part of
                     // the hex value if ch is a letter.
                     if (Character.isLetter(ch)) {
                         ch -= caseDiff;
                     }
                     out.append(ch);
-                    ch = Character.forDigit(ba[j] & 0xF, 16);
+                    ch = Character.forDigit(b & 0xF, 16);
                     if (Character.isLetter(ch)) {
                         ch -= caseDiff;
                     }

@@ -20,7 +20,7 @@ import java.lang.reflect.Method
 @SuppressLint("RestrictedApi")
 fun Menu.applyTint(context: Context, theme: Theme = Theme.Auto): Menu = this.let { menu ->
     if (menu is MenuBuilder) {
-        menu.optionalIconsVisible = true
+        menu.setOptionalIconsVisible(true)
     }
     val defaultTextColor = context.getCompatColor(R.color.primaryText)
     val tintColor = MenuExtensions.getMenuColor(context, theme)

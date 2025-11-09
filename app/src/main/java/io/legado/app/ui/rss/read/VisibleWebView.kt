@@ -2,7 +2,6 @@ package io.legado.app.ui.rss.read
 
 import android.content.Context
 import android.util.AttributeSet
-import android.view.View
 import android.webkit.WebView
 
 class VisibleWebView(

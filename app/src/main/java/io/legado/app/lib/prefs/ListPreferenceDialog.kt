@@ -7,7 +7,6 @@ import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.forEach
 import androidx.preference.ListPreferenceDialogFragmentCompat
-import androidx.preference.PreferenceDialogFragmentCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
