@@ -10,7 +10,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.sysConfiguration
-import java.util.*
+import java.util.Locale
 
 
 @Suppress("unused")

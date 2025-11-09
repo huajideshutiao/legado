@@ -26,8 +26,8 @@ import android.media.MediaPlayer
 import android.util.AttributeSet
 import android.view.View
 import io.legado.app.utils.DebugLog
-
-import java.util.*
+import java.util.Arrays
+import java.util.Random
 
 
 @Suppress("unused")

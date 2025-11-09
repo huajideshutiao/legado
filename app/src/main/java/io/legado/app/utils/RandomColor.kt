@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
 import android.graphics.Color
-import java.util.*
+import java.util.Random
 
 @Suppress("unused")
 class RandomColor(alpha: Int, lower: Int, upper: Int) {

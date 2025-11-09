@@ -22,7 +22,6 @@ import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import java.io.File
 
 

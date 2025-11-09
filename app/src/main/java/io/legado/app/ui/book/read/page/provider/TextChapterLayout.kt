@@ -268,7 +268,7 @@ class TextChapterLayout(
                     var hasNonEmbeddedImage = false
                     var isFirstSegment = true
                     while (matcher.find()) {
-                        currentCoroutineContext.ensureActive()
+                        currentCoroutineContext().ensureActive()
                         var src = matcher.group(1)!!+"\n"
                         val isTextEmbedded = src.contains(Regex("""["']type["']\s*:\s*["']text["']""", RegexOption.IGNORE_CASE))
                         val textBefore = content.substring(lastEnd, matcher.start())

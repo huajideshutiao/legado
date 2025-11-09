@@ -12,7 +12,17 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
-import io.legado.app.utils.*
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.SelectImageContract
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.inputStream
+import io.legado.app.utils.putPrefString
+import io.legado.app.utils.readUri
+import io.legado.app.utils.removePref
+import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.io.FileOutputStream
 

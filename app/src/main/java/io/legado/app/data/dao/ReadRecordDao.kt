@@ -1,6 +1,11 @@
 package io.legado.app.data.dao
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordShow
 

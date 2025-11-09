@@ -1,12 +1,12 @@
 package io.legado.app.utils
 
-import android.graphics.Canvas
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.RectF
 import android.util.Size
+import com.caverock.androidsvg.SVG
 import java.io.FileInputStream
 import java.io.InputStream
-import com.caverock.androidsvg.SVG
 import kotlin.math.max
 
 @Suppress("WeakerAccess", "MemberVisibilityCanBePrivate")

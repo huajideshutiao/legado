@@ -6,11 +6,18 @@ import fi.iki.elonen.NanoWSD
 import io.legado.app.R
 import io.legado.app.data.appDb
 import io.legado.app.model.Debug
-import io.legado.app.utils.*
-import kotlinx.coroutines.*
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isJson
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.runOnIO
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import splitties.init.appCtx
-
 import java.io.IOException
 
 /**

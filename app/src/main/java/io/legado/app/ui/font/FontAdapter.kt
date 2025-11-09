@@ -8,7 +8,11 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.ItemFontBinding
-import io.legado.app.utils.*
+import io.legado.app.utils.FileDoc
+import io.legado.app.utils.RealPathUtil
+import io.legado.app.utils.invisible
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.visible
 import java.io.File
 import java.net.URLDecoder
 

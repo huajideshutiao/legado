@@ -10,7 +10,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.sendValue
 import kotlinx.coroutines.ensureActive
-import kotlin.collections.set
 
 
 class CacheViewModel(application: Application) : BaseViewModel(application) {

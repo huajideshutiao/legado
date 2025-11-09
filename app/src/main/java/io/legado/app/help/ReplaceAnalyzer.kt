@@ -2,7 +2,13 @@ package io.legado.app.help
 
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.utils.*
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.jsonPath
+import io.legado.app.utils.readBool
+import io.legado.app.utils.readInt
+import io.legado.app.utils.readLong
+import io.legado.app.utils.readString
 
 object ReplaceAnalyzer {
 

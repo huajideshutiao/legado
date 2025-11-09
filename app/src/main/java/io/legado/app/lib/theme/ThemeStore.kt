@@ -10,7 +10,6 @@ import androidx.annotation.ColorInt
 import androidx.annotation.ColorRes
 import androidx.core.content.ContextCompat
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.LogUtils
 import splitties.init.appCtx
 
 /**

@@ -13,7 +13,6 @@ import androidx.core.content.ContextCompat.getColor
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.model.AudioPlay
-import kotlin.apply
 
 class LrcAdapter(private var lyrics: List<Pair<Int, String>>) :
   RecyclerView.Adapter<LrcAdapter.ViewHolder>() {

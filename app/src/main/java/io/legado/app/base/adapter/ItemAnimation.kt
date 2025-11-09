@@ -2,7 +2,12 @@ package io.legado.app.base.adapter
 
 import android.view.animation.Interpolator
 import android.view.animation.LinearInterpolator
-import io.legado.app.base.adapter.animations.*
+import io.legado.app.base.adapter.animations.AlphaInAnimation
+import io.legado.app.base.adapter.animations.BaseAnimation
+import io.legado.app.base.adapter.animations.ScaleInAnimation
+import io.legado.app.base.adapter.animations.SlideInBottomAnimation
+import io.legado.app.base.adapter.animations.SlideInLeftAnimation
+import io.legado.app.base.adapter.animations.SlideInRightAnimation
 
 /**
  * Created by Invincible on 2017/12/15.

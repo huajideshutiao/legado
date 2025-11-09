@@ -2,7 +2,8 @@ package io.legado.app.lib.permission
 
 import android.os.Handler
 import android.os.Looper
-import java.util.*
+import java.util.Collections
+import java.util.Stack
 
 internal object RequestManager : OnPermissionsResultCallback {
 

@@ -11,7 +11,11 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
 import androidx.preference.PreferenceViewHolder
-import com.jaredrummler.android.colorpicker.*
+import com.jaredrummler.android.colorpicker.ColorPanelView
+import com.jaredrummler.android.colorpicker.ColorPickerDialog
+import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
+import com.jaredrummler.android.colorpicker.ColorShape
+import com.jaredrummler.android.colorpicker.R
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyTint
 

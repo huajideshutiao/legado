@@ -8,8 +8,17 @@ import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import com.google.android.renderscript.Toolkit
-import java.io.*
-import kotlin.math.*
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.io.IOException
+import java.io.InputStream
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 
 @Suppress("WeakerAccess", "MemberVisibilityCanBePrivate")
