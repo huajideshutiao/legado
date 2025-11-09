@@ -111,11 +111,11 @@ class FastScroller : LinearLayout {
     }
 
     fun setLayoutParams(viewGroup: ViewGroup) {
-        @IdRes val recyclerViewId = mRecyclerView?.id ?: View.NO_ID
+        @IdRes val recyclerViewId = mRecyclerView?.id ?: NO_ID
         val marginTop = resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_margin_top)
         val marginBottom =
             resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_margin_bottom)
-        require(recyclerViewId != View.NO_ID) { "RecyclerView must have a view ID" }
+        require(recyclerViewId != NO_ID) { "RecyclerView must have a view ID" }
         when (viewGroup) {
             is ConstraintLayout -> {
                 val constraintSet = ConstraintSet()
@@ -198,7 +198,7 @@ class FastScroller : LinearLayout {
      */
     fun setFadeScrollbar(fadeScrollbar: Boolean) {
         mFadeScrollbar = fadeScrollbar
-        mScrollbar.visibility = if (fadeScrollbar) View.INVISIBLE else View.VISIBLE
+        mScrollbar.visibility = if (fadeScrollbar) INVISIBLE else VISIBLE
     }
 
     /**
@@ -216,7 +216,7 @@ class FastScroller : LinearLayout {
      * @param visible True to show scroll track, false to hide
      */
     fun setTrackVisible(visible: Boolean) {
-        mTrackView.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+        mTrackView.visibility = if (visible) VISIBLE else INVISIBLE
     }
 
     /**
@@ -289,7 +289,7 @@ class FastScroller : LinearLayout {
 
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)
-        visibility = if (enabled) View.VISIBLE else View.INVISIBLE
+        visibility = if (enabled) VISIBLE else INVISIBLE
     }
 
     @Suppress("DEPRECATION")
@@ -417,7 +417,7 @@ class FastScroller : LinearLayout {
     }
 
     private fun isViewVisible(view: View?): Boolean {
-        return view != null && view.visibility == View.VISIBLE
+        return view != null && view.isVisible
     }
 
     private fun cancelAnimation(animator: ViewPropertyAnimator?) {
@@ -426,7 +426,7 @@ class FastScroller : LinearLayout {
 
     private fun showBubble() {
         if (!isViewVisible(mBubbleView)) {
-            mBubbleView.visibility = View.VISIBLE
+            mBubbleView.visibility = VISIBLE
             mBubbleAnimator = mBubbleView.animate().alpha(1f)
                 .setDuration(sBubbleAnimDuration.toLong())
                 .setListener(object : AnimatorListenerAdapter() {
@@ -443,13 +443,13 @@ class FastScroller : LinearLayout {
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         super.onAnimationEnd(animation)
-                        mBubbleView.visibility = View.INVISIBLE
+                        mBubbleView.visibility = INVISIBLE
                         mBubbleAnimator = null
                     }
 
                     override fun onAnimationCancel(animation: Animator) {
                         super.onAnimationCancel(animation)
-                        mBubbleView.visibility = View.INVISIBLE
+                        mBubbleView.visibility = INVISIBLE
                         mBubbleAnimator = null
                     }
                 })
@@ -463,7 +463,7 @@ class FastScroller : LinearLayout {
                     resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_padding_end)
                         .toFloat()
                 mScrollbar.translationX = transX
-                mScrollbar.visibility = View.VISIBLE
+                mScrollbar.visibility = VISIBLE
                 mScrollbarAnimator = mScrollbar.animate().translationX(0f).alpha(1f)
                     .setDuration(sScrollbarAnimDuration.toLong())
                     .setListener(object : AnimatorListenerAdapter() {
@@ -482,13 +482,13 @@ class FastScroller : LinearLayout {
             .setListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     super.onAnimationEnd(animation)
-                    mScrollbar.visibility = View.INVISIBLE
+                    mScrollbar.visibility = INVISIBLE
                     mScrollbarAnimator = null
                 }
 
                 override fun onAnimationCancel(animation: Animator) {
                     super.onAnimationCancel(animation)
-                    mScrollbar.visibility = View.INVISIBLE
+                    mScrollbar.visibility = INVISIBLE
                     mScrollbarAnimator = null
                 }
             })
@@ -500,7 +500,7 @@ class FastScroller : LinearLayout {
     }
 
     private fun layout(context: Context, attrs: AttributeSet?) {
-        View.inflate(context, R.layout.view_fastscroller, this)
+        inflate(context, R.layout.view_fastscroller, this)
         clipChildren = false
         orientation = HORIZONTAL
         mBubbleView = findViewById(R.id.fastscroll_bubble)

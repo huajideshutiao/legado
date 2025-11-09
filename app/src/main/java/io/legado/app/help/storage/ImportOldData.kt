@@ -325,9 +325,9 @@ object ImportOldData {
             return toNewUrl(oldUrls)
         }
         val urls = oldUrls.split("(&&|\r?\n)+".toRegex())
-        return urls.map {
-            toNewUrl(it)?.replace("\n\\s*".toRegex(), "")
-        }.joinToString("\n")
+        return urls.joinToString("\n") {
+            toNewUrl(it)?.replace("\n\\s*".toRegex(), "").toString()
+        }
     }
 
     private fun toNewUrl(oldUrl: String?): String? {

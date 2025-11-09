@@ -259,7 +259,6 @@ class TextChapterLayout(
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
-                var start = 0
                 if (content.contains("<img")) {
                     val matcher = AppPattern.imgPattern.matcher(content)
                     val textSegments = mutableListOf<String>()
