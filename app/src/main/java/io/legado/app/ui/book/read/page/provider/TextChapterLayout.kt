@@ -30,10 +30,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.util.LinkedList
-import kotlin.coroutines.coroutineContext
 import kotlin.math.roundToInt
 
 class TextChapterLayout(
@@ -109,6 +109,8 @@ class TextChapterLayout(
         }.onError {
             exception = it
             onException(it)
+        }.onCancel {
+            channel.cancel()
         }.onFinally {
             isCompleted = true
         }
@@ -227,7 +229,7 @@ class TextChapterLayout(
         val sb = StringBuffer()
         var isSetTypedImage = false
         contents.forEach { content ->
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             if (isTextImageStyle) {
                 //图片样式为文字嵌入类型
                 var text = content.replace(ChapterProvider.srcReplaceChar, "▣")
@@ -257,6 +259,7 @@ class TextChapterLayout(
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
+                var start = 0
                 if (content.contains("<img")) {
                     val matcher = AppPattern.imgPattern.matcher(content)
                     val textSegments = mutableListOf<String>()
@@ -265,7 +268,7 @@ class TextChapterLayout(
                     var hasNonEmbeddedImage = false
                     var isFirstSegment = true
                     while (matcher.find()) {
-                        coroutineContext.ensureActive()
+                        currentCoroutineContext.ensureActive()
                         var src = matcher.group(1)!!+"\n"
                         val isTextEmbedded = src.contains(Regex("""["']type["']\s*:\s*["']text["']""", RegexOption.IGNORE_CASE))
                         val textBefore = content.substring(lastEnd, matcher.start())
@@ -355,7 +358,7 @@ class TextChapterLayout(
             textPage.height += endPadding
         }
         textPage.text = stringBuilder.toString()
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         onPageCompleted()
         onCompleted()
     }
@@ -818,7 +821,7 @@ class TextChapterLayout(
                     textPage.leftLineSize = textPage.lineSize
                 }
                 textPage.text = stringBuilder.toString()
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 onPageCompleted()
                 //新建页面
                 pendingTextPage = TextPage()
