@@ -59,7 +59,7 @@ class CoverImageView @JvmOverloads constructor(
         textPaint.textAlign = Paint.Align.CENTER
         textPaint
     }
-
+//
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
         if (params != null) {
             val width = params.width

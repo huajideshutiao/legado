@@ -369,6 +369,7 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
+        //if (book.type ==2048)binding.ivCover.layoutParams.let {it.width = it.height/9*16}
         binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin, inBookshelf = viewModel.inBookshelf) {
             if (!AppConfig.isEInkMode) {
                 BookCover.loadBlur(this, book.getDisplayCover(), false, book.origin,viewModel.inBookshelf)

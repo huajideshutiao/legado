@@ -95,7 +95,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             R.id.menu_remote -> startActivity<RemoteBookActivity>()
             R.id.menu_search -> startActivity<SearchActivity>()
             R.id.menu_update_toc -> activityViewModel.upToc(books)
-            R.id.menu_bookshelf_layout -> configBookshelf()
+            //R.id.menu_bookshelf_layout -> configBookshelf()
             R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
             R.id.menu_add_local -> startActivity<ImportBookActivity>()
             R.id.menu_add_url -> showAddBookByUrlAlert()
@@ -107,15 +107,15 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 putExtra("groupId", groupId)
             }
 
-            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(books) { file ->
-                exportResult.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData =
-                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
-                }
-            }
-
-            R.id.menu_import_bookshelf -> importBookshelfAlert(groupId)
+//            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(books) { file ->
+//                exportResult.launch {
+//                    mode = HandleFileContract.EXPORT
+//                    fileData =
+//                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
+//                }
+//            }
+//
+//            R.id.menu_import_bookshelf -> importBookshelfAlert(groupId)
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
     }

@@ -14,6 +14,7 @@ import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.DialogBookshelfConfigBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
@@ -29,6 +30,8 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.checkByIndex
+import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
@@ -88,6 +91,7 @@ class OtherConfigFragment : PreferenceFragment(),
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             PreferKey.userAgent -> showUserAgentDialog()
+            PreferKey.bookshelfLayout -> configBookshelf()
             PreferKey.defaultBookTreeUri -> localBookTreeSelect.launch {
                 title = getString(R.string.select_book_folder)
                 mode = HandleFileContract.DIR_SYS
@@ -264,6 +268,64 @@ class OtherConfigFragment : PreferenceFragment(),
                     removePref(PreferKey.userAgent)
                 } else {
                     putPrefString(PreferKey.userAgent, userAgent)
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    @SuppressLint("InflateParams")
+    fun configBookshelf() {
+        alert(titleResource = R.string.bookshelf_layout) {
+            val bookshelfLayout = AppConfig.bookshelfLayout
+            val bookshelfSort = AppConfig.bookshelfSort
+            val alertBinding =
+                DialogBookshelfConfigBinding.inflate(layoutInflater)
+                    .apply {
+                        spGroupStyle.setSelection(AppConfig.bookGroupStyle)
+                        swShowUnread.isChecked = AppConfig.showUnread
+                        swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
+                        swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
+                        swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
+                        rgLayout.checkByIndex(bookshelfLayout)
+                        rgSort.checkByIndex(bookshelfSort)
+                    }
+            customView { alertBinding.root }
+            okButton {
+                alertBinding.apply {
+                    var notifyMain = false
+                    var recreate = false
+                    if (AppConfig.bookGroupStyle != spGroupStyle.selectedItemPosition) {
+                        AppConfig.bookGroupStyle = spGroupStyle.selectedItemPosition
+                        notifyMain = true
+                    }
+                    if (AppConfig.showUnread != swShowUnread.isChecked) {
+                        AppConfig.showUnread = swShowUnread.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.showLastUpdateTime != swShowLastUpdateTime.isChecked) {
+                        AppConfig.showLastUpdateTime = swShowLastUpdateTime.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.showWaitUpCount != swShowWaitUpBooks.isChecked) {
+                        AppConfig.showWaitUpCount = swShowWaitUpBooks.isChecked
+                    }
+                    if (AppConfig.showBookshelfFastScroller != swShowBookshelfFastScroller.isChecked) {
+                        AppConfig.showBookshelfFastScroller = swShowBookshelfFastScroller.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (bookshelfSort != rgSort.getCheckedIndex()) {
+                        AppConfig.bookshelfSort = rgSort.getCheckedIndex()
+                    }
+                    if (bookshelfLayout != rgLayout.getCheckedIndex()) {
+                        AppConfig.bookshelfLayout = rgLayout.getCheckedIndex()
+                        recreate = true
+                    }
+                    if (recreate) {
+                        postEvent(EventBus.RECREATE, "")
+                    } else if (notifyMain) {
+                        postEvent(EventBus.NOTIFY_MAIN, false)
+                    }
                 }
             }
             cancelButton()

@@ -66,8 +66,8 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = coroutineContext
         )
-        var tmp: Exception? = null
-        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+        var tmp: Throwable? = null
+        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Throwable){
             tmp = e
             null
         }
@@ -77,7 +77,7 @@ object WebBook {
                 res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
             }
         }
-        if (res == null)throw tmp as Throwable
+        if (res == null)throw tmp!!
         checkRedirect(bookSource, res)
         return BookList.analyzeBookList(
             bookSource = bookSource,

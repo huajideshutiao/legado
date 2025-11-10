@@ -58,6 +58,7 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 llKind.visible()
                 llKind.setLabels(kinds)
             }
+            //if (item.type ==2048)ivCover.layoutParams.let {it.width = it.height/9*16}
             ivCover.load(
                 item.coverUrl,
                 item.name,
