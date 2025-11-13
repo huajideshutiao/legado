@@ -10,6 +10,7 @@ import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -35,18 +36,16 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
 
     fun initData(intent: Intent) {
-        val bookUrl = intent.getStringExtra("bookUrl") ?: return
         val tmp = intent.getStringExtra("from") == "search"
         //只有从详情页跳转才会有inBookshelf
         inBookshelf.postValue(intent.getBooleanExtra("inBookshelf", false))
         execute {
-            var tmp0 = appDb.bookDao.getBook(bookUrl)
-            if (tmp && tmp0 == null)tmp0 = appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()
-            if (tmp0 == null) {
+            GlobalVars.nowBook?.let { book ->
+                this@VideoViewModel.book = book
+            } ?: run {
                 context.toastOnUi("book is null")
                 return@execute
             }
-            book = tmp0
             inBookshelf.postValue(book.isNotShelf)
             bookSource = book.getBookSource() ?: return@execute
             bookTitle.postValue(book.name)

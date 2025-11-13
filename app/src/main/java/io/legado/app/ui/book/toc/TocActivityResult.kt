@@ -9,7 +9,7 @@ class TocActivityResult : ActivityResultContract<String, Triple<Int, Int, Boolea
 
     override fun createIntent(context: Context, input: String): Intent {
         return Intent(context, TocActivity::class.java)
-            .putExtra("bookUrl", input)
+//            .putExtra("bookUrl", input)
     }
 
     override fun parseResult(resultCode: Int, intent: Intent?): Triple<Int, Int, Boolean>? {

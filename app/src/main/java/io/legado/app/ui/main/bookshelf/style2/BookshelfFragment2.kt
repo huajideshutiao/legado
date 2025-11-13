@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
@@ -223,6 +224,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             is Book -> startActivity<BookInfoActivity> {
                 putExtra("name", item.name)
                 putExtra("author", item.author)
+                GlobalVars.nowBook = item
             }
 
             is BookGroup -> showDialogFragment(GroupEditDialog(item))

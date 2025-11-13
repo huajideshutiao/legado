@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
@@ -26,13 +27,8 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var bookMarkCallBack: BookmarkCallBack? = null
     var searchKey: String? = null
 
-    fun initBook(bookUrl: String) {
-        this.bookUrl = bookUrl
-        execute {
-            appDb.bookDao.getBook(bookUrl)?.let {
-                bookData.postValue(it)
-            }
-        }
+    fun initBook() {
+        bookData.postValue(GlobalVars.nowBook)
     }
 
     fun upBookTocRule(book: Book, complete: (Throwable?) -> Unit) {

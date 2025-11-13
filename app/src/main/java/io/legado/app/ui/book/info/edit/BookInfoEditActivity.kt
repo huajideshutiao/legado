@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
 import io.legado.app.help.book.BookHelp
@@ -49,9 +50,7 @@ class BookInfoEditActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.bookData.observe(this) { upView(it) }
         if (viewModel.bookData.value == null) {
-            intent.getStringExtra("bookUrl")?.let {
-                viewModel.loadBook(it)
-            }
+            viewModel.loadBook()
         }
         initView()
         initEvent()
@@ -107,6 +106,7 @@ class BookInfoEditActivity :
         )
         tieCoverUrl.setText(book.getDisplayCover())
         tieBookIntro.setText(book.getDisplayIntro())
+        tieBookUrl.setText(book.bookUrl)
         upCover()
     }
 
@@ -134,8 +134,12 @@ class BookInfoEditActivity :
         val customIntro = tieBookIntro.text?.toString()
         book.customIntro = if (customIntro == book.intro) null else customIntro
         BookHelp.updateCacheFolder(oldBook, book)
-        viewModel.saveBook(book) {
+        viewModel.saveBook(book,tieBookUrl.text?.toString()) {
             setResult(RESULT_OK)
+            tieBookUrl.text?.apply {
+                    book.bookUrl = this.toString()
+                }
+            GlobalVars.nowBook = book
             finish()
         }
     }

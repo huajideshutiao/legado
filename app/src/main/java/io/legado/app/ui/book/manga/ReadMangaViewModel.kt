@@ -7,6 +7,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -47,11 +48,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         execute {
             ReadManga.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val book = when {
-                bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-                else -> appDb.bookDao.getBook(bookUrl)
-            } ?: ReadManga.book
+            val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: ReadManga.book
             when {
                 book != null -> initManga(book)
                 else -> context.getString(R.string.no_book)//没有找到书

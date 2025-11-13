@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.model.ReadBook
@@ -13,21 +14,23 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
     var book: Book? = null
     val bookData = MutableLiveData<Book>()
 
-    fun loadBook(bookUrl: String) {
-        execute {
-            book = appDb.bookDao.getBook(bookUrl)
+    fun loadBook() {
+            book = GlobalVars.nowBook
             book?.let {
                 bookData.postValue(it)
             }
-        }
     }
 
-    fun saveBook(book: Book, success: (() -> Unit)?) {
+    fun saveBook(book: Book, bookUrl: String?, success: (() -> Unit)?) {
         execute {
             if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.book = book
             }
-            appDb.bookDao.update(book)
+            if (bookUrl!=null&&bookUrl != book.bookUrl){
+                appDb.bookDao.delete(book)
+                book.bookUrl = bookUrl
+                appDb.bookDao.insert(book)
+            }else appDb.bookDao.update(book)
         }.onSuccess {
             success?.invoke()
         }.onError {

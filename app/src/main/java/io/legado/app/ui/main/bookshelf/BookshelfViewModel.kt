@@ -2,7 +2,6 @@ package io.legado.app.ui.main.bookshelf
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.google.gson.stream.JsonWriter
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -17,7 +16,6 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
@@ -27,9 +25,6 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStreamWriter
 
 class BookshelfViewModel(application: Application) : BaseViewModel(application) {
     val addBookProgressLiveData = MutableLiveData(-1)
@@ -96,35 +91,6 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
             AppLog.put("添加网址出错\n${it.localizedMessage}", it, true)
         }.onFinally {
             addBookProgressLiveData.postValue(-1)
-        }
-    }
-
-    fun exportBookshelf(books: List<Book>?, success: (file: File) -> Unit) {
-        execute {
-            books?.let {
-                val path = "${context.filesDir}/books.json"
-                FileUtils.delete(path)
-                val file = FileUtils.createFileWithReplace(path)
-                FileOutputStream(file).use { out ->
-                    val writer = JsonWriter(OutputStreamWriter(out, "UTF-8"))
-                    writer.setIndent("  ")
-                    writer.beginArray()
-                    books.forEach {
-                        val bookMap = hashMapOf<String, String?>()
-                        bookMap["name"] = it.name
-                        bookMap["author"] = it.author
-                        bookMap["intro"] = it.getDisplayIntro()
-                        GSON.toJson(bookMap, bookMap::class.java, writer)
-                    }
-                    writer.endArray()
-                    writer.close()
-                }
-                file
-            } ?: throw NoStackTraceException("书籍不能为空")
-        }.onSuccess {
-            success(it)
-        }.onError {
-            context.toastOnUi("导出书籍出错\n${it.localizedMessage}")
         }
     }
 

@@ -3,6 +3,7 @@ package io.legado.app.ui.book.searchContent
 
 import android.app.Application
 import io.legado.app.base.BaseViewModel
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -23,10 +24,9 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
     val searchResultList: MutableList<SearchResult> = mutableListOf()
     var replaceEnabled = false
 
-    fun initBook(bookUrl: String, success: () -> Unit) {
-        this.bookUrl = bookUrl
+    fun initBook(success: () -> Unit) {
         execute {
-            book = appDb.bookDao.getBook(bookUrl)
+            book = GlobalVars.nowBook
             book?.let {
                 contentProcessor = ContentProcessor.get(it.name, it.origin)
             }

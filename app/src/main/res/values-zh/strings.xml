@@ -1229,4 +1229,5 @@
     <string name="rule_lrc_rule">歌词规则（lrcRule）</string>
     <string name="rule_music_cover">音乐封面URL规则（musicCoverUrl）</string>
     <string name="show_video_ui">视频界面</string>
+    <string name="book_url">书籍地址</string>
 </resources>

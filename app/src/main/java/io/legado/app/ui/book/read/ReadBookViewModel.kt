@@ -10,6 +10,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -70,11 +71,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun initReadBookConfig(intent: Intent) {
-        val bookUrl = intent.getStringExtra("bookUrl")
-        val book = when {
-            bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-            else -> appDb.bookDao.getBook(bookUrl)
-        } ?: return
+        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?:return
         ReadBook.upReadBookConfig(book)
     }
 
@@ -85,11 +82,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         execute {
             ReadBook.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val book = when {
-                bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-                else -> appDb.bookDao.getBook(bookUrl)
-            } ?: ReadBook.book
+            val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: ReadBook.book
             when {
                 book != null -> initBook(book)
                 else -> ReadBook.upMsg(context.getString(R.string.no_book))

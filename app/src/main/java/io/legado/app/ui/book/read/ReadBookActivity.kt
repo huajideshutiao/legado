@@ -29,6 +29,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -1157,6 +1158,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
+                GlobalVars.nowBook = it
             }
         }
     }
@@ -1183,7 +1185,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
         searchContentActivity.launch {
-            putExtra("bookUrl", book.bookUrl)
+            GlobalVars.nowBook = book
             putExtra("searchWord", searchWord ?: viewModel.searchContentQuery)
             putExtra("searchResultIndex", viewModel.searchResultIndex)
             viewModel.searchResultList?.first()?.let {
