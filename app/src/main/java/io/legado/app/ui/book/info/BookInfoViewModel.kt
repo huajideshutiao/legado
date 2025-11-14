@@ -62,7 +62,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
-                if(inBookshelf) upBook(appDb.bookDao.getBook(it.name,it.author)!!) else upBook(it)
+                if(inBookshelf&&it.tocUrl == "") upBook(appDb.bookDao.getBook(it.name,it.author)!!) else upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")
@@ -443,10 +443,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             bookData.value?.let {
                 it.delete()
-                if(it.coverUrl.isNullOrBlank()){
-                val future = Glide.with(context).downloadOnly().apply ( RequestOptions().onlyRetrieveFromCache(true) ).load(it.coverUrl).signature(ObjectKey("covers")).submit()
-                if (future.get().exists())future.get().delete()
-                Glide.with(context).clear(future)
+                if(!it.coverUrl.isNullOrBlank()){
+                    val file = Glide.with(context).downloadOnly()
+                        .apply(RequestOptions().onlyRetrieveFromCache(true))
+                        .load(it.coverUrl).signature(ObjectKey("covers")).submit().get()
+                    file.delete()
                 }
                 inBookshelf = false
                 if (it.isLocal) {
