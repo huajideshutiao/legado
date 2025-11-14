@@ -9,6 +9,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -26,8 +27,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
-            val bookUrl = intent.getStringExtra("bookUrl") ?: book?.bookUrl ?: return@execute
-            val book = appDb.bookDao.getBook(bookUrl) ?: return@execute
+            val book = GlobalVars.nowBook ?: return@execute
             inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             initBook(book)
         }.onFinally {

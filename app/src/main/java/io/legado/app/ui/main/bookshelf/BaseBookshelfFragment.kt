@@ -20,11 +20,14 @@ import io.legado.app.ui.book.import.local.ImportBookActivity
 import io.legado.app.ui.book.import.remote.RemoteBookActivity
 import io.legado.app.ui.book.manage.BookshelfManageActivity
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.readText
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 
 abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfViewModel>(layoutId),
     MainFragmentInterface {
@@ -34,6 +37,15 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     val activityViewModel by activityViewModels<MainViewModel>()
     override val viewModel by viewModels<BookshelfViewModel>()
 
+    private val importBookshelf = registerForActivityResult(HandleFileContract()) {
+        kotlin.runCatching {
+            it.uri?.readText(requireContext())?.let { text ->
+                viewModel.importBookshelf(text, groupId)
+            }
+        }.onFailure {
+            toastOnUi(it.localizedMessage ?: "ERROR")
+        }
+    }
     abstract val groupId: Long
     abstract val books: List<Book>
     private var groupsLiveData: LiveData<List<BookGroup>>? = null
@@ -77,7 +89,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 //                }
 //            }
 //
-//            R.id.menu_import_bookshelf -> importBookshelfAlert(groupId)
+            R.id.menu_import_bookshelf -> importBookshelfAlert(groupId)
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
     }
@@ -124,4 +136,24 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     }
 
 
+    private fun importBookshelfAlert(groupId: Long) {
+        alert(titleResource = R.string.import_bookshelf) {
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "url/json"
+            }
+            customView { alertBinding.root }
+            okButton {
+                alertBinding.editView.text?.toString()?.let {
+                    viewModel.importBookshelf(it, groupId)
+                }
+            }
+            cancelButton()
+            neutralButton(R.string.select_file) {
+                importBookshelf.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
+                }
+            }
+        }
+    }
 }

@@ -12,6 +12,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -85,6 +86,7 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
                     putExtra("name", it.name)
                     putExtra("author", it.author)
                     putExtra("bookUrl", it.bookUrl)
+                    GlobalVars.nowBook = it
                 }
                 dismiss()
             }

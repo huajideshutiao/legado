@@ -14,6 +14,7 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -104,6 +105,7 @@ fun Fragment.startActivityForBook(
     val intent = Intent(requireActivity(), cls)
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     intent.putExtra("bookUrl", book.bookUrl)
+    GlobalVars.nowBook = book
     intent.apply(configIntent)
     startActivity(intent)
 }

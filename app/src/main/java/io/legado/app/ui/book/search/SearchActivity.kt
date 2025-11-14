@@ -22,6 +22,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchKeyword
@@ -470,13 +471,13 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 显示书籍详情
      */
     override fun showBookInfo(book: Book) {
+        GlobalVars.nowBook = book
         if (book.isVideo&& AppConfig.showVideoUi)startActivityForBook(book){
             putExtra("name", book.name)
             putExtra("from", "search")
         }else startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
         }
     }
 

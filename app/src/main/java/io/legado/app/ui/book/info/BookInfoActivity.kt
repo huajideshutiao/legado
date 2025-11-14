@@ -17,6 +17,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.Theme
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -72,7 +73,6 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.shareWithQr
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -116,7 +116,7 @@ class BookInfoActivity :
     private val readBookResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        viewModel.upBook(intent)
+        viewModel.upBook()
         when (it.resultCode) {
             RESULT_OK -> {
                 viewModel.inBookshelf = true
@@ -171,7 +171,7 @@ class BookInfoActivity :
         viewModel.bookData.observe(this) { showBook(it) }
         viewModel.chapterListData.observe(this) { upLoading(false, it) }
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
-        viewModel.initData(intent)
+        viewModel.initData()
         initViewEvent()
     }
 
@@ -207,6 +207,7 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
+                    GlobalVars.nowBook = it
                     infoEditResult.launch {
                         putExtra("bookUrl", it.bookUrl)
                     }
@@ -215,9 +216,7 @@ class BookInfoActivity :
 
             R.id.menu_share_it -> {
                 viewModel.getBook()?.let {
-                    val bookJson = GSON.toJson(it)
-                    val shareStr = "${it.bookUrl}#$bookJson"
-                    shareWithQr(shareStr, it.name)
+                    sendToClip(GSON.toJson(it))
                 }
             }
 
@@ -622,6 +621,7 @@ class BookInfoActivity :
 
     private fun openChapterList() {
         viewModel.getBook()?.let {
+            GlobalVars.nowBook = it
             tocActivityResult.launch(it.bookUrl)
         }
     }
@@ -708,6 +708,7 @@ class BookInfoActivity :
     }
 
     private fun startReadActivity(book: Book) {
+        GlobalVars.nowBook = book
         when {
             book.isAudio -> readBookResult.launch(
                 Intent(this, AudioPlayActivity::class.java)

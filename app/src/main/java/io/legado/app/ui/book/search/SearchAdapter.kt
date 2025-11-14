@@ -8,9 +8,11 @@ import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
+import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -75,7 +77,9 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.toBook())
+                callBack.showBookInfo(it.toBook().apply {
+                    if (!callBack.isInBookshelf(it.name, it.author))addType(BookType.notShelf)
+                })
             }
         }
     }

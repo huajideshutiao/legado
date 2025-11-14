@@ -14,6 +14,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -57,24 +58,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     val waitDialogData = MutableLiveData<Boolean>()
     val actionLive = MutableLiveData<String>()
 
-    fun initData(intent: Intent) {
+    fun initData() {
         execute {
-            val name = intent.getStringExtra("name") ?: ""
-            val author = intent.getStringExtra("author") ?: ""
-            val bookUrl = intent.getStringExtra("bookUrl") ?: ""
-            appDb.bookDao.getBook(name, author)?.let {
+            GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
-                upBook(it)
-                return@execute
-            }
-            if (bookUrl.isNotBlank()) {
-                appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let {
-                    upBook(it)
-                    return@execute
-                }
-            }
-            appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let {
-                upBook(it)
+                if(inBookshelf) upBook(appDb.bookDao.getBook(it.name,it.author)!!) else upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")
@@ -84,14 +72,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun upBook(intent: Intent) {
-        execute {
-            val name = intent.getStringExtra("name") ?: ""
-            val author = intent.getStringExtra("author") ?: ""
-            appDb.bookDao.getBook(name, author)?.let { book ->
-                upBook(book)
-            }
-        }
+    fun upBook() {
+        upBook(GlobalVars.nowBook!!)
     }
 
     private fun upBook(book: Book) {
@@ -493,11 +475,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun upEditBook() {
-        bookData.value?.let {
-            appDb.bookDao.getBook(it.bookUrl)?.let { book ->
-                bookData.postValue(book)
-            }
-        }
+        bookData.postValue(GlobalVars.nowBook)
     }
 
     private fun changeToLocalBook(localBook: Book): Book {

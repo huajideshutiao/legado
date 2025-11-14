@@ -10,6 +10,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -20,6 +21,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
@@ -69,12 +71,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         AppConfig.detectClickArea()
     }
 
-    fun initReadBookConfig(intent: Intent) {
-        val bookUrl = intent.getStringExtra("bookUrl")
-        val book = when {
-            bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-            else -> appDb.bookDao.getBook(bookUrl)
-        } ?: return
+    fun initReadBookConfig() {
+        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?:return
         ReadBook.upReadBookConfig(book)
     }
 
@@ -83,17 +81,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            ReadBook.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val book = when {
-                bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-                else -> appDb.bookDao.getBook(bookUrl)
-            } ?: ReadBook.book
-            when {
-                book != null -> initBook(book)
-                else -> ReadBook.upMsg(context.getString(R.string.no_book))
-            }
+            val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: ReadBook.book
+            if(book != null){
+                ReadBook.inBookshelf = !book.isNotShelf
+                ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
+                initBook(book)
+            }else ReadBook.upMsg(context.getString(R.string.no_book))
         }.onSuccess {
             success?.invoke()
         }.onError {
@@ -112,6 +105,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         } else {
             ReadBook.resetData(book)
         }
+        GlobalVars.nowBook = book
         isInitFinish = true
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return

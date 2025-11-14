@@ -6,6 +6,7 @@ import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
@@ -97,13 +98,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 putExtra("exploreUrl", book.bookUrl.split("::")[1])
             }
         } else {
+            GlobalVars.nowBook = book
             if (book.isVideo&& AppConfig.showVideoUi)startActivityForBook(book){
                 putExtra("name", book.name)
                 putExtra("from", "search")
             }else startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
-                putExtra("bookUrl", book.bookUrl)
             }
         }
     }
