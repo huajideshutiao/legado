@@ -452,7 +452,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         return visiblePage
     }
 
-    fun getCurVisibleFirstLine(): TextLine? {
+    fun getReadAloudPos(): Pair<Int, TextLine>? {
         var relativeOffset: Float
         for (relativePos in 0..2) {
             relativeOffset = relativeOffset(relativePos)
@@ -470,7 +470,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         lineTop += relativeOffset
                         lineBottom += relativeOffset
                     }
-                    return visibleLine
+                    return textPage.chapterIndex to visibleLine
                 }
             }
         }

@@ -1226,6 +1226,7 @@
     <string name="manga_epaper_value">阈值</string>
     <string name="disable_horizontal_animation">禁用水平滚动动画</string>
     <string name="enable_manga_gray">开启图片灰色</string>
+    <string name="sure_cache_book">是否确认开始缓存？</string>
     <string name="rule_lrc_rule">歌词规则（lrcRule）</string>
     <string name="rule_music_cover">音乐封面URL规则（musicCoverUrl）</string>
     <string name="show_video_ui">视频界面</string>
