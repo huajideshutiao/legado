@@ -104,7 +104,6 @@ fun Fragment.startActivityForBook(
     }
     val intent = Intent(requireActivity(), cls)
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    intent.putExtra("bookUrl", book.bookUrl)
     GlobalVars.nowBook = book
     intent.apply(configIntent)
     startActivity(intent)

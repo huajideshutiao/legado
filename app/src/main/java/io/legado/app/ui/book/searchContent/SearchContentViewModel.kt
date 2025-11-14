@@ -12,7 +12,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ChineseUtils
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.coroutineContext
 
 class SearchContentViewModel(application: Application) : BaseViewModel(application) {
     var bookUrl: String = ""

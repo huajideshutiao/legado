@@ -207,10 +207,7 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
-                    GlobalVars.nowBook = it
-                    infoEditResult.launch {
-                        putExtra("bookUrl", it.bookUrl)
-                    }
+                    infoEditResult.launch{}
                 }
             }
 
@@ -712,7 +709,6 @@ class BookInfoActivity :
         when {
             book.isAudio -> readBookResult.launch(
                 Intent(this, AudioPlayActivity::class.java)
-                    .putExtra("bookUrl", book.bookUrl)
                     .putExtra("inBookshelf", viewModel.inBookshelf)
             )
 
@@ -723,7 +719,6 @@ class BookInfoActivity :
                     else if (!book.isLocal && book.isImage && AppConfig.showMangaUi) ReadMangaActivity::class.java
                     else ReadBookActivity::class.java
                 )
-                    .putExtra("bookUrl", book.bookUrl)
                     .putExtra("inBookshelf", viewModel.inBookshelf)
                     .putExtra("chapterChanged", chapterChanged)
             )
