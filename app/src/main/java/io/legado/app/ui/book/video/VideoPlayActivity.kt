@@ -133,20 +133,22 @@ class VideoPlayActivity(
         }
         viewModel.chapterList.observe(this) {
             if (it.size > 1) {
-                (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
-                    dimensionRatio = "h,16:9"
+//                (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
+//                    dimensionRatio = "h,16:9"
 //                    matchConstraintMaxHeight = screenWidth
-                }
+//                }
 //                binding.ivPlayer.maxHeight = screenWidth
+                binding.ivPlayer.layoutParams.height = 0
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
                 binding.recyclerView.adapter = adapter
                 adapter.setItems(it)
                 binding.recyclerView.scrollToPosition(viewModel.book.durChapterIndex)
                 adapter.upDisplayTitles(viewModel.book.durChapterIndex)
             } else {
-                (binding.ivPlayer.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
-                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-                }
+//                (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
+//                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+//                }
+                binding.ivPlayer.layoutParams.height = ConstraintLayout.LayoutParams.MATCH_PARENT
                 binding.recyclerView.visibility = View.GONE
             }
         }
@@ -214,7 +216,7 @@ class VideoPlayActivity(
                 }
             })
         @SuppressLint("ClickableViewAccessibility")
-        binding.ivPlayer.setOnTouchListener { v, event ->
+        binding.ivPlayer.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             when (event.action) {
                 MotionEvent.ACTION_UP -> {
@@ -321,7 +323,7 @@ class VideoPlayActivity(
         } else {
             supportActionBar?.show()
             binding.ivPlayer.layoutParams = binding.ivPlayer.layoutParams.apply {
-                height = WindowManager.LayoutParams.WRAP_CONTENT
+                height = WindowManager.LayoutParams.MATCH_PARENT
             }
             binding.recyclerView.isVisible = true
         }

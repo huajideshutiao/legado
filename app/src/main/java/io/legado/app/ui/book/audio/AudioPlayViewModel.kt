@@ -27,7 +27,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
-            val book = GlobalVars.nowBook ?: return@execute
+            val book = (if(intent.action != "activity") GlobalVars.nowBook else AudioPlay.book)?: return@execute
             inBookshelf = intent.getBooleanExtra("inBookshelf", true)
             initBook(book)
         }.onFinally {
@@ -36,8 +36,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
     }
 
     private suspend fun initBook(book: Book) {
-        val isSameBook = AudioPlay.book?.bookUrl == book.bookUrl
-        if (isSameBook) {
+        if (AudioPlay.book?.bookUrl == book.bookUrl) {
             AudioPlay.upData(book)
         } else {
             AudioPlay.resetData(book)
@@ -79,7 +78,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             AudioPlay.simulatedChapterSize = book.simulatedTotalChapterNum()
             AudioPlay.upDurChapter()
             return true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             context.toastOnUi(R.string.error_load_toc)
             return false
         }

@@ -30,6 +30,7 @@
 
 
         android:background="#000000"
+        app:layout_constraintDimensionRatio="h,16:9"
         app:layout_constraintTop_toBottomOf="@+id/title_bar"
         app:resize_mode="fit"
         app:show_buffering="when_playing"

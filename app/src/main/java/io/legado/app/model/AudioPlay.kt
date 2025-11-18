@@ -80,14 +80,14 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun upData(book: Book) {
-        AudioPlay.book = book
-        chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-        simulatedChapterSize = if (book.readSimulating()) {
-            book.simulatedTotalChapterNum()
-        } else {
-            chapterSize
-        }
         if (durChapterIndex != book.durChapterIndex) {
+            AudioPlay.book = book
+            chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+            simulatedChapterSize = if (book.readSimulating()) {
+                book.simulatedTotalChapterNum()
+            } else {
+                chapterSize
+            }
             stopPlay()
             durChapterIndex = book.durChapterIndex
             durChapterPos = book.durChapterPos
