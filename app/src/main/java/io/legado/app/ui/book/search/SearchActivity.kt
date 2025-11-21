@@ -56,6 +56,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -89,7 +90,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
     private var menu: Menu? = null
     private var groups: List<String>? = null
-    private var historyFlowJob: Job? = null
     private var booksFlowJob: Job? = null
     private var precisionSearchMenuItem: MenuItem? = null
     private var isManualStopSearch = false
@@ -375,37 +375,27 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun upHistory(key: String? = null) {
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
+            delay(300)
             if (key.isNullOrBlank()) {
                 binding.tvBookShow.gone()
                 binding.rvBookshelfSearch.gone()
             } else {
                 appDb.bookDao.flowSearch(key).conflate().collect {
-                    if (it.isEmpty()) {
-                        binding.tvBookShow.gone()
-                        binding.rvBookshelfSearch.gone()
-                    } else {
-                        binding.tvBookShow.visible()
-                        binding.rvBookshelfSearch.visible()
-                    }
-                    bookAdapter.setItems(it.reversed())
-                }
+                        val booksFound = it.isNotEmpty()
+                        binding.tvBookShow.isVisible = booksFound
+                        binding.rvBookshelfSearch.isVisible = booksFound
+                        if (booksFound) bookAdapter.setItems(it.reversed())
             }
-        }
-        historyFlowJob?.cancel()
-        historyFlowJob = lifecycleScope.launch {
-            when {
-                key.isNullOrBlank() -> appDb.searchKeywordDao.flowByTime()
-                else -> appDb.searchKeywordDao.flowSearch(key)
-            }.catch {
-                AppLog.put("搜索界面获取搜索历史数据失败\n${it.localizedMessage}", it)
-            }.flowOn(IO).conflate().collect {
+                }
+
+                (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
+                else appDb.searchKeywordDao.flowSearch(key))
+                    .catch { AppLog.put("搜索界面获取本地数据失败\n${it.localizedMessage}", it) }
+                    .flowOn(IO).conflate().collect {
                 historyKeyAdapter.setItems(it)
-                if (it.isEmpty()) {
-                    binding.tvClearHistory.invisible()
-                } else {
-                    binding.tvClearHistory.visible()
+                        binding.tvClearHistory.isVisible = it.isNotEmpty()
                 }
-            }
+
         }
     }
 
