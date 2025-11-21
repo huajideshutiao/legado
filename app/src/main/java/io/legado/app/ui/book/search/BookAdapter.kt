@@ -6,10 +6,8 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemSearchBinding
-import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -54,7 +52,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    callBack.showBookInfo(it.apply{addType(BookType.notShelf)})
+                    callBack.showBookInfo(it)
                 }
             }
         }

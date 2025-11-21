@@ -210,7 +210,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun onItemClick(item: Any) {
         when (item) {
-            is Book -> startActivityForBook(item)
+            is Book -> startActivityForBook(item.copy())
 
             is BookGroup -> {
                 groupId = item.groupId

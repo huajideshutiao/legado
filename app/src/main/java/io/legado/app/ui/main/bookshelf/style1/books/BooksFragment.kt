@@ -240,14 +240,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun open(book: Book) {
-        startActivityForBook(book)
+        startActivityForBook(book.copy())
     }
 
     override fun openBookInfo(book: Book) {
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            GlobalVars.nowBook = book
+            GlobalVars.nowBook = book.copy()
         }
     }
 

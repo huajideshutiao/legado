@@ -31,6 +31,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityArrangeBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
+import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.contains
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
@@ -65,8 +66,10 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.iconItemOnLongClick
+import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.shouldHideSoftInput
@@ -113,41 +116,35 @@ class BookshelfManageActivity :
     }
     private var books: List<Book>? = null
     private val waitDialog by lazy { WaitDialog(this) }
-//    private val exportDir = registerForActivityResult(HandleFileContract()) {
-//        it.uri?.let { uri ->
-//            alert(R.string.export_success) {
-//                if (uri.toString().isAbsUrl()) {
-//                    setMessage(DirectLinkUpload.getSummary())
-//                }
-//                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-//                    editView.hint = getString(R.string.path)
-//                    editView.setText(uri.toString())
-//                }
-//                customView { alertBinding.root }
-//                okButton {
-//                    sendToClip(uri.toString())
-//                }
-//            }
-//        }
-//    }
-
-    private val exportBookPathKey = "exportBookPath"
-    private val exportTypes = arrayListOf("txt", "epub")
-
-    private val exportDir = registerForActivityResult(HandleFileContract()) { result ->
-
-        var uri = result.uri ?: return@registerForActivityResult
-        var dirPath = if (uri.isContentScheme())uri.toString() else uri.path ?:return@registerForActivityResult
-
-        ACache.get().put(exportBookPathKey, dirPath)
-
-        if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
-            configExportSection(dirPath, result.requestCode)
-        } else {
-            startExport(dirPath, result.requestCode)
+    private val exportDir = registerForActivityResult(HandleFileContract()) {
+        var uri = it.uri ?: return@registerForActivityResult
+        if(it.value == "cache") {
+            var dirPath = if (uri.isContentScheme())uri.toString() else uri.path ?:return@registerForActivityResult
+            ACache.get().put(exportBookPathKey, dirPath)
+            if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
+                configExportSection(dirPath)
+            } else {
+                startExport(dirPath)
+            }
+        }else{
+            alert(R.string.export_success) {
+                if (uri.toString().isAbsUrl()) {
+                    setMessage(DirectLinkUpload.getSummary())
+                }
+                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                    editView.hint = getString(R.string.path)
+                    editView.setText(uri.toString())
+                }
+                customView { alertBinding.root }
+                okButton {
+                    sendToClip(uri.toString())
+                }
+            }
         }
     }
 
+    private val exportBookPathKey = "exportBookPath"
+    private val exportTypes = arrayListOf("txt", "epub")
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.groupId = intent.getLongExtra("groupId", -1)
@@ -445,10 +442,7 @@ class BookshelfManageActivity :
             R.id.menu_export_web_dav -> AppConfig.exportToWebDav = !item.isChecked
             R.id.menu_export_pics_file -> AppConfig.exportPictureFile = !item.isChecked
             R.id.menu_parallel_export -> AppConfig.parallelExportBook = !item.isChecked
-            R.id.menu_export_folder -> {
-                selectExportFolder(-1)
-            }
-
+            R.id.menu_export_folder -> selectExportFolder()
             R.id.menu_export_file_name -> alertExportFileName()
             R.id.menu_export_type -> showExportTypeConfig()
             R.id.menu_export_charset -> showCharsetConfig()
@@ -599,11 +593,11 @@ class BookshelfManageActivity :
             if (path.isNullOrEmpty() ||
                 withContext(IO) { !FileDoc.fromDir(path).checkWrite() }
             ) {
-                selectExportFolder(position)
+                selectExportFolder()
             } else if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
-                configExportSection(path, position)
+                configExportSection(path)
             } else {
-                startExport(path, position)
+                startExport(path)
             }
         }
     }
@@ -611,9 +605,9 @@ class BookshelfManageActivity :
     private fun exportAll() {
         val path = ACache.get().getAsString(exportBookPathKey)
         if (path.isNullOrEmpty()) {
-            selectExportFolder(-10)
+            selectExportFolder()
         } else {
-            startExport(path, -10)
+            startExport(path)
         }
     }
 
@@ -621,11 +615,10 @@ class BookshelfManageActivity :
      * 配置自定义导出对话框
      *
      * @param path  导出路径
-     * @param position  book位置
      * @author Discut
      * @since 1.0.0
      */
-    private fun configExportSection(path: String, position: Int) {
+    private fun configExportSection(path: String) {
 
         val alertBinding = DialogSelectSectionExportBinding.inflate(layoutInflater)
             .apply {
@@ -637,20 +630,17 @@ class BookshelfManageActivity :
                 fun enableLyEtEpubFilenameIcon() {
                     lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_CUSTOM
                     lyEtEpubFilename.setEndIconOnClickListener {
-                        adapter.getItem(position)?.run {
+                        adapter.selection.forEach { book ->
                             lyEtEpubFilename.helperText =
                                 if (verifyExportFileNameJsStr(etEpubFilename.text.toString()))
                                     "${resources.getString(R.string.result_analyzed)}: ${
-                                        getExportFileName(
+                                        book.getExportFileName(
                                             "epub",
                                             1,
                                             etEpubFilename.text.toString()
                                         )
                                     }"
                                 else "Error"
-                        } ?: run {
-                            lyEtEpubFilename.helperText = "Error"
-                            AppLog.put("未找到书籍，position is $position")
                         }
                     }
                 }
@@ -714,7 +704,7 @@ class BookshelfManageActivity :
         alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             alertBinding.apply {
                 if (cbAllExport.isChecked) {
-                    startExport(path, position)
+                    startExport(path)
                     alertDialog.hide()
                     return@apply
                 }
@@ -725,7 +715,7 @@ class BookshelfManageActivity :
                 }
                 etInputScope.error = null
                 val epubSize = etEpubSize.text.toString().toIntOrNull() ?: 1
-                adapter.getItem(position)?.let { book ->
+                adapter.selection.forEach { book ->
                     startService<ExportBookService> {
                         action = IntentAction.start
                         putExtra("bookUrl", book.bookUrl)
@@ -741,7 +731,7 @@ class BookshelfManageActivity :
         }
     }
 
-    private fun selectExportFolder(exportPosition: Int) {
+    private fun selectExportFolder() {
         val default = arrayListOf<SelectItem<Int>>()
         val path = ACache.get().getAsString(exportBookPathKey)
         if (!path.isNullOrEmpty()) {
@@ -749,18 +739,17 @@ class BookshelfManageActivity :
         }
         exportDir.launch {
             otherActions = default
-            requestCode = exportPosition
+            value = "cache"
         }
     }
 
-    private fun startExport(path: String, exportPosition: Int) {
+    private fun startExport(path: String) {
         val exportType = when (AppConfig.exportType) {
             1 -> "epub"
             else -> "txt"
         }
-        if (exportPosition == -10) {
-            if (adapter.getItems().isNotEmpty()) {
-                adapter.getItems().forEach { book ->
+            if (adapter.selection.isNotEmpty()) {
+                adapter.selection.forEach { book ->
                     startService<ExportBookService> {
                         action = IntentAction.start
                         putExtra("bookUrl", book.bookUrl)
@@ -771,16 +760,6 @@ class BookshelfManageActivity :
             } else {
                 toastOnUi(R.string.no_book)
             }
-        } else if (exportPosition >= 0) {
-            adapter.getItem(exportPosition)?.let { book ->
-                startService<ExportBookService> {
-                    action = IntentAction.start
-                    putExtra("bookUrl", book.bookUrl)
-                    putExtra("exportType", exportType)
-                    putExtra("exportPath", path)
-                }
-            }
-        }
     }
 
     @SuppressLint("SetTextI18n")
