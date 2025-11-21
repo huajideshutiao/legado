@@ -387,7 +387,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                         binding.tvBookShow.visible()
                         binding.rvBookshelfSearch.visible()
                     }
-                    bookAdapter.setItems(it)
+                    bookAdapter.setItems(it.reversed())
                 }
             }
         }
