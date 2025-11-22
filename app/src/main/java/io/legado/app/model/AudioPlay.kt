@@ -168,52 +168,56 @@ object AudioPlay : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val lrcRule = bookSource.getContentRule().lrcRule
-            var durLrcContent: NativeArray?
+            var durLrcContent: NativeArray? = null
+            val tmp = mutableListOf<Pair<Int, String>>()
+
             if (!lrcRule.isNullOrBlank() && context == activityContext) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
                 analyzeRule.setCoroutineContext(currentCoroutineContext())
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
-                durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
-            } else return@async
-            val tmp = mutableListOf<Pair<Int, String>>()
-            for (i in durLrcContent.indices) {
-                var oldIndex = 0
-                (durLrcContent[i] as String).lineSequence().forEach { line ->
-                    val line = line.trim()
-                    if (line.length < 3) return@forEach
-                    val split = line.indexOf("]")
-                    if (line[1].isDigit()) {
-                        val textPart = line.substring(split + 1)
-                        val min = line.substring(1, 3).toInt()
-                        var sec = line.substring(4, 6).toInt()
-                        var ms = 0
-                        if (split > 6) {
-                            ms = line.substring(7, split).toInt()
-                            ms *= (if (split == 10) 1 else 10)
-                        }
-                        if (split == 8) sec = line[4].code
-                        val time = min * 60_000 + sec * 1000 + ms
-                        if (i != 0) {
-                            val index =
-                                tmp.subList(oldIndex, tmp.size)
-                                    .indexOfFirst { it.first == time }
-                            if (index == -1) return@forEach
-                            oldIndex += index
-                            tmp[oldIndex] = Pair(
-                                time,
-                                "${tmp[oldIndex].second}\n$textPart"
-                            )
-                        } else {
-                            tmp.add(Pair(time, textPart))
+                durLrcContent = analyzeRule.evalJS(lrcRule) as? NativeArray
+            }
+
+            durLrcContent?.let { nativeArray ->
+                for (i in nativeArray.indices) {
+                    var oldIndex = 0
+                    (nativeArray[i] as String).lineSequence().forEach { line ->
+                        val line = line.trim()
+                        if (line.length < 3) return@forEach
+                        val split = line.indexOf("]")
+                        if (line[1].isDigit()) {
+                            val textPart = line.substring(split + 1)
+                            val min = line.substring(1, 3).toInt()
+                            var sec = line.substring(4, 6).toInt()
+                            var ms = 0
+                            if (split > 6) {
+                                ms = line.substring(7, split).toInt()
+                                ms *= (if (split == 10) 1 else 10)
+                            }
+                            if (split == 8) sec = line[4].code
+                            val time = min * 60_000 + sec * 1000 + ms
+                            if (i != 0) {
+                                val index =
+                                    tmp.subList(oldIndex, tmp.size)
+                                        .indexOfFirst { it.first == time }
+                                if (index == -1) return@forEach
+                                oldIndex += index
+                                tmp[oldIndex] = Pair(
+                                    time,
+                                    "${tmp[oldIndex].second}\n$textPart"
+                                )
+                            } else {
+                                tmp.add(Pair(time, textPart))
+                            }
                         }
                     }
                 }
             }
-            durLrcData = tmp
-//                .toList()
+            tmp
         }.onSuccess {
-            callback?.upLrc(durLrcData!!)
+            durLrcData = it
+            callback?.upLrc(it)
             context.startService<AudioPlayService> {
                 action = IntentAction.playData
             }
@@ -525,7 +529,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
         fun upLoading(loading: Boolean)
         fun upCover(url: String)
-        fun upLrc(lrc: List<Pair<Int, String>>)
+        fun upLrc(lrc: List<Pair<Int, String>>?)
 
     }
 
