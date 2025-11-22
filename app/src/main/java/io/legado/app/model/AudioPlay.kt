@@ -221,6 +221,8 @@ object AudioPlay : CoroutineScope by MainScope() {
             context.startService<AudioPlayService> {
                 action = IntentAction.playData
             }
+        }.onError{
+            callback?.upLrc(mutableListOf<Pair<Int, String>>())
         }
     }
 
