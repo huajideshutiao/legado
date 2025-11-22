@@ -46,7 +46,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.book.cache.CacheAdapter
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -57,10 +56,8 @@ import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.ACache
-import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.checkWrite
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.enableCustomExport
@@ -98,7 +95,6 @@ class BookshelfManageActivity :
     PopupMenu.OnMenuItemClickListener,
     SelectActionBar.CallBack,
     BookAdapter.CallBack,
-    CacheAdapter.CallBack,
     SourcePickerDialog.Callback,
     GroupSelectDialog.CallBack {
 
@@ -587,21 +583,6 @@ class BookshelfManageActivity :
         viewModel.batchChangeSourceState.value = true
     }
 
-    override fun export(position: Int) {
-        val path = ACache.get().getAsString(exportBookPathKey)
-        lifecycleScope.launch {
-            if (path.isNullOrEmpty() ||
-                withContext(IO) { !FileDoc.fromDir(path).checkWrite() }
-            ) {
-                selectExportFolder()
-            } else if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
-                configExportSection(path)
-            } else {
-                startExport(path)
-            }
-        }
-    }
-
     private fun exportAll() {
         val path = ACache.get().getAsString(exportBookPathKey)
         if (path.isNullOrEmpty()) {
@@ -808,13 +789,5 @@ class BookshelfManageActivity :
 
     override val cacheChapters: HashMap<String, HashSet<String>>
         get() = viewModel.cacheChapters
-
-    override fun exportProgress(bookUrl: String): Int? {
-        return ExportBookService.exportProgress[bookUrl]
-    }
-
-    override fun exportMsg(bookUrl: String): String? {
-        return ExportBookService.exportMsg[bookUrl]
-    }
 
 }

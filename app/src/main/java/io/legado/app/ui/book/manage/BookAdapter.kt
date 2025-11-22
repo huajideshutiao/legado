@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -15,8 +16,11 @@ import io.legado.app.databinding.ItemArrangeBookBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.model.CacheBook
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.utils.gone
+import io.legado.app.utils.visible
 import java.util.Collections
 
 class BookAdapter(context: Context, val callBack: CallBack) :
@@ -57,9 +61,23 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             checkbox.isChecked = selectedBooks.contains(item)
             if (item.isLocal) {
                 tvOrigin.setText(R.string.local_book)
+                tvDownload.gone()
             } else {
                 tvOrigin.text = item.originName
+                    val cs = callBack.cacheChapters[item.bookUrl]
+                    if (cs == null) {
+                        tvDownload.setText(R.string.loading)
+                    } else {
+                        tvDownload.text =
+                            context.getString(
+                                R.string.download_count,
+                                cs.size,
+                                item.totalChapterNum
+                            )
+                    }
+
             }
+            upDownloadIv(ivDownload, item)
         }
     }
 
@@ -107,6 +125,36 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                     actionItem = it
                     callBack.selectGroup(groupRequestCode, it.group)
                 }
+            }
+            ivDownload.setOnClickListener {
+                getItem(holder.layoutPosition)?.let { book ->
+                    CacheBook.cacheBookMap[book.bookUrl]?.let {
+                        if (!it.isStop()) {
+                            CacheBook.remove(context, book.bookUrl)
+                        } else {
+                            CacheBook.start(context, book, 0, book.lastChapterIndex)
+                        }
+                    } ?: let {
+                        CacheBook.start(context, book, 0, book.lastChapterIndex)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun upDownloadIv(iv: ImageView, book: Book) {
+        if (book.isLocal) {
+            iv.gone()
+        } else {
+            iv.visible()
+            CacheBook.cacheBookMap[book.bookUrl]?.let {
+                if (!it.isStop()) {
+                    iv.setImageResource(R.drawable.ic_stop_black_24dp)
+                } else {
+                    iv.setImageResource(R.drawable.ic_play_24dp)
+                }
+            } ?: let {
+                iv.setImageResource(R.drawable.ic_play_24dp)
             }
         }
     }
@@ -229,6 +277,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
 
     interface CallBack {
         val groupList: List<BookGroup>
+        val cacheChapters: HashMap<String, HashSet<String>>
 
         fun upSelectCount()
 
