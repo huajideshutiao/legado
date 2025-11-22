@@ -12,6 +12,7 @@ import androidx.fragment.app.FragmentStatePagerAdapter
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.data.GlobalVars
 import io.legado.app.databinding.ActivityRssArtivlesBinding
 import io.legado.app.help.source.sortUrls
 import io.legado.app.lib.theme.accentColor
@@ -72,9 +73,9 @@ class RssSortActivity : VMBaseActivity<ActivityRssArtivlesBinding, RssSortViewMo
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_login -> startActivity<SourceLoginActivity> {
-                putExtra("type", "rssSource")
-                putExtra("key", viewModel.rssSource?.sourceUrl)
+            R.id.menu_login -> {
+                GlobalVars.nowSource = viewModel.rssSource
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_refresh_sort -> viewModel.clearSortCache { upFragments() }

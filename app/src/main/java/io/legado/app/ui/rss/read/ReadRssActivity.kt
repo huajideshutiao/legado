@@ -31,6 +31,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssReadBinding
 import io.legado.app.help.config.AppConfig
@@ -174,9 +175,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             }
 
             R.id.menu_aloud -> readAloud()
-            R.id.menu_login -> startActivity<SourceLoginActivity> {
-                putExtra("type", "rssSource")
-                putExtra("key", viewModel.rssSource?.sourceUrl)
+            R.id.menu_login -> {
+                GlobalVars.nowSource = viewModel.rssSource
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_browser_open -> binding.webView.url?.let {

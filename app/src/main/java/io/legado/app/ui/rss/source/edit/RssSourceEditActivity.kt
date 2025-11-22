@@ -10,6 +10,7 @@ import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssSourceEditBinding
 import io.legado.app.help.config.LocalConfig
@@ -137,10 +138,8 @@ class RssSourceEditActivity :
             }
 
             R.id.menu_login -> viewModel.save(getRssSource()) {
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "rssSource")
-                    putExtra("key", it.sourceUrl)
-                }
+                GlobalVars.nowSource = it
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_set_source_variable -> setSourceVariable()

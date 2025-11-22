@@ -15,6 +15,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogEditTextBinding
@@ -263,10 +264,8 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                         if (!httpTTS.loginUrl.isNullOrBlank()
                             && httpTTS.getLoginInfo().isNullOrBlank()
                         ) {
-                            startActivity<SourceLoginActivity> {
-                                putExtra("type", "httpTts")
-                                putExtra("key", id)
-                            }
+                            GlobalVars.nowSource = httpTTS
+                            startActivity<SourceLoginActivity>{}
                         }
                     }
                 }

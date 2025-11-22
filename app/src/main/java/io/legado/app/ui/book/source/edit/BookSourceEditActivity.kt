@@ -12,6 +12,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookSourceType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.BookInfoRule
@@ -147,10 +148,8 @@ class BookSourceEditActivity :
 
             R.id.menu_help -> showHelp("ruleHelp")
             R.id.menu_login -> viewModel.save(getSource()) { source ->
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", source.bookSourceUrl)
-                }
+                GlobalVars.nowSource = source
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_set_source_variable -> setSourceVariable()

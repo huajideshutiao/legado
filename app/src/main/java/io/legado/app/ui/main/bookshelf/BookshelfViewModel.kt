@@ -121,25 +121,43 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
 
     private fun importBookshelfByJson(json: String, groupId: Long) {
         execute {
-            val bookSourceParts = appDb.bookSourceDao.allEnabledPart
             val semaphore = Semaphore(AppConfig.threadCount)
             GSON.fromJsonArray<Map<String, String?>>(json).getOrThrow().forEach { bookInfo ->
                 val name = bookInfo["name"] ?: ""
                 val author = bookInfo["author"] ?: ""
-                if (name.isEmpty() || appDb.bookDao.has(name, author)) {
-                    return@forEach
-                }
+                val origin = bookInfo["origin"]
+                val bookUrl = bookInfo["bookUrl"]
+                if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
                 semaphore.withPermit {
-                    WebBook.preciseSearch(
-                        this, bookSourceParts, name, author,
-                        semaphore = semaphore
-                    ).onSuccess {
-                        val book = it.first
-                        if (groupId > 0) {
-                            book.group = groupId
+                    (if(origin!=null&&bookUrl!=null) {
+                        val book = Book(bookUrl)
+                        bookInfo.forEach { (key, value) ->
+                            value?.let {
+                                when (key) {
+                                    "name" -> book.name = it
+                                    "author" -> book.author = it
+                                    "kind" -> book.kind = it
+                                    "coverUrl" -> book.coverUrl = it
+                                    "intro" -> book.intro = it
+                                    "origin" -> book.origin = it
+                                }
+                            }
                         }
-                        book.save()
-                    }.onError { e ->
+                        val bookSource = appDb.bookSourceDao.getBookSource(origin)
+                        if (bookSource==null)return@forEach
+                        else WebBook.getBookInfo(this, bookSource,book).onSuccess {
+                            if (groupId > 0) it.group = groupId
+                            it.save()
+                        }
+                    } else {
+                        val bookSourceParts = appDb.bookSourceDao.allEnabledPart
+                        WebBook.preciseSearch(this, bookSourceParts, name, author, semaphore = semaphore)
+                            .onSuccess {
+                            val book = it.first
+                            if (groupId > 0) book.group = groupId
+                            book.save()
+                        }
+                    }).onError { e ->
                         context.toastOnUi(e.localizedMessage)
                     }
                 }

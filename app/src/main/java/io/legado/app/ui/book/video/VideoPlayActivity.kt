@@ -32,16 +32,20 @@ import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -122,9 +126,6 @@ class VideoPlayActivity(
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData(intent)
-        viewModel.inBookshelf.observe(this) {
-            binding.titleBar.menu.findItem(R.id.menu_shelf)
-        }
         viewModel.bookTitle.observe(this) {
             binding.titleBar.title = it
         }
@@ -249,6 +250,16 @@ class VideoPlayActivity(
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
+        menu.findItem(R.id.menu_shelf).apply {
+                if (!GlobalVars.nowBook!!.isNotShelf) {
+                    setIcon(R.drawable.ic_star)
+                    setTitle(R.string.in_favorites)
+                } else {
+                    setIcon(R.drawable.ic_star_border)
+                    setTitle(R.string.out_favorites)
+                }
+            icon?.setTintMutate(primaryTextColor)
+        }
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -257,7 +268,7 @@ class VideoPlayActivity(
 //            R.id.menu_change_source -> {
 //            }
             R.id.menu_shelf -> {
-                if (viewModel.inBookshelf.value == true) {
+                if (!GlobalVars.nowBook!!.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw,
@@ -278,16 +289,18 @@ class VideoPlayActivity(
                         }
                     }
                 } else {
-                    viewModel.addToBookshelf { item.setIcon(R.drawable.ic_star) }
+                    viewModel.addToBookshelf {
+                        item.setIcon(R.drawable.ic_star)
+                        item.setTitle(R.string.in_favorites)
+                        item.icon?.setTintMutate(primaryTextColor)
+                    }
                 }
             }
 
             R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_login -> viewModel.bookSource?.let {
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }

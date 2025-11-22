@@ -2,8 +2,10 @@ package io.legado.app.ui.login
 
 import android.app.Application
 import android.content.Intent
+import com.script.rhino.runScriptWithContext
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
@@ -18,14 +20,15 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
         execute {
             val sourceKey = intent.getStringExtra("key")
                 ?: throw NoStackTraceException("没有参数")
+            source = GlobalVars.nowSource
             when (intent.getStringExtra("type")) {
                 "bookSource" -> source = appDb.bookSourceDao.getBookSource(sourceKey)
                 "rssSource" -> source = appDb.rssSourceDao.getByKey(sourceKey)
                 "httpTts" -> source = appDb.httpTTSDao.get(sourceKey.toLong())
             }
-            //headerMap = runScriptWithContext {
-            //    source?.getHeaderMap(true) ?: emptyMap()
-            //}
+            headerMap = runScriptWithContext {
+                source?.getHeaderMap(true) ?: emptyMap()
+            }
             source
         }.onSuccess {
             if (it != null) {

@@ -1265,10 +1265,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showLogin() {
         ReadBook.bookSource?.let {
-            startActivity<SourceLoginActivity> {
-                putExtra("type", "bookSource")
-                putExtra("key", it.bookSourceUrl)
-            }
+            GlobalVars.nowSource = it
+            startActivity<SourceLoginActivity>{}
         }
     }
 

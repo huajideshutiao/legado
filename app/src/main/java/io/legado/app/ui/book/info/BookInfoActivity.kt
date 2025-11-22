@@ -213,7 +213,7 @@ class BookInfoActivity :
 
             R.id.menu_share_it -> {
                 viewModel.getBook()?.let {
-                    sendToClip(GSON.toJson(it))
+                    sendToClip("[${GSON.toJson(it)}]")
                 }
             }
 
@@ -222,10 +222,8 @@ class BookInfoActivity :
             }
 
             R.id.menu_login -> viewModel.bookSource?.let {
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_top -> viewModel.topBook()

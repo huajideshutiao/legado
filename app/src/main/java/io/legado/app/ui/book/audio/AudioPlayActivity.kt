@@ -21,6 +21,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.constant.Theme
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -128,10 +129,8 @@ class AudioPlayActivity :
             }
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock

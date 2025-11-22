@@ -16,7 +16,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
@@ -31,14 +30,11 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     var position: Long = 0L
     var bookSource: BookSource? = null
     lateinit var book: Book
-    var inBookshelf = MutableLiveData<Boolean>()
     private var oldChapterIndex: Int? = null
 
 
     fun initData(intent: Intent) {
         val tmp = intent.getStringExtra("from") == "search"
-        //只有从详情页跳转才会有inBookshelf
-        inBookshelf.postValue(intent.getBooleanExtra("inBookshelf", false))
         execute {
             GlobalVars.nowBook?.let { book ->
                 this@VideoViewModel.book = book
@@ -46,7 +42,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 context.toastOnUi("book is null")
                 return@execute
             }
-            inBookshelf.postValue(book.isNotShelf)
             bookSource = book.getBookSource() ?: return@execute
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
@@ -107,7 +102,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             chapterList.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())
             }
-            inBookshelf.postValue(true)
         }.onSuccess {
             success?.invoke()
         }
@@ -123,8 +117,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 if (future.get().exists()) future.get().delete()
                 Glide.with(context).clear(future)
             }
-            inBookshelf.postValue(false)
-
         }.onSuccess {
             success?.invoke()
         }
