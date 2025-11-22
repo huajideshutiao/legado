@@ -38,7 +38,6 @@ class TTS {
             return textToSpeech?.isSpeaking ?: false
         }
 
-    @Suppress("unused")
     fun setSpeakStateListener(speakStateListener: SpeakStateListener) {
         this.speakStateListener = speakStateListener
     }

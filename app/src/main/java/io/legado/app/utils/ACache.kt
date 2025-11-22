@@ -636,7 +636,7 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
      * @version 1.0
      * title 缓存管理器
      */
-    open inner class ACacheManager(
+    open class ACacheManager(
         private var cacheDir: File,
         private val sizeLimit: Long,
         private val countLimit: Int
@@ -768,8 +768,8 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
 
                 var fileSize: Long = 0
                 if (mostLongUsedFile != null) {
-                    fileSize = calculateSize(mostLongUsedFile!!)
-                    if (mostLongUsedFile!!.delete()) {
+                    fileSize = calculateSize(mostLongUsedFile)
+                    if (mostLongUsedFile.delete()) {
                         lastUsageDates.remove(mostLongUsedFile)
                     }
                 }

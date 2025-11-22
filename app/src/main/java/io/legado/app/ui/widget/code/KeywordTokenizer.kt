@@ -6,7 +6,7 @@ import kotlin.math.max
 class KeywordTokenizer : MultiAutoCompleteTextView.Tokenizer {
     override fun findTokenStart(charSequence: CharSequence, cursor: Int): Int {
         var sequenceStr = charSequence.toString()
-        sequenceStr = sequenceStr.substring(0, cursor)
+        sequenceStr = sequenceStr.take(cursor)
         val spaceIndex = sequenceStr.lastIndexOf(" ")
         val lineIndex = sequenceStr.lastIndexOf("\n")
         val bracketIndex = sequenceStr.lastIndexOf("(")

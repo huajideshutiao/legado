@@ -1,5 +1,3 @@
-@file:Suppress("RedundantVisibilityModifier", "unused")
-
 package io.legado.app.utils.viewbindingdelegate
 
 import android.view.LayoutInflater

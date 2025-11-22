@@ -63,7 +63,7 @@ class ReadRecordDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         return true
     }
 
-    inner class ReadRecordAdapter(context: Context) :
+    class ReadRecordAdapter(context: Context) :
         RecyclerAdapter<RssReadRecord, ItemRssReadRecordBinding>(context) {
 
         override fun getViewBinding(parent: ViewGroup): ItemRssReadRecordBinding {

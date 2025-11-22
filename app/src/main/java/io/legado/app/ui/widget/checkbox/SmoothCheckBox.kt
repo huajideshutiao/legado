@@ -101,28 +101,6 @@ class SmoothCheckBox @JvmOverloads constructor(
         this.isChecked = !isChecked
     }
 
-    /**
-     * checked with animation
-     *
-     * @param checked checked
-     * @param animate change with animation
-     */
-    fun setChecked(checked: Boolean, animate: Boolean) {
-        if (animate) {
-            mTickDrawing = false
-            mChecked = checked
-            mDrewDistance = 0f
-            if (checked) {
-                startCheckedAnimation()
-            } else {
-                startUnCheckedAnimation()
-            }
-            onCheckedChangeListener?.invoke(this@SmoothCheckBox, mChecked)
-        } else {
-            this.isChecked = checked
-        }
-    }
-
     private fun reset() {
         mTickDrawing = true
         mFloorScale = 1.0f

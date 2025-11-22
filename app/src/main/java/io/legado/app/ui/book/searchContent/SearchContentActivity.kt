@@ -71,7 +71,7 @@ class SearchContentActivity :
         initSearchView(noSearchResult)
         initRecyclerView()
         initView()
-        viewModel.initBook() {
+        viewModel.initBook {
             initSearchResultList(searchResultList, position)
             initBook(noSearchResult)
         }

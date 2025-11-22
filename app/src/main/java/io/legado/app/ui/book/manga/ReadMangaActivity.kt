@@ -250,7 +250,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
 
     override fun upContent() {
         lifecycleScope.launch {
-            setTitle(ReadManga.book?.name)
+            title = ReadManga.book?.name
             val data = withContext(IO) { ReadManga.mangaContents }
             val pos = data.pos
             val list = data.items

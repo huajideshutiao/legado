@@ -56,7 +56,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             }
             val source = SourceHelp.getSource(sourceOrigin, sourceType)
             val analyzeUrl = AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
-            baseUrl = analyzeUrl.headerMap.get("Origin")?:analyzeUrl.url
+            baseUrl = analyzeUrl.headerMap["Origin"] ?:analyzeUrl.url
             headerMap.putAll(analyzeUrl.headerMap)
             if (analyzeUrl.isPost()) {
                 html = analyzeUrl.getStrResponseAwait(useWebView = false).body

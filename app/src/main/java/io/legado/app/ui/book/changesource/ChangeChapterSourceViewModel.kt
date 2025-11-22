@@ -8,7 +8,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.webBook.WebBook
 
-@Suppress("MemberVisibilityCanBePrivate")
 class ChangeChapterSourceViewModel(application: Application) :
     ChangeBookSourceViewModel(application) {
 

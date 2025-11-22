@@ -28,7 +28,7 @@ import io.legado.app.ui.widget.image.photo.RotateGestureDetector
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-@Suppress("UNUSED_PARAMETER", "unused", "MemberVisibilityCanBePrivate", "PropertyName")
+@Suppress("unused", "MemberVisibilityCanBePrivate", "PropertyName")
 class PhotoView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
@@ -625,7 +625,7 @@ class PhotoView @JvmOverloads constructor(
         return if (hasMultiTouch) true else canScrollVerticallySelf(direction.toFloat())
     }
 
-    private inner class InterpolatorProxy : Interpolator {
+    private class InterpolatorProxy : Interpolator {
         private var mTarget: Interpolator?
 
         init {

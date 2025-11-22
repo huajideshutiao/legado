@@ -9,10 +9,8 @@ import io.legado.app.utils.splitNotBlank
 import okhttp3.Cookie
 import okhttp3.Headers
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
-import org.jsoup.Connection
 
 @Suppress("ConstPropertyName")
 object CookieManager {
@@ -29,12 +27,6 @@ object CookieManager {
     fun saveResponse(response: Response) {
         val url = response.request.url
         val headers = response.headers
-        saveCookiesFromHeaders(url, headers)
-    }
-
-    fun saveResponse(response: Connection.Response) {
-        val url = response.url().toHttpUrlOrNull() ?: return
-        val headers = response.multiHeaders().toHeaders()
         saveCookiesFromHeaders(url, headers)
     }
 
@@ -155,16 +147,6 @@ object CookieManager {
             if (index > 0) append("; ")
             append(cookie.name).append('=').append(cookie.value)
         }
-    }
-
-    private fun Map<String, List<String>>.toHeaders(): Headers {
-        return Headers.Builder().apply {
-            this@toHeaders.forEach { (k, v) ->
-                v.forEach {
-                    add(k, it)
-                }
-            }
-        }.build()
     }
 
 }

@@ -95,9 +95,6 @@ public class AndroidZipEntry implements ZipConstants, Cloneable {
     }
 
     /**
-     * Creates a copy of this zip entry.
-     */
-    /**
      * Clones the entry.
      */
     public Object clone() {

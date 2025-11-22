@@ -357,10 +357,6 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         mPreScrollListener = iComicPreScroll
     }
 
-    fun setNestedPreScrollListener(iComicPreScroll: IComicPreScroll) {
-        mNestedPreScrollListener = iComicPreScroll
-    }
-
     fun interface IComicPreScroll {
         fun onPreScrollListener(recyclerView: RecyclerView, dx: Int, dy: Int, position: Int)
     }

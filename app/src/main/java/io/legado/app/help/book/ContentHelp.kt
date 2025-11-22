@@ -113,13 +113,13 @@ object ContentHelp {
         if (match(MARK_QUOTATION, str[0])) {
             val i = seekIndex(str, MARK_QUOTATION, 1, length - 2, true) + 1
             if (i > 1) if (!match(MARK_QUOTATION_BEFORE, str[i - 1])) {
-                return "${str.substring(0, i)}\n${str.substring(i)}"
+                return "${str.take(i)}\n${str.substring(i)}"
             }
         } else if (match(MARK_QUOTATION, str[length - 1])) {
             val i = length - 1 - seekIndex(str, MARK_QUOTATION, 1, length - 2, false)
             if (i > 1) {
                 if (!match(MARK_QUOTATION_BEFORE, str[i - 1])) {
-                    return "${str.substring(0, i)}\n${str.substring(i)}"
+                    return "${str.take(i)}\n${str.substring(i)}"
                 }
             }
         }
@@ -347,7 +347,7 @@ object ContentHelp {
             var j = 0
             var progress = 0
             var nextLine = -1
-            if (insN.size > 0) nextLine = insN[j]
+            if (insN.isNotEmpty()) nextLine = insN[j]
             var gain = 3
             var min = 0
             var trigger = 2
@@ -425,7 +425,7 @@ object ContentHelp {
         var j = 0
         var progress = 0
         var nextLine = -1
-        if (insN.size > 0) nextLine = insN[j]
+        if (insN.isNotEmpty()) nextLine = insN[j]
         for (i in arrayQuote.indices) {
             val qutoe = arrayQuote[i]
 

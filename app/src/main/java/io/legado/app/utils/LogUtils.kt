@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package io.legado.app.utils
 
 import android.annotation.SuppressLint
@@ -21,7 +19,6 @@ import java.util.logging.Logger
 import kotlin.time.Duration.Companion.days
 
 @SuppressLint("SimpleDateFormat")
-@Suppress("unused")
 object LogUtils {
     const val TIME_PATTERN = "yy-MM-dd HH:mm:ss.SSS"
     val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN) }

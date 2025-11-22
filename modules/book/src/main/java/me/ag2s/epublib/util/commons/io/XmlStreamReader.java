@@ -120,18 +120,6 @@ public class XmlStreamReader extends Reader {
     private final String defaultEncoding;
 
     /**
-     * Returns the default encoding to use if none is set in HTTP content-type,
-     * XML prolog and the rules based on content-type are not adequate.
-     * <p>
-     * If it is NULL the content-type based rules are used.
-     *
-     * @return the default encoding to use.
-     */
-    public String getDefaultEncoding() {
-        return defaultEncoding;
-    }
-
-    /**
      * Creates a Reader for a File.
      * <p>
      * It looks for the UTF-8 BOM first, if none sniffs the XML prolog charset,
@@ -533,42 +521,46 @@ public class XmlStreamReader extends Reader {
         }
 
         // BOM is UTF-8
-        if (bomEnc.equals(UTF_8)) {
-            if (xmlGuessEnc != null && !xmlGuessEnc.equals(UTF_8)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+        switch (bomEnc) {
+            case UTF_8 -> {
+                if (xmlGuessEnc != null && !xmlGuessEnc.equals(UTF_8)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                if (xmlEnc != null && !xmlEnc.equals(UTF_8)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                return bomEnc;
             }
-            if (xmlEnc != null && !xmlEnc.equals(UTF_8)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
-            }
-            return bomEnc;
-        }
 
-        // BOM is UTF-16BE or UTF-16LE
-        if (bomEnc.equals(UTF_16BE) || bomEnc.equals(UTF_16LE)) {
-            if (xmlGuessEnc != null && !xmlGuessEnc.equals(bomEnc)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
-            }
-            if (xmlEnc != null && !xmlEnc.equals(UTF_16) && !xmlEnc.equals(bomEnc)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
-            }
-            return bomEnc;
-        }
 
-        // BOM is UTF-32BE or UTF-32LE
-        if (bomEnc.equals(UTF_32BE) || bomEnc.equals(UTF_32LE)) {
-            if (xmlGuessEnc != null && !xmlGuessEnc.equals(bomEnc)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+            // BOM is UTF-16BE or UTF-16LE
+            case UTF_16BE, UTF_16LE -> {
+                if (xmlGuessEnc != null && !xmlGuessEnc.equals(bomEnc)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                if (xmlEnc != null && !xmlEnc.equals(UTF_16) && !xmlEnc.equals(bomEnc)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                return bomEnc;
             }
-            if (xmlEnc != null && !xmlEnc.equals(UTF_32) && !xmlEnc.equals(bomEnc)) {
-                final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
-                throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+
+
+            // BOM is UTF-32BE or UTF-32LE
+            case UTF_32BE, UTF_32LE -> {
+                if (xmlGuessEnc != null && !xmlGuessEnc.equals(bomEnc)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                if (xmlEnc != null && !xmlEnc.equals(UTF_32) && !xmlEnc.equals(bomEnc)) {
+                    final String msg = MessageFormat.format(RAW_EX_1, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                return bomEnc;
             }
-            return bomEnc;
         }
 
         // BOM is something else
@@ -619,39 +611,44 @@ public class XmlStreamReader extends Reader {
         }
 
         // UTF-16BE or UTF-16LE content type encoding
-        if (cTEnc.equals(UTF_16BE) || cTEnc.equals(UTF_16LE)) {
-            if (bomEnc != null) {
-                final String msg = MessageFormat.format(HTTP_EX_1, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+        switch (cTEnc) {
+            case UTF_16BE, UTF_16LE -> {
+                if (bomEnc != null) {
+                    final String msg = MessageFormat.format(HTTP_EX_1, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                return cTEnc;
+            }
+
+
+            // UTF-16 content type encoding
+            case UTF_16 -> {
+                if (bomEnc != null && bomEnc.startsWith(UTF_16)) {
+                    return bomEnc;
+                }
+                final String msg = MessageFormat.format(HTTP_EX_2, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
                 throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
             }
-            return cTEnc;
-        }
 
-        // UTF-16 content type encoding
-        if (cTEnc.equals(UTF_16)) {
-            if (bomEnc != null && bomEnc.startsWith(UTF_16)) {
-                return bomEnc;
+
+            // UTF-32BE or UTF-132E content type encoding
+            case UTF_32BE, UTF_32LE -> {
+                if (bomEnc != null) {
+                    final String msg = MessageFormat.format(HTTP_EX_1, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+                    throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+                }
+                return cTEnc;
             }
-            final String msg = MessageFormat.format(HTTP_EX_2, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
-            throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
-        }
 
-        // UTF-32BE or UTF-132E content type encoding
-        if (cTEnc.equals(UTF_32BE) || cTEnc.equals(UTF_32LE)) {
-            if (bomEnc != null) {
-                final String msg = MessageFormat.format(HTTP_EX_1, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
+
+            // UTF-32 content type encoding
+            case UTF_32 -> {
+                if (bomEnc != null && bomEnc.startsWith(UTF_32)) {
+                    return bomEnc;
+                }
+                final String msg = MessageFormat.format(HTTP_EX_2, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
                 throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
             }
-            return cTEnc;
-        }
-
-        // UTF-32 content type encoding
-        if (cTEnc.equals(UTF_32)) {
-            if (bomEnc != null && bomEnc.startsWith(UTF_32)) {
-                return bomEnc;
-            }
-            final String msg = MessageFormat.format(HTTP_EX_2, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
-            throw new XmlStreamReaderException(msg, cTMime, cTEnc, bomEnc, xmlGuessEnc, xmlEnc);
         }
 
         return cTEnc;
@@ -705,7 +702,7 @@ public class XmlStreamReader extends Reader {
      * Pattern capturing the encoding of the "xml" processing instruction.
      */
     public static final Pattern ENCODING_PATTERN = Pattern.compile(
-            "<\\?xml.*encoding[\\s]*=[\\s]*((?:\".[^\"]*\")|(?:'.[^']*'))",
+            "<\\?xml.*encoding[\\s]*=[\\s]*(\".[^\"]*\"|'.[^']*')",
             Pattern.MULTILINE);
 
     /**

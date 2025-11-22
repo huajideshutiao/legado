@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package io.legado.app.utils
 
 import android.os.Build.VERSION.SDK_INT
@@ -23,7 +21,7 @@ fun buildMainHandler(): Handler {
             Handler.Callback::class.java,
             Boolean::class.javaPrimitiveType // async
         ).newInstance(mainLooper, null, true)
-    } catch (ignored: NoSuchMethodException) {
+    } catch (_: NoSuchMethodException) {
         // Hidden constructor absent. Fall back to non-async constructor.
         Handler(mainLooper)
     }

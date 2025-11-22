@@ -12,7 +12,7 @@ import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import java.util.Locale
 
-class SpeedSliderPopup(private val context: Context) :
+class SpeedSliderPopup(context: Context) :
   PopupWindow(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) {
 
   private val binding = PopupSeekBarBinding.inflate(LayoutInflater.from(context))

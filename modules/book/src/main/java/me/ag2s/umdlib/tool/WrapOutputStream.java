@@ -1,5 +1,7 @@
 package me.ag2s.umdlib.tool;
 
+import androidx.annotation.NonNull;
+
 import java.io.IOException;
 import java.io.OutputStream;
 
@@ -22,15 +24,11 @@ public class WrapOutputStream extends OutputStream {
 
     // it is different from the writeInt of DataOutputStream
     public void writeInt(int v) throws IOException {
-        os.write((v >>> 0) & 0xFF);
+        os.write((v) & 0xFF);
         os.write((v >>> 8) & 0xFF);
         os.write((v >>> 16) & 0xFF);
         os.write((v >>> 24) & 0xFF);
         incCount(4);
-    }
-
-    public void writeByte(byte b) throws IOException {
-        write(b);
     }
 
     public void writeByte(int n) throws IOException {
@@ -80,6 +78,7 @@ public class WrapOutputStream extends OutputStream {
         return os.hashCode();
     }
 
+    @NonNull
     public String toString() {
         return os.toString();
     }

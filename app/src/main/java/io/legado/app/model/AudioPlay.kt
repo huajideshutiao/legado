@@ -29,6 +29,7 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
 import org.mozilla.javascript.NativeArray
 import splitties.init.appCtx
 
@@ -147,7 +148,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             val musicCover = bookSource.getContentRule().musicCover
             if (!musicCover.isNullOrBlank()) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
-                analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
+                analyzeRule.setCoroutineContext(currentCoroutineContext())
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
                 durCoverUrl = analyzeRule.evalJS(musicCover).toString()
@@ -170,7 +171,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             var durLrcContent: NativeArray?
             if (!lrcRule.isNullOrBlank() && context == activityContext) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
-                analyzeRule.setCoroutineContext(kotlin.coroutines.coroutineContext)
+                analyzeRule.setCoroutineContext(currentCoroutineContext())
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
                 durLrcContent = analyzeRule.evalJS(lrcRule) as NativeArray
@@ -189,7 +190,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                         var ms = 0
                         if (split > 6) {
                             ms = line.substring(7, split).toInt()
-                            ms = ms * (if (split == 10) 1 else 10)
+                            ms *= (if (split == 10) 1 else 10)
                         }
                         if (split == 8) sec = line[4].code
                         val time = min * 60_000 + sec * 1000 + ms

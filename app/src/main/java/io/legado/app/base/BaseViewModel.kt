@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlin.coroutines.CoroutineContext
 
-@Suppress("unused")
 open class BaseViewModel(application: Application) : AndroidViewModel(application) {
 
     val context: Context by lazy { this.getApplication<App>() }

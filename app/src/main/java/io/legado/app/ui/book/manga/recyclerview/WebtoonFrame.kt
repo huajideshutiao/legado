@@ -22,13 +22,6 @@ class WebtoonFrame : FrameLayout {
     private val scaleDetector = ScaleGestureDetector(context, ScaleListener())
     private val flingDetector = GestureDetector(context, FlingListener())
 
-    var doubleTapZoom = true
-        set(value) {
-            field = value
-            recycler?.doubleTapZoom = value
-            scaleDetector.isQuickScaleEnabled = value
-        }
-
     var disableMangaScale = false
 
     private val recycler: WebtoonRecyclerView?

@@ -325,7 +325,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         val bookChapter = chapters[chapterIndex]
         var title = bookChapter.title.trim()
         if (title.length > 20) {
-            title = title.substring(0, 20) + "…"
+            title = title.take(20) + "…"
         }
         val startTime = System.currentTimeMillis()
         val pair = try {

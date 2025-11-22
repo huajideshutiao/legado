@@ -1,6 +1,5 @@
 package io.legado.app.utils
 
-@Suppress("unused")
 class Throttle<T>(
     wait: Long = 0L,
     leading: Boolean = true,

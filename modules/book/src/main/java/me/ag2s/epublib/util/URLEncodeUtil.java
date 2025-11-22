@@ -9,7 +9,7 @@ import kotlin.text.Charsets;
 
 public class URLEncodeUtil {
 
-    static BitSet dontNeedEncoding;
+    static final BitSet dontNeedEncoding;
     static final int caseDiff = ('a' - 'A');
 
     static {

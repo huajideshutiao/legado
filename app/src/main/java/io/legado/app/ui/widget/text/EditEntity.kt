@@ -21,7 +21,6 @@ data class EditEntity(
         viewType
     )
 
-    @Suppress("unused")
     object ViewType {
 
         const val checkBox = 1

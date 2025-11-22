@@ -1,5 +1,6 @@
 package me.ag2s.epublib.browsersupport;
 
+import java.io.Serial;
 import java.util.EventObject;
 
 import me.ag2s.epublib.domain.EpubBook;
@@ -15,6 +16,7 @@ import me.ag2s.epublib.util.StringUtil;
 @SuppressWarnings("unused")
 public class NavigationEvent extends EventObject {
 
+    @Serial
     private static final long serialVersionUID = -6346750144308952762L;
 
     private Resource oldResource;

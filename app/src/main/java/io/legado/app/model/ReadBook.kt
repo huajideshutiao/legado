@@ -503,11 +503,6 @@ object ReadBook : CoroutineScope by MainScope() {
             return curTextChapter?.getPageIndexByCharIndex(durChapterPos) ?: durChapterPos
         }
 
-    /**
-     * 是否排版到了当前阅读位置
-     */
-    val isLayoutAvailable inline get() = durPageIndex >= 0
-
     val isScroll inline get() = pageAnim() == scrollPageAnim
 
     val contentLoadFinish get() = curTextChapter != null || msg != null

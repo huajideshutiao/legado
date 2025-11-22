@@ -1,5 +1,6 @@
 package me.ag2s.epublib.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -21,6 +22,7 @@ import java.util.Set;
  */
 public class TableOfContents implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = -3147391239966275152L;
 
     public static final String DEFAULT_PATH_SEPARATOR = "/";
@@ -37,10 +39,6 @@ public class TableOfContents implements Serializable {
 
     public List<TOCReference> getTocReferences() {
         return tocReferences;
-    }
-
-    public void setTocReferences(List<TOCReference> tocReferences) {
-        this.tocReferences = tocReferences;
     }
 
     /**

@@ -125,10 +125,10 @@ data class BookChapter(
                         if (mDisplayTitle.isNotBlank()) {
                             displayTitle = mDisplayTitle
                         }
-                    } catch (e: RegexTimeoutException) {
+                    } catch (_: RegexTimeoutException) {
                         item.isEnabled = false
                         appDb.replaceRuleDao.update(item)
-                    } catch (e: CancellationException) {
+                    } catch (_: CancellationException) {
                         return@run
                     } catch (e: Exception) {
                         AppLog.put("${item.name}替换出错\n替换内容\n${displayTitle}", e)
@@ -160,7 +160,6 @@ data class BookChapter(
     }
 
     @SuppressLint("DefaultLocale")
-    @Suppress("unused")
     fun getFileName(suffix: String = "nb"): String {
         ensureTitleMD5Init()
         return String.format("%05d-%s.%s", index, titleMD5, suffix)

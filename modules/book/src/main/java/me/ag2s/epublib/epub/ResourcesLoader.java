@@ -62,7 +62,7 @@ public class ResourcesLoader {
         while (entries.hasMoreElements()) {
             ZipEntryWrapper zipEntry = new ZipEntryWrapper(entries.nextElement());
 
-            if (zipEntry == null || zipEntry.isDirectory()) {
+            if (zipEntry.isDirectory()) {
                 continue;
             }
 

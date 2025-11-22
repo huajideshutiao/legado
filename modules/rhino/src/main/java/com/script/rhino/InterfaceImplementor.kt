@@ -40,7 +40,6 @@ import java.security.PrivilegedExceptionAction
  * @author Mike Grogan
  * @since 1.6
  */
-@Suppress("UNUSED_PARAMETER")
 open class InterfaceImplementor(private val engine: Invocable) {
     @Throws(ScriptException::class)
     fun <T> getInterface(obj: Any?, clazz: Class<T>?): T? {
@@ -72,7 +71,7 @@ open class InterfaceImplementor(private val engine: Invocable) {
     }
 
     @Throws(ScriptException::class)
-    protected fun convertArguments(method: Method?, args: Array<Any>): Array<Any> {
+    protected fun convertArguments(args: Array<Any>): Array<Any> {
         return args
     }
 
@@ -83,7 +82,7 @@ open class InterfaceImplementor(private val engine: Invocable) {
 
         @Throws(Throwable::class)
         override fun invoke(proxy: Any, method: Method, args: Array<Any>): Any? {
-            val finalArgs = convertArguments(method, args)
+            val finalArgs = convertArguments(args)
             val result = AccessController.doPrivileged(PrivilegedExceptionAction {
                 if (obj == null) engine.invokeFunction(method.name, *finalArgs)
                 else engine.invokeMethod(obj, method.name, *finalArgs)

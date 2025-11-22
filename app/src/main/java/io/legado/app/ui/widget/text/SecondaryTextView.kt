@@ -8,7 +8,6 @@ import io.legado.app.lib.theme.secondaryTextColor
 /**
  * @author Aidan Follestad (afollestad)
  */
-@Suppress("unused")
 class SecondaryTextView(context: Context, attrs: AttributeSet) :
     AppCompatTextView(context, attrs) {
 

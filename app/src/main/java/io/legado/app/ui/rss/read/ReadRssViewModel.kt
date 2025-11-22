@@ -25,6 +25,7 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.util.Date
 import kotlin.coroutines.coroutineContext
@@ -87,7 +88,7 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             mUrl = url,
             baseUrl = baseUrl,
             source = rssSource,
-            coroutineContext = coroutineContext,
+            coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
         urlLiveData.postValue(analyzeUrl)

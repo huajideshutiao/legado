@@ -336,7 +336,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun removeErrorLine(lineNum: Int) {
         mErrorHashSet.remove(lineNum)
-        hasErrors = mErrorHashSet.size > 0
+        hasErrors = mErrorHashSet.isNotEmpty()
     }
 
     fun removeAllErrorLines() {

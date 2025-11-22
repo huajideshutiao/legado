@@ -15,7 +15,7 @@ class FilePathLoader : ModelLoader<String, File> {
         width: Int,
         height: Int,
         options: com.bumptech.glide.load.Options
-    ): ModelLoader.LoadData<File>? {
+    ): ModelLoader.LoadData<File> {
         return ModelLoader.LoadData(ObjectKey(model), FilePathFetcher(model))
     }
 

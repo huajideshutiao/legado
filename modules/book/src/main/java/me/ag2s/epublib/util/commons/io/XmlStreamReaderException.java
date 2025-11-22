@@ -18,6 +18,7 @@ package me.ag2s.epublib.util.commons.io;
  */
 
 import java.io.IOException;
+import java.io.Serial;
 
 /**
  * The XmlStreamReaderException is thrown by the XmlStreamReader constructors if
@@ -34,6 +35,7 @@ import java.io.IOException;
  */
 public class XmlStreamReaderException extends IOException {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final String bomEncoding;
@@ -112,17 +114,6 @@ public class XmlStreamReaderException extends IOException {
      */
     public String getXmlEncoding() {
         return xmlEncoding;
-    }
-
-    /**
-     * Returns the MIME type in the content-type used to attempt determining the
-     * encoding.
-     *
-     * @return the MIME type in the content-type, null if there was not
-     * content-type or the encoding detection did not involve HTTP.
-     */
-    public String getContentTypeMime() {
-        return contentTypeMime;
     }
 
     /**

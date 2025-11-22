@@ -2,7 +2,6 @@ package io.legado.app.lib.permission
 
 import androidx.annotation.StringRes
 
-@Suppress("unused")
 class PermissionsCompat private constructor() {
 
     private var request: Request? = null

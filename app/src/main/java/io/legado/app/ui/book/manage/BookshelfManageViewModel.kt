@@ -41,30 +41,6 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
     private var loadChapterCoroutine: Coroutine<Unit>? = null
     val cacheChapters = hashMapOf<String, HashSet<String>>()
 
-    fun loadCacheFiles(books: List<Book>) {
-        loadChapterCoroutine?.cancel()
-        loadChapterCoroutine = execute {
-            books.forEach { book ->
-                if (!book.isLocal && !cacheChapters.contains(book.bookUrl)) {
-                    val chapterCaches = hashSetOf<String>()
-                    val cacheNames = BookHelp.getChapterFiles(book)
-                    if (cacheNames.isNotEmpty()) {
-                        appDb.bookChapterDao.getChapterList(book.bookUrl).also {
-                            book.totalChapterNum = it.size
-                        }.forEach { chapter ->
-                            if (cacheNames.contains(chapter.getFileName()) || chapter.isVolume) {
-                                chapterCaches.add(chapter.url)
-                            }
-                        }
-                    }
-                    cacheChapters[book.bookUrl] = chapterCaches
-                    upAdapterLiveData.sendValue(book.bookUrl)
-                }
-                ensureActive()
-            }
-        }
-    }
-
     fun upCanUpdate(books: List<Book>, canUpdate: Boolean) {
         execute {
             val array = Array(books.size) {
@@ -160,7 +136,6 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
         }
     }
 
-
     fun exportBookshelf(books: List<Book>?, success: (file: File) -> Unit) {
         execute {
             books?.let {
@@ -194,5 +169,30 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
             context.toastOnUi("导出书籍出错\n${it.localizedMessage}")
         }
     }
+
+    fun loadCacheFiles(books: List<Book>) {
+        loadChapterCoroutine?.cancel()
+        loadChapterCoroutine = execute {
+            books.forEach { book ->
+                if (!book.isLocal && !cacheChapters.contains(book.bookUrl)) {
+                    val chapterCaches = hashSetOf<String>()
+                    val cacheNames = BookHelp.getChapterFiles(book)
+                    if (cacheNames.isNotEmpty()) {
+                        appDb.bookChapterDao.getChapterList(book.bookUrl).also {
+                            book.totalChapterNum = it.size
+                        }.forEach { chapter ->
+                            if (cacheNames.contains(chapter.getFileName()) || chapter.isVolume) {
+                                chapterCaches.add(chapter.url)
+                            }
+                        }
+                    }
+                    cacheChapters[book.bookUrl] = chapterCaches
+                    upAdapterLiveData.sendValue(book.bookUrl)
+                }
+                ensureActive()
+            }
+        }
+    }
+
 
 }

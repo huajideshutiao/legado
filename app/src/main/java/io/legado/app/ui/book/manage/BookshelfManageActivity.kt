@@ -360,6 +360,7 @@ class BookshelfManageActivity :
                 .conflate().collect {
                     books = it
                     upBookData()
+                    viewModel.loadCacheFiles(it)
                     itemTouchCallback.isCanDrag = bookSort == 3
                 }
         }

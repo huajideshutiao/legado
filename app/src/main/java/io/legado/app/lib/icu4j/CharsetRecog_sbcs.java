@@ -30,7 +30,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
         private int ngram = 0;
 
         private final int[] ngramList;
-        protected byte[] byteMap;
+        protected final byte[] byteMap;
 
         private int ngramCount;
         private int hitCount;
@@ -160,7 +160,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     static class NGramParser_IBM420 extends NGramParser {
         private byte alef = 0x00;
 
-        protected static byte[] unshapeMap = {
+        protected static final byte[] unshapeMap = {
 /*                 -0           -1           -2           -3           -4           -5           -6           -7           -8           -9           -A           -B           -C           -D           -E           -F   */
 /* 0- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,
 /* 1- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,
@@ -270,8 +270,8 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     static class NGramsPlusLang {
-        int[] fNGrams;
-        String fLang;
+        final int[] fNGrams;
+        final String fLang;
 
         NGramsPlusLang(String la, int[] ng) {
             fLang = la;
@@ -280,7 +280,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     static class CharsetRecog_8859_1 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -433,7 +433,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
 
 
     static class CharsetRecog_8859_2 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -527,7 +527,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
 
 
     abstract static class CharsetRecog_8859_5 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -589,7 +589,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     abstract static class CharsetRecog_8859_6 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -651,7 +651,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     abstract static class CharsetRecog_8859_7 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -714,7 +714,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     abstract static class CharsetRecog_8859_8 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -804,7 +804,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     abstract static class CharsetRecog_8859_9 extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
                 (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20, (byte) 0x20,
@@ -1047,7 +1047,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
     }
 
     abstract static class CharsetRecog_IBM424_he extends CharsetRecog_sbcs {
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
 /*                 -0           -1           -2           -3           -4           -5           -6           -7           -8           -9           -A           -B           -C           -D           -E           -F   */
 /* 0- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,
 /* 1- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,
@@ -1116,7 +1116,7 @@ abstract class CharsetRecog_sbcs extends CharsetRecognizer {
 
     abstract static class CharsetRecog_IBM420_ar extends CharsetRecog_sbcs {
 
-        protected static byte[] byteMap = {
+        protected static final byte[] byteMap = {
 /*                 -0           -1           -2           -3           -4           -5           -6           -7           -8           -9           -A           -B           -C           -D           -E           -F   */
 /* 0- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,
 /* 1- */    (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40, (byte) 0x40,

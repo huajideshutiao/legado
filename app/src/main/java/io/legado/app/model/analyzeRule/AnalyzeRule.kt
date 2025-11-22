@@ -48,7 +48,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * 解析规则获取结果
  */
 @Keep
-@Suppress("unused", "RegExpRedundantEscape", "MemberVisibilityCanBePrivate")
+@Suppress("unused", "RegExpRedundantEscape")
 class AnalyzeRule(
     private var ruleData: RuleDataInterface? = null,
     private val source: BaseSource? = null,

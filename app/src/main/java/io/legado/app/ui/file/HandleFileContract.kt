@@ -12,7 +12,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.putJson
 import splitties.init.appCtx
 
-@Suppress("unused")
 class HandleFileContract :
     ActivityResultContract<(HandleFileContract.HandleFileParam.() -> Unit)?, HandleFileContract.Result>() {
 

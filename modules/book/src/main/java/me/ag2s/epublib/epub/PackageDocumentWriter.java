@@ -105,7 +105,7 @@ public class PackageDocumentWriter extends PackageDocumentBase {
             serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.properties, NCXDocumentV3.V3_NCX_PROPERTIES);
             serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.id, NCXDocumentV3.NCX_ITEM_ID);
             serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.href, NCXDocumentV3.DEFAULT_NCX_HREF);
-            serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.media_type, NCXDocumentV3.V3_NCX_MEDIATYPE.getName());
+            serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.media_type, NCXDocumentV3.V3_NCX_MEDIATYPE.name());
         } else {
             serializer.attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.id,
                     epubWriter.getNcxId());
@@ -170,7 +170,7 @@ public class PackageDocumentWriter extends PackageDocumentBase {
                 resource.getHref());
         serializer
                 .attribute(EpubWriter.EMPTY_NAMESPACE_PREFIX, OPFAttributes.media_type,
-                        resource.getMediaType().getName());
+                        resource.getMediaType().name());
         serializer.endTag(NAMESPACE_OPF, OPFTags.item);
     }
 

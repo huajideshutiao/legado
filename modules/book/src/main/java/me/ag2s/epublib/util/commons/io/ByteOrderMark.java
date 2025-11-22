@@ -19,6 +19,7 @@ package me.ag2s.epublib.util.commons.io;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.nio.charset.Charset;
 import java.util.Locale;
 
 /**
@@ -30,7 +31,7 @@ import java.util.Locale;
  * (Non-Normative)</a>
  * @since 2.0
  */
-public class ByteOrderMark implements Serializable {
+public record ByteOrderMark(String charsetName, int... bytes) implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -73,9 +74,6 @@ public class ByteOrderMark implements Serializable {
     @SuppressWarnings("unused")
     public static final char UTF_BOM = '\uFEFF';
 
-    private final String charsetName;
-    private final int[] bytes;
-
     /**
      * Construct a new BOM.
      *
@@ -99,11 +97,12 @@ public class ByteOrderMark implements Serializable {
     }
 
     /**
-     * Return the name of the {@link java.nio.charset.Charset} the BOM represents.
+     * Return the name of the {@link Charset} the BOM represents.
      *
      * @return the character set name
      */
-    public String getCharsetName() {
+    @Override
+    public String charsetName() {
         return charsetName;
     }
 
@@ -166,7 +165,7 @@ public class ByteOrderMark implements Serializable {
      * Return the hashcode for this BOM.
      *
      * @return the hashcode for this BOM.
-     * @see java.lang.Object#hashCode()
+     * @see Object#hashCode()
      */
     @Override
     public int hashCode() {

@@ -19,7 +19,6 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
 
-@Suppress("unused")
 class AutoCompleteTextView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null

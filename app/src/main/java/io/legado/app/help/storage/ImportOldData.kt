@@ -373,7 +373,7 @@ object ImportOldData {
             map["method"] = "POST"
             map["body"] = urlList[1]
         }
-        if (map.size > 0) {
+        if (map.isNotEmpty()) {
             url += "," + GSON.toJson(map)
         }
         return url

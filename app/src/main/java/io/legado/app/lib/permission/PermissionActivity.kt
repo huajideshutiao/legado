@@ -113,7 +113,7 @@ class PermissionActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                        intent.setData(Uri.parse("package:$packageName"))
+                        intent.data = Uri.parse("package:$packageName")
                         val className =
                             "com.android.settings.fuelgauge.RequestIgnoreBatteryOptimizations"
                         val activities = packageManager.queryIntentActivities(

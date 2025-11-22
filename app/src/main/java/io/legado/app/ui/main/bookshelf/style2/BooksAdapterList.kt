@@ -15,7 +15,6 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
-@Suppress("UNUSED_PARAMETER")
 class BooksAdapterList(context: Context, callBack: CallBack) :
     BaseBooksAdapter<RecyclerView.ViewHolder>(context, callBack) {
 
@@ -47,7 +46,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
     inner class BookViewHolder(val binding: ItemBookshelfListBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun onBind(item: Book, position: Int) = binding.run {
+        fun onBind(item: Book) = binding.run {
             tvName.text = item.name
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
@@ -62,7 +61,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
-                onBind(item, position)
+                onBind(item)
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle
@@ -117,7 +116,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
     inner class GroupViewHolder(val binding: ItemBookshelfListGroupBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun onBind(item: BookGroup, position: Int) = binding.run {
+        fun onBind(item: BookGroup) = binding.run {
             tvName.text = item.groupName
             ivCover.load(item.cover, inBookshelf = true)
             flHasNew.gone()
@@ -131,7 +130,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
 
         fun onBind(item: BookGroup, position: Int, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
-                onBind(item, position)
+                onBind(item)
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle

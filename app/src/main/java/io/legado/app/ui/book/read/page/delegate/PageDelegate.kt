@@ -53,8 +53,6 @@ abstract class PageDelegate(protected val readView: ReadView) {
     var isRunning = false
     var isStarted = false
 
-    private var selectedOnDown = false
-
     init {
         curPage.resetPageOffset()
     }

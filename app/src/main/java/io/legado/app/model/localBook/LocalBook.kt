@@ -49,6 +49,7 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.printOnDebug
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
@@ -59,7 +60,6 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
-import kotlin.coroutines.coroutineContext
 
 /**
  * 书籍文件导入 目录正文解析
@@ -404,7 +404,7 @@ object LocalBook {
         val inputStream = when {
             str.isAbsUrl() -> AnalyzeUrl(
                 str, source = source, callTimeout = 0,
-                coroutineContext = coroutineContext
+                coroutineContext = currentCoroutineContext()
             ).getInputStreamAwait()
 
             str.isDataUrl() -> ByteArrayInputStream(
@@ -459,7 +459,7 @@ object LocalBook {
     fun isOnBookShelf(
         fileName: String
     ): Boolean {
-        return appDb.bookDao.hasFile(fileName) == true
+        return appDb.bookDao.hasFile(fileName)
     }
 
     //文件类书源 合并在线书籍信息 在线 > 本地

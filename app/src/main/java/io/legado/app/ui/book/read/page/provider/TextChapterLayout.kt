@@ -117,21 +117,6 @@ class TextChapterLayout(
         job.start()
     }
 
-    fun setProgressListener(l: LayoutProgressListener?) {
-        try {
-            if (isCompleted) {
-                // no op
-            } else if (exception != null) {
-                l?.onLayoutException(exception!!)
-            } else {
-                listener = l
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            AppLog.put("调用布局进度监听回调出错\n${e.localizedMessage}", e)
-        }
-    }
-
     fun cancel() {
         job.cancel()
         listener = null

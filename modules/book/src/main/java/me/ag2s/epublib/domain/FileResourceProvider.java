@@ -11,7 +11,7 @@ import java.io.InputStream;
 
 public class FileResourceProvider implements LazyResourceProvider {
     //需要导入资源的父目录
-    String dir;
+    final String dir;
 
     /**
      * 创建一个文件夹里面文件夹的LazyResourceProvider，用于LazyResource。

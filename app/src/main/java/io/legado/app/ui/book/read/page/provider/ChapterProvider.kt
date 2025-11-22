@@ -10,7 +10,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.core.os.postDelayed
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -33,7 +32,6 @@ import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.spToPx
-import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.textHeight
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
@@ -155,164 +153,6 @@ object ChapterProvider {
 
     init {
         upStyle()
-    }
-
-    /**
-     * 获取拆分完的章节数据
-     */
-    suspend fun getTextChapter(
-        book: Book,
-        bookChapter: BookChapter,
-        displayTitle: String,
-        bookContent: BookContent,
-        chapterSize: Int,
-    ): TextChapter {
-        val contents = bookContent.textList
-        val textPages = arrayListOf<TextPage>()
-        val stringBuilder = StringBuilder()
-        var absStartX = paddingLeft
-        var durY = 0f
-        textPages.add(TextPage())
-        if (ReadBookConfig.titleMode != 2 || bookChapter.isVolume) {
-            //标题非隐藏
-            displayTitle.splitNotBlank("\n").forEach { text ->
-                setTypeText(
-                    book, absStartX, durY,
-                    if (AppConfig.enableReview) text + reviewChar else text,
-                    textPages,
-                    stringBuilder,
-                    titlePaint,
-                    titlePaintTextHeight,
-                    titlePaintFontMetrics,
-                    isTitle = true,
-                    emptyContent = contents.isEmpty(),
-                    isVolumeTitle = bookChapter.isVolume
-                ).let {
-                    absStartX = it.first
-                    durY = it.second
-                }
-            }
-            textPages.last().lines.last().isParagraphEnd = true
-            stringBuilder.append("\n")
-            durY += titleBottomSpacing
-        }
-        contents.forEach { content ->
-            if (book.getImageStyle().equals(Book.imgStyleText, true)) {
-                //图片样式为文字嵌入类型
-                var text = content.replace(srcReplaceChar, "▣")
-                val srcList = LinkedList<String>()
-                val sb = StringBuffer()
-                val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    matcher.group(1)?.let { src ->
-                        srcList.add(src)
-                        matcher.appendReplacement(sb, srcReplaceChar)
-                    }
-                }
-                matcher.appendTail(sb)
-                text = sb.toString()
-                setTypeText(
-                    book,
-                    absStartX,
-                    durY,
-                    text,
-                    textPages,
-                    stringBuilder,
-                    contentPaint,
-                    contentPaintTextHeight,
-                    contentPaintFontMetrics,
-                    srcList = srcList
-                ).let {
-                    absStartX = it.first
-                    durY = it.second
-                }
-            } else {
-                val matcher = AppPattern.imgPattern.matcher(content)
-                var start = 0
-                while (matcher.find()) {
-                    val text = content.substring(start, matcher.start())
-                    if (text.isNotBlank()) {
-                        setTypeText(
-                            book,
-                            absStartX,
-                            durY,
-                            text,
-                            textPages,
-                            stringBuilder,
-                            contentPaint,
-                            contentPaintTextHeight,
-                            contentPaintFontMetrics
-                        ).let {
-                            absStartX = it.first
-                            durY = it.second
-                        }
-                    }
-                    setTypeImage(
-                        book,
-                        matcher.group(1)!!,
-                        absStartX,
-                        durY,
-                        textPages,
-                        contentPaintTextHeight,
-                        stringBuilder,
-                        book.getImageStyle()
-                    ).let {
-                        absStartX = it.first
-                        durY = it.second
-                    }
-                    start = matcher.end()
-                }
-                if (start < content.length) {
-                    val text = content.substring(start, content.length)
-                    if (text.isNotBlank()) {
-                        setTypeText(
-                            book, absStartX, durY,
-                            if (AppConfig.enableReview) text + reviewChar else text,
-                            textPages,
-                            stringBuilder,
-                            contentPaint,
-                            contentPaintTextHeight,
-                            contentPaintFontMetrics
-                        ).let {
-                            absStartX = it.first
-                            durY = it.second
-                        }
-                    }
-                }
-            }
-            textPages.last().lines.last().isParagraphEnd = true
-            stringBuilder.append("\n")
-        }
-        val textPage = textPages.last()
-        val endPadding = 20.dpToPx()
-        val durYPadding = durY + endPadding
-        if (textPage.height < durYPadding) {
-            textPage.height = durYPadding
-        } else {
-            textPage.height += endPadding
-        }
-        textPage.text = stringBuilder.toString()
-        textPages.forEachIndexed { index, item ->
-            item.index = index
-            //item.pageSize = textPages.size
-            item.chapterIndex = bookChapter.index
-            item.chapterSize = chapterSize
-            item.title = displayTitle
-            item.doublePage = doublePage
-            item.paddingTop = paddingTop
-            item.upLinesPosition()
-        }
-
-        return TextChapter(
-            bookChapter,
-            bookChapter.index, displayTitle,
-            //textPages,
-            chapterSize,
-            bookContent.sameTitleRemoved,
-            bookChapter.isVip,
-            bookChapter.isPay,
-            bookContent.effectiveReplaceRules
-        )
     }
 
     fun getTextChapterAsync(

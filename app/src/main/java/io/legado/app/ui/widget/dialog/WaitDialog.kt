@@ -4,8 +4,6 @@ import android.app.Dialog
 import android.content.Context
 import io.legado.app.databinding.DialogWaitBinding
 
-
-@Suppress("unused")
 class WaitDialog(context: Context) : Dialog(context) {
 
     val binding = DialogWaitBinding.inflate(layoutInflater)

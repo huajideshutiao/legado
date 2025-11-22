@@ -17,7 +17,7 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
     private val childSeekBar: VerticalSeekBar?
         get() {
             val child = if (childCount > 0) getChildAt(0) else null
-            return if (child is VerticalSeekBar) child else null
+            return child as? VerticalSeekBar
         }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {

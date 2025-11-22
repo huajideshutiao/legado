@@ -32,6 +32,7 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -44,7 +45,6 @@ import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.util.concurrent.Executors
-import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 
 /**
@@ -139,7 +139,7 @@ class CheckSourceService : BaseService() {
         }.onSuccess {
             Debug.updateFinalMessage(source.bookSourceUrl, "校验成功")
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             when (it) {
                 is TimeoutCancellationException -> source.addGroup("校验超时")
                 is ScriptException, is WrappedException -> source.addGroup("js失效")

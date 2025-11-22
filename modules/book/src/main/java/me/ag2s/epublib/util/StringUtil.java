@@ -29,7 +29,7 @@ public class StringUtil {
         List<String> parts = new ArrayList<>(Arrays.asList(stringParts));
         for (int i = 0; i < parts.size() - 1; i++) {
             String currentDir = parts.get(i);
-            if (currentDir.length() == 0 || currentDir.equals(".")) {
+            if (currentDir.isEmpty() || currentDir.equals(".")) {
                 parts.remove(i);
                 i--;
             } else if (currentDir.equals("..")) {
@@ -86,7 +86,7 @@ public class StringUtil {
      * @return Whether the given string is null or zero-length.
      */
     public static boolean isEmpty(String text) {
-        return (text == null) || (text.length() == 0);
+        return (text == null) || (text.isEmpty());
     }
 
     /**
@@ -290,7 +290,7 @@ public class StringUtil {
         StringBuilder body = new StringBuilder();
         for (String s : text.split("\\r?\\n")) {
             s = s.replaceAll("^\\s+|\\s+$", "");
-            if (s.length() > 0) {
+            if (!s.isEmpty()) {
                 //段落为一张图片才认定为图片章节/漫画并启用多看单图优化，否则认定为普通文字夹杂着的图片文字。
                 if (s.matches("(?i)^<img\\s([^>]+)/?>$")) {
                     body.append(s.replaceAll("(?i)^<img\\s([^>]+)/?>$",

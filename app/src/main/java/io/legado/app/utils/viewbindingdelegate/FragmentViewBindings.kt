@@ -1,4 +1,4 @@
-@file:Suppress("RedundantVisibilityModifier", "unused", "UnusedReceiverParameter")
+@file:Suppress("RedundantVisibilityModifier", "UnusedReceiverParameter")
 @file:JvmName("ReflectionFragmentViewBindings")
 
 package io.legado.app.utils.viewbindingdelegate

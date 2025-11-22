@@ -1,9 +1,11 @@
 package me.ag2s.epublib.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 public class ResourceReference implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 2596967243557743048L;
 
     protected Resource resource;

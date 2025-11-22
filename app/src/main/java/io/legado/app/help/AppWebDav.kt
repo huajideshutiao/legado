@@ -199,17 +199,6 @@ object AppWebDav {
         }
     }
 
-    /**
-     * 下载背景图片
-     */
-    suspend fun downBgs() {
-        authorization ?: return
-        if (!NetworkUtils.isAvailable()) return
-        getAllBgWebDavFiles().getOrThrow()
-            .map { it.displayName }
-            .toSet()
-    }
-
     @Suppress("unused")
     suspend fun exportWebDav(byteArray: ByteArray, fileName: String) {
         if (!NetworkUtils.isAvailable()) return

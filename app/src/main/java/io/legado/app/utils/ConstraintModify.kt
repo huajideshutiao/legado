@@ -5,7 +5,6 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.transition.TransitionManager
 
-@Suppress("unused")
 fun ConstraintLayout.modifyBegin(withAnim: Boolean = false): ConstraintModify.ConstraintBegin {
     val begin = ConstraintModify(this).begin
     if (withAnim) {

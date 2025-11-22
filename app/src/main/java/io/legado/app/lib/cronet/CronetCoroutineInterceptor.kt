@@ -78,7 +78,7 @@ class CronetCoroutineInterceptor(private val cookieJar: CookieJar) : Interceptor
         call: Call,
         readTimeoutMillis: Int
     ): Response =
-        suspendCancellableCoroutine<Response> { coroutine ->
+        suspendCancellableCoroutine { coroutine ->
 
             val callBack = object : AbsCallBack(request, call, readTimeoutMillis) {
                 override fun waitForDone(urlRequest: UrlRequest): Response {

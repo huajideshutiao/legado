@@ -32,7 +32,6 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.isActive
-import java.io.FileFilter
 
 class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
@@ -109,7 +108,7 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 val list = arrayListOf<FileDoc>()
                 context.externalCacheDir
                     ?.getFile("crash")
-                    ?.listFiles(FileFilter { it.isFile })
+                    ?.listFiles { it.isFile }
                     ?.forEach {
                         list.add(FileDoc.fromFile(it))
                     }
