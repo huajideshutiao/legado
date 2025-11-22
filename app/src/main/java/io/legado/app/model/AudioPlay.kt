@@ -529,7 +529,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
         fun upLoading(loading: Boolean)
         fun upCover(url: String)
-        fun upLrc(lrc: List<Pair<Int, String>>?)
+        fun upLrc(lrc: List<Pair<Int, String>>)
 
     }
 
