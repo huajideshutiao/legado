@@ -32,6 +32,7 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import org.mozilla.javascript.NativeArray
 import splitties.init.appCtx
+import kotlin.collections.mutableListOf
 
 @SuppressLint("StaticFieldLeak")
 @Suppress("unused")
@@ -69,7 +70,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
     var durCoverUrl: String? = null
-    var durLrcData: List<Pair<Int, String>>? = null
+    var durLrcData: MutableList<Pair<Int, String>> = mutableListOf()
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -83,18 +84,19 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun upData(book: Book) {
         if (durChapterIndex != book.durChapterIndex) {
             AudioPlay.book = book
-            chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-            simulatedChapterSize = if (book.readSimulating()) {
-                book.simulatedTotalChapterNum()
-            } else {
-                chapterSize
-            }
+            chapterSize = if(book.totalChapterNum!=0) book.totalChapterNum
+            else appDb.bookChapterDao.getChapterCount(book.bookUrl)
+            simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
+            else chapterSize
             stopPlay()
             durChapterIndex = book.durChapterIndex
             durChapterPos = book.durChapterPos
             durPlayUrl = ""
             durAudioSize = 0
             upDurChapter()
+        }else {
+            durCoverUrl?.let { callback?.upCover(it) }
+            if (durLrcData.isNotEmpty()) callback?.upLrc(durLrcData)
         }
 
     }
@@ -169,8 +171,6 @@ object AudioPlay : CoroutineScope by MainScope() {
         Coroutine.async {
             val lrcRule = bookSource.getContentRule().lrcRule
             var durLrcContent: NativeArray? = null
-            val tmp = mutableListOf<Pair<Int, String>>()
-
             if (!lrcRule.isNullOrBlank() && context == activityContext) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
                 analyzeRule.setCoroutineContext(currentCoroutineContext())
@@ -199,30 +199,29 @@ object AudioPlay : CoroutineScope by MainScope() {
                             val time = min * 60_000 + sec * 1000 + ms
                             if (i != 0) {
                                 val index =
-                                    tmp.subList(oldIndex, tmp.size)
+                                    durLrcData.subList(oldIndex, durLrcData.size)
                                         .indexOfFirst { it.first == time }
                                 if (index == -1) return@forEach
                                 oldIndex += index
-                                tmp[oldIndex] = Pair(
+                                durLrcData[oldIndex] = Pair(
                                     time,
-                                    "${tmp[oldIndex].second}\n$textPart"
+                                    "${durLrcData[oldIndex].second}\n$textPart"
                                 )
                             } else {
-                                tmp.add(Pair(time, textPart))
+                                durLrcData.add(Pair(time, textPart))
                             }
                         }
                     }
                 }
             }
-            tmp
         }.onSuccess {
-            durLrcData = it
-            callback?.upLrc(it)
+            callback?.upLrc(durLrcData)
             context.startService<AudioPlayService> {
                 action = IntentAction.playData
             }
         }.onError{
-            callback?.upLrc(mutableListOf<Pair<Int, String>>())
+            durLrcData.clear()
+            callback?.upLrc(mutableListOf())
         }
     }
 
@@ -242,14 +241,15 @@ object AudioPlay : CoroutineScope by MainScope() {
                     return
                 }
                 upLoading(true)
+                durCoverUrl = null
+                getCoverUrl(bookSource, book, chapter)
+                durLrcData.clear()
+                getLrcData(bookSource, book, chapter)
                 WebBook.getContent(this, bookSource, book, chapter)
                     .onSuccess { content ->
                         if (content.isEmpty()) {
                             appCtx.toastOnUi("未获取到资源链接")
                         } else {
-                            getCoverUrl(bookSource, book, chapter)
-                            durLrcData = null
-                            getLrcData(bookSource, book, chapter)
                             contentLoadFinish(chapter, content)
                         }
                     }.onError {
@@ -499,16 +499,14 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
-        durCoverUrl?.let { callback?.upCover(it) }
-        durLrcData?.let {
-            callback?.upLrc(it)
-            context.startService<AudioPlayService> {
-                action = IntentAction.playData
-            }
-        }
-        if (book != null && durLrcData == null) {
-            getLrcData(bookSource!!, book!!, durChapter!!)
-        }
+//        durCoverUrl?.let { callback?.upCover(it) }
+//        if (book != null && durLrcData.isEmpty()) {
+//            getLrcData(bookSource!!, book!!, durChapter!!)
+//            context.startService<AudioPlayService> {
+//                action = IntentAction.playData
+//            }
+//        }
+//            callback?.upLrc(durLrcData)
     }
 
     fun unregister(context: Context) {

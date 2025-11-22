@@ -27,15 +27,12 @@
         android:id="@+id/iv_player"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-
-
         android:background="#000000"
         app:layout_constraintDimensionRatio="h,16:9"
         app:layout_constraintTop_toBottomOf="@+id/title_bar"
         app:resize_mode="fit"
         app:show_buffering="when_playing"
         app:use_controller="true">
-        <!--        app:layout_constraintBottom_toBottomOf="parent"-->
 
     </androidx.media3.ui.PlayerView>
 

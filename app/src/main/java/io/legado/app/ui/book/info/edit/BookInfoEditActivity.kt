@@ -17,6 +17,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.utils.FileUtils
@@ -101,6 +102,7 @@ class BookInfoEditActivity :
             when {
                 book.isImage -> 2
                 book.isAudio -> 1
+                book.isVideo -> 4
                 else -> 0
             }
         )

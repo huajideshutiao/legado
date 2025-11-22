@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.video
 
 import android.app.Application
-import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.bumptech.glide.Glide
@@ -29,36 +28,32 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     var position: Long = 0L
     var bookSource: BookSource? = null
-    lateinit var book: Book
+    val book: Book by lazy {GlobalVars.nowBook!!}
     private var oldChapterIndex: Int? = null
 
 
-    fun initData(intent: Intent) {
-        val tmp = intent.getStringExtra("from") == "search"
+    fun initData() {
         execute {
-            GlobalVars.nowBook?.let { book ->
-                this@VideoViewModel.book = book
-            } ?: run {
-                context.toastOnUi("book is null")
-                return@execute
-            }
+//            GlobalVars.nowBook?.let { book ->
+//                this@VideoViewModel.book = book
+//            } ?: run {
+//                context.toastOnUi("book is null")
+//                return@execute
+//            }
             bookSource = book.getBookSource() ?: return@execute
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
             if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
-            if (book.tocUrl.isEmpty()) {
-                book = WebBook.getBookInfoAwait(bookSource!!, book, canReName = true)
-            }
-            var tmp1= appDb.bookChapterDao.getChapterList(book.bookUrl)
-            if (tmp&&tmp1.isEmpty())tmp1 = WebBook.getChapterListAwait(bookSource!!, book, true).getOrNull()!!
+            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, canReName = true)
+            val tmp1= if (book.totalChapterNum==0)WebBook.getChapterListAwait(bookSource!!, book, true).getOrNull()!!
+            else appDb.bookChapterDao.getChapterList(book.bookUrl)
             chapterList.postValue(tmp1)
-            initChapter(tmp1.getOrNull(book.durChapterIndex))
+            initChapter(tmp1[(book.durChapterIndex)])
         }
     }
 
-    private fun initChapter(chapter: BookChapter?) {
-        chapter?.let {
-            WebBook.getContent(viewModelScope, bookSource!!, book, it)
+    private fun initChapter(chapter: BookChapter) {
+            WebBook.getContent(viewModelScope, bookSource!!, book, chapter)
                 .onSuccess { content ->
                     if (content.isEmpty()) {
                         context.toastOnUi("未获取到资源链接")
@@ -69,13 +64,12 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 }.onError { e ->
                     AppLog.put("获取资源链接出错\n$e", e, true)
                 }
-
-        }
     }
 
     fun changeChapter(chapter: BookChapter) {
         if (chapter.index != book.durChapterIndex) {
             book.durChapterIndex = chapter.index
+            book.durChapterTitle = chapter.title
             position = 0L
             initChapter(chapter)
         }
@@ -90,14 +84,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     fun addToBookshelf(success: (() -> Unit)?) {
         execute {
             book.removeType(BookType.notShelf)
-            if (book.order == 0) {
-                book.order = appDb.bookDao.minOrder - 1
-            }
-            appDb.bookDao.getBook(book.name, book.author)?.let {
-                book.durChapterIndex = it.durChapterIndex
-                book.durChapterPos = it.durChapterPos
-                book.durChapterTitle = it.durChapterTitle
-            }
+            if (book.order == 0) book.order = appDb.bookDao.minOrder - 1
             book.save()
             chapterList.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())
@@ -124,10 +111,12 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun saveRead(position: Long) {
         Coroutine.async {
-            book.lastCheckCount = 0
-            book.durChapterTime = System.currentTimeMillis()
-            book.durChapterPos = position.toInt()
-            book.update()
+            book.apply {
+                lastCheckCount = 0
+                durChapterTime = System.currentTimeMillis()
+                durChapterPos = position.toInt()
+                update()
+            }
         }
     }
 }

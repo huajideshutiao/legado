@@ -15,6 +15,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.model.AudioPlay
@@ -28,27 +29,16 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
             val book = (if(intent.action != "activity") GlobalVars.nowBook else AudioPlay.book)?: return@execute
-            inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            initBook(book)
+            inBookshelf = !book.isNotShelf
+            if (AudioPlay.book?.bookUrl == book.bookUrl) AudioPlay.upData(book)
+            else resetData(book)
+            titleData.postValue(book.name)
+            if (book.tocUrl.isEmpty() && !loadBookInfo(book)) return@execute
+            if (chapterSize == 0 && !loadChapterList(book)) return@execute
+            if (status == Status.STOP) AudioPlay.loadOrUpPlayUrl()
         }.onFinally {
             saveRead()
         }
-    }
-
-    private suspend fun initBook(book: Book) {
-        if (AudioPlay.book?.bookUrl == book.bookUrl) {
-            AudioPlay.upData(book)
-        } else {
-            AudioPlay.resetData(book)
-        }
-        titleData.postValue(book.name)
-        if (book.tocUrl.isEmpty() && !loadBookInfo(book)) {
-            return
-        }
-        if (AudioPlay.chapterSize == 0 && !loadChapterList(book)) {
-            return
-        }
-        if (AudioPlay.status == Status.STOP) AudioPlay.loadOrUpPlayUrl()
     }
 
     private suspend fun loadBookInfo(book: Book): Boolean {

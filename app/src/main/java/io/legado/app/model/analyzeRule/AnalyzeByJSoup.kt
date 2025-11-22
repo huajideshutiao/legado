@@ -479,7 +479,7 @@ class AnalyzeByJSoup(doc: Any) {
                         curMinus = false //重置
                     }
                 }
-            } else while (true) { //阅读原本写法，逆向遍历,可以无前置规则
+            } else while (len-- >= 0) { //阅读原本写法，逆向遍历,可以无前置规则
 
                 val rl = rus[len]
                 if (rl == ' ') continue //跳过空格

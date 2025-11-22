@@ -256,6 +256,7 @@ class AudioPlayActivity :
                 }
             }
         })
+        binding.ivLrc.adapter = adapter
     }
 
     private fun updatePlayModeIcon() {
@@ -382,8 +383,7 @@ class AudioPlayActivity :
     }
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
-            adapter.setData(lrc)
-            binding.ivLrc.adapter = adapter
+            adapter.setData(lrc.toList())
         }
     }
     override fun upCover(url: String) {

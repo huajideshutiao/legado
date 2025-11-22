@@ -40,6 +40,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
 import io.legado.app.ui.login.SourceLoginActivity
@@ -125,7 +126,7 @@ class VideoPlayActivity(
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        viewModel.initData(intent)
+        viewModel.initData()
         viewModel.bookTitle.observe(this) {
             binding.titleBar.title = it
         }
@@ -133,25 +134,14 @@ class VideoPlayActivity(
             refreshPlayer(it.url)
         }
         viewModel.chapterList.observe(this) {
-            if (it.size > 1) {
-//                (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
-//                    dimensionRatio = "h,16:9"
-//                    matchConstraintMaxHeight = screenWidth
-//                }
-//                binding.ivPlayer.maxHeight = screenWidth
-                binding.ivPlayer.layoutParams.height = 0
+            if (it.size>1){
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
                 binding.recyclerView.adapter = adapter
                 adapter.setItems(it)
                 binding.recyclerView.scrollToPosition(viewModel.book.durChapterIndex)
                 adapter.upDisplayTitles(viewModel.book.durChapterIndex)
-            } else {
-//                (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
-//                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-//                }
-                binding.ivPlayer.layoutParams.height = ConstraintLayout.LayoutParams.MATCH_PARENT
-                binding.recyclerView.visibility = View.GONE
             }
+            showChapterList(it)
         }
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
@@ -267,6 +257,7 @@ class VideoPlayActivity(
         when (item.itemId) {
 //            R.id.menu_change_source -> {
 //            }
+            R.id.menu_refresh -> TODO()
             R.id.menu_shelf -> {
                 if (!GlobalVars.nowBook!!.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
@@ -276,7 +267,7 @@ class VideoPlayActivity(
                         ) {
                             yesButton {
                                 viewModel.delBook {
-                                    setResult(RESULT_OK)
+                                    setResult(RESULT_DELETED)
                                     finish()
                                 }
                             }
@@ -284,12 +275,13 @@ class VideoPlayActivity(
                         }
                     } else {
                         viewModel.delBook {
-                            setResult(RESULT_OK)
+                            setResult(RESULT_DELETED)
                             finish()
                         }
                     }
                 } else {
                     viewModel.addToBookshelf {
+                        setResult(RESULT_OK)
                         item.setIcon(R.drawable.ic_star)
                         item.setTitle(R.string.in_favorites)
                         item.icon?.setTintMutate(primaryTextColor)
@@ -329,16 +321,26 @@ class VideoPlayActivity(
         toggleSystemBar(!isFullScreen)
         if (isFullScreen) {
             supportActionBar?.hide()
-            binding.ivPlayer.layoutParams.apply {
-                height = WindowManager.LayoutParams.MATCH_PARENT
-            }
+            binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
             binding.recyclerView.isVisible = false
         } else {
             supportActionBar?.show()
-            binding.ivPlayer.layoutParams = binding.ivPlayer.layoutParams.apply {
-                height = WindowManager.LayoutParams.MATCH_PARENT
-            }
+            viewModel.chapterList.value?.let { showChapterList(it) }
+
+        }
+    }
+
+    private fun showChapterList(list: List<BookChapter>) {
+        binding.ivPlayer.layoutParams.height = 0
+        if (list.size > 1) {
             binding.recyclerView.isVisible = true
+        } else {
+            binding.recyclerView.isVisible = false
+            (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
+                height = 0
+                dimensionRatio = ""
+                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            }
         }
     }
 

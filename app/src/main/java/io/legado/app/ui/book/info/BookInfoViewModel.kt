@@ -72,7 +72,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun upBook() {
-        upBook(GlobalVars.nowBook!!)
+        bookData.value = GlobalVars.nowBook
     }
 
     private fun upBook(book: Book) {
