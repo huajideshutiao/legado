@@ -136,4 +136,16 @@ data class SearchBook(
         this.infoHtml = this@SearchBook.infoHtml
         this.tocHtml = this@SearchBook.tocHtml
     }
+
+    fun contains(query : String?): Boolean {
+        if (query.isNullOrBlank()) return true
+        val q = query.trim()
+
+        if (name.contains(q)) return true
+        if (author.contains(q)) return true
+        intro?.let { if (it.contains(q)) return true }
+        kind?.let { if (it.contains(q)) return true }
+
+        return false
+    }
 }

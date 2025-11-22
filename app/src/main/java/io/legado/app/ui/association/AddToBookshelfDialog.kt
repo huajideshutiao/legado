@@ -81,14 +81,12 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             dismiss()
         }
         viewModel.load(bookUrl) {
-            viewModel.saveSearchBook(it) {
                 startActivity<BookInfoActivity> {
                     putExtra("name", it.name)
                     putExtra("author", it.author)
                     GlobalVars.nowBook = it
                 }
                 dismiss()
-            }
         }
         binding.tvCancel.setOnClickListener {
             dismiss()
@@ -162,17 +160,5 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
                 WebBook.getBookInfoAwait(source, book)
             }.getOrNull()
         }
-
-        fun saveSearchBook(book: Book, success: () -> Unit) {
-            execute {
-                val searchBook = book.toSearchBook()
-                appDb.searchBookDao.insert(searchBook)
-                searchBook
-            }.onSuccess {
-                success.invoke()
-            }
-        }
-
     }
-
 }

@@ -56,6 +56,7 @@ import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
+import kotlin.text.contains
 
 @Suppress("MemberVisibilityCanBePrivate")
 open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(application) {
@@ -103,7 +104,6 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
 
             override fun searchSuccess(searchBook: SearchBook) {
                 searchBook.releaseHtmlData()
-                appDb.searchBookDao.insert(searchBook)
                 when {
                     screenKey.isEmpty() -> searchBooks.add(searchBook)
                     searchBook.name.contains(screenKey) -> searchBooks.add(searchBook)
@@ -118,11 +118,12 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
 
         }
 
-        getDbSearchBooks().let {
-            searchBooks.clear()
-            searchBooks.addAll(it)
-            trySend(arrayOf(searchBooks))
+        searchBooks.removeAll {
+            (if (AppConfig.changeSourceCheckAuthor)it.author != author
+            else false)||!it.contains(screenKey)
         }
+            trySend(arrayOf(searchBooks))
+
 
         if (searchBooks.isEmpty()) {
             startSearch()
@@ -169,11 +170,13 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     }
 
     fun refresh(): Boolean {
-        getDbSearchBooks().let {
-            searchBooks.clear()
-            searchBooks.addAll(it)
-            searchCallback?.upAdapter()
+
+        searchBooks.removeAll {
+            (if (AppConfig.changeSourceCheckAuthor)it.author != author
+            else false)||!it.contains(screenKey)
         }
+            searchCallback?.upAdapter()
+
         return searchBooks.isEmpty()
     }
 
@@ -183,10 +186,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun startSearch() {
         execute {
             stopSearch()
-            if (searchBooks.isNotEmpty()) {
-                appDb.searchBookDao.delete(*searchBooks.toTypedArray())
-                searchBooks.clear()
-            }
+            if (searchBooks.isNotEmpty())searchBooks.clear()
             searchCallback?.upAdapter()
             bookSourceParts.clear()
             tocMap.clear()
@@ -396,41 +396,17 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         }
     }
 
-    private fun getDbSearchBooks(): List<SearchBook> {
-        return if (screenKey.isEmpty()) {
-            if (AppConfig.changeSourceCheckAuthor) {
-                appDb.searchBookDao.changeSourceByGroup(
-                    name, author, AppConfig.searchGroup
-                )
-            } else {
-                appDb.searchBookDao.changeSourceByGroup(
-                    name, "", AppConfig.searchGroup
-                )
-            }
-        } else {
-            if (AppConfig.changeSourceCheckAuthor) {
-                appDb.searchBookDao.changeSourceSearch(
-                    name, author, screenKey, AppConfig.searchGroup
-                )
-            } else {
-                appDb.searchBookDao.changeSourceSearch(
-                    name, "", screenKey, AppConfig.searchGroup
-                )
-            }
-        }
-    }
-
     /**
      * 筛选
      */
     fun screen(key: String?) {
         screenKey = key?.trim() ?: ""
         execute {
-            getDbSearchBooks().let {
-                searchBooks.clear()
-                searchBooks.addAll(it)
+                searchBooks.removeAll {
+                    (if (AppConfig.changeSourceCheckAuthor)it.author != author
+                    else false)||!it.contains(key)
+                }
                 searchCallback?.upAdapter()
-            }
         }
     }
 
@@ -499,7 +475,6 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 source.customOrder = minOrder
                 searchBook.originOrder = source.customOrder
                 appDb.bookSourceDao.update(source)
-                updateSource(searchBook)
             }
             searchCallback?.upAdapter()
         }
@@ -512,20 +487,15 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 source.customOrder = maxOrder
                 searchBook.originOrder = source.customOrder
                 appDb.bookSourceDao.update(source)
-                updateSource(searchBook)
             }
             searchCallback?.upAdapter()
         }
     }
 
-    fun updateSource(searchBook: SearchBook) {
-        appDb.searchBookDao.update(searchBook)
-    }
-
     fun del(searchBook: SearchBook) {
         execute {
             SourceHelp.deleteBookSource(searchBook.origin)
-            appDb.searchBookDao.delete(searchBook)
+            //appDb.searchBookDao.delete(searchBook)
         }
         searchBooks.remove(searchBook)
         searchCallback?.upAdapter()

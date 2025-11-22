@@ -67,11 +67,6 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             trySend(defaultCover + searchBooks.sortedBy { it.originOrder })
         }
 
-        appDb.searchBookDao.getEnableHasCover(name, author).let {
-            searchBooks.addAll(it)
-            trySend(defaultCover + searchBooks.toList())
-        }
-
         if (searchBooks.size <= 1) {
             startSearch()
         }
@@ -143,7 +138,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
         if (searchBook.name == name && searchBook.author == author
             && !searchBook.coverUrl.isNullOrEmpty()
         ) {
-            appDb.searchBookDao.insert(searchBook)
+            //appDb.searchBookDao.insert(searchBook)
             searchSuccess?.invoke(searchBook)
         }
     }

@@ -74,7 +74,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             .onSuccess(IO) { searchBooks ->
                 books.addAll(searchBooks)
                 booksData.postValue(books.toList())
-                appDb.searchBookDao.insert(*searchBooks.toTypedArray())
+                //appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 page++
             }.onError {
                 it.printOnDebug()
