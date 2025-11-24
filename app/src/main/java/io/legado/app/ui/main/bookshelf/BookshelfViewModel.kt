@@ -122,30 +122,31 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
     private fun importBookshelfByJson(json: String, groupId: Long) {
         execute {
             val semaphore = Semaphore(AppConfig.threadCount)
-            GSON.fromJsonArray<Map<String, String?>>(json).getOrThrow().forEach { bookInfo ->
-                val name = bookInfo["name"] ?: ""
-                val author = bookInfo["author"] ?: ""
-                val origin = bookInfo["origin"]
-                val bookUrl = bookInfo["bookUrl"]
+            GSON.fromJsonArray<Map<String, Any>>(json).getOrThrow().forEach { bookInfo ->
+                val name = bookInfo["name"] as String
+                val author = bookInfo["author"] as String
+                val origin = bookInfo["origin"] as String?
+                val bookUrl = bookInfo["bookUrl"] as String?
                 if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
                 semaphore.withPermit {
                     (if(origin!=null&&bookUrl!=null) {
                         val book = Book(bookUrl)
                         bookInfo.forEach { (key, value) ->
-                            value?.let {
+                            if(value is String) {
                                 when (key) {
-                                    "name" -> book.name = it
-                                    "author" -> book.author = it
-                                    "kind" -> book.kind = it
-                                    "coverUrl" -> book.coverUrl = it
-                                    "intro" -> book.intro = it
-                                    "origin" -> book.origin = it
+                                    "name" -> book.name = value
+                                    "author" -> book.author = value
+                                    "kind" -> book.kind = value
+                                    "coverUrl" -> book.coverUrl = value
+                                    "intro" -> book.intro = value
+                                    "origin" -> book.origin = value
                                 }
                             }
                         }
                         val bookSource = appDb.bookSourceDao.getBookSource(origin)
                         if (bookSource==null)return@forEach
                         else WebBook.getBookInfo(this, bookSource,book).onSuccess {
+                            it.originName = bookSource.bookSourceName
                             if (groupId > 0) it.group = groupId
                             it.save()
                         }
@@ -168,5 +169,4 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
             context.toastOnUi(R.string.success)
         }
     }
-
 }

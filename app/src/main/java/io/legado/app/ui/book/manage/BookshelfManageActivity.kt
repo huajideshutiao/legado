@@ -403,7 +403,7 @@ class BookshelfManageActivity :
             R.id.menu_download,
             R.id.menu_download_after -> {
                 if (!CacheBook.isRun) {
-                    adapter.getItems().forEach { book ->
+                    adapter.selection.forEach { book ->
                         CacheBook.start(
                             this@BookshelfManageActivity,
                             book,
@@ -418,7 +418,7 @@ class BookshelfManageActivity :
 
             R.id.menu_download_all -> {
                 if (!CacheBook.isRun) {
-                    adapter.getItems().forEach { book ->
+                    adapter.selection.forEach { book ->
                         CacheBook.start(
                             this@BookshelfManageActivity,
                             book,
