@@ -12,7 +12,6 @@ import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
@@ -112,11 +111,8 @@ object ReadManga : CoroutineScope by MainScope() {
     }
 
     fun upWebBook(book: Book) {
-        appDb.bookSourceDao.getBookSource(book.origin)?.let {
-            bookSource = it
-            rateLimiter = ConcurrentRateLimiter(it)
-        } ?: let {
-            bookSource = null
+        bookSource = appDb.bookSourceDao.getBookSource(book.origin)?.apply {
+            rateLimiter = ConcurrentRateLimiter(this)
         }
     }
 
@@ -159,17 +155,10 @@ object ReadManga : CoroutineScope by MainScope() {
     }
 
     fun loadOrUpContent() {
-        if (curMangaChapter == null) {
-            loadContent(durChapterIndex)
-        } else {
-            mCallback?.upContent()
-        }
-        if (nextMangaChapter == null) {
-            loadContent(durChapterIndex + 1)
-        }
-        if (prevMangaChapter == null) {
-            loadContent(durChapterIndex - 1)
-        }
+        if (curMangaChapter == null) loadContent(durChapterIndex)
+        else mCallback?.upContent()
+        if (nextMangaChapter == null) loadContent(durChapterIndex + 1)
+        if (prevMangaChapter == null) loadContent(durChapterIndex - 1)
     }
 
     private fun loadContent(index: Int) {
@@ -547,22 +536,6 @@ object ReadManga : CoroutineScope by MainScope() {
 
     fun showLoading() {
         mCallback?.showLoading()
-    }
-
-    fun onChapterListUpdated(newBook: Book) {
-        if (newBook.isSameNameAuthor(book)) {
-            book = newBook
-            chapterSize = newBook.totalChapterNum
-            simulatedChapterSize = newBook.simulatedTotalChapterNum()
-            if (simulatedChapterSize > 0 && durChapterIndex > simulatedChapterSize - 1) {
-                durChapterIndex = simulatedChapterSize - 1
-            }
-            if (mCallback == null) {
-                clearMangaChapter()
-            } else {
-                loadContent()
-            }
-        }
     }
 
     /**

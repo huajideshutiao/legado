@@ -336,6 +336,7 @@ class BookInfoActivity :
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
         llToc?.visible(!book.isWebFile)
+        binding.tvToc.text = getString(R.string.toc_s, book.durChapterTitle)
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
@@ -704,23 +705,19 @@ class BookInfoActivity :
 
     private fun startReadActivity(book: Book) {
         GlobalVars.nowBook = book
-        when {
-            book.isAudio -> readBookResult.launch(
-                Intent(this, AudioPlayActivity::class.java)
-                    .putExtra("inBookshelf", viewModel.inBookshelf)
-            )
-
-            else -> readBookResult.launch(
+          readBookResult.launch(
                 Intent(
                     this,
-                    if (book.isVideo) VideoPlayActivity::class.java
-                    else if (!book.isLocal && book.isImage && AppConfig.showMangaUi) ReadMangaActivity::class.java
-                    else ReadBookActivity::class.java
+                    when {
+                        book.isVideo -> VideoPlayActivity::class.java
+                        !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+                        book.isAudio -> AudioPlayActivity::class.java
+                        else -> ReadBookActivity::class.java
+                    }
                 )
-                    .putExtra("inBookshelf", viewModel.inBookshelf)
                     .putExtra("chapterChanged", chapterChanged)
-            )
-        }
+          )
+
     }
 
     override val oldBook: Book?

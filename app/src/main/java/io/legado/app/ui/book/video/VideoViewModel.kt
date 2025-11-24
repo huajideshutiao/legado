@@ -34,12 +34,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun initData() {
         execute {
-//            GlobalVars.nowBook?.let { book ->
-//                this@VideoViewModel.book = book
-//            } ?: run {
-//                context.toastOnUi("book is null")
-//                return@execute
-//            }
             bookSource = book.getBookSource() ?: return@execute
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()

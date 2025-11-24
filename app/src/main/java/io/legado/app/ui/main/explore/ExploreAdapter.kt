@@ -10,6 +10,7 @@ import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ItemFilletTextBinding
@@ -163,8 +164,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 R.id.menu_top -> callBack.toTop(source)
                 R.id.menu_search -> callBack.searchBook(source)
                 R.id.menu_login -> context.startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", source.bookSourceUrl)
+                    GlobalVars.nowSource = source.getBookSource()
                 }
                 R.id.menu_refresh -> Coroutine.async(callBack.scope) {
                     source.clearExploreKindsCache()
