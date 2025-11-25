@@ -61,7 +61,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
-                if(inBookshelf&&it.tocUrl == "") upBook(appDb.bookDao.getBook(it.name,it.author)!!) else upBook(it)
+                if(inBookshelf&&(it.tocUrl == ""||it.totalChapterNum == 0)) GlobalVars.nowBook = appDb.bookDao.getBook(it.name,it.author)!!
+                upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")

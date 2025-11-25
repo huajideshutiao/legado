@@ -122,9 +122,8 @@ class BookInfoActivity :
                 viewModel.inBookshelf = true
                 upTvBookshelf()
             }
-
             RESULT_DELETED -> {
-                setResult(RESULT_OK)
+                setResult(RESULT_DELETED)
                 finish()
             }
         }
@@ -452,6 +451,7 @@ class BookInfoActivity :
                         showWebFileDownloadAlert()
                     } else {
                         viewModel.addToBookshelf {
+                            setResult(RESULT_OK)
                             upTvBookshelf()
                         }
                     }
@@ -600,7 +600,7 @@ class BookInfoActivity :
                             LocalConfig.deleteBookOriginal = checkBox.isChecked
                         }
                         viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                            setResult(RESULT_OK)
+                            setResult(RESULT_DELETED)
                             finish()
                         }
                     }
@@ -608,7 +608,7 @@ class BookInfoActivity :
                 }
             } else {
                 viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                    setResult(RESULT_OK)
+                    setResult(RESULT_DELETED)
                     finish()
                 }
             }
@@ -705,19 +705,17 @@ class BookInfoActivity :
 
     private fun startReadActivity(book: Book) {
         GlobalVars.nowBook = book
-          readBookResult.launch(
-                Intent(
-                    this,
-                    when {
-                        book.isVideo -> VideoPlayActivity::class.java
-                        !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
-                        book.isAudio -> AudioPlayActivity::class.java
-                        else -> ReadBookActivity::class.java
+        readBookResult.launch(
+            Intent(
+                this,
+                when {
+                    book.isVideo -> VideoPlayActivity::class.java
+                    !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+                    book.isAudio -> AudioPlayActivity::class.java
+                    else -> ReadBookActivity::class.java
                     }
-                )
-                    .putExtra("chapterChanged", chapterChanged)
+                ).putExtra("chapterChanged", chapterChanged)
           )
-
     }
 
     override val oldBook: Book?
@@ -745,6 +743,7 @@ class BookInfoActivity :
                 viewModel.saveBook(book)
             } else if (groupId > 0) {
                 viewModel.addToBookshelf {
+                    setResult(RESULT_OK)
                     upTvBookshelf()
                 }
             }

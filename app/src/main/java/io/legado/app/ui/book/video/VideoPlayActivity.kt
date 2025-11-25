@@ -32,14 +32,17 @@ import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.BookType
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.removeType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
@@ -78,6 +81,23 @@ class VideoPlayActivity(
                 viewModel.upSource()
             }
         }
+    private val bookInfoResult =
+        registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) { result ->
+        when (result.resultCode) {
+            RESULT_DELETED -> {
+                setResult(RESULT_DELETED)
+                super.finish()
+            }
+            RESULT_OK -> {
+                setResult(RESULT_OK)
+                val item = binding.titleBar.menu.findItem(R.id.menu_shelf)
+                item.setIcon(R.drawable.ic_star)
+                item.setTitle(R.string.in_favorites)
+                item.icon?.setTintMutate(primaryTextColor)
+                viewModel.book.removeType(BookType.notShelf) 
+            }
+        }
+    }
     private val progressTimeFormat by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             SimpleDateFormat("mm:ss", Locale.getDefault())
@@ -142,6 +162,11 @@ class VideoPlayActivity(
                 adapter.upDisplayTitles(viewModel.book.durChapterIndex)
             }
             showChapterList(it)
+        }
+        binding.titleBar.toolbar.setOnClickListener {
+                bookInfoResult.launch {
+                    player.pause()
+                }
         }
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
@@ -241,7 +266,7 @@ class VideoPlayActivity(
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_shelf).apply {
-                if (!GlobalVars.nowBook!!.isNotShelf) {
+                if (!viewModel.book.isNotShelf) {
                     setIcon(R.drawable.ic_star)
                     setTitle(R.string.in_favorites)
                 } else {
@@ -259,7 +284,7 @@ class VideoPlayActivity(
 //            }
             R.id.menu_refresh -> TODO()
             R.id.menu_shelf -> {
-                if (!GlobalVars.nowBook!!.isNotShelf) {
+                if (!viewModel.book.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw,
@@ -331,15 +356,16 @@ class VideoPlayActivity(
     }
 
     private fun showChapterList(list: List<BookChapter>) {
-        binding.ivPlayer.layoutParams.height = 0
         if (list.size > 1) {
             binding.recyclerView.isVisible = true
+            (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
+                dimensionRatio = "h,16:9"
+                bottomToTop = binding.recyclerView.id
+            }
         } else {
             binding.recyclerView.isVisible = false
             (binding.ivPlayer.layoutParams as ConstraintLayout.LayoutParams).apply {
-                height = 0
                 dimensionRatio = ""
-                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             }
         }
     }
