@@ -14,11 +14,11 @@ import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -99,10 +99,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
         } else {
             GlobalVars.nowBook = book
-            if (book.isVideo&& AppConfig.showVideoUi)startActivityForBook(book){
-                putExtra("name", book.name)
-                putExtra("from", "search")
-            }else startActivity<BookInfoActivity> {
+            if (book.isVideo&& AppConfig.showVideoUi) startActivity<VideoPlayActivity>()
+            else startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
             }

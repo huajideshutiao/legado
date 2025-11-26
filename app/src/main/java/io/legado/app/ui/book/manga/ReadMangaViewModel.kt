@@ -100,7 +100,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
             }.onStart {
                 // 自动换源
 
-            }.mapParallelSafe(AppConfig.threadCount) { source ->
+            }.mapParallelSafe(AppConfig.threadCount,sources.size) { source ->
                 val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
                 if (book.tocUrl.isEmpty()) {
                     WebBook.getBookInfoAwait(source, book)

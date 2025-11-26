@@ -85,7 +85,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(threadCount) {
+            }.mapParallelSafe(threadCount,bookSourceParts.size) {
                 withTimeout(30000L) {
                     WebBook.searchBookAwait(
                         it, searchKey, searchPage,
@@ -107,6 +107,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
             }.catch {
                 AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
+                callBack.onSearchCancel(it)
             }.collect()
         }
     }

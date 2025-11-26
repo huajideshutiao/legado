@@ -41,13 +41,15 @@ inline fun <T, R> Flow<T>.mapParallel(
 @OptIn(ExperimentalCoroutinesApi::class)
 inline fun <T, R> Flow<T>.mapParallelSafe(
     concurrency: Int,
+    size: Int,
     crossinline transform: suspend (T) -> R,
 ): Flow<R> = flatMapMerge(concurrency) { value ->
     flow {
         try {
             emit(transform(value))
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
             currentCoroutineContext().ensureActive()
+            if (size == 1) throw e
         }
     }
 }.buffer(0)

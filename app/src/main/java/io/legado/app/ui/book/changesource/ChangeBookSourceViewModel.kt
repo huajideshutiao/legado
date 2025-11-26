@@ -383,7 +383,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 }
             }.onStart {
                 searchStateData.postValue(true)
-            }.mapParallelSafe(threadCount) {
+            }.mapParallelSafe(threadCount,bookSourceParts.size) {
                 val source = appDb.bookSourceDao.getBookSource(it.origin)!!
                 withTimeout(60000L) {
                     loadBookInfo(source, it.toBook())

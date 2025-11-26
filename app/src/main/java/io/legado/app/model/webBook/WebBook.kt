@@ -7,11 +7,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.addType
-import io.legado.app.help.book.removeAllBookType
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.StrResponse
-import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
@@ -65,8 +62,8 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = currentCoroutineContext()
         )
-        var tmp: Exception? = null
-        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+        var tmp: Throwable? = null
+        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Throwable){
             tmp = e
             null
         }
@@ -76,7 +73,7 @@ object WebBook {
                 res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
             }
         }
-        if (res == null)throw tmp as Throwable
+        if (res == null)throw tmp!!
         checkRedirect(bookSource, res)
         return BookList.analyzeBookList(
             bookSource = bookSource,
@@ -120,8 +117,8 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = currentCoroutineContext()
         )
-        var tmp: Exception? = null
-        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+        var tmp: Throwable? = null
+        var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Throwable){
             tmp = e
             null
         }
@@ -131,7 +128,7 @@ object WebBook {
                 res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
             }
         }
-        if (res == null)throw tmp as Throwable
+        if (res == null)throw tmp!!
         checkRedirect(bookSource, res)
         return BookList.analyzeBookList(
             bookSource = bookSource,
@@ -163,8 +160,6 @@ object WebBook {
         book: Book,
         canReName: Boolean = true,
     ): Book {
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
         if (!book.infoHtml.isNullOrEmpty()) {
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -182,8 +177,8 @@ object WebBook {
                 ruleData = book,
                 coroutineContext = currentCoroutineContext()
             )
-            var tmp: Exception? = null
-            var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+            var tmp: Throwable? = null
+            var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Throwable){
                 tmp = e
                 null
             }
@@ -193,7 +188,7 @@ object WebBook {
                     res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                 }
             }
-            if (res == null)throw tmp as Throwable
+            if (res == null)throw tmp!!
             checkRedirect(bookSource, res)
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -241,8 +236,6 @@ object WebBook {
         book: Book,
         runPerJs: Boolean = false
     ): Result<List<BookChapter>> {
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
         return kotlin.runCatching {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
@@ -270,8 +263,8 @@ object WebBook {
                     ruleData = book,
                     coroutineContext = currentCoroutineContext()
                 )
-                var tmp: Exception? = null
-                var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Exception){
+                var tmp: Throwable? = null
+                var res = try{analyzeUrl.getStrResponseAwait()}catch (e: Throwable){
                     tmp = e
                     null
                 }
@@ -281,7 +274,7 @@ object WebBook {
                         res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                     }
                 }
-                if (res == null)throw tmp as Throwable
+                if (res == null)throw tmp!!
                 checkRedirect(bookSource, res)
                 BookChapterList.analyzeChapterList(
                     bookSource = bookSource,
@@ -357,11 +350,11 @@ object WebBook {
                 chapter = bookChapter,
                 coroutineContext = currentCoroutineContext()
             )
-            var tmp: Exception? = null
+            var tmp: Throwable? = null
             var res = try{analyzeUrl.getStrResponseAwait(
                 jsStr = bookSource.getContentRule().webJs,
                 sourceRegex = bookSource.getContentRule().sourceRegex
-            )}catch (e: Exception){
+            )}catch (e: Throwable){
                 tmp = e
                 null
             }
@@ -371,7 +364,7 @@ object WebBook {
                     res = analyzeUrl.evalJS(checkJs, res) as StrResponse?
                 }
             }
-            if (res == null)throw tmp as Throwable
+            if (res == null)throw tmp!!
             checkRedirect(bookSource, res)
             BookContent.analyzeContent(
                 bookSource = bookSource,

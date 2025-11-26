@@ -25,7 +25,6 @@ import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import splitties.init.appCtx
-import kotlin.coroutines.coroutineContext
 
 /**
  * 获取书籍列表
