@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
@@ -70,7 +71,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val url = exploreUrl
         if (source == null || url == null) return
         WebBook.exploreBook(viewModelScope, source, url, page)
-            .timeout(if (BuildConfig.DEBUG) 0L else 30000L)
+            .timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
             .onSuccess(IO) { searchBooks ->
                 books.addAll(searchBooks)
                 booksData.postValue(books.toList())

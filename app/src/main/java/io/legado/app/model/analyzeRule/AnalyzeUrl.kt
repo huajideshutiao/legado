@@ -11,6 +11,7 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst.UA_NAME
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.JS_PATTERN
@@ -549,7 +550,7 @@ class AnalyzeUrl(
         return client.newBuilder().run {
             if (readTimeout != null) {
                 readTimeout(readTimeout, TimeUnit.MILLISECONDS)
-                callTimeout(max(60 * 1000L, readTimeout * 2), TimeUnit.MILLISECONDS)
+                callTimeout(max(timeLimit, readTimeout) * 2, TimeUnit.MILLISECONDS)
             }
             if (callTimeout != null) {
                 callTimeout(callTimeout, TimeUnit.MILLISECONDS)

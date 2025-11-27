@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
@@ -117,7 +118,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             }.onStart {
                 searchStateData.postValue(true)
             }.mapParallelSafe(threadCount, bookSourceParts.size) {
-                withTimeout(60000L) {
+                withTimeout(timeLimit) {
                     search(it)
                 }
             }.onCompletion {

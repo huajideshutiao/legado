@@ -129,13 +129,8 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
         sourceFlowJob?.cancel()
         sourceFlowJob = lifecycleScope.launch {
             when {
-                searchKey.isNullOrEmpty() -> {
-                    appDb.bookSourceDao.flowAll()
-                }
-
-                else -> {
-                    appDb.bookSourceDao.flowSearch(searchKey)
-                }
+                searchKey.isNullOrEmpty() -> appDb.bookSourceDao.flowAll()
+                else -> appDb.bookSourceDao.flowSearch(searchKey)
             }.flowWithLifecycleAndDatabaseChange(
                 lifecycle,
                 table = AppDatabase.BOOK_SOURCE_TABLE_NAME

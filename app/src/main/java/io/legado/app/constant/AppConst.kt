@@ -108,4 +108,6 @@ object AppConst {
      */
     const val authority = BuildConfig.APPLICATION_ID + ".fileProvider"
 
+    const val timeLimit = 15000L
+
 }

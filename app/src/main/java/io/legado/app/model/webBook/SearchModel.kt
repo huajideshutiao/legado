@@ -1,8 +1,10 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
@@ -77,16 +79,14 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         var hasMore = false
         searchJob = scope.launch(searchPool!!) {
             flow {
-                for (bs in bookSourceParts) {
-                    bs.getBookSource()?.let {
-                        emit(it)
-                    }
+                appDb.bookSourceDao.getBookSourcesFix(bookSourceParts.map { it.bookSourceUrl }).forEach {
+                    emit(it)
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
             }.mapParallelSafe(threadCount,bookSourceParts.size) {
-                withTimeout(30000L) {
+                withTimeout(timeLimit) {
                     WebBook.searchBookAwait(
                         it, searchKey, searchPage,
                         filter = { name, author ->

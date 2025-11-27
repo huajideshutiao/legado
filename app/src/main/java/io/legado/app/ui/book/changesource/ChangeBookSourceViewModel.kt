@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
@@ -227,16 +228,14 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private fun search() {
         task = viewModelScope.launch(searchPool!!) {
             flow {
-                for (bs in bookSourceParts) {
-                    bs.getBookSource()?.let {
-                        emit(it)
-                    }
+                appDb.bookSourceDao.getBookSourcesFix(bookSourceParts.map { it.bookSourceUrl }).map {
+                    emit(it)
                 }
             }.onStart {
                 searchStateData.postValue(true)
             }.mapParallel(threadCount) {
                 try {
-                    withTimeout(60000L) {
+                    withTimeout(timeLimit) {
                         search(it)
                     }
                 } catch (_: Throwable) {
@@ -385,7 +384,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 searchStateData.postValue(true)
             }.mapParallelSafe(threadCount,bookSourceParts.size) {
                 val source = appDb.bookSourceDao.getBookSource(it.origin)!!
-                withTimeout(60000L) {
+                withTimeout(timeLimit) {
                     loadBookInfo(source, it.toBook())
                 }
             }.onCompletion {
