@@ -52,8 +52,6 @@ object AppFreezeMonitor {
                     LogUtils.d(TAG, "检测到应用被系统冻结，时长：$extra 毫秒")
                 }
 
-                previous = current
-
                 if (AppConfig.recordLog) {
                     handler.postDelayed(this, 3000)
                 }

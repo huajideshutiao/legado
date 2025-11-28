@@ -38,7 +38,7 @@ class PermissionActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val rationale = intent.getStringExtra(KEY_RATIONALE)
-        val requestCode = intent.getIntExtra(KEY_INPUT_PERMISSIONS_CODE, 1000)
+        intent.getIntExtra(KEY_INPUT_PERMISSIONS_CODE, 1000)
         val permissions = intent.getStringArrayExtra(KEY_INPUT_PERMISSIONS)!!
         when (intent.getIntExtra(KEY_INPUT_REQUEST_TYPE, Request.TYPE_REQUEST_PERMISSION)) {
             //权限请求
@@ -113,7 +113,7 @@ class PermissionActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                        intent.setData(Uri.parse("package:$packageName"))
+                        intent.data = Uri.parse("package:$packageName")
                         val className =
                             "com.android.settings.fuelgauge.RequestIgnoreBatteryOptimizations"
                         val activities = packageManager.queryIntentActivities(

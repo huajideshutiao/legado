@@ -8,6 +8,7 @@ import android.webkit.WebView
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
+import io.legado.app.constant.AppPattern.dataUriRegex
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
@@ -49,12 +50,19 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             sourceType = intent.getIntExtra("sourceType", SourceType.book)
             sourceVerificationEnable = intent.getBooleanExtra("sourceVerificationEnable", false)
             refetchAfterSuccess = intent.getBooleanExtra("refetchAfterSuccess", true)
+            if (!url.startsWith("data")&&!url.startsWith("http")) {
+                html = url
+                return@execute
+            }
             val source = SourceHelp.getSource(sourceOrigin, sourceType)
             val analyzeUrl = AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
-            baseUrl = analyzeUrl.url
+            baseUrl = analyzeUrl.headerMap["Origin"] ?:analyzeUrl.url
             headerMap.putAll(analyzeUrl.headerMap)
             if (analyzeUrl.isPost()) {
                 html = analyzeUrl.getStrResponseAwait(useWebView = false).body
+            }
+            if (dataUriRegex.matches(analyzeUrl.url)) {
+                html = analyzeUrl.getByteArrayAwait().toString(Charsets.UTF_8)
             }
         }.onSuccess {
             success.invoke()

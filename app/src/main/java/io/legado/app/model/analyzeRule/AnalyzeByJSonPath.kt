@@ -103,7 +103,7 @@ class AnalyzeByJSonPath(json: Any) {
                     }
                 }
             }
-            if (results.size > 0) {
+            if (results.isNotEmpty()) {
                 if ("%%" == ruleAnalyzes.elementsType) {
                     for (i in results[0].indices) {
                         for (temp in results) {
@@ -150,7 +150,7 @@ class AnalyzeByJSonPath(json: Any) {
                     }
                 }
             }
-            if (results.size > 0) {
+            if (results.isNotEmpty()) {
                 if ("%%" == ruleAnalyzes.elementsType) {
                     for (i in 0 until results[0].size) {
                         for (temp in results) {

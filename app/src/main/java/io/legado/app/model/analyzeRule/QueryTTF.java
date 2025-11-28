@@ -65,7 +65,7 @@ public class QueryTTF {
         public int format;
         public int count;
         public int stringOffset;
-        public LinkedList<NameRecord> records = new LinkedList<>();
+        public final LinkedList<NameRecord> records = new LinkedList<>();
     }
 
     private static class NameRecord {
@@ -234,8 +234,8 @@ public class QueryTTF {
          * uint16   后面的编码表的数量
          */
         public int numTables;
-        public LinkedList<CmapRecord> records = new LinkedList<>();
-        public HashMap<Integer, CmapFormat> tables = new HashMap<>();
+        public final LinkedList<CmapRecord> records = new LinkedList<>();
+        public final HashMap<Integer, CmapFormat> tables = new HashMap<>();
     }
 
     /**

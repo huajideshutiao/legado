@@ -4,158 +4,69 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.addType
-import io.legado.app.help.book.removeAllBookType
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.StrResponse
-import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Semaphore
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.coroutineContext
 
-@Suppress("MemberVisibilityCanBePrivate")
 object WebBook {
 
     /**
-     * 搜索
+     * 搜索和发现
      */
-    fun searchBook(
-        scope: CoroutineScope,
-        bookSource: BookSource,
-        key: String,
-        page: Int? = 1,
-        context: CoroutineContext = Dispatchers.IO,
-        start: CoroutineStart = CoroutineStart.DEFAULT,
-        executeContext: CoroutineContext = Dispatchers.Main,
-    ): Coroutine<ArrayList<SearchBook>> {
-        return Coroutine.async(scope, context, start = start, executeContext = executeContext) {
-            searchBookAwait(bookSource, key, page)
-        }
-    }
-
-    suspend fun searchBookAwait(
+    suspend fun getBookListAwait(
         bookSource: BookSource,
         key: String,
         page: Int? = 1,
         filter: ((name: String, author: String) -> Boolean)? = null,
-        shouldBreak: ((size: Int) -> Boolean)? = null
+        shouldBreak: ((size: Int) -> Boolean)? = null,
+        type: String = "search"
     ): ArrayList<SearchBook> {
-        val searchUrl = bookSource.searchUrl
-        if (searchUrl.isNullOrBlank()) {
-            throw NoStackTraceException("搜索url不能为空")
+        var url = key
+        var key : String? = key
+        if (type == "search"){
+            key = null
+            if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
+            else url = bookSource.searchUrl!!
         }
         val ruleData = RuleData()
         val analyzeUrl = AnalyzeUrl(
-            mUrl = searchUrl,
+            mUrl = url,
             key = key,
             page = page,
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
             ruleData = ruleData,
-            coroutineContext = coroutineContext
+            coroutineContext = currentCoroutineContext()
         )
-        var res = analyzeUrl.getStrResponseAwait()
-        //检测书源是否已登录
-        bookSource.loginCheckJs?.let { checkJs ->
-            if (checkJs.isNotBlank()) {
-                res = analyzeUrl.evalJS(checkJs, res) as StrResponse
-            }
-        }
-        checkRedirect(bookSource, res)
+        val res = checkLogin(analyzeUrl, bookSource)
         return BookList.analyzeBookList(
             bookSource = bookSource,
             ruleData = ruleData,
             analyzeUrl = analyzeUrl,
             baseUrl = res.url,
             body = res.body,
-            isSearch = true,
-            isRedirect = res.raw.priorResponse?.isRedirect == true,
+            isSearch = type == "search",
+            isRedirect = checkRedirect(bookSource, res),
             filter = filter,
-            shouldBreak = shouldBreak
-        )
-    }
-
-    /**
-     * 发现
-     */
-    fun exploreBook(
-        scope: CoroutineScope,
-        bookSource: BookSource,
-        url: String,
-        page: Int? = 1,
-        context: CoroutineContext = Dispatchers.IO,
-    ): Coroutine<List<SearchBook>> {
-        return Coroutine.async(scope, context) {
-            exploreBookAwait(bookSource, url, page)
-        }
-    }
-
-    suspend fun exploreBookAwait(
-        bookSource: BookSource,
-        url: String,
-        page: Int? = 1,
-    ): ArrayList<SearchBook> {
-        val ruleData = RuleData()
-        val analyzeUrl = AnalyzeUrl(
-            mUrl = url,
-            page = page,
-            baseUrl = bookSource.bookSourceUrl,
-            source = bookSource,
-            ruleData = ruleData,
-            coroutineContext = coroutineContext
-        )
-        var res = analyzeUrl.getStrResponseAwait()
-        //检测书源是否已登录
-        bookSource.loginCheckJs?.let { checkJs ->
-            if (checkJs.isNotBlank()) {
-                res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
-            }
-        }
-        checkRedirect(bookSource, res)
-        return BookList.analyzeBookList(
-            bookSource = bookSource,
-            ruleData = ruleData,
-            analyzeUrl = analyzeUrl,
-            baseUrl = res.url,
-            body = res.body,
-            isSearch = false
+            shouldBreak = shouldBreak,
         )
     }
 
     /**
      * 书籍信息
      */
-    fun getBookInfo(
-        scope: CoroutineScope,
-        bookSource: BookSource,
-        book: Book,
-        context: CoroutineContext = Dispatchers.IO,
-        canReName: Boolean = true,
-    ): Coroutine<Book> {
-        return Coroutine.async(scope, context) {
-            getBookInfoAwait(bookSource, book, canReName)
-        }
-    }
-
     suspend fun getBookInfoAwait(
         bookSource: BookSource,
         book: Book,
         canReName: Boolean = true,
     ): Book {
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
         if (!book.infoHtml.isNullOrEmpty()) {
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -171,15 +82,9 @@ object WebBook {
                 baseUrl = bookSource.bookSourceUrl,
                 source = bookSource,
                 ruleData = book,
-                coroutineContext = coroutineContext
+                coroutineContext = currentCoroutineContext()
             )
-            var res = analyzeUrl.getStrResponseAwait()
-            //检测书源是否已登录
-            bookSource.loginCheckJs?.let { checkJs ->
-                if (checkJs.isNotBlank()) {
-                    res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
-                }
-            }
+            val res = checkLogin(analyzeUrl, bookSource)
             checkRedirect(bookSource, res)
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -193,43 +98,12 @@ object WebBook {
         return book
     }
 
-    /**
-     * 目录
-     */
-    fun getChapterList(
-        scope: CoroutineScope,
-        bookSource: BookSource,
-        book: Book,
-        runPerJs: Boolean = false,
-        context: CoroutineContext = Dispatchers.IO
-    ): Coroutine<List<BookChapter>> {
-        return Coroutine.async(scope, context) {
-            getChapterListAwait(bookSource, book, runPerJs).getOrThrow()
-        }
-    }
-
-    suspend fun runPreUpdateJs(bookSource: BookSource, book: Book): Result<Unit> {
-        return kotlin.runCatching {
-            val preUpdateJs = bookSource.ruleToc?.preUpdateJs
-            if (!preUpdateJs.isNullOrBlank()) {
-                AnalyzeRule(book, bookSource, true)
-                    .setCoroutineContext(coroutineContext)
-                    .evalJS(preUpdateJs)
-            }
-        }.onFailure {
-            coroutineContext.ensureActive()
-            AppLog.put("执行preUpdateJs规则失败 书源:${bookSource.bookSourceName}", it)
-        }
-    }
-
     suspend fun getChapterListAwait(
         bookSource: BookSource,
         book: Book,
         runPerJs: Boolean = false
     ): Result<List<BookChapter>> {
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
-        return kotlin.runCatching {
+        return runCatching {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
             }
@@ -247,15 +121,9 @@ object WebBook {
                     baseUrl = book.bookUrl,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
-                var res = analyzeUrl.getStrResponseAwait()
-                //检测书源是否已登录
-                bookSource.loginCheckJs?.let { checkJs ->
-                    if (checkJs.isNotBlank()) {
-                        res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
-                    }
-                }
+                val res = checkLogin(analyzeUrl, bookSource)
                 checkRedirect(bookSource, res)
                 BookChapterList.analyzeChapterList(
                     bookSource = bookSource,
@@ -266,36 +134,13 @@ object WebBook {
                 )
             }
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
         }
     }
 
     /**
      * 章节内容
      */
-    fun getContent(
-        scope: CoroutineScope,
-        bookSource: BookSource,
-        book: Book,
-        bookChapter: BookChapter,
-        nextChapterUrl: String? = null,
-        needSave: Boolean = true,
-        context: CoroutineContext = Dispatchers.IO,
-        start: CoroutineStart = CoroutineStart.DEFAULT,
-        executeContext: CoroutineContext = Dispatchers.Main,
-        semaphore: Semaphore? = null,
-    ): Coroutine<String> {
-        return Coroutine.async(
-            scope,
-            context,
-            start = start,
-            executeContext = executeContext,
-            semaphore = semaphore
-        ) {
-            getContentAwait(bookSource, book, bookChapter, nextChapterUrl, needSave)
-        }
-    }
-
     suspend fun getContentAwait(
         bookSource: BookSource,
         book: Book,
@@ -329,18 +174,9 @@ object WebBook {
                 source = bookSource,
                 ruleData = book,
                 chapter = bookChapter,
-                coroutineContext = coroutineContext
+                coroutineContext = currentCoroutineContext()
             )
-            var res = analyzeUrl.getStrResponseAwait(
-                jsStr = bookSource.getContentRule().webJs,
-                sourceRegex = bookSource.getContentRule().sourceRegex
-            )
-            //检测书源是否已登录
-            bookSource.loginCheckJs?.let { checkJs ->
-                if (checkJs.isNotBlank()) {
-                    res = analyzeUrl.evalJS(checkJs, result = res) as StrResponse
-                }
-            }
+            val res = checkLogin(analyzeUrl, bookSource)
             checkRedirect(bookSource, res)
             BookContent.analyzeContent(
                 bookSource = bookSource,
@@ -358,58 +194,76 @@ object WebBook {
     /**
      * 精准搜索
      */
-    fun preciseSearch(
-        scope: CoroutineScope,
-        bookSourceParts: List<BookSourcePart>,
-        name: String,
-        author: String,
-        context: CoroutineContext = Dispatchers.IO,
-        semaphore: Semaphore? = null,
-    ): Coroutine<Pair<Book, BookSource>> {
-        return Coroutine.async(scope, context, semaphore = semaphore) {
-            for (s in bookSourceParts) {
-                val source = s.getBookSource() ?: continue
-                val book = preciseSearchAwait(source, name, author).getOrNull()
-                if (book != null) {
-                    return@async Pair(book, source)
-                }
-            }
-            throw NoStackTraceException("没有搜索到<$name>$author")
-        }
-    }
-
     suspend fun preciseSearchAwait(
         bookSource: BookSource,
         name: String,
         author: String,
     ): Result<Book> {
-        return kotlin.runCatching {
-            coroutineContext.ensureActive()
-            searchBookAwait(
+        return runCatching {
+            currentCoroutineContext().ensureActive()
+            getBookListAwait(
                 bookSource, name,
                 filter = { fName, fAuthor -> fName == name && fAuthor == author },
                 shouldBreak = { it > 0 }
             ).firstOrNull()?.let { searchBook ->
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 return@runCatching searchBook.toBook()
             }
             throw NoStackTraceException("未搜索到 $name($author) 书籍")
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
         }
+    }
+
+    suspend fun runPreUpdateJs(bookSource: BookSource, book: Book): Result<Unit> {
+        return runCatching {
+            val preUpdateJs = bookSource.ruleToc?.preUpdateJs
+            if (!preUpdateJs.isNullOrBlank()) {
+                AnalyzeRule(book, bookSource, true)
+                    .setCoroutineContext(currentCoroutineContext())
+                    .evalJS(preUpdateJs)
+            }
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("执行preUpdateJs规则失败 书源:${bookSource.bookSourceName}", it)
+        }
+    }
+
+    private suspend fun checkLogin(analyzeUrl: AnalyzeUrl, bookSource: BookSource) : StrResponse{
+        var tmp: Throwable? = null
+        var res = try {
+                analyzeUrl.getStrResponseAwait()
+            }catch (e: Throwable){
+                tmp = e
+                null
+            }
+        try{
+            //检测书源是否已登录
+            bookSource.loginCheckJs.let {
+                if (!it.isNullOrBlank()) {
+                    res = analyzeUrl.evalJS(it, res) as StrResponse
+                }
+            }
+
+        }catch (e: Throwable){
+            throw tmp ?: e
+        }
+        return res!!
     }
 
     /**
      * 检测重定向
      */
-    private fun checkRedirect(bookSource: BookSource, response: StrResponse) {
+    private fun checkRedirect(bookSource: BookSource, response: StrResponse) : Boolean {
         response.raw.priorResponse?.let {
             if (it.isRedirect) {
                 Debug.log(bookSource.bookSourceUrl, "≡检测到重定向(${it.code})")
                 Debug.log(bookSource.bookSourceUrl, "┌重定向后地址")
                 Debug.log(bookSource.bookSourceUrl, "└${response.url}")
+                return true
             }
         }
+        return false
     }
 
 }

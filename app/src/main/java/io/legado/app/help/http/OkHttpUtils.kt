@@ -6,7 +6,6 @@ import io.legado.app.utils.Utf8BomUtils
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -140,18 +139,6 @@ private val formContentType = "application/x-www-form-urlencoded".toMediaType()
 
 fun Request.Builder.postForm(encodedForm: String) {
     post(encodedForm.toRequestBody(formContentType))
-}
-
-fun Request.Builder.postForm(form: Map<String, String>, encoded: Boolean = false) {
-    val formBody = FormBody.Builder()
-    form.forEach {
-        if (encoded) {
-            formBody.addEncoded(it.key, it.value)
-        } else {
-            formBody.add(it.key, it.value)
-        }
-    }
-    post(formBody.build())
 }
 
 fun Request.Builder.postMultipart(type: String?, form: Map<String, Any>) {

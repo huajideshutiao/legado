@@ -36,9 +36,9 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
+import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.io.File
-import kotlin.coroutines.coroutineContext
 
 @Keep
 object BookCover {
@@ -182,6 +182,7 @@ object BookCover {
         path: String?,
         loadOnlyWifi: Boolean = false,
         sourceOrigin: String? = null,
+        inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
         val loadBlur = ImageLoader.load(context, defaultDrawable)
             .transform(BlurTransformation(25), CenterCrop())
@@ -192,7 +193,8 @@ object BookCover {
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        return ImageLoader.load(context, path)
+        val type = if (inBookshelf) "covers" else "default"
+        return ImageLoader.load(context, path,type)
             .apply(options)
             .transform(BlurTransformation(25), CenterCrop())
             .transition(DrawableTransitionOptions.withCrossFade(1500))
@@ -214,12 +216,12 @@ object BookCover {
             config.searchUrl,
             book.name,
             source = config,
-            coroutineContext = coroutineContext,
+            coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
         val res = analyzeUrl.getStrResponseAwait()
         val analyzeRule = AnalyzeRule(book)
-        analyzeRule.setCoroutineContext(coroutineContext)
+        analyzeRule.setCoroutineContext(currentCoroutineContext())
         analyzeRule.setContent(res.body)
         analyzeRule.setRedirectUrl(res.url)
         return analyzeRule.getString(config.coverRule, isUrl = true)

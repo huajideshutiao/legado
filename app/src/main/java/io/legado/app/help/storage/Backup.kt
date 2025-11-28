@@ -29,6 +29,7 @@ import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.outputStream
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,7 +42,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.coroutineContext
 
 /**
  * 备份
@@ -152,7 +152,7 @@ object Backup {
                     .writeText(it)
             }
         }
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         GSON.toJson(ReadBookConfig.configList).let {
             FileUtils.createFileIfNotExist(backupPath + File.separator + ReadBookConfig.configFileName)
                 .writeText(it)
@@ -169,7 +169,7 @@ object Backup {
             FileUtils.createFileIfNotExist(backupPath + File.separator + DirectLinkUpload.ruleFileName)
                 .writeText(GSON.toJson(it))
         }
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         appCtx.getSharedPreferences(backupPath, "config")?.let { sp ->
             val edit = sp.edit()
             appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
@@ -193,7 +193,7 @@ object Backup {
             }
             edit.commit()
         }
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         val zipFileName = getNowZipFileName()
         val paths = arrayListOf(*backupFileNames)
         for (i in 0 until paths.size) {
@@ -228,7 +228,7 @@ object Backup {
         }
         FileUtils.delete(backupPath)
         FileUtils.delete(zipFilePath)
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         ReadBookConfig.getAllPicBgStr().map {
             if (it.contains(File.separator)) {
                 File(it)
@@ -241,7 +241,7 @@ object Backup {
     }
 
     private suspend fun writeListToJson(list: List<Any>, fileName: String, path: String) {
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         withContext(IO) {
             if (list.isNotEmpty()) {
                 LogUtils.d(TAG, "阅读备份 $fileName 列表大小 ${list.size}")

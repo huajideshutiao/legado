@@ -11,10 +11,25 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.rule.*
+import io.legado.app.data.entities.rule.BookInfoRule
+import io.legado.app.data.entities.rule.ContentRule
+import io.legado.app.data.entities.rule.ExploreRule
+import io.legado.app.data.entities.rule.SearchRule
+import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.ReplaceAnalyzer
-import io.legado.app.utils.*
+import io.legado.app.utils.DebugLog
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.GSON
+import io.legado.app.utils.getFile
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.jsonPath
+import io.legado.app.utils.readBool
+import io.legado.app.utils.readInt
+import io.legado.app.utils.readLong
+import io.legado.app.utils.readString
+import io.legado.app.utils.readText
+import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.io.File
 import java.util.regex.Pattern
@@ -310,9 +325,9 @@ object ImportOldData {
             return toNewUrl(oldUrls)
         }
         val urls = oldUrls.split("(&&|\r?\n)+".toRegex())
-        return urls.map {
-            toNewUrl(it)?.replace("\n\\s*".toRegex(), "")
-        }.joinToString("\n")
+        return urls.joinToString("\n") {
+            toNewUrl(it)?.replace("\n\\s*".toRegex(), "").toString()
+        }
     }
 
     private fun toNewUrl(oldUrl: String?): String? {
@@ -358,7 +373,7 @@ object ImportOldData {
             map["method"] = "POST"
             map["body"] = urlList[1]
         }
-        if (map.size > 0) {
+        if (map.isNotEmpty()) {
             url += "," + GSON.toJson(map)
         }
         return url

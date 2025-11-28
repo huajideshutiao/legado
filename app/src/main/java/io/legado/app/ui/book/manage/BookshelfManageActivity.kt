@@ -4,31 +4,48 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
+import android.view.View
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.AppConst.charsets
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.IntentAction
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityArrangeBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.contains
+import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.model.CacheBook
+import io.legado.app.service.ExportBookService
+import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -38,14 +55,26 @@ import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.utils.ACache
+import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.enableCustomExport
+import io.legado.app.utils.hideSoftInput
+import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setIconCompat
+import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.startService
+import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.verificationField
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -55,6 +84,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import splitties.init.appCtx
 import kotlin.math.max
 
 /**
@@ -83,7 +113,16 @@ class BookshelfManageActivity :
     private var books: List<Book>? = null
     private val waitDialog by lazy { WaitDialog(this) }
     private val exportDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+        var uri = it.uri ?: return@registerForActivityResult
+        if(it.value == "cache") {
+            var dirPath = if (uri.isContentScheme())uri.toString() else uri.path ?:return@registerForActivityResult
+            ACache.get().put(exportBookPathKey, dirPath)
+            if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
+                configExportSection(dirPath)
+            } else {
+                startExport(dirPath)
+            }
+        }else{
             alert(R.string.export_success) {
                 if (uri.toString().isAbsUrl()) {
                     setMessage(DirectLinkUpload.getSummary())
@@ -99,6 +138,9 @@ class BookshelfManageActivity :
             }
         }
     }
+
+    private val exportBookPathKey = "exportBookPath"
+    private val exportTypes = arrayListOf("txt", "epub")
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.groupId = intent.getLongExtra("groupId", -1)
@@ -116,6 +158,30 @@ class BookshelfManageActivity :
         upBookDataByGroupId()
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) {
+            currentFocus?.let {
+                if (it.shouldHideSoftInput(ev)) {
+                    it.post {
+                        it.clearFocus()
+                        it.hideSoftInput()
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun notifyItemChanged(bookUrl: String) {
+        kotlin.runCatching {
+            adapter.getItems().forEachIndexed { index, book ->
+                if (bookUrl == book.bookUrl) {
+                    adapter.notifyItemChanged(index, true)
+                    return
+                }
+            }
+        }
+    }
     override fun observeLiveBus() {
         viewModel.batchChangeSourceState.observe(this) {
             if (it) {
@@ -128,10 +194,43 @@ class BookshelfManageActivity :
         viewModel.batchChangeSourceProcessLiveData.observe(this) {
             waitDialog.setText(it)
         }
+        viewModel.upAdapterLiveData.observe(this) {
+            notifyItemChanged(it)
+        }
+        observeEvent<String>(EventBus.EXPORT_BOOK) {
+            notifyItemChanged(it)
+        }
+        observeEvent<String>(EventBus.UP_DOWNLOAD) {
+            if (!CacheBook.isRun) {
+                menu?.findItem(R.id.menu_download)?.let { item ->
+                    item.setIconCompat(R.drawable.ic_play_24dp)
+                    item.setTitle(R.string.download_start)
+                }
+                menu?.applyTint(this)
+            } else {
+                menu?.findItem(R.id.menu_download)?.let { item ->
+                    item.setIconCompat(R.drawable.ic_stop_black_24dp)
+                    item.setTitle(R.string.stop)
+                }
+                menu?.applyTint(this)
+            }
+            notifyItemChanged(it)
+        }
+        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
+            viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
+            notifyItemChanged(book.bookUrl)
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.bookshelf_manage, menu)
+        menu.iconItemOnLongClick(R.id.menu_download) {
+            PopupMenu(this, it).apply {
+                inflate(R.menu.book_cache_download)
+                this.menu.applyOpenTint(this@BookshelfManageActivity)
+                setOnMenuItemClickListener(this@BookshelfManageActivity)
+            }.show()
+        }
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -141,6 +240,21 @@ class BookshelfManageActivity :
             AppConfig.openBookInfoByClickTitle
         upMenu()
         return super.onPrepareOptionsMenu(menu)
+    }
+
+    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
+        menu.findItem(R.id.menu_enable_replace)?.isChecked = AppConfig.exportUseReplace
+        // 菜单打开时读取状态[enableCustomExport]
+        menu.findItem(R.id.menu_enable_custom_export)?.isChecked = AppConfig.enableCustomExport
+        menu.findItem(R.id.menu_export_no_chapter_name)?.isChecked = AppConfig.exportNoChapterName
+        menu.findItem(R.id.menu_export_web_dav)?.isChecked = AppConfig.exportToWebDav
+        menu.findItem(R.id.menu_export_pics_file)?.isChecked = AppConfig.exportPictureFile
+        menu.findItem(R.id.menu_parallel_export)?.isChecked = AppConfig.parallelExportBook
+        menu.findItem(R.id.menu_export_type)?.title =
+            "${getString(R.string.export_type)}(${getTypeName()})"
+        menu.findItem(R.id.menu_export_charset)?.title =
+            "${getString(R.string.export_charset)}(${AppConfig.exportCharset})"
+        return super.onMenuOpened(featureId, menu)
     }
 
     override fun selectAll(selectAll: Boolean) {
@@ -246,6 +360,7 @@ class BookshelfManageActivity :
                 .conflate().collect {
                     books = it
                     upBookData()
+                    viewModel.loadCacheFiles(it)
                     itemTouchCallback.isCanDrag = bookSort == 3
                 }
         }
@@ -285,6 +400,51 @@ class BookshelfManageActivity :
                 }
             }
 
+            R.id.menu_download,
+            R.id.menu_download_after -> {
+                if (!CacheBook.isRun) {
+                    adapter.selection.forEach { book ->
+                        CacheBook.start(
+                            this@BookshelfManageActivity,
+                            book,
+                            book.durChapterIndex,
+                            book.lastChapterIndex
+                        )
+                    }
+                } else {
+                    CacheBook.stop(this@BookshelfManageActivity)
+                }
+            }
+
+            R.id.menu_download_all -> {
+                if (!CacheBook.isRun) {
+                    adapter.selection.forEach { book ->
+                        CacheBook.start(
+                            this@BookshelfManageActivity,
+                            book,
+                            0,
+                            book.lastChapterIndex
+                        )
+                    }
+                } else {
+                    CacheBook.stop(this@BookshelfManageActivity)
+                }
+            }
+
+            R.id.menu_export_all -> exportAll()
+            R.id.menu_enable_replace -> AppConfig.exportUseReplace = !item.isChecked
+            // 更改菜单状态[enableCustomExport]
+            R.id.menu_enable_custom_export -> AppConfig.enableCustomExport = !item.isChecked
+            R.id.menu_export_no_chapter_name -> AppConfig.exportNoChapterName = !item.isChecked
+            R.id.menu_export_web_dav -> AppConfig.exportToWebDav = !item.isChecked
+            R.id.menu_export_pics_file -> AppConfig.exportPictureFile = !item.isChecked
+            R.id.menu_parallel_export -> AppConfig.parallelExportBook = !item.isChecked
+            R.id.menu_export_folder -> selectExportFolder()
+            R.id.menu_export_file_name -> alertExportFileName()
+            R.id.menu_export_type -> showExportTypeConfig()
+            R.id.menu_export_charset -> showCharsetConfig()
+            R.id.menu_log -> showDialogFragment<AppLogDialog>()
+
             else -> if (item.groupId == R.id.menu_group) {
                 viewModel.groupName = item.title.toString()
                 upTitle()
@@ -299,6 +459,7 @@ class BookshelfManageActivity :
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_del_selection -> alertDelSelection()
+            R.id.menu_export_all -> exportAll()
             R.id.menu_update_enable ->
                 viewModel.upCanUpdate(adapter.selection, true)
 
@@ -307,6 +468,13 @@ class BookshelfManageActivity :
 
             R.id.menu_add_to_group -> selectGroup(addToGroupRequestCode, 0)
             R.id.menu_change_source -> showDialogFragment<SourcePickerDialog>()
+            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(adapter.selection) { file ->
+                exportDir.launch {
+                    mode = HandleFileContract.EXPORT
+                    fileData =
+                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
+                }
+            }
             R.id.menu_clear_cache -> viewModel.clearCache(adapter.selection)
             R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()
         }
@@ -407,6 +575,7 @@ class BookshelfManageActivity :
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
+            GlobalVars.nowBook = book
         }
     }
 
@@ -414,5 +583,212 @@ class BookshelfManageActivity :
         viewModel.changeSource(adapter.selection, source)
         viewModel.batchChangeSourceState.value = true
     }
+
+    private fun exportAll() {
+        val path = ACache.get().getAsString(exportBookPathKey)
+        if (path.isNullOrEmpty()) {
+            selectExportFolder()
+        } else {
+            startExport(path)
+        }
+    }
+
+    /**
+     * 配置自定义导出对话框
+     *
+     * @param path  导出路径
+     * @author Discut
+     * @since 1.0.0
+     */
+    private fun configExportSection(path: String) {
+
+        val alertBinding = DialogSelectSectionExportBinding.inflate(layoutInflater)
+            .apply {
+                fun verifyExportFileNameJsStr(js: String): Boolean {
+                    return tryParesExportFileName(js) && etEpubFilename.text.toString()
+                        .isNotEmpty()
+                }
+
+                fun enableLyEtEpubFilenameIcon() {
+                    lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_CUSTOM
+                    lyEtEpubFilename.setEndIconOnClickListener {
+                        adapter.selection.forEach { book ->
+                            lyEtEpubFilename.helperText =
+                                if (verifyExportFileNameJsStr(etEpubFilename.text.toString()))
+                                    "${resources.getString(R.string.result_analyzed)}: ${
+                                        book.getExportFileName(
+                                            "epub",
+                                            1,
+                                            etEpubFilename.text.toString()
+                                        )
+                                    }"
+                                else "Error"
+                        }
+                    }
+                }
+                etEpubSize.setText("1")
+                // lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_NONE
+                etEpubFilename.text?.append(AppConfig.episodeExportFileName)
+                // 存储解析文件名的jsStr
+                etEpubFilename.let {
+                    it.setOnFocusChangeListener { _, hasFocus ->
+                        if (hasFocus)
+                            return@setOnFocusChangeListener
+                        it.text?.run {
+                            if (verifyExportFileNameJsStr(toString())) {
+                                AppConfig.episodeExportFileName = toString()
+                            }
+                        }
+                    }
+                }
+                tvAllExport.setOnClickListener {
+                    cbAllExport.callOnClick()
+                }
+                tvSelectExport.setOnClickListener {
+                    cbSelectExport.callOnClick()
+                }
+                cbSelectExport.onCheckedChangeListener = { _, isChecked ->
+                    if (isChecked) {
+                        etEpubSize.isEnabled = true
+                        etInputScope.isEnabled = true
+                        etEpubFilename.isEnabled = true
+                        enableLyEtEpubFilenameIcon()
+                        cbAllExport.isChecked = false
+                    }
+                }
+                cbAllExport.onCheckedChangeListener = { _, isChecked ->
+                    if (isChecked) {
+                        etEpubSize.isEnabled = false
+                        etInputScope.isEnabled = false
+                        etEpubFilename.isEnabled = false
+                        lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_NONE
+                        cbSelectExport.isChecked = false
+                    }
+                }
+
+                etInputScope.onFocusChangeListener =
+                    View.OnFocusChangeListener { _, hasFocus ->
+                        if (hasFocus) {
+                            etInputScope.hint = "1-5,8,10-18"
+                        } else {
+                            etInputScope.hint = ""
+                        }
+                    }
+
+                // 默认选择自定义导出
+                cbSelectExport.callOnClick()
+            }
+        val alertDialog = alert(titleResource = R.string.select_section_export) {
+            customView { alertBinding.root }
+            positiveButton(R.string.ok)
+            cancelButton()
+        }
+        alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            alertBinding.apply {
+                if (cbAllExport.isChecked) {
+                    startExport(path)
+                    alertDialog.hide()
+                    return@apply
+                }
+                val epubScope = etInputScope.text.toString()
+                if (!verificationField(epubScope)) {
+                    etInputScope.error = appCtx.getString(R.string.error_scope_input)//"请输入正确的范围"
+                    return@apply
+                }
+                etInputScope.error = null
+                val epubSize = etEpubSize.text.toString().toIntOrNull() ?: 1
+                adapter.selection.forEach { book ->
+                    startService<ExportBookService> {
+                        action = IntentAction.start
+                        putExtra("bookUrl", book.bookUrl)
+                        putExtra("exportType", "epub")
+                        putExtra("exportPath", path)
+                        putExtra("epubSize", epubSize)
+                        putExtra("epubScope", epubScope)
+                    }
+                }
+                alertDialog.hide()
+            }
+
+        }
+    }
+
+    private fun selectExportFolder() {
+        val default = arrayListOf<SelectItem<Int>>()
+        val path = ACache.get().getAsString(exportBookPathKey)
+        if (!path.isNullOrEmpty()) {
+            default.add(SelectItem(path, -1))
+        }
+        exportDir.launch {
+            otherActions = default
+            value = "cache"
+        }
+    }
+
+    private fun startExport(path: String) {
+        val exportType = when (AppConfig.exportType) {
+            1 -> "epub"
+            else -> "txt"
+        }
+            if (adapter.selection.isNotEmpty()) {
+                adapter.selection.forEach { book ->
+                    startService<ExportBookService> {
+                        action = IntentAction.start
+                        putExtra("bookUrl", book.bookUrl)
+                        putExtra("exportType", exportType)
+                        putExtra("exportPath", path)
+                    }
+                }
+            } else {
+                toastOnUi(R.string.no_book)
+            }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun alertExportFileName() {
+        alert(R.string.export_file_name) {
+            val message = "Variable: name, author."
+            setMessage(message)
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "file name js"
+                editView.setText(AppConfig.bookExportFileName)
+            }
+            customView { alertBinding.root }
+            okButton {
+                AppConfig.bookExportFileName = alertBinding.editView.text?.toString()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun getTypeName(): String {
+        return exportTypes.getOrElse(AppConfig.exportType) {
+            exportTypes[0]
+        }
+    }
+
+    private fun showExportTypeConfig() {
+        selector(R.string.export_type, exportTypes) { _, i ->
+            AppConfig.exportType = i
+        }
+    }
+
+    private fun showCharsetConfig() {
+        alert(R.string.set_charset) {
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "charset name"
+                editView.setFilterValues(charsets)
+                editView.setText(AppConfig.exportCharset)
+            }
+            customView { alertBinding.root }
+            okButton {
+                AppConfig.exportCharset = alertBinding.editView.text?.toString() ?: "UTF-8"
+            }
+            cancelButton()
+        }
+    }
+
+    override val cacheChapters: HashMap<String, HashSet<String>>
+        get() = viewModel.cacheChapters
 
 }

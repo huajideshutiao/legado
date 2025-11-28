@@ -1,5 +1,6 @@
 package me.ag2s.epublib.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,6 +20,7 @@ import me.ag2s.epublib.util.StringUtil;
  */
 public class Metadata implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = -2437262888962149444L;
 
     public static final String DEFAULT_LANGUAGE = "en";
@@ -33,7 +35,7 @@ public class Metadata implements Serializable {
     private List<String> titles = new ArrayList<>();
     private List<Identifier> identifiers = new ArrayList<>();
     private List<String> subjects = new ArrayList<>();
-    private String format = MediaTypes.EPUB.getName();
+    private String format = MediaTypes.EPUB.name();
     private List<String> types = new ArrayList<>();
     private List<String> descriptions = new ArrayList<>();
     private List<String> publishers = new ArrayList<>();
@@ -76,24 +78,12 @@ public class Metadata implements Serializable {
         this.dates = dates;
     }
 
-    @SuppressWarnings("UnusedReturnValue")
-    public Author addAuthor(Author author) {
-        authors.add(author);
-        return author;
-    }
-
     public List<Author> getAuthors() {
         return authors;
     }
 
     public void setAuthors(List<Author> authors) {
         this.authors = authors;
-    }
-
-    @SuppressWarnings("UnusedReturnValue")
-    public Author addContributor(Author contributor) {
-        contributors.add(contributor);
-        return contributor;
     }
 
     public List<Author> getContributors() {
@@ -147,11 +137,6 @@ public class Metadata implements Serializable {
         return "";
     }
 
-    public String addTitle(String title) {
-        this.titles.add(title);
-        return title;
-    }
-
     public void setTitles(List<String> titles) {
         this.titles = titles;
     }
@@ -160,24 +145,12 @@ public class Metadata implements Serializable {
         return titles;
     }
 
-    @SuppressWarnings("UnusedReturnValue")
-    public String addPublisher(String publisher) {
-        this.publishers.add(publisher);
-        return publisher;
-    }
-
     public void setPublishers(List<String> publishers) {
         this.publishers = publishers;
     }
 
     public List<String> getPublishers() {
         return publishers;
-    }
-
-    @SuppressWarnings("UnusedReturnValue")
-    public String addDescription(String description) {
-        this.descriptions.add(description);
-        return description;
     }
 
     public void setDescriptions(List<String> descriptions) {
@@ -214,12 +187,6 @@ public class Metadata implements Serializable {
 
     public String getFormat() {
         return format;
-    }
-
-    @SuppressWarnings("UnusedReturnValue")
-    public String addType(String type) {
-        this.types.add(type);
-        return type;
     }
 
     public List<String> getTypes() {

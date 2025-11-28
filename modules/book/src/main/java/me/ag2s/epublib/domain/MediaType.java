@@ -1,5 +1,6 @@
 package me.ag2s.epublib.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
@@ -14,12 +15,11 @@ import java.util.Collection;
  * @author paul
  * @see MediaTypes
  */
-public class MediaType implements Serializable {
+public record MediaType(String name, String defaultExtension,
+                        Collection<String> extensions) implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = -7256091153727506788L;
-    private final String name;
-    private final String defaultExtension;
-    private final Collection<String> extensions;
 
     public MediaType(String name, String defaultExtension) {
         this(name, defaultExtension, new String[]{defaultExtension});
@@ -37,33 +37,11 @@ public class MediaType implements Serializable {
         return name.hashCode();
     }
 
-    public MediaType(String name, String defaultExtension,
-                     Collection<String> mextensions) {
-        super();
-        this.name = name;
-        this.defaultExtension = defaultExtension;
-        this.extensions = mextensions;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-
-    public String getDefaultExtension() {
-        return defaultExtension;
-    }
-
-
-    public Collection<String> getExtensions() {
-        return extensions;
-    }
-
     public boolean equals(Object otherMediaType) {
         if (!(otherMediaType instanceof MediaType)) {
             return false;
         }
-        return name.equals(((MediaType) otherMediaType).getName());
+        return name.equals(((MediaType) otherMediaType).name());
     }
 
     @SuppressWarnings("NullableProblems")

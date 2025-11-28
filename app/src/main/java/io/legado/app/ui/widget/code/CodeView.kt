@@ -7,14 +7,20 @@ import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
-import android.text.*
+import android.text.Editable
+import android.text.InputFilter
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextWatcher
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
 import androidx.annotation.ColorInt
 import io.legado.app.ui.widget.text.ScrollMultiAutoCompleteTextView
-import java.util.*
+import java.util.SortedMap
+import java.util.TreeMap
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
@@ -330,7 +336,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun removeErrorLine(lineNum: Int) {
         mErrorHashSet.remove(lineNum)
-        hasErrors = mErrorHashSet.size > 0
+        hasErrors = mErrorHashSet.isNotEmpty()
     }
 
     fun removeAllErrorLines() {

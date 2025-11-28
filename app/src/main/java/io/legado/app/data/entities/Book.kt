@@ -14,6 +14,7 @@ import io.legado.app.constant.PageAnim
 import io.legado.app.data.appDb
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
@@ -160,7 +161,7 @@ data class Book(
 
     fun getRealAuthor() = author.replace(AppPattern.authorRegex, "")
 
-    fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex - 1, 0)
+    fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex +( if (durChapterPos<0)-1 else 0 ), 0)
 
     fun getDisplayCover() = if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
 
@@ -377,6 +378,7 @@ data class Book(
             ReadBook.book = null
         }
         appDb.bookDao.delete(this)
+        addType(BookType.notShelf)
     }
 
     @Suppress("ConstPropertyName")

@@ -12,11 +12,15 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.DialogAddToBookshelfBinding
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.addType
+import io.legado.app.help.source.getBookType
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -80,14 +84,12 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             dismiss()
         }
         viewModel.load(bookUrl) {
-            viewModel.saveSearchBook(it) {
                 startActivity<BookInfoActivity> {
                     putExtra("name", it.name)
                     putExtra("author", it.author)
-                    putExtra("bookUrl", it.bookUrl)
+                    GlobalVars.nowBook = it.apply { it.addType(BookType.notShelf) }
                 }
                 dismiss()
-            }
         }
         binding.tvCancel.setOnClickListener {
             dismiss()
@@ -98,7 +100,6 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
 
         val loadStateLiveData = MutableLiveData<Boolean>()
         val loadErrorLiveData = MutableLiveData<String>()
-        var book: Book? = null
 
         fun load(bookUrl: String, success: (book: Book) -> Unit) {
             execute {
@@ -142,7 +143,6 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
                 AppLog.put("添加书籍 $bookUrl 出错", it)
                 loadErrorLiveData.postValue(it.localizedMessage)
             }.onSuccess {
-                book = it
                 success.invoke(it)
             }.onStart {
                 loadStateLiveData.postValue(true)
@@ -155,23 +155,12 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             return kotlin.runCatching {
                 val book = Book(
                     bookUrl = bookUrl,
+                    type = source.getBookType(),
                     origin = source.bookSourceUrl,
                     originName = source.bookSourceName
                 )
                 WebBook.getBookInfoAwait(source, book)
             }.getOrNull()
         }
-
-        fun saveSearchBook(book: Book, success: () -> Unit) {
-            execute {
-                val searchBook = book.toSearchBook()
-                appDb.searchBookDao.insert(searchBook)
-                searchBook
-            }.onSuccess {
-                success.invoke()
-            }
-        }
-
     }
-
 }

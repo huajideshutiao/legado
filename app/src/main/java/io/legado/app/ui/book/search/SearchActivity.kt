@@ -22,10 +22,13 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
@@ -35,6 +38,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
@@ -52,6 +56,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -85,7 +90,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
     private var menu: Menu? = null
     private var groups: List<String>? = null
-    private var historyFlowJob: Job? = null
     private var booksFlowJob: Job? = null
     private var precisionSearchMenuItem: MenuItem? = null
     private var isManualStopSearch = false
@@ -371,37 +375,27 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun upHistory(key: String? = null) {
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
+            delay(300)
             if (key.isNullOrBlank()) {
                 binding.tvBookShow.gone()
                 binding.rvBookshelfSearch.gone()
             } else {
                 appDb.bookDao.flowSearch(key).conflate().collect {
-                    if (it.isEmpty()) {
-                        binding.tvBookShow.gone()
-                        binding.rvBookshelfSearch.gone()
-                    } else {
-                        binding.tvBookShow.visible()
-                        binding.rvBookshelfSearch.visible()
-                    }
-                    bookAdapter.setItems(it)
-                }
+                        val booksFound = it.isNotEmpty()
+                        binding.tvBookShow.isVisible = booksFound
+                        binding.rvBookshelfSearch.isVisible = booksFound
+                        if (booksFound) bookAdapter.setItems(it.reversed())
             }
-        }
-        historyFlowJob?.cancel()
-        historyFlowJob = lifecycleScope.launch {
-            when {
-                key.isNullOrBlank() -> appDb.searchKeywordDao.flowByTime()
-                else -> appDb.searchKeywordDao.flowSearch(key)
-            }.catch {
-                AppLog.put("搜索界面获取搜索历史数据失败\n${it.localizedMessage}", it)
-            }.flowOn(IO).conflate().collect {
+                }
+
+                (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
+                else appDb.searchKeywordDao.flowSearch(key))
+                    .catch { AppLog.put("搜索界面获取本地数据失败\n${it.localizedMessage}", it) }
+                    .flowOn(IO).conflate().collect {
                 historyKeyAdapter.setItems(it)
-                if (it.isEmpty()) {
-                    binding.tvClearHistory.invisible()
-                } else {
-                    binding.tvClearHistory.visible()
+                        binding.tvClearHistory.isVisible = it.isNotEmpty()
                 }
-            }
+
         }
     }
 
@@ -457,17 +451,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     /**
-     * 显示书籍详情
-     */
-    override fun showBookInfo(name: String, author: String, bookUrl: String) {
-        startActivity<BookInfoActivity> {
-            putExtra("name", name)
-            putExtra("author", author)
-            putExtra("bookUrl", bookUrl)
-        }
-    }
-
-    /**
      * 是否已经加入书架
      */
     override fun isInBookshelf(name: String, author: String): Boolean {
@@ -478,7 +461,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 显示书籍详情
      */
     override fun showBookInfo(book: Book) {
-        showBookInfo(book.name, book.author, book.bookUrl)
+        GlobalVars.nowBook = book
+        if (book.isVideo&& AppConfig.showVideoUi)startActivity<VideoPlayActivity>()
+        else startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+        }
     }
 
     /**

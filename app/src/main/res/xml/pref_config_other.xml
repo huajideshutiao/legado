@@ -51,6 +51,10 @@
             app:entries="@array/default_home_page"
             app:entryValues="@array/default_home_page_value" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="bookshelfLayout"
+            android:title="@string/bookshelf_layout" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
@@ -172,6 +176,12 @@
             android:defaultValue="true"
             android:key="showMangaUi"
             android:title="@string/show_manga_ui"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="showVideoUi"
+            android:title="@string/show_video_ui"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

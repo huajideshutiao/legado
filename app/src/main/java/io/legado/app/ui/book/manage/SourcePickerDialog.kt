@@ -89,7 +89,7 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
         sourceFlowJob = lifecycleScope.launch {
             when {
                 searchKey.isNullOrEmpty() -> appDb.bookSourceDao.flowEnabled()
-                else -> appDb.bookSourceDao.flowSearchEnabled(searchKey)
+                else -> appDb.bookSourceDao.flowSearch(searchKey,true)
             }.catch {
                 AppLog.put("书源选择界面获取书源数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {

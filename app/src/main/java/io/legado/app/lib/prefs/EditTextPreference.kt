@@ -3,7 +3,6 @@ package io.legado.app.lib.prefs
 import android.content.Context
 import android.util.AttributeSet
 import android.widget.TextView
-import androidx.preference.EditTextPreference.OnBindEditTextListener
 import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor

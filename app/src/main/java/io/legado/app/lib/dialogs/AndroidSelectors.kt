@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-@file:Suppress("unused")
-
 package io.legado.app.lib.dialogs
 
 import android.content.Context

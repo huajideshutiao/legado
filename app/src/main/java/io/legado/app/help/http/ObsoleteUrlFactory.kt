@@ -1062,7 +1062,7 @@ class ObsoleteUrlFactory(private var client: OkHttpClient) : URLStreamHandlerFac
                 return false
             }
             val responseCode = response.code
-            if (((responseCode < HTTP_CONTINUE || responseCode >= 200)
+            if (((responseCode !in HTTP_CONTINUE..<200)
                         && (responseCode != HttpURLConnection.HTTP_NO_CONTENT
                         ) && (responseCode != HttpURLConnection.HTTP_NOT_MODIFIED))
             ) {

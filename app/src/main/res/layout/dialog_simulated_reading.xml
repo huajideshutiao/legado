@@ -79,6 +79,7 @@
         <EditText
             android:layout_width="match_parent"
             android:layout_height="49dp"
+            android:focusable="true"
             android:inputType="none"
             android:ems="10"
             android:id="@+id/start_date"

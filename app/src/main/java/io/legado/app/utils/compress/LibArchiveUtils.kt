@@ -16,7 +16,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InterruptedIOException
 import java.nio.ByteBuffer
-import java.nio.channels.SeekableByteChannel
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 
@@ -59,72 +58,6 @@ object LibArchiveUtils {
             Archive.readOpen1(archive)
             successful = true
             return archive
-        } finally {
-            if (!successful) {
-                Archive.free(archive)
-            }
-        }
-
-    }
-
-
-    @Throws(ArchiveException::class)
-    private fun openArchive(
-        channel: SeekableByteChannel,
-    ): Long {
-        val archive: Long = Archive.readNew()
-        var successful = false
-        try {
-            Archive.setCharset(archive, StandardCharsets.UTF_8.name().toByteArray())
-            Archive.readSupportFilterAll(archive)
-            Archive.readSupportFormatAll(archive)
-            Archive.readSetCallbackData(archive, null)
-            val buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE)
-            Archive.readSetReadCallback<Any?>(archive) { _, _ ->
-                buffer.clear()
-                val bytesRead = try {
-                    channel.read(buffer)
-                } catch (e: IOException) {
-                    throw ArchiveException(Archive.ERRNO_FATAL, "SeekableByteChannel.read", e)
-                }
-                if (bytesRead != -1) {
-                    buffer.flip()
-                    buffer
-                } else {
-                    null
-                }
-            }
-            Archive.readSetSkipCallback<Any?>(archive) { _, _, request ->
-                try {
-                    channel.position(channel.position() + request)
-                } catch (e: IOException) {
-                    throw ArchiveException(Archive.ERRNO_FATAL, "SeekableByteChannel.position", e)
-                }
-                request
-            }
-            Archive.readSetSeekCallback<Any?>(archive) { _, _, offset, whence ->
-                val newPosition: Long
-                try {
-                    newPosition = when (whence) {
-                        OsConstants.SEEK_SET -> offset
-                        OsConstants.SEEK_CUR -> channel.position() + offset
-                        OsConstants.SEEK_END -> channel.size() + offset
-                        else -> throw ArchiveException(
-                            Archive.ERRNO_FATAL,
-                            "Unknown whence $whence"
-                        )
-                    }
-                    channel.position(newPosition)
-                } catch (e: IOException) {
-                    throw ArchiveException(Archive.ERRNO_FATAL, "SeekableByteChannel.position", e)
-                }
-                newPosition
-            }
-            Archive.readOpen1(archive)
-            successful = true
-            return archive
-
-
         } finally {
             if (!successful) {
                 Archive.free(archive)

@@ -4,10 +4,21 @@ import android.os.Environment
 import android.webkit.MimeTypeMap
 import androidx.annotation.IntDef
 import splitties.init.appCtx
-import java.io.*
+import java.io.ByteArrayOutputStream
+import java.io.Closeable
+import java.io.File
+import java.io.FileFilter
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.FileWriter
+import java.io.IOException
+import java.io.InputStream
+import java.io.UnsupportedEncodingException
 import java.nio.charset.Charset
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Collections
+import java.util.Locale
 import java.util.regex.Pattern
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
@@ -202,13 +213,12 @@ object FileUtils {
         startDirPath: String,
         allowExtensions: Array<String>? = null
     ): Array<File>? {
-        val dirs: Array<File>?
         val files: Array<File>? = if (allowExtensions == null) {
             listFiles(startDirPath)
         } else {
             listFiles(startDirPath, allowExtensions)
         }
-        dirs = listDirs(startDirPath)
+        val dirs = listDirs(startDirPath)
         if (files == null) {
             return null
         }
@@ -571,7 +581,7 @@ object FileUtils {
             var fileName = File(path).name
             val lastIndexOf = fileName.lastIndexOf(".")
             if (lastIndexOf != -1) {
-                fileName = fileName.substring(0, lastIndexOf)
+                fileName = fileName.take(lastIndexOf)
             }
             fileName
         } catch (e: Exception) {

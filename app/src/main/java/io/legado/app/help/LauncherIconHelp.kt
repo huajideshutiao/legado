@@ -4,7 +4,13 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import io.legado.app.R
-import io.legado.app.ui.welcome.*
+import io.legado.app.ui.welcome.Launcher1
+import io.legado.app.ui.welcome.Launcher2
+import io.legado.app.ui.welcome.Launcher3
+import io.legado.app.ui.welcome.Launcher4
+import io.legado.app.ui.welcome.Launcher5
+import io.legado.app.ui.welcome.Launcher6
+import io.legado.app.ui.welcome.WelcomeActivity
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 

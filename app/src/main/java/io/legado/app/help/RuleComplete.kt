@@ -66,15 +66,15 @@ object RuleComplete {
             tailStr = ""
         }
         if (cleanedRule.contains(isXpath)) {
-            textRule = "//text()\${seq}"
-            linkRule = "//@href\${seq}"
-            imgRule = "//@src\${seq}"
-            imgText = "img\${at}/@alt\${seq}"
+            textRule = $$"//text()${seq}"
+            linkRule = $$"//@href${seq}"
+            imgRule = $$"//@src${seq}"
+            imgText = $$"img${at}/@alt${seq}"
         } else {
-            textRule = "@text\${seq}"
-            linkRule = "@href\${seq}"
-            imgRule = "@src\${seq}"
-            imgText = "img\${at}@alt\${seq}"
+            textRule = $$"@text${seq}"
+            linkRule = $$"@href${seq}"
+            imgRule = $$"@src${seq}"
+            imgText = $$"img${at}@alt${seq}"
         }
         return when (type) {
             1 -> needComplete.replace(cleanedRule, textRule).replace(fixImgInfo, imgText) + tailStr

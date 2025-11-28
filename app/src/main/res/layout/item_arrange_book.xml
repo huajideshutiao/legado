@@ -72,8 +72,19 @@
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@+id/tv_origin"
-        app:layout_constraintRight_toLeftOf="@+id/tv_group"
         app:layout_constraintTop_toBottomOf="@id/tv_author" />
+
+    <ImageView
+        android:id="@+id/iv_download"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/start"
+        android:src="@drawable/ic_play_24dp"
+        app:layout_constraintBottom_toBottomOf="@+id/tv_group"
+        app:layout_constraintEnd_toStartOf="@+id/tv_group"
+        app:layout_constraintTop_toBottomOf="@+id/tv_author"
+        app:tint="@color/primaryText" />
 
     <TextView
         android:id="@+id/tv_group"
@@ -98,5 +109,16 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tv_author" />
+
+    <TextView
+        android:id="@+id/tv_download"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="3dp"
+        android:text="cache"
+        android:textColor="@color/secondaryText"
+        android:textSize="12sp"
+        app:layout_constraintLeft_toRightOf="@id/tv_group_s"
+        app:layout_constraintTop_toTopOf="@+id/tv_group_s" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

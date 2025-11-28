@@ -1,16 +1,19 @@
 package io.legado.app.ui.book.info
 
 import android.app.Application
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -35,7 +38,8 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
@@ -54,24 +58,12 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     val waitDialogData = MutableLiveData<Boolean>()
     val actionLive = MutableLiveData<String>()
 
-    fun initData(intent: Intent) {
+    fun initData() {
         execute {
-            val name = intent.getStringExtra("name") ?: ""
-            val author = intent.getStringExtra("author") ?: ""
-            val bookUrl = intent.getStringExtra("bookUrl") ?: ""
-            appDb.bookDao.getBook(name, author)?.let {
+            GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
-                upBook(it)
-                return@execute
-            }
-            if (bookUrl.isNotBlank()) {
-                appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let {
-                    upBook(it)
-                    return@execute
-                }
-            }
-            appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let {
-                upBook(it)
+                if(inBookshelf&&(it.tocUrl == ""||it.totalChapterNum == 0))upBook(appDb.bookDao.getBook(it.name,it.author)!!)
+                else upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")
@@ -81,18 +73,13 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun upBook(intent: Intent) {
-        execute {
-            val name = intent.getStringExtra("name") ?: ""
-            val author = intent.getStringExtra("author") ?: ""
-            appDb.bookDao.getBook(name, author)?.let { book ->
-                upBook(book)
-            }
-        }
+    fun upBook() {
+        bookData.value = GlobalVars.nowBook
     }
 
     private fun upBook(book: Book) {
         execute {
+            GlobalVars.nowBook = book
             bookData.postValue(book)
             upCoverByRule(book)
             bookSource = if (book.isLocal) null else
@@ -159,7 +146,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 }
             }
         }.onFinally {
-            loadBookInfo(book, false)
+            loadBookInfo(book)
         }.start()
     }
 
@@ -179,8 +166,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 context.toastOnUi(R.string.error_no_source)
                 return
             }
-            WebBook.getBookInfo(scope, bookSource, book, canReName = canReName)
-                .onSuccess(IO) {
+            Coroutine.async(scope) {
+                getBookInfoAwait(bookSource, book, canReName)
+            }.onSuccess(IO) {
                     val dbBook = appDb.bookDao.getBook(book.name, book.author)
                     if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
                         /**
@@ -232,8 +220,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 return
             }
             val oldBook = book.copy()
-            WebBook.getChapterList(scope, bookSource, book, runPreUpdateJs)
-                .onSuccess(IO) {
+            Coroutine.async(scope) {
+                getChapterListAwait(bookSource, book, runPreUpdateJs).getOrThrow()
+            }.onSuccess(IO) {
                     if (inBookshelf) {
                         appDb.bookDao.replace(oldBook, book)
                         /**
@@ -458,6 +447,12 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             bookData.value?.let {
                 it.delete()
+                if(!it.coverUrl.isNullOrBlank()){
+                    val file = Glide.with(context).downloadOnly()
+                        .apply(RequestOptions().onlyRetrieveFromCache(true))
+                        .load(it.coverUrl).signature(ObjectKey("covers")).submit().get()
+                    file.delete()
+                }
                 inBookshelf = false
                 if (it.isLocal) {
                     LocalBook.deleteBook(it, deleteOriginal)
@@ -485,11 +480,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun upEditBook() {
-        bookData.value?.let {
-            appDb.bookDao.getBook(it.bookUrl)?.let { book ->
-                bookData.postValue(book)
-            }
-        }
+        bookData.postValue(GlobalVars.nowBook)
     }
 
     private fun changeToLocalBook(localBook: Book): Book {

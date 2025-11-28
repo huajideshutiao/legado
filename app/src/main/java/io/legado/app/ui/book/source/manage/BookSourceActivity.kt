@@ -303,7 +303,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
 
                 searchKey == getString(R.string.disabled) -> {
-                    appDb.bookSourceDao.flowDisabled()
+                    appDb.bookSourceDao.flowEnabled(false)
                 }
 
                 searchKey == getString(R.string.need_login) -> {
@@ -315,11 +315,11 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
 
                 searchKey == getString(R.string.enabled_explore) -> {
-                    appDb.bookSourceDao.flowEnabledExplore()
+                    appDb.bookSourceDao.flowExplore()
                 }
 
                 searchKey == getString(R.string.disabled_explore) -> {
-                    appDb.bookSourceDao.flowDisabledExplore()
+                    appDb.bookSourceDao.flowExplore(false)
                 }
 
                 searchKey.startsWith("group:") -> {
@@ -337,13 +337,12 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
                             .thenBy { getSourceHost(it.bookSourceUrl) }
                             .thenByDescending { it.lastUpdateTime })
-                } else if (sortAscending) {
-                    when (sort) {
+                } else {
+                    val tmp = when (sort) {
                         BookSourceSort.Weight -> data.sortedBy { it.weight }
                         BookSourceSort.Name -> data.sortedWith { o1, o2 ->
                             o1.bookSourceName.cnCompare(o2.bookSourceName)
                         }
-
                         BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
                         BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
                         BookSourceSort.Respond -> data.sortedBy { it.respondTime }
@@ -354,29 +353,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                             }
                             sort
                         }
-
-                        else -> data
+                        else -> data.sortedBy { it.customOrder }
                     }
-                } else {
-                    when (sort) {
-                        BookSourceSort.Weight -> data.sortedByDescending { it.weight }
-                        BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                            o2.bookSourceName.cnCompare(o1.bookSourceName)
-                        }
-
-                        BookSourceSort.Url -> data.sortedByDescending { it.bookSourceUrl }
-                        BookSourceSort.Update -> data.sortedBy { it.lastUpdateTime }
-                        BookSourceSort.Respond -> data.sortedByDescending { it.respondTime }
-                        BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
-                            var sort = o1.enabled.compareTo(o2.enabled)
-                            if (sort == 0) {
-                                sort = o1.bookSourceName.cnCompare(o2.bookSourceName)
-                            }
-                            sort
-                        }
-
-                        else -> data.reversed()
-                    }
+                    if (!sortAscending) tmp.reversed() else tmp
                 }
             }.flowWithLifecycleAndDatabaseChange(
                 lifecycle,
@@ -467,7 +446,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_remove_group -> selectionRemoveFromGroups()
             R.id.menu_export_selection -> viewModel.saveToFile(
                 adapter,
-                searchView.query?.toString(),
                 sortAscending,
                 sort
             ) { file ->
@@ -483,7 +461,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
             R.id.menu_share_source -> viewModel.saveToFile(
                 adapter,
-                searchView.query?.toString(),
                 sortAscending,
                 sort
             ) {

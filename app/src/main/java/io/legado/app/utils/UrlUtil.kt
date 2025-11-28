@@ -50,7 +50,6 @@ object UrlUtil {
     /**
      * 根据网络url获取文件信息 文件名
      */
-    @Suppress("MemberVisibilityCanBePrivate")
     fun getFileName(fileUrl: String, headerMap: Map<String, String>? = null): String? {
         return kotlin.runCatching {
             val url = URL(fileUrl)
@@ -62,7 +61,6 @@ object UrlUtil {
         }.getOrNull()
     }
 
-    @Suppress("MemberVisibilityCanBePrivate")
     private fun getFileNameFromResponseHeader(
         url: URL,
         headerMap: Map<String, String>? = null

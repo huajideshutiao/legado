@@ -4,18 +4,27 @@ import android.annotation.SuppressLint
 import android.util.Log
 import io.legado.app.BuildConfig
 import io.legado.app.constant.AppPattern
-import io.legado.app.data.entities.*
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.entities.RssSource
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.sortUrls
 import io.legado.app.model.rss.Rss
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
+import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 object Debug {
     var callback: Callback? = null
@@ -203,12 +212,15 @@ object Debug {
 
     private fun exploreDebug(scope: CoroutineScope, bookSource: BookSource, url: String) {
         log(debugSource, "︾开始解析发现页")
-        val explore = WebBook.exploreBook(scope, bookSource, url, 1)
-            .onSuccess { exploreBooks ->
+        val explore = Coroutine.async(scope) {
+            WebBook.getBookListAwait(bookSource, url, 1)
+        }.onSuccess { exploreBooks ->
                 if (exploreBooks.isNotEmpty()) {
                     log(debugSource, "︽发现页解析完成")
                     log(debugSource, showTime = false)
-                    infoDebug(scope, bookSource, exploreBooks[0].toBook())
+                    val book = exploreBooks[0]
+                    if(book.bookUrl.contains("::"))exploreDebug(scope, bookSource, book.bookUrl.substringAfter("::"))
+                    else infoDebug(scope, bookSource, book.toBook())
                 } else {
                     log(debugSource, "︽未获取到书籍", state = -1)
                 }
@@ -221,8 +233,9 @@ object Debug {
 
     private fun searchDebug(scope: CoroutineScope, bookSource: BookSource, key: String) {
         log(debugSource, "︾开始解析搜索页")
-        val search = WebBook.searchBook(scope, bookSource, key, 1)
-            .onSuccess { searchBooks ->
+        val search = Coroutine.async(scope) {
+            WebBook.getBookListAwait(bookSource, key, 1)
+        }.onSuccess { searchBooks ->
                 if (searchBooks.isNotEmpty()) {
                     log(debugSource, "︽搜索页解析完成")
                     log(debugSource, showTime = false)
@@ -245,8 +258,9 @@ object Debug {
             return
         }
         log(debugSource, "︾开始解析详情页")
-        val info = WebBook.getBookInfo(scope, bookSource, book)
-            .onSuccess {
+        val info = Coroutine.async(scope) {
+                getBookInfoAwait(bookSource, book)
+            }.onSuccess {
                 log(debugSource, "︽详情页解析完成")
                 log(debugSource, showTime = false)
                 if (!book.isWebFile) {
@@ -263,8 +277,9 @@ object Debug {
 
     private fun tocDebug(scope: CoroutineScope, bookSource: BookSource, book: Book) {
         log(debugSource, "︾开始解析目录页")
-        val chapterList = WebBook.getChapterList(scope, bookSource, book)
-            .onSuccess { chapters ->
+        val chapterList = Coroutine.async(scope) {
+                getChapterListAwait(bookSource, book).getOrThrow()
+            }.onSuccess { chapters ->
                 log(debugSource, "︽目录页解析完成")
                 log(debugSource, showTime = false)
                 val toc = chapters.filter { !(it.isVolume && it.url.startsWith(it.title)) }
@@ -289,14 +304,9 @@ object Debug {
         nextChapterUrl: String?
     ) {
         log(debugSource, "︾开始解析正文页")
-        val content = WebBook.getContent(
-            scope = scope,
-            bookSource = bookSource,
-            book = book,
-            bookChapter = bookChapter,
-            nextChapterUrl = nextChapterUrl,
-            needSave = false
-        ).onSuccess {
+        val content = Coroutine.async(scope) {
+            getContentAwait(bookSource, book, bookChapter, nextChapterUrl, false)
+        }.onSuccess {
             log(debugSource, "︽正文页解析完成", state = 1000)
         }.onError {
             log(debugSource, it.stackTraceStr, state = -1)

@@ -11,15 +11,7 @@ import me.ag2s.epublib.util.zip.ZipFileWrapper;
 /**
  * @author jake
  */
-public class EpubResourceProvider implements LazyResourceProvider {
-
-
-    private final ZipFileWrapper zipFileWrapper;
-
-
-    public EpubResourceProvider(ZipFileWrapper zipFileWrapper) {
-        this.zipFileWrapper = zipFileWrapper;
-    }
+public record EpubResourceProvider(ZipFileWrapper zipFileWrapper) implements LazyResourceProvider {
 
 
     @Override

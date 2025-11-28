@@ -48,11 +48,7 @@ class VerticalSeekBar @JvmOverloads constructor(context: Context, attrs: Attribu
         get() {
             val parent = parent
 
-            return if (parent is VerticalSeekBarWrapper) {
-                parent
-            } else {
-                null
-            }
+            return parent as? VerticalSeekBarWrapper
         }
 
     init {

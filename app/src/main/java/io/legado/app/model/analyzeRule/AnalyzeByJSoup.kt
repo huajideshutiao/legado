@@ -94,7 +94,7 @@ class AnalyzeByJSoup(doc: Any) {
                     if (sourceRule.isCss) {
                         val lastIndex = ruleStrX.lastIndexOf('@')
                         getResultLast(
-                            element.select(ruleStrX.substring(0, lastIndex)),
+                            element.select(ruleStrX.take(lastIndex)),
                             ruleStrX.substring(lastIndex + 1)
                         )
                     } else {
@@ -106,7 +106,7 @@ class AnalyzeByJSoup(doc: Any) {
                     if (ruleAnalyzes.elementsType == "||") break
                 }
             }
-            if (results.size > 0) {
+            if (results.isNotEmpty()) {
                 if ("%%" == ruleAnalyzes.elementsType) {
                     for (i in results[0].indices) {
                         for (temp in results) {
@@ -143,7 +143,7 @@ class AnalyzeByJSoup(doc: Any) {
             for (ruleStr in ruleStrS) {
                 val tempS = temp.select(ruleStr)
                 elementsList.add(tempS)
-                if (tempS.size > 0 && ruleAnalyzes.elementsType == "||") {
+                if (tempS.isNotEmpty() && ruleAnalyzes.elementsType == "||") {
                     break
                 }
             }
@@ -171,12 +171,12 @@ class AnalyzeByJSoup(doc: Any) {
                 } else ElementsSingle().getElementsSingle(temp, ruleStr)
 
                 elementsList.add(el)
-                if (el.size > 0 && ruleAnalyzes.elementsType == "||") {
+                if (el.isNotEmpty() && ruleAnalyzes.elementsType == "||") {
                     break
                 }
             }
         }
-        if (elementsList.size > 0) {
+        if (elementsList.isNotEmpty()) {
             if ("%%" == ruleAnalyzes.elementsType) {
                 for (i in 0 until elementsList[0].size) {
                     for (es in elementsList) {
@@ -466,7 +466,7 @@ class AnalyzeByJSoup(doc: Any) {
                                 }
 
                                 if (rl == '[') {
-                                    beforeRule = rus.substring(0, len) //遇到索引边界，返回结果
+                                    beforeRule = rus.take(len) //遇到索引边界，返回结果
                                     return
                                 }
 
@@ -494,7 +494,7 @@ class AnalyzeByJSoup(doc: Any) {
 
                         if (rl != ':') { //rl == '!'  || rl == '.'
                             split = rl
-                            beforeRule = rus.substring(0, len)
+                            beforeRule = rus.take(len)
                             return
                         }
 
@@ -511,7 +511,7 @@ class AnalyzeByJSoup(doc: Any) {
     }
 
 
-    internal inner class SourceRule(ruleStr: String) {
+    internal class SourceRule(ruleStr: String) {
         var isCss = false
         var elementsRule: String = if (ruleStr.startsWith("@CSS:", true)) {
             isCss = true

@@ -26,7 +26,6 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 
-@Suppress("unused")
 @SuppressLint("UnsafeOptInUsageError")
 object ExoPlayerHelper {
 

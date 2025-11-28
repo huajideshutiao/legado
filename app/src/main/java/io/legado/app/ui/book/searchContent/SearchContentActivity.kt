@@ -71,8 +71,7 @@ class SearchContentActivity :
         initSearchView(noSearchResult)
         initRecyclerView()
         initView()
-        val bookUrl = intent.getStringExtra("bookUrl") ?: return
-        viewModel.initBook(bookUrl) {
+        viewModel.initBook {
             initSearchResultList(searchResultList, position)
             initBook(noSearchResult)
         }

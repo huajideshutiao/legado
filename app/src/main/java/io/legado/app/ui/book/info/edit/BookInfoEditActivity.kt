@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
 import io.legado.app.help.book.BookHelp
@@ -16,6 +17,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.utils.FileUtils
@@ -49,9 +51,7 @@ class BookInfoEditActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.bookData.observe(this) { upView(it) }
         if (viewModel.bookData.value == null) {
-            intent.getStringExtra("bookUrl")?.let {
-                viewModel.loadBook(it)
-            }
+            viewModel.loadBook()
         }
         initView()
         initEvent()
@@ -102,17 +102,19 @@ class BookInfoEditActivity :
             when {
                 book.isImage -> 2
                 book.isAudio -> 1
+                book.isVideo -> 4
                 else -> 0
             }
         )
         tieCoverUrl.setText(book.getDisplayCover())
         tieBookIntro.setText(book.getDisplayIntro())
+        tieBookUrl.setText(book.bookUrl)
         upCover()
     }
 
     private fun upCover() {
         viewModel.book?.let {
-            binding.ivCover.load(it.getDisplayCover(), it.name, it.author, false, it.origin)
+            binding.ivCover.load(it.getDisplayCover(), it.name, it.author, false, it.origin, inBookshelf = true)
         }
     }
 
@@ -134,8 +136,12 @@ class BookInfoEditActivity :
         val customIntro = tieBookIntro.text?.toString()
         book.customIntro = if (customIntro == book.intro) null else customIntro
         BookHelp.updateCacheFolder(oldBook, book)
-        viewModel.saveBook(book) {
+        viewModel.saveBook(book,tieBookUrl.text?.toString()) {
             setResult(RESULT_OK)
+            tieBookUrl.text?.apply {
+                    book.bookUrl = this.toString()
+                }
+            GlobalVars.nowBook = book
             finish()
         }
     }

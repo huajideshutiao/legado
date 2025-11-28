@@ -15,7 +15,7 @@ import java.net.URL
 import java.util.BitSet
 import java.util.Enumeration
 
-@Suppress("unused", "MemberVisibilityCanBePrivate")
+@Suppress("MemberVisibilityCanBePrivate")
 object NetworkUtils {
 
     /**
@@ -196,7 +196,7 @@ object NetworkUtils {
             val index = url.indexOf("/", 9)
             return if (index == -1) {
                 url
-            } else url.substring(0, index)
+            } else url.take(index)
         }
         return null
     }

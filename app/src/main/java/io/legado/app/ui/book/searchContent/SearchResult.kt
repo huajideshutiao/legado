@@ -20,7 +20,7 @@ data class SearchResult(
     fun getHtmlCompat(textColor: String, accentColor: String): Spanned {
         return if (query.isNotBlank()) {
             val queryIndexInSurrounding = resultText.indexOf(query)
-            val leftString = resultText.substring(0, queryIndexInSurrounding)
+            val leftString = resultText.take(queryIndexInSurrounding)
             val rightString =
                 resultText.substring(queryIndexInSurrounding + query.length, resultText.length)
             

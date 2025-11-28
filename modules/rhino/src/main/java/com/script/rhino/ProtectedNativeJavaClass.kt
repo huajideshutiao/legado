@@ -37,7 +37,7 @@ class ProtectedNativeJavaClass(
         super.put(name, start, value)
     }
 
-    override fun unwrap(): Any? {
+    override fun unwrap(): Any {
         return javaObject.toString()
     }
 

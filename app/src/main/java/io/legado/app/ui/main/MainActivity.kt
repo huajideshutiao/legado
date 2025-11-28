@@ -55,6 +55,7 @@ import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import androidx.core.view.get
 
 /**
  * 主界面
@@ -397,8 +398,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
-            binding.bottomNavigationView.menu
-                .getItem(realPositions[position]).isChecked = true
+            binding.bottomNavigationView.menu[realPositions[position]].isChecked = true
         }
 
     }

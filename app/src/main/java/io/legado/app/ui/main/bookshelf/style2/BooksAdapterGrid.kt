@@ -13,7 +13,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.invisible
 import splitties.views.onLongClick
 
-@Suppress("UNUSED_PARAMETER")
 class BooksAdapterGrid(context: Context, callBack: CallBack) :
     BaseBooksAdapter<RecyclerView.ViewHolder>(context, callBack) {
 
@@ -48,15 +47,15 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
     inner class BookViewHolder(val binding: ItemBookshelfGridBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun onBind(item: Book, position: Int) = binding.run {
+        fun onBind(item: Book) = binding.run {
             tvName.text = item.name
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             upRefresh(this, item)
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
-                onBind(item, position)
+                onBind(item)
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle
@@ -68,7 +67,8 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                                 item.name,
                                 item.author,
                                 false,
-                                item.origin
+                                item.origin,
+                                inBookshelf = true
                             )
 
                             "refresh" -> upRefresh(this, item)
@@ -107,21 +107,21 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
     inner class GroupViewHolder(val binding: ItemBookshelfGridGroupBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun onBind(item: BookGroup, position: Int) = binding.run {
+        fun onBind(item: BookGroup) = binding.run {
             tvName.text = item.groupName
-            ivCover.load(item.cover)
+            ivCover.load(item.cover, inBookshelf = true)
         }
 
         fun onBind(item: BookGroup, position: Int, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
-                onBind(item, position)
+                onBind(item)
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle
                     bundle.keySet().forEach {
                         when (it) {
                             "groupName" -> tvName.text = item.groupName
-                            "cover" -> ivCover.load(item.cover)
+                            "cover" -> ivCover.load(item.cover, inBookshelf = true)
                         }
                     }
                 }

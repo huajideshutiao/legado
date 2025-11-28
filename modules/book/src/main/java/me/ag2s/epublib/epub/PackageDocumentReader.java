@@ -86,7 +86,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
         book.setSpine(readSpine(packageDocument, book.getResources(), idMapping));
 
         // if we did not find a cover page then we make the first page of the book the cover page
-        if (book.getCoverPage() == null && book.getSpine().size() > 0) {
+        if (book.getCoverPage() == null && !book.getSpine().isEmpty()) {
             book.setCoverPage(book.getSpine().getResource(0));
         }
     }
@@ -140,7 +140,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
                 continue;
             }
             itemEl.setAttribute("href", imageHref.replace("+", "%20"));
-            itemEl.setAttribute("media-type", currentMediaType.getName());
+            itemEl.setAttribute("media-type", currentMediaType.name());
             fixedElements.add(itemEl);
         }
         return fixedElements;

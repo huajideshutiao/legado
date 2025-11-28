@@ -3,15 +3,15 @@ package io.legado.app.ui.book.searchContent
 
 import android.app.Application
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.appDb
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ChineseUtils
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.coroutineContext
 
 class SearchContentViewModel(application: Application) : BaseViewModel(application) {
     var bookUrl: String = ""
@@ -23,10 +23,9 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
     val searchResultList: MutableList<SearchResult> = mutableListOf()
     var replaceEnabled = false
 
-    fun initBook(bookUrl: String, success: () -> Unit) {
-        this.bookUrl = bookUrl
+    fun initBook(success: () -> Unit) {
         execute {
-            book = appDb.bookDao.getBook(bookUrl)
+            book = GlobalVars.nowBook
             book?.let {
                 contentProcessor = ContentProcessor.get(it.name, it.origin)
             }
@@ -42,19 +41,19 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
         val searchResultsWithinChapter: MutableList<SearchResult> = mutableListOf()
         val book = book ?: return searchResultsWithinChapter
         val chapterContent = BookHelp.getContent(book, chapter) ?: return searchResultsWithinChapter
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         chapter.title = when (AppConfig.chineseConverterType) {
             1 -> ChineseUtils.t2s(chapter.title)
             2 -> ChineseUtils.s2t(chapter.title)
             else -> chapter.title
         }
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         val mContent = contentProcessor!!.getContent(
             book, chapter, chapterContent, useReplace = replaceEnabled
         ).toString()
         val positions = searchPosition(mContent, query)
         positions.forEachIndexed { index, position ->
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             val construct = getResultAndQueryIndex(mContent, position, query)
             val result = SearchResult(
                 resultCountWithinChapter = index,
@@ -75,7 +74,7 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
         val position: MutableList<Int> = mutableListOf()
         var index = content.indexOf(pattern)
         while (index >= 0) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             position.add(index)
             index = content.indexOf(pattern, index + pattern.length)
         }

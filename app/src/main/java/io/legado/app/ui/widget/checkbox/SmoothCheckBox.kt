@@ -2,7 +2,11 @@ package io.legado.app.ui.widget.checkbox
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.*
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Point
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
@@ -95,28 +99,6 @@ class SmoothCheckBox @JvmOverloads constructor(
 
     override fun toggle() {
         this.isChecked = !isChecked
-    }
-
-    /**
-     * checked with animation
-     *
-     * @param checked checked
-     * @param animate change with animation
-     */
-    fun setChecked(checked: Boolean, animate: Boolean) {
-        if (animate) {
-            mTickDrawing = false
-            mChecked = checked
-            mDrewDistance = 0f
-            if (checked) {
-                startCheckedAnimation()
-            } else {
-                startUnCheckedAnimation()
-            }
-            onCheckedChangeListener?.invoke(this@SmoothCheckBox, mChecked)
-        } else {
-            this.isChecked = checked
-        }
     }
 
     private fun reset() {

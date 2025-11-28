@@ -10,6 +10,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -20,6 +21,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
@@ -39,6 +41,7 @@ import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toStringArray
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -52,7 +55,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
-import kotlin.coroutines.coroutineContext
 
 /**
  * 阅读界面数据处理
@@ -69,12 +71,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         AppConfig.detectClickArea()
     }
 
-    fun initReadBookConfig(intent: Intent) {
-        val bookUrl = intent.getStringExtra("bookUrl")
-        val book = when {
-            bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-            else -> appDb.bookDao.getBook(bookUrl)
-        } ?: return
+    fun initReadBookConfig() {
+        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?:return
         ReadBook.upReadBookConfig(book)
     }
 
@@ -83,17 +81,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            ReadBook.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val book = when {
-                bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-                else -> appDb.bookDao.getBook(bookUrl)
-            } ?: ReadBook.book
-            when {
-                book != null -> initBook(book)
-                else -> ReadBook.upMsg(context.getString(R.string.no_book))
-            }
+            val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: ReadBook.book
+            if(book != null){
+                ReadBook.inBookshelf = !book.isNotShelf
+                ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
+                initBook(book)
+            }else ReadBook.upMsg(context.getString(R.string.no_book))
         }.onSuccess {
             success?.invoke()
         }.onError {
@@ -112,6 +105,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         } else {
             ReadBook.resetData(book)
         }
+        GlobalVars.nowBook = book
         isInitFinish = true
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
@@ -166,7 +160,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             WebBook.getBookInfoAwait(source, book, canReName = false)
             return true
         } catch (e: Throwable) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             ReadBook.upMsg("详情页出错: ${e.localizedMessage}")
             return false
         }
@@ -222,7 +216,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                         ReadBook.onChapterListUpdated(book)
                         return true
                     }.onFailure {
-                        coroutineContext.ensureActive()
+                        currentCoroutineContext().ensureActive()
                         ReadBook.upMsg(context.getString(R.string.error_load_toc))
                         return false
                     }
@@ -295,7 +289,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 }
             }.onStart {
                 ReadBook.upMsg(context.getString(R.string.source_auto_changing))
-            }.mapParallelSafe(AppConfig.threadCount) { source ->
+            }.mapParallelSafe(AppConfig.threadCount,sources.size) { source ->
                 val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
                 if (book.tocUrl.isEmpty()) {
                     WebBook.getBookInfoAwait(source, book)

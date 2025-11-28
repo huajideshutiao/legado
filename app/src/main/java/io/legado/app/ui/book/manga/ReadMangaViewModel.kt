@@ -7,6 +7,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -14,14 +15,12 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadManga
-import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
@@ -34,7 +33,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
-import splitties.init.appCtx
 
 class ReadMangaViewModel(application: Application) : BaseViewModel(application) {
 
@@ -45,15 +43,13 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            ReadManga.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val book = when {
-                bookUrl.isNullOrEmpty() -> appDb.bookDao.lastReadBook
-                else -> appDb.bookDao.getBook(bookUrl)
-            } ?: ReadManga.book
+            val book = GlobalVars.nowBook ?: ReadManga.book
             when {
-                book != null -> initManga(book)
+                book != null -> {
+                    ReadManga.inBookshelf = !book.isNotShelf
+                    ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
+                    initManga(book)
+                }
                 else -> context.getString(R.string.no_book)//没有找到书
             }
         }.onSuccess {
@@ -66,31 +62,14 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         }
     }
 
-    private suspend fun initManga(book: Book) {
+    private fun initManga(book: Book) {
         val isSameBook = ReadManga.book?.bookUrl == book.bookUrl
-        if (isSameBook) {
-            ReadManga.upData(book)
-        } else {
-            ReadManga.resetData(book)
-        }
-        if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
-            return
-        }
-
-        if (book.isLocal && !checkLocalBookFileExist(book)) {
-            return
-        }
-
-        if ((ReadManga.chapterSize == 0 || book.isLocalModified()) && !loadChapterListAwait(book)) {
-            return
-        }
-
+        if (isSameBook) ReadManga.upData(book)
+        else ReadManga.resetData(book)
+        GlobalVars.nowBook = book
         //开始加载内容
-        if (!isSameBook) {
-            ReadManga.loadContent()
-        } else {
-            ReadManga.loadOrUpContent()
-        }
+        if (!isSameBook) ReadManga.loadContent()
+        else ReadManga.loadOrUpContent()
 
         if (ReadManga.chapterChanged) {
             // 有章节跳转不同步阅读进度
@@ -99,55 +78,10 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
             if (AppConfig.syncBookProgressPlus) {
                 ReadManga.syncProgress(
                     { progress -> ReadManga.mCallback?.sureNewProgress(progress) })
-            } else {
-                syncBookProgress(book)
-            }
+            } else syncBookProgress(book)
         }
-
         //自动换源
-        if (!book.isLocal && ReadManga.bookSource == null) {
-            autoChangeSource(book.name, book.author)
-            return
-        }
-    }
-
-    private suspend fun loadChapterListAwait(book: Book): Boolean {
-        ReadManga.bookSource?.let {
-            val oldBook = book.copy()
-            WebBook.getChapterListAwait(it, book, true).onSuccess { cList ->
-                if (oldBook.bookUrl == book.bookUrl) {
-                    appDb.bookDao.update(book)
-                } else {
-                    appDb.bookDao.replace(oldBook, book)
-                    BookHelp.updateCacheFolder(oldBook, book)
-                }
-                appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                appDb.bookChapterDao.insert(*cList.toTypedArray())
-                ReadManga.onChapterListUpdated(book)
-                return true
-            }.onFailure {
-                //加载章节出错
-                ReadManga.mCallback?.loadFail(appCtx.getString(R.string.error_load_toc))
-                return false
-            }
-        }
-
-        return true
-
-    }
-
-    /**
-     * 加载详情页
-     */
-    private suspend fun loadBookInfo(book: Book): Boolean {
-        val source = ReadManga.bookSource ?: return true
-        try {
-            WebBook.getBookInfoAwait(source, book, canReName = false)
-            return true
-        } catch (e: Throwable) {
-            ReadManga.mCallback?.loadFail("详情页出错: ${e.localizedMessage}")
-            return false
-        }
+        if (ReadManga.bookSource == null) autoChangeSource(book.name, book.author)
     }
 
     /**
@@ -166,7 +100,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
             }.onStart {
                 // 自动换源
 
-            }.mapParallelSafe(AppConfig.threadCount) { source ->
+            }.mapParallelSafe(AppConfig.threadCount,sources.size) { source ->
                 val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
                 if (book.tocUrl.isEmpty()) {
                     WebBook.getBookInfoAwait(source, book)
@@ -245,20 +179,11 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         }
     }
 
-    private fun checkLocalBookFileExist(book: Book): Boolean {
-        try {
-            LocalBook.getBookInputStream(book)
-            return true
-        } catch (e: Throwable) {
-            return false
-        }
-    }
-
     fun openChapter(index: Int, durChapterPos: Int = 0) {
         if (index < ReadManga.chapterSize) {
             ReadManga.showLoading()
             ReadManga.durChapterIndex = index
-            ReadManga.durChapterPos = durChapterPos
+            ReadManga.durChapterPos = durChapterPos * (if(durChapterPos<0) -1 else 1)
             ReadManga.saveRead()
             ReadManga.loadContent()
         }

@@ -17,6 +17,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.Theme
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -30,6 +31,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -54,6 +56,7 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
@@ -70,7 +73,6 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.shareWithQr
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -114,15 +116,14 @@ class BookInfoActivity :
     private val readBookResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        viewModel.upBook(intent)
+        viewModel.upBook()
         when (it.resultCode) {
             RESULT_OK -> {
                 viewModel.inBookshelf = true
                 upTvBookshelf()
             }
-
             RESULT_DELETED -> {
-                setResult(RESULT_OK)
+                setResult(RESULT_DELETED)
                 finish()
             }
         }
@@ -169,7 +170,7 @@ class BookInfoActivity :
         viewModel.bookData.observe(this) { showBook(it) }
         viewModel.chapterListData.observe(this) { upLoading(false, it) }
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
-        viewModel.initData(intent)
+        viewModel.initData()
         initViewEvent()
     }
 
@@ -205,17 +206,13 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
-                    infoEditResult.launch {
-                        putExtra("bookUrl", it.bookUrl)
-                    }
+                    infoEditResult.launch{}
                 }
             }
 
             R.id.menu_share_it -> {
                 viewModel.getBook()?.let {
-                    val bookJson = GSON.toJson(it)
-                    val shareStr = "${it.bookUrl}#$bookJson"
-                    shareWithQr(shareStr, it.name)
+                    sendToClip("[${GSON.toJson(it)}]")
                 }
             }
 
@@ -224,10 +221,8 @@ class BookInfoActivity :
             }
 
             R.id.menu_login -> viewModel.bookSource?.let {
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_top -> viewModel.topBook()
@@ -259,7 +254,7 @@ class BookInfoActivity :
                 upLoading(true)
                 viewModel.getBook()?.let {
                     it.setSplitLongChapter(!item.isChecked)
-                    viewModel.loadBookInfo(it, false)
+                    viewModel.loadBookInfo(it)
                 }
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
@@ -340,6 +335,7 @@ class BookInfoActivity :
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
         llToc?.visible(!book.isWebFile)
+        binding.tvToc.text = getString(R.string.toc_s, book.durChapterTitle)
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
@@ -367,9 +363,10 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
-        binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin) {
+        //if (book.type ==2048)binding.ivCover.layoutParams.let {it.width = it.height/9*16}
+        binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin, inBookshelf = viewModel.inBookshelf) {
             if (!AppConfig.isEInkMode) {
-                BookCover.loadBlur(this, book.getDisplayCover(), false, book.origin)
+                BookCover.loadBlur(this, book.getDisplayCover(), false, book.origin,viewModel.inBookshelf)
                     .into(binding.bgBook)
             }
         }
@@ -454,6 +451,7 @@ class BookInfoActivity :
                         showWebFileDownloadAlert()
                     } else {
                         viewModel.addToBookshelf {
+                            setResult(RESULT_OK)
                             upTvBookshelf()
                         }
                     }
@@ -602,7 +600,7 @@ class BookInfoActivity :
                             LocalConfig.deleteBookOriginal = checkBox.isChecked
                         }
                         viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                            setResult(RESULT_OK)
+                            setResult(RESULT_DELETED)
                             finish()
                         }
                     }
@@ -610,7 +608,7 @@ class BookInfoActivity :
                 }
             } else {
                 viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                    setResult(RESULT_OK)
+                    setResult(RESULT_DELETED)
                     finish()
                 }
             }
@@ -619,6 +617,7 @@ class BookInfoActivity :
 
     private fun openChapterList() {
         viewModel.getBook()?.let {
+            GlobalVars.nowBook = it
             tocActivityResult.launch(it.bookUrl)
         }
     }
@@ -705,24 +704,18 @@ class BookInfoActivity :
     }
 
     private fun startReadActivity(book: Book) {
-        when {
-            book.isAudio -> readBookResult.launch(
-                Intent(this, AudioPlayActivity::class.java)
-                    .putExtra("bookUrl", book.bookUrl)
-                    .putExtra("inBookshelf", viewModel.inBookshelf)
-            )
-
-            else -> readBookResult.launch(
-                Intent(
-                    this,
-                    if (!book.isLocal && book.isImage && AppConfig.showMangaUi) ReadMangaActivity::class.java
-                    else ReadBookActivity::class.java
-                )
-                    .putExtra("bookUrl", book.bookUrl)
-                    .putExtra("inBookshelf", viewModel.inBookshelf)
-                    .putExtra("chapterChanged", chapterChanged)
-            )
-        }
+        GlobalVars.nowBook = book
+        readBookResult.launch(
+            Intent(
+                this,
+                when {
+                    book.isVideo -> VideoPlayActivity::class.java
+                    !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+                    book.isAudio -> AudioPlayActivity::class.java
+                    else -> ReadBookActivity::class.java
+                    }
+                ).putExtra("chapterChanged", chapterChanged)
+          )
     }
 
     override val oldBook: Book?
@@ -750,6 +743,7 @@ class BookInfoActivity :
                 viewModel.saveBook(book)
             } else if (groupId > 0) {
                 viewModel.addToBookshelf {
+                    setResult(RESULT_OK)
                     upTvBookshelf()
                 }
             }

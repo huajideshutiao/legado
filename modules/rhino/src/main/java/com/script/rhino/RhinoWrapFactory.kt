@@ -84,7 +84,7 @@ object RhinoWrapFactory : WrapFactory() {
 
     fun register(clazz: Class<*>, factory: JavaObjectWrapFactory) {
         if (!factories.contains(clazz)) {
-            factories.put(clazz, factory)
+            factories[clazz] = factory
         }
     }
 

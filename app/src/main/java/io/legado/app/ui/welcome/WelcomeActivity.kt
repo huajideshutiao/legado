@@ -13,8 +13,15 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.main.MainActivity
-import io.legado.app.utils.*
+import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.fullScreen
+import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.setStatusBarColorAuto
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
+import io.legado.app.utils.windowSize
 
 open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
 

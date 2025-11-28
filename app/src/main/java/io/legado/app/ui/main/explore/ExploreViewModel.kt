@@ -4,7 +4,6 @@ import android.app.Application
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.source.SourceHelp
 
 class ExploreViewModel(application: Application) : BaseViewModel(application) {

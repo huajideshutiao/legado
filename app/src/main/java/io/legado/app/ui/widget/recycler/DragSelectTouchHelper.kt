@@ -26,7 +26,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.OnItemTouchListener
 import io.legado.app.BuildConfig
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper.AdvanceCallback.Mode
 import io.legado.app.utils.DebugLog
 import java.util.Locale
 import kotlin.math.max

@@ -24,7 +24,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.CacheBookService
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -107,7 +107,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         contentProcessor = ContentProcessor.get(book)
         durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos
+        durChapterPos = book.durChapterPos  * (if (book.durChapterPos<0)-1 else 1)
         isLocalBook = book.isLocal
         clearTextChapter()
         callBack?.upContent()
@@ -134,7 +134,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         if (durChapterIndex != book.durChapterIndex) {
             durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos
+            durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
             clearTextChapter()
         }
         if (curTextChapter?.isCompleted == false) {
@@ -503,11 +503,6 @@ object ReadBook : CoroutineScope by MainScope() {
             return curTextChapter?.getPageIndexByCharIndex(durChapterPos) ?: durChapterPos
         }
 
-    /**
-     * 是否排版到了当前阅读位置
-     */
-    val isLayoutAvailable inline get() = durPageIndex >= 0
-
     val isScroll inline get() = pageAnim() == scrollPageAnim
 
     val contentLoadFinish get() = curTextChapter != null || msg != null
@@ -865,7 +860,9 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!book.canUpdate) return
         if (System.currentTimeMillis() - book.lastCheckTime < 600000) return
         book.lastCheckTime = System.currentTimeMillis()
-        WebBook.getChapterList(this, bookSource, book).onSuccess(IO) { cList ->
+        Coroutine.async(this) {
+            getChapterListAwait(bookSource, book).getOrThrow()
+        }.onSuccess(IO) { cList ->
             if (book.bookUrl == ReadBook.book?.bookUrl
                 && cList.size > chapterSize
             ) {
@@ -899,7 +896,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 book.durChapterTime = System.currentTimeMillis()
                 val chapterChanged = book.durChapterIndex != durChapterIndex
                 book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos
+                book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
                 if (!pageChanged || chapterChanged) {
                     appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
                         book.durChapterTitle = it.getDisplayTitle(

@@ -25,12 +25,12 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityMangaBinding
-import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -164,9 +164,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             ReadManga.loadOrUpContent()
         }
         binding.pbLoading.isVisible = !AppConfig.isEInkMode
-        mAdapter.addFooterView {
-            ViewLoadMoreBinding.bind(loadMoreView)
-        }
         loadMoreView.setOnClickListener {
             if (!loadMoreView.isLoading && ReadManga.hasNextChapter) {
                 loadMoreView.startLoad()
@@ -253,7 +250,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
 
     override fun upContent() {
         lifecycleScope.launch {
-            setTitle(ReadManga.book?.name)
+            title = ReadManga.book?.name
             val data = withContext(IO) { ReadManga.mangaContents }
             val pos = data.pos
             val list = data.items
@@ -613,6 +610,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
+                GlobalVars.nowBook = it
             }
         }
     }

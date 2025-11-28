@@ -6,7 +6,6 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
-import androidx.preference.PreferenceDialogFragmentCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
@@ -20,7 +19,7 @@ class EditTextPreferenceDialog : EditTextPreferenceDialogFragmentCompat() {
         fun newInstance(key: String): EditTextPreferenceDialog {
             val fragment = EditTextPreferenceDialog()
             val b = Bundle(1)
-            b.putString(PreferenceDialogFragmentCompat.ARG_KEY, key)
+            b.putString(ARG_KEY, key)
             fragment.arguments = b
             return fragment
         }
@@ -54,7 +53,7 @@ class EditTextPreferenceDialog : EditTextPreferenceDialogFragmentCompat() {
                     Gravity.TOP -> it.decorView.setBackgroundResource(R.drawable.bg_eink_border_bottom)
                     Gravity.BOTTOM -> it.decorView.setBackgroundResource(R.drawable.bg_eink_border_top)
                     else -> {
-                        val padding = 2.dpToPx();
+                        val padding = 2.dpToPx()
                         it.decorView.setPadding(padding, padding, padding, padding)
                         it.decorView.setBackgroundResource(R.drawable.bg_eink_border_dialog)
                     }

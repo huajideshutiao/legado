@@ -8,7 +8,13 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.entities.Book
 import io.legado.app.model.localBook.LocalBook
-import io.legado.app.utils.*
+import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.FileDoc
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.isFileScheme
+import io.legado.app.utils.isJson
+import io.legado.app.utils.openInputStream
+import io.legado.app.utils.printOnDebug
 
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
     val importBookLiveData = MutableLiveData<Uri>()

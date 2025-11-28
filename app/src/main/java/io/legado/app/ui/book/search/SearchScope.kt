@@ -12,7 +12,6 @@ import splitties.init.appCtx
 /**
  * 搜索范围
  */
-@Suppress("unused")
 data class SearchScope(private var scope: String) {
 
     constructor(groups: List<String>) : this(groups.joinToString(","))

@@ -15,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 
 public class UmdUtils {
 
-    private static final int EOF = -1;
     private static final int BUFFER_SIZE = 8 * 1024;
 
 
@@ -57,8 +56,8 @@ public class UmdUtils {
         StringBuilder sb = new StringBuilder(bArr.length);
         String sTmp;
 
-        for (int i = 0; i < bArr.length; i++) {
-            sTmp = Integer.toHexString(0xFF & bArr[i]);
+        for (byte b : bArr) {
+            sTmp = Integer.toHexString(0xFF & b);
             if (sTmp.length() < 2)
                 sb.append(0);
             sb.append(sTmp.toUpperCase());

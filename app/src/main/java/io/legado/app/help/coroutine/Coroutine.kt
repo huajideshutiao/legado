@@ -22,7 +22,7 @@ import kotlin.coroutines.CoroutineContext
  * 链式协程
  * 注意：如果协程太快完成，回调会不执行
  */
-@Suppress("unused", "MemberVisibilityCanBePrivate")
+@Suppress("unused")
 class Coroutine<T>(
     private val scope: CoroutineScope,
     context: CoroutineContext = Dispatchers.IO,
@@ -242,12 +242,12 @@ class Coroutine<T>(
 
     private data class Result<out T>(val value: T?)
 
-    private inner class VoidCallback(
+    private class VoidCallback(
         val context: CoroutineContext?,
         val block: suspend CoroutineScope.() -> Unit
     )
 
-    private inner class Callback<VALUE>(
+    private class Callback<VALUE>(
         val context: CoroutineContext?,
         val block: suspend CoroutineScope.(VALUE) -> Unit
     )

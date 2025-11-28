@@ -1,6 +1,5 @@
 package io.legado.app.utils
 
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 fun RecyclerView.findCenterViewPosition(): Int {
@@ -9,22 +8,3 @@ fun RecyclerView.findCenterViewPosition(): Int {
     )
 }
 
-fun RecyclerView.findViewPosition(x: Float, y: Float): Int {
-    return getChildAdapterPosition(findChildViewUnder(x, y) ?: return RecyclerView.NO_POSITION)
-}
-
-fun RecyclerView.findFirstVisibleViewPosition(): Int {
-    var pos = -1
-    if (layoutManager is LinearLayoutManager) {
-        pos = (layoutManager as LinearLayoutManager).findFirstVisibleItemPosition()
-    }
-    return pos
-}
-
-fun RecyclerView.findLastVisibleViewPosition(): Int {
-    var pos = -1
-    if (layoutManager is LinearLayoutManager) {
-        pos = (layoutManager as LinearLayoutManager).findLastVisibleItemPosition()
-    }
-    return pos
-}

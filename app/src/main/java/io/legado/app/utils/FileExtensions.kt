@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package io.legado.app.utils
 
 import android.net.Uri
@@ -76,7 +74,7 @@ fun File.checkWrite(): Boolean {
         file = FileUtils.createFileIfNotExist(this, filename)
         file.outputStream().bufferedWriter().use { it.write(filename) }
         file.inputStream().bufferedReader().use { it.readText() == filename }
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         false
     } finally {
         file?.delete()

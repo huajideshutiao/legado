@@ -10,8 +10,9 @@ import cn.hutool.core.util.HexUtil
 import com.bumptech.glide.load.model.GlideUrl
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
-import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppConst.UA_NAME
+import io.legado.app.constant.AppConst.timeLimit
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.constant.AppPattern.dataUriRegex
@@ -46,6 +47,7 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
+import io.legado.app.utils.has
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
@@ -93,12 +95,12 @@ class AnalyzeUrl(
     var ruleUrl = ""
         private set
     var url: String = ""
-        private set
+        //private set
     var type: String? = null
         private set
     val headerMap = LinkedHashMap<String, String>()
     private var body: String? = null
-    private var urlNoQuery: String = ""
+    var urlNoQuery: String = ""
     private var encodedForm: String? = null
     private var encodedQuery: String? = null
     private var charset: String? = null
@@ -120,16 +122,47 @@ class AnalyzeUrl(
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
         val urlMatcher = paramPattern.matcher(baseUrl)
         if (urlMatcher.find()) baseUrl = baseUrl.substring(0, urlMatcher.start())
-        (headerMapF ?: runScriptWithContext(coroutineContext) {
-            source?.getHeaderMap(hasLoginHeader)
-        })?.let {
-            headerMap.putAll(it)
-            if (it.containsKey("proxy")) {
-                proxy = it["proxy"]
-                headerMap.remove("proxy")
-            }
-        }
         initUrl()
+        if (headerMapF.isNullOrEmpty()) {
+            headerMap.apply {
+                source?.header?.let {
+                    try {
+                        val json = when {
+                            it.startsWith("@js:", true) -> evalJS(it.substring(4)).toString()
+                            it.startsWith("<js>", true) -> evalJS(
+                                it.substring(4, it.lastIndexOf("<"))
+                            ).toString()
+
+                            else -> it
+                        }
+                        GSONStrict.fromJsonObject<Map<String, String>>(json).getOrNull()
+                            ?.let { map ->
+                                putAll(map)
+                            } ?: GSON.fromJsonObject<Map<String, String>>(json).getOrNull()
+                            ?.let { map ->
+                                log("请求头规则 JSON 格式不规范，请改为规范格式")
+                                putAll(map)
+                            }
+                    } catch (e: Exception) {
+                        AppLog.put("执行请求头规则出错\n$e", e)
+                    }
+                }
+                if (!has(UA_NAME, true)) {
+                    put(UA_NAME, AppConfig.userAgent)
+                }
+                if (hasLoginHeader) {
+                    source?.getLoginHeaderMap()?.let {
+                        putAll(it)
+                    }
+                }
+                if (containsKey("proxy")) {
+                    proxy = this["proxy"]
+                    remove("proxy")
+                }
+            }
+        } else {
+            headerMap.putAll(headerMapF)
+        }
         domain = NetworkUtils.getSubDomain(source?.getKey() ?: url)
     }
 
@@ -347,7 +380,7 @@ class AnalyzeUrl(
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
             bindings["java"] = this
-            bindings["baseUrl"] = baseUrl
+            bindings["baseUrl"] = url
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
             bindings["page"] = page
@@ -517,7 +550,7 @@ class AnalyzeUrl(
         return client.newBuilder().run {
             if (readTimeout != null) {
                 readTimeout(readTimeout, TimeUnit.MILLISECONDS)
-                callTimeout(max(60 * 1000L, readTimeout * 2), TimeUnit.MILLISECONDS)
+                callTimeout(max(timeLimit, readTimeout) * 2, TimeUnit.MILLISECONDS)
             }
             if (callTimeout != null) {
                 callTimeout(callTimeout, TimeUnit.MILLISECONDS)
@@ -539,7 +572,11 @@ class AnalyzeUrl(
         val dataUriFindResult = dataUriRegex.find(urlNoQuery)
         if (dataUriFindResult != null) {
             val dataUriBase64 = dataUriFindResult.groupValues[1]
-            val byteArray = Base64.decode(dataUriBase64, Base64.DEFAULT)
+            val byteArray: ByteArray? = try {
+                Base64.decode(dataUriBase64, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+                byteArrayOf()
+            }
             return byteArray
         }
         return null

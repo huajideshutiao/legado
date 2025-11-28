@@ -2,7 +2,6 @@ package io.legado.app.ui.book.source.manage
 
 import android.app.Application
 import android.text.TextUtils
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
@@ -17,7 +16,6 @@ import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -141,7 +139,6 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
 
     fun saveToFile(
         adapter: BookSourceAdapter,
-        searchKey: String?,
         sortAscending: Boolean,
         sort: BookSourceSort,
         success: (file: File) -> Unit
@@ -150,12 +147,12 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
             val selection = adapter.selection
             val selectedRate = selection.size.toFloat() / adapter.itemCount.toFloat()
             val sources = if (selectedRate == 1f) {
-                getBookSources(searchKey, sortAscending, sort)
+                getBookSources(selection, sortAscending, sort)
             } else if (selectedRate < 0.3) {
                 selection.toBookSource()
             } else {
                 val keys = selection.map { it.bookSourceUrl }.toHashSet()
-                val bookSources = getBookSources(searchKey, sortAscending, sort)
+                val bookSources = getBookSources(selection, sortAscending, sort)
                 bookSources.filter {
                     keys.contains(it.bookSourceUrl)
                 }
@@ -165,54 +162,17 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
     }
 
     private fun getBookSources(
-        searchKey: String?,
+        selection: List<BookSourcePart>,
         sortAscending: Boolean,
         sort: BookSourceSort
     ): List<BookSource> {
-        return when {
-            searchKey.isNullOrEmpty() -> {
-                appDb.bookSourceDao.all
-            }
-
-            searchKey == appCtx.getString(R.string.enabled) -> {
-                appDb.bookSourceDao.allEnabled
-            }
-
-            searchKey == appCtx.getString(R.string.disabled) -> {
-                appDb.bookSourceDao.allDisabled
-            }
-
-            searchKey == appCtx.getString(R.string.need_login) -> {
-                appDb.bookSourceDao.allLogin
-            }
-
-            searchKey == appCtx.getString(R.string.no_group) -> {
-                appDb.bookSourceDao.allNoGroup
-            }
-
-            searchKey == appCtx.getString(R.string.enabled_explore) -> {
-                appDb.bookSourceDao.allEnabledExplore
-            }
-
-            searchKey == appCtx.getString(R.string.disabled_explore) -> {
-                appDb.bookSourceDao.allDisabledExplore
-            }
-
-            searchKey.startsWith("group:") -> {
-                val key = searchKey.substringAfter("group:")
-                appDb.bookSourceDao.groupSearch(key)
-            }
-
-            else -> {
-                appDb.bookSourceDao.search(searchKey)
-            }
-        }.let { data ->
-            if (sortAscending) when (sort) {
+        return appDb.bookSourceDao.getBookSourcesFix(selection.map { it.bookSourceUrl })
+        .let { data ->
+            val tmp = when (sort) {
                 BookSourceSort.Weight -> data.sortedBy { it.weight }
                 BookSourceSort.Name -> data.sortedWith { o1, o2 ->
                     o1.bookSourceName.cnCompare(o2.bookSourceName)
                 }
-
                 BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
                 BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
                 BookSourceSort.Respond -> data.sortedBy { it.respondTime }
@@ -223,28 +183,9 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
                     }
                     sortNum
                 }
-
                 else -> data
             }
-            else when (sort) {
-                BookSourceSort.Weight -> data.sortedByDescending { it.weight }
-                BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                    o2.bookSourceName.cnCompare(o1.bookSourceName)
-                }
-
-                BookSourceSort.Url -> data.sortedByDescending { it.bookSourceUrl }
-                BookSourceSort.Update -> data.sortedBy { it.lastUpdateTime }
-                BookSourceSort.Respond -> data.sortedByDescending { it.respondTime }
-                BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
-                    var sortNum = o1.enabled.compareTo(o2.enabled)
-                    if (sortNum == 0) {
-                        sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
-                    }
-                    sortNum
-                }
-
-                else -> data.reversed()
-            }
+            if (!sortAscending) tmp.reversed() else tmp
         }
     }
 

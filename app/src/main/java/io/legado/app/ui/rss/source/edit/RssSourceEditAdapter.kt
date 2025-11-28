@@ -113,7 +113,7 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         }
     }
 
-    inner class CheckBoxViewHolder(val binding: ItemSourceEditCheckBoxBinding) :
+    class CheckBoxViewHolder(val binding: ItemSourceEditCheckBoxBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {

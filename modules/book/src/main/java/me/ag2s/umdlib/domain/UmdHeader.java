@@ -70,7 +70,7 @@ public class UmdHeader {
     }
 
     public void buildType(WrapOutputStream wos, byte type, String content) throws IOException {
-        if (content == null || content.length() == 0) {
+        if (content == null || content.isEmpty()) {
             return;
         }
 

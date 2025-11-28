@@ -6,7 +6,11 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.utils.*
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getClipText
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 
 class ReplaceEditViewModel(application: Application) : BaseViewModel(application) {

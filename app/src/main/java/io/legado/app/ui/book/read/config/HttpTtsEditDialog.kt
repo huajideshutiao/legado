@@ -8,6 +8,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogHttpTtsEditBinding
 import io.legado.app.lib.dialogs.alert
@@ -96,10 +97,8 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
                     toastOnUi("登录url不能为空")
                 } else {
                     viewModel.save(httpTts) {
-                        startActivity<SourceLoginActivity> {
-                            putExtra("type", "httpTts")
-                            putExtra("key", httpTts.id.toString())
-                        }
+                        GlobalVars.nowSource = httpTts
+                        startActivity<SourceLoginActivity>{}
                     }
                 }
             }

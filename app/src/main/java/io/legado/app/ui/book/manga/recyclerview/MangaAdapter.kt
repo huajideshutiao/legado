@@ -50,19 +50,31 @@ class MangaAdapter(private val context: Context) :
 
     private val mDiffCallback: DiffUtil.ItemCallback<Any> = object : DiffUtil.ItemCallback<Any>() {
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
-            return if (oldItem is ReaderLoading && newItem is ReaderLoading) {
-                newItem.mMessage == oldItem.mMessage
-            } else if (oldItem is MangaPage && newItem is MangaPage) {
-                oldItem.mImageUrl == newItem.mImageUrl
-            } else false
+            return when (oldItem) {
+                is ReaderLoading if newItem is ReaderLoading -> {
+                    newItem.mMessage == oldItem.mMessage
+                }
+
+                is MangaPage if newItem is MangaPage -> {
+                    oldItem.mImageUrl == newItem.mImageUrl
+                }
+
+                else -> false
+            }
         }
 
         override fun areContentsTheSame(oldItem: Any, newItem: Any): Boolean {
-            return if (oldItem is ReaderLoading && newItem is ReaderLoading) {
-                oldItem == newItem
-            } else if (oldItem is MangaPage && newItem is MangaPage) {
-                oldItem == newItem
-            } else false
+            return when (oldItem) {
+                is ReaderLoading if newItem is ReaderLoading -> {
+                    oldItem == newItem
+                }
+
+                is MangaPage if newItem is MangaPage -> {
+                    oldItem == newItem
+                }
+
+                else -> false
+            }
         }
     }
 
@@ -128,7 +140,7 @@ class MangaAdapter(private val context: Context) :
         }
     }
 
-    inner class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
+    class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun onBind(item: ReaderLoading) {
             val message = item.mMessage
@@ -202,30 +214,10 @@ class MangaAdapter(private val context: Context) :
 
     private val footerItems: SparseArray<(parent: ViewGroup) -> ViewBinding> by lazy { SparseArray() }
 
-    @Synchronized
-    fun addFooterView(footer: ((parent: ViewGroup) -> ViewBinding)) {
-        kotlin.runCatching {
-            val index = getActualItemCount() + footerItems.size
-            footerItems.put(TYPE_FOOTER_VIEW + footerItems.size, footer)
-            notifyItemInserted(index)
-        }
-    }
-
     /**
      * 除去header和footer
      */
     fun getActualItemCount() = getItems().size
-
-    @Synchronized
-    fun removeFooterView(footer: ((parent: ViewGroup) -> ViewBinding)) {
-        kotlin.runCatching {
-            val index = footerItems.indexOfValue(footer)
-            if (index >= 0) {
-                footerItems.remove(index)
-                notifyItemRemoved(getActualItemCount() + index - 2)
-            }
-        }
-    }
 
     override fun getPreloadItems(position: Int): List<Any> {
         if (isEmpty() || position >= getItems().size) {

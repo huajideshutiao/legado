@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
 import java.io.InputStream
-import java.util.*
+import java.util.Scanner
 
 fun InputStream?.isJson(): Boolean {
     this ?: return false

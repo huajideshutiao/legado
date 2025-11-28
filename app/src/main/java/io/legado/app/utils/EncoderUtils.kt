@@ -5,7 +5,6 @@ import android.util.Base64
 /**
  * 编码工具 escape base64
  */
-@Suppress("unused")
 object EncoderUtils {
 
     fun escape(src: String): String {

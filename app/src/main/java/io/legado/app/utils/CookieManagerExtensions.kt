@@ -5,7 +5,6 @@ package io.legado.app.utils
 import android.webkit.CookieManager
 
 
-@Suppress("unused")
 fun CookieManager.removeCookie(url: String) {
     val cm = CookieManager.getInstance()
     val domains = arrayOf(

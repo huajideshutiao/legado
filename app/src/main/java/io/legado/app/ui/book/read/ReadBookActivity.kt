@@ -29,6 +29,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -294,7 +295,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
-        viewModel.initReadBookConfig(intent)
+        viewModel.initReadBookConfig()
         Looper.myQueue().addIdleHandler {
             viewModel.initData(intent)
             false
@@ -1157,6 +1158,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
+                GlobalVars.nowBook = it
             }
         }
     }
@@ -1183,7 +1185,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
         searchContentActivity.launch {
-            putExtra("bookUrl", book.bookUrl)
+            GlobalVars.nowBook = book
             putExtra("searchWord", searchWord ?: viewModel.searchContentQuery)
             putExtra("searchResultIndex", viewModel.searchResultIndex)
             viewModel.searchResultList?.first()?.let {
@@ -1263,10 +1265,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showLogin() {
         ReadBook.bookSource?.let {
-            startActivity<SourceLoginActivity> {
-                putExtra("type", "bookSource")
-                putExtra("key", it.bookSourceUrl)
-            }
+            GlobalVars.nowSource = it
+            startActivity<SourceLoginActivity>{}
         }
     }
 
@@ -1377,6 +1377,20 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showHelp() {
         showHelp("readMenuHelp")
+    }
+
+    override fun onImageClick(src: String, onClick: String) {
+        val book = ReadBook.book ?: return
+        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+        Coroutine.async(lifecycleScope) {
+            val source =
+                ReadBook.bookSource ?: throw NoStackTraceException("no book source")
+            val analyzeRule = AnalyzeRule(book, source)
+            analyzeRule.setCoroutineContext(coroutineContext)
+            analyzeRule.setBaseUrl(chapter!!.url)
+            analyzeRule.setChapter(chapter)
+            analyzeRule.evalJS(onClick).toString()
+        }.start()
     }
 
     /**

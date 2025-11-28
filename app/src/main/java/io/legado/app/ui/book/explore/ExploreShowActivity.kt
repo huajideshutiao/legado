@@ -6,11 +6,15 @@ import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
@@ -87,10 +91,19 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     override fun showBookInfo(book: Book) {
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
+        if (book.bookUrl.contains("::")) {
+            startActivity<ExploreShowActivity> {
+                putExtra("exploreName", book.bookUrl.split("::")[0])
+                putExtra("sourceUrl", intent.getStringExtra("sourceUrl"))
+                putExtra("exploreUrl", book.bookUrl.split("::")[1])
+            }
+        } else {
+            GlobalVars.nowBook = book
+            if (book.isVideo&& AppConfig.showVideoUi) startActivity<VideoPlayActivity>()
+            else startActivity<BookInfoActivity> {
+                putExtra("name", book.name)
+                putExtra("author", book.author)
+            }
         }
     }
 }

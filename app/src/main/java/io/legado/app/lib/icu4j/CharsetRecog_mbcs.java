@@ -89,7 +89,6 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
                     // There weren't any multibyte sequences, and there was a low density of non-ASCII single bytes.
                     // We don't have enough data to have any confidence.
                     // Statistical analysis of single byte non-ASCII charcters would probably help here.
-                    confidence = 0;
                 } else {
                     //   ASCII or ISO file?  It's probably not our encoding,
                     //   but is not incompatible with our encoding, so don't give it a zero.
@@ -104,7 +103,6 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
             //    (should we have zero tolerance for these?)
             //
             if (doubleByteCharCount < 20 * badCharCount) {
-                confidence = 0;
                 break detectBlock;
             }
 
@@ -183,7 +181,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
      * Shift-JIS charset recognizer.
      */
     static class CharsetRecog_sjis extends CharsetRecog_mbcs {
-        static int[] commonChars =
+        static final int[] commonChars =
                 // TODO:  This set of data comes from the character frequency-
                 //        of-occurence analysis tool.  The data needs to be moved
                 //        into a resource and loaded from there.
@@ -243,7 +241,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
      * Big5 charset recognizer.
      */
     static class CharsetRecog_big5 extends CharsetRecog_mbcs {
-        static int[] commonChars =
+        static final int[] commonChars =
                 // TODO:  This set of data comes from the character frequency-
                 //        of-occurence analysis tool.  The data needs to be moved
                 //        into a resource and loaded from there.
@@ -381,7 +379,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
          * is created and kept by the public CharsetDetector class
          */
         static class CharsetRecog_euc_jp extends CharsetRecog_euc {
-            static int[] commonChars =
+            static final int[] commonChars =
                     // TODO:  This set of data comes from the character frequency-
                     //        of-occurence analysis tool.  The data needs to be moved
                     //        into a resource and loaded from there.
@@ -418,7 +416,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
          * is created and kept by the public CharsetDetector class
          */
         static class CharsetRecog_euc_kr extends CharsetRecog_euc {
-            static int[] commonChars =
+            static final int[] commonChars =
                     // TODO:  This set of data comes from the character frequency-
                     //        of-occurence analysis tool.  The data needs to be moved
                     //        into a resource and loaded from there.
@@ -488,7 +486,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
                 secondByte = it.nextByte(det);
                 it.charValue = (it.charValue << 8) | secondByte;
 
-                if (firstByte >= 0x81 && firstByte <= 0xFE) {
+                if (firstByte <= 0xFE) {
                     // Two byte Char
                     if ((secondByte >= 0x40 && secondByte <= 0x7E) || (secondByte >= 80 && secondByte <= 0xFE)) {
                         break buildChar;
@@ -515,7 +513,7 @@ abstract class CharsetRecog_mbcs extends CharsetRecognizer {
             return (!it.done);
         }
 
-        static int[] commonChars =
+        static final int[] commonChars =
                 // TODO:  This set of data comes from the character frequency-
                 //        of-occurence analysis tool.  The data needs to be moved
                 //        into a resource and loaded from there.

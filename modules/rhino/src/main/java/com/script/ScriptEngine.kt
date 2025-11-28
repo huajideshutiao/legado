@@ -66,6 +66,5 @@ interface ScriptEngine {
     fun setBindings(bindings: Bindings?, scope: Int)
 
     companion object {
-        const val FILENAME = "javax.script.filename"
     }
 }

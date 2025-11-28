@@ -2,6 +2,7 @@ package me.ag2s.epublib.domain;
 
 import android.util.Base64;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,10 +24,11 @@ import me.ag2s.epublib.util.StringUtil;
  */
 public class Resources implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 2450876953383871451L;
     private static final String IMAGE_PREFIX = "image_";
     private static final String ITEM_PREFIX = "item_";
-    private static final Pattern dataUriRegex = Pattern.compile("data:([\\w/\\-\\.]+);base64,(.*)");
+    private static final Pattern dataUriRegex = Pattern.compile("data:([\\w/\\-.]+);base64,(.*)");
     private int lastId = 1;
 
     private Map<String, Resource> resources = new HashMap<>();
@@ -191,9 +193,9 @@ public class Resources implements Serializable {
 
     private String createHref(MediaType mediaType, int counter) {
         if (MediaTypes.isBitmapImage(mediaType)) {
-            return IMAGE_PREFIX + counter + mediaType.getDefaultExtension();
+            return IMAGE_PREFIX + counter + mediaType.defaultExtension();
         } else {
-            return ITEM_PREFIX + counter + mediaType.getDefaultExtension();
+            return ITEM_PREFIX + counter + mediaType.defaultExtension();
         }
     }
 
@@ -361,25 +363,6 @@ public class Resources implements Serializable {
             }
         }
         return null;
-    }
-
-    /**
-     * All resources that have the given MediaType.
-     *
-     * @param mediaType mediaType
-     * @return All resources that have the given MediaType.
-     */
-    public List<Resource> getResourcesByMediaType(MediaType mediaType) {
-        List<Resource> result = new ArrayList<>();
-        if (mediaType == null) {
-            return result;
-        }
-        for (Resource resource : getAll()) {
-            if (resource.getMediaType() == mediaType) {
-                result.add(resource);
-            }
-        }
-        return result;
     }
 
     /**

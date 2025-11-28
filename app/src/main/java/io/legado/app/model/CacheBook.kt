@@ -14,7 +14,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
@@ -22,7 +22,6 @@ import io.legado.app.utils.startService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -352,15 +351,13 @@ object CacheBook {
                 }
                 return
             }
-            WebBook.getContent(
+            Coroutine.async(
                 scope,
-                bookSource,
-                book,
-                chapter,
-                context = context,
+                context,
                 start = CoroutineStart.LAZY,
-                executeContext = context
-            ).onSuccess { content ->
+            ) {
+                getContentAwait(bookSource, book, chapter)
+            }.onSuccess { content ->
                 onSuccess(chapter)
                 downloadFinish(chapter, content)
             }.onError {
@@ -384,7 +381,7 @@ object CacheBook {
                 waitDownloadSet.remove(chapter.index)
             }
             try {
-                val content = WebBook.getContentAwait(bookSource, book, chapter)
+                val content = getContentAwait(bookSource, book, chapter)
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
@@ -414,15 +411,13 @@ object CacheBook {
             }
             onDownloadSet.add(chapter.index)
             waitDownloadSet.remove(chapter.index)
-            WebBook.getContent(
+            Coroutine.async(
                 scope,
-                bookSource,
-                book,
-                chapter,
                 start = CoroutineStart.LAZY,
-                executeContext = IO,
                 semaphore = semaphore
-            ).onSuccess { content ->
+            ) {
+                getContentAwait(bookSource, book, chapter)
+            }.onSuccess { content ->
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)

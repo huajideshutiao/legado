@@ -48,7 +48,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * 解析规则获取结果
  */
 @Keep
-@Suppress("unused", "RegExpRedundantEscape", "MemberVisibilityCanBePrivate")
+@Suppress("unused", "RegExpRedundantEscape")
 class AnalyzeRule(
     private var ruleData: RuleDataInterface? = null,
     private val source: BaseSource? = null,
@@ -315,6 +315,9 @@ class AnalyzeRule(
             StringEscapeUtils.unescapeHtml4(resultStr)
         } else {
             resultStr
+        }
+        if (str.indexOf("::")>-1){
+            return str
         }
         if (isUrl) {
             return if (str.isBlank()) {

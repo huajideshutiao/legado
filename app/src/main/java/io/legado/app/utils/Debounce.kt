@@ -93,8 +93,6 @@ open class Debounce<T>(
         return if (hasTimer) trailingEdge(SystemClock.uptimeMillis()) else result
     }
 
-    fun pending(): Boolean = hasTimer
-
     operator fun invoke(): T? {
         val time = SystemClock.uptimeMillis()
         val isInvoking = shouldInvoke(time)
@@ -120,10 +118,3 @@ open class Debounce<T>(
 
 }
 
-fun <T> debounce(
-    wait: Long = 0L,
-    maxWait: Long = -1L,
-    leading: Boolean = false,
-    trailing: Boolean = true,
-    func: () -> T
-) = Debounce(wait, maxWait, leading, trailing, func)

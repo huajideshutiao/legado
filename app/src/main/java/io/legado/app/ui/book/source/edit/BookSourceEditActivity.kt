@@ -12,6 +12,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookSourceType
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.BookInfoRule
@@ -147,10 +148,8 @@ class BookSourceEditActivity :
 
             R.id.menu_help -> showHelp("ruleHelp")
             R.id.menu_login -> viewModel.save(getSource()) { source ->
-                startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", source.bookSourceUrl)
-                }
+                GlobalVars.nowSource = source
+                startActivity<SourceLoginActivity>{}
             }
 
             R.id.menu_set_source_variable -> setSourceVariable()
@@ -251,6 +250,7 @@ class BookSourceEditActivity :
             binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
             binding.spType.setSelection(
                 when (it.bookSourceType) {
+                    BookSourceType.video -> 4
                     BookSourceType.file -> 3
                     BookSourceType.image -> 2
                     BookSourceType.audio -> 1
@@ -350,6 +350,8 @@ class BookSourceEditActivity :
             add(EditEntity("imageStyle", cr.imageStyle, R.string.rule_image_style))
             add(EditEntity("imageDecode", cr.imageDecode, R.string.rule_image_decode))
             add(EditEntity("payAction", cr.payAction, R.string.rule_pay_action))
+            add(EditEntity("lrcRule", cr.lrcRule, R.string.rule_lrc_rule))
+            add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
         }
         // 段评
 //        val rr = bs.getReviewRule()
@@ -376,6 +378,7 @@ class BookSourceEditActivity :
         source.enabledExplore = binding.cbIsEnableExplore.isChecked
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
+            4 -> BookSourceType.video
             3 -> BookSourceType.file
             2 -> BookSourceType.image
             1 -> BookSourceType.audio
@@ -540,6 +543,8 @@ class BookSourceEditActivity :
                 "imageStyle" -> contentRule.imageStyle = it.value
                 "imageDecode" -> contentRule.imageDecode = it.value
                 "payAction" -> contentRule.payAction = it.value
+                "lrcRule" -> contentRule.lrcRule = it.value
+                "musicCover" -> contentRule.musicCover = it.value
             }
         }
 //        reviewEntities.forEach {

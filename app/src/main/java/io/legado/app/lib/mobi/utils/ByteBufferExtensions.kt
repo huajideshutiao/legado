@@ -65,8 +65,3 @@ fun ByteBuffer.readUInt32(): Int {
     return getInt()
 }
 
-fun ByteBuffer.readUInt64(offset: Int): Long {
-    position(offset)
-    return getLong()
-}
-

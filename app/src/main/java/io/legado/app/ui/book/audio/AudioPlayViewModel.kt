@@ -8,11 +8,14 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.Status
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.model.AudioPlay
@@ -22,33 +25,19 @@ import io.legado.app.utils.toastOnUi
 
 class AudioPlayViewModel(application: Application) : BaseViewModel(application) {
     val titleData = MutableLiveData<String>()
-    val coverData = MutableLiveData<String>()
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
-            val bookUrl = intent.getStringExtra("bookUrl") ?: book?.bookUrl ?: return@execute
-            val book = appDb.bookDao.getBook(bookUrl) ?: return@execute
-            inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            initBook(book)
+            val book = (if(intent.action != "activity") GlobalVars.nowBook else AudioPlay.book)?: return@execute
+            inBookshelf = !book.isNotShelf
+            if (AudioPlay.book?.bookUrl == book.bookUrl) AudioPlay.upData(book)
+            else resetData(book)
+            titleData.postValue(book.name)
+            if (book.tocUrl.isEmpty() && !loadBookInfo(book)) return@execute
+            if (chapterSize == 0 && !loadChapterList(book)) return@execute
+            if (status == Status.STOP) AudioPlay.loadOrUpPlayUrl()
         }.onFinally {
             saveRead()
-        }
-    }
-
-    private suspend fun initBook(book: Book) {
-        val isSameBook = AudioPlay.book?.bookUrl == book.bookUrl
-        if (isSameBook) {
-            AudioPlay.upData(book)
-        } else {
-            AudioPlay.resetData(book)
-        }
-        titleData.postValue(book.name)
-        coverData.postValue(book.getDisplayCover())
-        if (book.tocUrl.isEmpty() && !loadBookInfo(book)) {
-            return
-        }
-        if (AudioPlay.chapterSize == 0 && !loadChapterList(book)) {
-            return
         }
     }
 
@@ -79,7 +68,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
             AudioPlay.simulatedChapterSize = book.simulatedTotalChapterNum()
             AudioPlay.upDurChapter()
             return true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             context.toastOnUi(R.string.error_load_toc)
             return false
         }

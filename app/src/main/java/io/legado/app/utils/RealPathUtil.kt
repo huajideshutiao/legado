@@ -16,7 +16,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 
-@Suppress("unused")
 object RealPathUtil {
     /**
      * Method for return file path of Gallery image

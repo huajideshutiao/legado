@@ -56,7 +56,7 @@ abstract class BaseDialogFragment(
                         Gravity.TOP -> view?.setBackgroundResource(R.drawable.bg_eink_border_bottom)
                         Gravity.BOTTOM -> view?.setBackgroundResource(R.drawable.bg_eink_border_top)
                         else -> {
-                            val padding = 2.dpToPx();
+                            val padding = 2.dpToPx()
                             view?.setPadding(padding, padding, padding, padding)
                             view?.setBackgroundResource(R.drawable.bg_eink_border_dialog)
                         }

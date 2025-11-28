@@ -1,5 +1,6 @@
 package me.ag2s.epublib.domain;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import me.ag2s.epublib.Constants;
@@ -8,6 +9,7 @@ import me.ag2s.epublib.util.StringUtil;
 public class TitledResourceReference extends ResourceReference
         implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 3918155020095190080L;
     private String fragmentId;
     private String title;

@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
@@ -67,11 +68,6 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             trySend(defaultCover + searchBooks.sortedBy { it.originOrder })
         }
 
-        appDb.searchBookDao.getEnableHasCover(name, author).let {
-            searchBooks.addAll(it)
-            trySend(defaultCover + searchBooks.toList())
-        }
-
         if (searchBooks.size <= 1) {
             startSearch()
         }
@@ -121,8 +117,8 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
                 }
             }.onStart {
                 searchStateData.postValue(true)
-            }.mapParallelSafe(threadCount) {
-                withTimeout(60000L) {
+            }.mapParallelSafe(threadCount, bookSourceParts.size) {
+                withTimeout(timeLimit) {
                     search(it)
                 }
             }.onCompletion {
@@ -137,13 +133,13 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
         if (source.getSearchRule().coverUrl.isNullOrBlank()) {
             return
         }
-        val searchBook = WebBook.searchBookAwait(
+        val searchBook = WebBook.getBookListAwait(
             source, name,
             shouldBreak = { it > 0 }).firstOrNull() ?: return
         if (searchBook.name == name && searchBook.author == author
             && !searchBook.coverUrl.isNullOrEmpty()
         ) {
-            appDb.searchBookDao.insert(searchBook)
+            //appDb.searchBookDao.insert(searchBook)
             searchSuccess?.invoke(searchBook)
         }
     }

@@ -236,7 +236,7 @@ class TextFile(private var book: Book) {
                                 book.intro = if (chapterContent.length <= 500) {
                                     chapterContent
                                 } else {
-                                    chapterContent.substring(0, 500)
+                                    chapterContent.take(500)
                                 }
                             }
                             //创建当前章节

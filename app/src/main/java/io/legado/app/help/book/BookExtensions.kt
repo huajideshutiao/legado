@@ -34,7 +34,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.min
 
-
+val Book.isVideo: Boolean
+    get() = isType(BookType.video)
 val Book.isAudio: Boolean
     get() = isType(BookType.audio)
 
@@ -223,6 +224,7 @@ fun Book.isType(@BookType.Type bookType: Int): Boolean = type and bookType > 0
 fun Book.upType() {
     if (type < 8) {
         type = when (type) {
+            BookSourceType.video -> BookType.video
             BookSourceType.image -> BookType.image
             BookSourceType.audio -> BookType.audio
             BookSourceType.file -> BookType.webFile

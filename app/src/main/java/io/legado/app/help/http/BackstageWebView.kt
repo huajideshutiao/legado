@@ -13,6 +13,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -49,7 +50,7 @@ class BackstageWebView(
     private var callback: Callback? = null
     private var mWebView: WebView? = null
 
-    suspend fun getStrResponse(): StrResponse = withTimeout(60000L) {
+    suspend fun getStrResponse(): StrResponse = withTimeout(timeLimit) {
         suspendCancellableCoroutine { block ->
             block.invokeOnCancellation {
                 runOnUI {

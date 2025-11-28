@@ -6,7 +6,6 @@ import androidx.annotation.Keep
  * 位置信息
  */
 @Keep
-@Suppress("unused")
 data class TextPos(
     var relativePagePos: Int,
     var lineIndex: Int,

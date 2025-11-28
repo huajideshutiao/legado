@@ -110,16 +110,16 @@ class ScrollTextView(context: Context, attrs: AttributeSet?) :
             }
             MotionEvent.ACTION_MOVE -> {
                 val y = (event.y + 0.5f).toInt()
-                var dy = mLastTouchY - y
+                val dy = mLastTouchY - y
                 if (mScrollState != scrollStateDragging) {
                     var startScroll = false
 
                     if (abs(dy) > mTouchSlop) {
-                        if (dy > 0) {
-                            dy -= mTouchSlop
-                        } else {
-                            dy += mTouchSlop
-                        }
+//                        if (dy > 0) {
+//                            dy -= mTouchSlop
+//                        } else {
+//                            dy += mTouchSlop
+//                        }
                         startScroll = true
                     }
                     if (startScroll) {

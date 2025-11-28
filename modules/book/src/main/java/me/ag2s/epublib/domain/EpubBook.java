@@ -1,6 +1,7 @@
 package me.ag2s.epublib.domain;
 
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,6 +43,7 @@ import java.util.Map;
  */
 public class EpubBook implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 2068355170895770100L;
 
     private Resources resources = new Resources();

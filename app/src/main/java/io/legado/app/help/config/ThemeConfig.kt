@@ -48,10 +48,6 @@ object ThemeConfig {
         else -> Theme.Light
     }
 
-    fun isDarkTheme(): Boolean {
-        return getTheme() == Theme.Dark
-    }
-
     fun applyDayNight(context: Context) {
         applyTheme(context)
         initNightMode()

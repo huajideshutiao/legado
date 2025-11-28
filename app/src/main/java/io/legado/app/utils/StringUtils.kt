@@ -102,7 +102,7 @@ object StringUtils {
      */
     @SuppressLint("DefaultLocale")
     fun toFirstCapital(str: String): String {
-        return str.substring(0, 1).uppercase(Locale.getDefault()) + str.substring(1)
+        return str[1].uppercase(Locale.getDefault()) + str.substring(1)
     }
 
     /**

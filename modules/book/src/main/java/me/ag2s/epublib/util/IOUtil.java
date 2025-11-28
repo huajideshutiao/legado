@@ -206,7 +206,7 @@ public class IOUtil {
      */
     public static void copy(final InputStream input, final Writer output, final Charset inputCharset)
             throws IOException {
-        final InputStreamReader in = new InputStreamReader(input, inputCharset.name());
+        final InputStreamReader in = new InputStreamReader(input, inputCharset);
         copy(in, output);
     }
 
@@ -336,7 +336,7 @@ public class IOUtil {
      */
     public static void copy(final Reader input, final OutputStream output, final Charset outputCharset)
             throws IOException {
-        final OutputStreamWriter out = new OutputStreamWriter(output, outputCharset.name());
+        final OutputStreamWriter out = new OutputStreamWriter(output, outputCharset);
         copy(input, out);
         // XXX Unless anyone is planning on rewriting OutputStreamWriter,
         // we have to flush here.
@@ -387,17 +387,14 @@ public class IOUtil {
      *
      * @param input  the <code>Reader</code> to read from
      * @param output the <code>Writer</code> to write to
-     * @return the number of characters copied, or -1 if &gt; Integer.MAX_VALUE
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
      * @since 1.1
      */
-    public static int copy(final Reader input, final Writer output) throws IOException {
+    public static void copy(final Reader input, final Writer output) throws IOException {
         final long count = copyLarge(input, output);
         if (count > Integer.MAX_VALUE) {
-            return -1;
         }
-        return (int) count;
     }
 
     /**

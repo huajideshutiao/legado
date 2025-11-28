@@ -427,12 +427,12 @@ public class CharsetDetector {
      *     the recognition process
      *
      */
-    byte[] fInputBytes =       // The text to be checked.  Markup will have been
+    final byte[] fInputBytes =       // The text to be checked.  Markup will have been
             new byte[kBufSize];  //   removed if appropriate.
 
     int fInputLen;          // Length of the byte data in fInputBytes.
 
-    short[] fByteStats =      // byte frequency statistics for the input text.
+    final short[] fByteStats =      // byte frequency statistics for the input text.
             new short[256];  //   Value is percent, not absolute.
     //   Value is rounded up, so zero really means zero occurences.
 
@@ -462,8 +462,8 @@ public class CharsetDetector {
     // corresponding to ALL_RECOGNIZER. See setDetectableCharset().
 
     private static class CSRecognizerInfo {
-        CharsetRecognizer recognizer;
-        boolean isDefaultEnabled;
+        final CharsetRecognizer recognizer;
+        final boolean isDefaultEnabled;
 
         CSRecognizerInfo(CharsetRecognizer recognizer, boolean isDefaultEnabled) {
             this.recognizer = recognizer;

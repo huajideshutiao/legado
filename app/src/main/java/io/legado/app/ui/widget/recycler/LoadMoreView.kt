@@ -13,7 +13,6 @@ import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
 
-@Suppress("unused")
 class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(context, attrs) {
     private val binding = ViewLoadMoreBinding.inflate(LayoutInflater.from(context), this)
     private var errorMsg = ""

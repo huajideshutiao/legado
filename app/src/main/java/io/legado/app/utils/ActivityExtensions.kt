@@ -218,25 +218,6 @@ val Activity.navigationBar: View?
     }
 
 /**
- * 返回NavigationBar是否存在
- */
-val Activity.isNavigationBarExist: Boolean
-    get() = navigationBar != null
-
-/**
- * 返回NavigationBar高度
- */
-val Activity.navigationBarHeight: Int
-    @SuppressLint("InternalInsetResource", "DiscouragedApi")
-    get() {
-        if (isNavigationBarExist) {
-            val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-            return resources.getDimensionPixelSize(resourceId)
-        }
-        return 0
-    }
-
-/**
  * 返回navigationBar位置
  */
 val Activity.navigationBarGravity: Int

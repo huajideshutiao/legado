@@ -49,13 +49,13 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
 
         val dialogFragment: DialogFragment = when (preference) {
             is EditTextPreference -> {
-                EditTextPreferenceDialog.newInstance(preference.getKey())
+                EditTextPreferenceDialog.newInstance(preference.key)
             }
             is ListPreference -> {
-                ListPreferenceDialog.newInstance(preference.getKey())
+                ListPreferenceDialog.newInstance(preference.key)
             }
             is MultiSelectListPreference -> {
-                MultiSelectListPreferenceDialog.newInstance(preference.getKey())
+                MultiSelectListPreferenceDialog.newInstance(preference.key)
             }
             else -> {
                 throw IllegalArgumentException(

@@ -149,12 +149,12 @@ fun getProxyClient(proxy: String? = null): OkHttpClient {
     proxyClientCache[proxy]?.let {
         return it
     }
-    val r = Regex("(http|socks4|socks5)://(.*):(\\d{2,5})(@.*@.*)?")
+    val r = Regex("(http|https|socks4|socks5)://(.*):(\\d{2,5})(@.*@.*)?")
     val ms = r.findAll(proxy)
     val group = ms.first()
     var username = ""       //代理服务器验证用户名
     var password = ""       //代理服务器验证密码
-    val type = if (group.groupValues[1] == "http") "http" else "socks"
+    val type = if (group.groupValues[1].startsWith("http")) "http" else "socks"
     val host = group.groupValues[2]
     val port = group.groupValues[3].toInt()
     if (group.groupValues[4] != "") {

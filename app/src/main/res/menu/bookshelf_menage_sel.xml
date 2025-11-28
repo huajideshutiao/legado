@@ -6,6 +6,10 @@
         android:title="@string/delete" />
 
     <item
+        android:id="@+id/menu_export_all"
+        android:title="@string/export_all" />
+
+    <item
         android:id="@+id/menu_update_enable"
         android:title="@string/allow_update" />
 
@@ -16,6 +20,10 @@
     <item
         android:id="@+id/menu_add_to_group"
         android:title="@string/add_to_group" />
+
+    <item
+        android:id="@+id/menu_export_bookshelf"
+        android:title="@string/export_bookshelf" />
 
     <item
         android:id="@+id/menu_change_source"

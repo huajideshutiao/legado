@@ -17,10 +17,14 @@ package io.legado.app.ui.widget.anima.explosion_field
 
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.view.View
 import android.view.animation.AccelerateInterpolator
-import java.util.*
+import java.util.Random
 import kotlin.math.pow
 
 @SuppressLint("Recycle")

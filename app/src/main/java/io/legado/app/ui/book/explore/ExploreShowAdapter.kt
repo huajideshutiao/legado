@@ -7,9 +7,11 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
+import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -58,12 +60,14 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 llKind.visible()
                 llKind.setLabels(kinds)
             }
+            //if (item.type ==2048)ivCover.layoutParams.let {it.width = it.height/9*16}
             ivCover.load(
                 item.coverUrl,
                 item.name,
                 item.author,
                 AppConfig.loadCoverOnlyWifi,
-                item.origin
+                item.origin,
+                inBookshelf = ivInBookshelf.isVisible
             )
         }
     }
@@ -82,7 +86,9 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
         holder.itemView.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.toBook())
+                callBack.showBookInfo(it.toBook().apply {
+                    if (!callBack.isInBookshelf(it.name, it.author))addType(BookType.notShelf)
+                })
             }
         }
     }

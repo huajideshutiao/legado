@@ -34,7 +34,7 @@ public class StreamReader {
         offset = temp;
     }
 
-    public StreamReader(InputStream inputStream) throws IOException {
+    public StreamReader(InputStream inputStream) {
         this.is = inputStream;
         //this.size=inputStream.getChannel().size();
     }
@@ -79,38 +79,19 @@ public class StreamReader {
         return UmdUtils.toHex(b);
     }
 
-    public short readShort() throws IOException {
-        byte[] b = new byte[2];
-        is.read(b);
-        incCount(2);
-        short x = (short) (((b[0] & 0xFF) << 8) | ((b[1] & 0xFF) << 0));
-        return x;
-    }
-
     public short readShortLe() throws IOException {
         byte[] b = new byte[2];
         is.read(b);
         incCount(2);
-        short x = (short) (((b[1] & 0xFF) << 8) | ((b[0] & 0xFF) << 0));
-        return x;
-    }
-
-    public int readInt() throws IOException {
-        byte[] b = new byte[4];
-        is.read(b);
-        incCount(4);
-        int x = ((b[0] & 0xFF) << 24) | ((b[1] & 0xFF) << 16) |
-                ((b[2] & 0xFF) << 8) | ((b[3] & 0xFF) << 0);
-        return x;
+        return (short) (((b[1] & 0xFF) << 8) | ((b[0] & 0xFF)));
     }
 
     public int readIntLe() throws IOException {
         byte[] b = new byte[4];
         is.read(b);
         incCount(4);
-        int x = ((b[3] & 0xFF) << 24) | ((b[2] & 0xFF) << 16) |
-                ((b[1] & 0xFF) << 8) | ((b[0] & 0xFF) << 0);
-        return x;
+        return ((b[3] & 0xFF) << 24) | ((b[2] & 0xFF) << 16) |
+                ((b[1] & 0xFF) << 8) | ((b[0] & 0xFF));
     }
 
     public void skip(int len) throws IOException {

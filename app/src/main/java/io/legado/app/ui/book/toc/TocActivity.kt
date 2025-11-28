@@ -62,9 +62,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         viewModel.bookData.observe(this) {
             menu?.setGroupVisible(R.id.menu_group_text, it.isLocalTxt)
         }
-        intent.getStringExtra("bookUrl")?.let {
-            viewModel.initBook(it)
-        }
+        viewModel.initBook()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {

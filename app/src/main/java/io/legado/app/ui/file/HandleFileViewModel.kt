@@ -7,8 +7,11 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.utils.*
-
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.GSON
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.writeBytes
 import java.io.File
 
 class HandleFileViewModel(application: Application) : BaseViewModel(application) {

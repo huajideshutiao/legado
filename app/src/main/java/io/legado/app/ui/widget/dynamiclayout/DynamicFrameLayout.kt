@@ -41,7 +41,7 @@ class DynamicFrameLayout @JvmOverloads constructor(
     private var changeListener: OnVisibilityChangeListener? = null
 
     init {
-        View.inflate(context, R.layout.view_dynamic, this)
+        inflate(context, R.layout.view_dynamic, this)
 
         val a = context.obtainStyledAttributes(attrs, R.styleable.DynamicFrameLayout)
         errorIcon = a.getDrawable(R.styleable.DynamicFrameLayout_errorSrc)
@@ -76,7 +76,7 @@ class DynamicFrameLayout @JvmOverloads constructor(
 
         actionBtn?.let {
             it.tag = ACTION_WHEN_ERROR
-            it.visibility = View.VISIBLE
+            it.visibility = VISIBLE
             if (errorActionDescription != null) {
                 it.text = errorActionDescription
             }
@@ -102,10 +102,10 @@ class DynamicFrameLayout @JvmOverloads constructor(
         actionBtn?.let {
             it.tag = ACTION_WHEN_EMPTY
             if (errorActionDescription != null) {
-                it.visibility = View.VISIBLE
+                it.visibility = VISIBLE
                 it.text = errorActionDescription
             } else {
-                it.visibility = View.INVISIBLE
+                it.visibility = INVISIBLE
             }
         }
 
@@ -144,7 +144,7 @@ class DynamicFrameLayout @JvmOverloads constructor(
 
     private fun setViewVisible(view: View?, visible: Boolean) {
         view?.let {
-            it.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+            it.visibility = if (visible) VISIBLE else INVISIBLE
         }
     }
 

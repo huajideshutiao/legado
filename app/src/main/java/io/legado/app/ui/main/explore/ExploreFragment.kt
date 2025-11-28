@@ -145,18 +145,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         exploreFlowJob?.cancel()
         exploreFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             when {
-                searchKey.isNullOrBlank() -> {
-                    appDb.bookSourceDao.flowExplore()
-                }
-
-                searchKey.startsWith("group:") -> {
-                    val key = searchKey.substringAfter("group:")
-                    appDb.bookSourceDao.flowGroupExplore(key)
-                }
-
-                else -> {
-                    appDb.bookSourceDao.flowExplore(searchKey)
-                }
+                searchKey.isNullOrBlank() -> appDb.bookSourceDao.flowExplore()
+                searchKey.startsWith("group:") -> appDb.bookSourceDao.flowGroupExplore(searchKey.substringAfter("group:"))
+                else -> appDb.bookSourceDao.flowExplore(searchKey)
             }.flowWithLifecycleAndDatabaseChange(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
@@ -165,7 +156,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("发现界面更新数据出错", it)
             }.conflate().flowOn(IO).collect {
                 binding.tvEmptyMsg.isGone = it.isNotEmpty() || searchView.query.isNotEmpty()
-                adapter.setItems(it, diffItemCallBack)
+                adapter.setItems(it.sortedBy { it.customOrder }, diffItemCallBack)
                 delay(500)
             }
         }

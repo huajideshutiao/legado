@@ -139,14 +139,6 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
         callBack.upCountView()
     }
 
-    fun removeSelection() {
-        for (i in getItems().lastIndex downTo 0) {
-            if (getItem(i) in selected) {
-                removeItem(i)
-            }
-        }
-    }
-
 
     interface CallBack {
         fun openDir(remoteBook: RemoteBook)
