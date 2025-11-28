@@ -133,7 +133,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
         if (source.getSearchRule().coverUrl.isNullOrBlank()) {
             return
         }
-        val searchBook = WebBook.searchBookAwait(
+        val searchBook = WebBook.getBookListAwait(
             source, name,
             shouldBreak = { it > 0 }).firstOrNull() ?: return
         if (searchBook.name == name && searchBook.author == author

@@ -261,7 +261,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         val loadInfo = AppConfig.changeSourceLoadInfo
         val loadToc = AppConfig.changeSourceLoadToc
         val loadWordCount = AppConfig.changeSourceLoadWordCount
-        val resultBooks = WebBook.searchBookAwait(
+        val resultBooks = WebBook.getBookListAwait(
             source, name,
             filter = { fName, fAuthor ->
                 fName == name && (!checkAuthor || fAuthor.contains(author))

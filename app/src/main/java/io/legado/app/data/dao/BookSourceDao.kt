@@ -58,6 +58,9 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Query("select * from book_sources_part where enabled = :enabled")
     fun flowEnabled(enabled: Boolean = true): Flow<List<BookSourcePart>>
 
+    @Query("select * from book_sources where enabled = :enabled")
+    fun enabled(enabled: Boolean = true): List<BookSource>
+
     @Query(
         """select * from book_sources_part 
         where enabledExplore = :enabled and hasExploreUrl = 1"""

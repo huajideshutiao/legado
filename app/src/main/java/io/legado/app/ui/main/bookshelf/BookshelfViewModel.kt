@@ -16,6 +16,8 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.preciseSearchAwait
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
@@ -65,7 +67,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                     originName = bookSource.bookSourceName
                 )
                 kotlin.runCatching {
-                    WebBook.getBookInfoAwait(bookSource, book)
+                    getBookInfoAwait(bookSource, book)
                 }.onSuccess {
                     val dbBook = appDb.bookDao.getBook(it.name, it.author)
                     if (dbBook != null) {
@@ -145,15 +147,24 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         }
                         val bookSource = appDb.bookSourceDao.getBookSource(origin)
                         if (bookSource==null)return@forEach
-                        else WebBook.getBookInfo(this, bookSource,book).onSuccess {
+                        else Coroutine.async(this) {
+                            getBookInfoAwait(bookSource, book)
+                        }.onSuccess {
                             it.originName = bookSource.bookSourceName
                             if (groupId > 0) it.group = groupId
                             it.save()
                         }
                     } else {
-                        val bookSourceParts = appDb.bookSourceDao.allEnabledPart
-                        WebBook.preciseSearch(this, bookSourceParts, name, author, semaphore = semaphore)
-                            .onSuccess {
+                        val bookSources = appDb.bookSourceDao.enabled()
+                        Coroutine.async(this, semaphore = semaphore) {
+                            for (s in bookSources) {
+                                val book = preciseSearchAwait(s, name, author).getOrNull()
+                                if (book != null) {
+                                    return@async Pair(book, s)
+                                }
+                            }
+                            throw NoStackTraceException("没有搜索到<$name>$author")
+                        }.onSuccess {
                             val book = it.first
                             if (groupId > 0) book.group = groupId
                             book.save()

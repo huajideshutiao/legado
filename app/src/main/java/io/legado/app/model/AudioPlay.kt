@@ -21,7 +21,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
@@ -245,8 +245,9 @@ object AudioPlay : CoroutineScope by MainScope() {
                 getCoverUrl(bookSource, book, chapter)
                 durLrcData.clear()
                 getLrcData(bookSource, book, chapter)
-                WebBook.getContent(this, bookSource, book, chapter)
-                    .onSuccess { content ->
+                Coroutine.async(this) {
+                    getContentAwait(bookSource, book, chapter, needSave = false)
+                }.onSuccess { content ->
                         if (content.isEmpty()) {
                             appCtx.toastOnUi("未获取到资源链接")
                         } else {

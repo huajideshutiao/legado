@@ -18,7 +18,8 @@ import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
+import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaChapter
 import io.legado.app.ui.book.manga.entities.MangaContent
@@ -348,15 +349,13 @@ object ReadManga : CoroutineScope by MainScope() {
         error: suspend () -> Unit = {},
         cancel: suspend () -> Unit = {},
     ) {
-        WebBook.getContent(
+        Coroutine.async(
             scope,
-            bookSource,
-            book,
-            chapter,
             start = CoroutineStart.LAZY,
-            executeContext = IO,
             semaphore = semaphore
-        ).onSuccess { content ->
+        ) {
+            getContentAwait(bookSource, book, chapter)
+        }.onSuccess { content ->
             success.invoke(content)
         }.onError {
             error.invoke()
@@ -454,7 +453,10 @@ object ReadManga : CoroutineScope by MainScope() {
         if (!book.canUpdate) return
         if (System.currentTimeMillis() - book.lastCheckTime < 600000) return
         book.lastCheckTime = System.currentTimeMillis()
-        WebBook.getChapterList(this, bookSource, book).onSuccess(IO) { cList ->
+
+        Coroutine.async(this) {
+            getChapterListAwait(bookSource, book).getOrThrow()
+        }.onSuccess(IO) { cList ->
             if (book.bookUrl == ReadManga.book?.bookUrl
                 && cList.size > chapterSize
             ) {

@@ -20,6 +20,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.DialogAddToBookshelfBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.addType
+import io.legado.app.help.source.getBookType
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -154,6 +155,7 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             return kotlin.runCatching {
                 val book = Book(
                     bookUrl = bookUrl,
+                    type = source.getBookType(),
                     origin = source.bookSourceUrl,
                     originName = source.bookSourceName
                 )

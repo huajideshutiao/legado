@@ -254,7 +254,7 @@ class BookInfoActivity :
                 upLoading(true)
                 viewModel.getBook()?.let {
                     it.setSplitLongChapter(!item.isChecked)
-                    viewModel.loadBookInfo(it, false)
+                    viewModel.loadBookInfo(it)
                 }
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)

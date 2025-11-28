@@ -160,7 +160,7 @@ class CheckSourceService : BaseService() {
             val searchWord = source.getCheckKeyword(CheckSource.keyword)
             if (!source.searchUrl.isNullOrBlank()) {
                 source.removeGroup("搜索链接规则为空")
-                val searchBooks = WebBook.searchBookAwait(source, searchWord)
+                val searchBooks = WebBook.getBookListAwait(source, searchWord)
                 if (searchBooks.isEmpty()) {
                     source.addGroup("搜索失效")
                 } else {
@@ -180,7 +180,7 @@ class CheckSourceService : BaseService() {
                 source.addGroup("发现规则为空")
             } else {
                 source.removeGroup("发现规则为空")
-                val exploreBooks = WebBook.exploreBookAwait(source, url)
+                val exploreBooks = WebBook.getBookListAwait(source, url)
                 if (exploreBooks.isEmpty()) {
                     source.addGroup("发现失效")
                 } else {

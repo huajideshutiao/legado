@@ -20,6 +20,7 @@ import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.toastOnUi
 
 class VideoViewModel(application: Application) : BaseViewModel(application) {
@@ -47,8 +48,9 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     private fun initChapter(chapter: BookChapter) {
-            WebBook.getContent(viewModelScope, bookSource!!, book, chapter)
-                .onSuccess { content ->
+        Coroutine.async(viewModelScope) {
+            getContentAwait(bookSource!!, book, chapter, needSave = false)
+        }.onSuccess { content ->
                     if (content.isEmpty()) {
                         context.toastOnUi("未获取到资源链接")
                     } else {

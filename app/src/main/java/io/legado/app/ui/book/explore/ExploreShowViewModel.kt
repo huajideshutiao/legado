@@ -12,7 +12,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
@@ -70,12 +71,12 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val source = bookSource
         val url = exploreUrl
         if (source == null || url == null) return
-        WebBook.exploreBook(viewModelScope, source, url, page)
-            .timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
+        Coroutine.async(viewModelScope) {
+            getBookListAwait(source, url, page)
+        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
             .onSuccess(IO) { searchBooks ->
                 books.addAll(searchBooks)
                 booksData.postValue(books.toList())
-                //appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 page++
             }.onError {
                 it.printOnDebug()

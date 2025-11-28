@@ -38,7 +38,8 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
@@ -61,8 +62,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
-                if(inBookshelf&&(it.tocUrl == ""||it.totalChapterNum == 0)) GlobalVars.nowBook = appDb.bookDao.getBook(it.name,it.author)!!
-                upBook(it)
+                if(inBookshelf&&(it.tocUrl == ""||it.totalChapterNum == 0))upBook(appDb.bookDao.getBook(it.name,it.author)!!)
+                else upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")
@@ -78,6 +79,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
 
     private fun upBook(book: Book) {
         execute {
+            GlobalVars.nowBook = book
             bookData.postValue(book)
             upCoverByRule(book)
             bookSource = if (book.isLocal) null else
@@ -144,7 +146,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 }
             }
         }.onFinally {
-            loadBookInfo(book, false)
+            loadBookInfo(book)
         }.start()
     }
 
@@ -164,8 +166,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 context.toastOnUi(R.string.error_no_source)
                 return
             }
-            WebBook.getBookInfo(scope, bookSource, book, canReName = canReName)
-                .onSuccess(IO) {
+            Coroutine.async(scope) {
+                getBookInfoAwait(bookSource, book, canReName)
+            }.onSuccess(IO) {
                     val dbBook = appDb.bookDao.getBook(book.name, book.author)
                     if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
                         /**
@@ -217,8 +220,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 return
             }
             val oldBook = book.copy()
-            WebBook.getChapterList(scope, bookSource, book, runPreUpdateJs)
-                .onSuccess(IO) {
+            Coroutine.async(scope) {
+                getChapterListAwait(bookSource, book, runPreUpdateJs).getOrThrow()
+            }.onSuccess(IO) {
                     if (inBookshelf) {
                         appDb.bookDao.replace(oldBook, book)
                         /**

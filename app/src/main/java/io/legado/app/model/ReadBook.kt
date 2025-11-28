@@ -24,7 +24,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.CacheBookService
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -860,7 +860,9 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!book.canUpdate) return
         if (System.currentTimeMillis() - book.lastCheckTime < 600000) return
         book.lastCheckTime = System.currentTimeMillis()
-        WebBook.getChapterList(this, bookSource, book).onSuccess(IO) { cList ->
+        Coroutine.async(this) {
+            getChapterListAwait(bookSource, book).getOrThrow()
+        }.onSuccess(IO) { cList ->
             if (book.bookUrl == ReadBook.book?.bookUrl
                 && cList.size > chapterSize
             ) {
