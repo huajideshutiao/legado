@@ -72,7 +72,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val url = exploreUrl
         if (source == null || url == null) return
         Coroutine.async(viewModelScope) {
-            getBookListAwait(source, url, page)
+            getBookListAwait(source, url, page, isSearch = false)
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
             .onSuccess(IO) { searchBooks ->
                 books.addAll(searchBooks)

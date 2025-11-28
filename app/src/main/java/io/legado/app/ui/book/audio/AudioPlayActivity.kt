@@ -383,6 +383,8 @@ class AudioPlayActivity :
     }
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
+            scroller.targetPosition = 0
+            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
             adapter.setData(lrc.toList())
         }
     }

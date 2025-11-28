@@ -182,7 +182,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             durLrcContent?.let { nativeArray ->
                 for (i in nativeArray.indices) {
                     var oldIndex = 0
-                    (nativeArray[i] as String).lineSequence().forEach { line ->
+                    (nativeArray[i] as String).replace("00-1", "000").lineSequence().forEach { line ->
                         val line = line.trim()
                         if (line.length < 3) return@forEach
                         val split = line.indexOf("]")
@@ -222,6 +222,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         }.onError{
             durLrcData.clear()
             callback?.upLrc(mutableListOf())
+            AppLog.put("获取歌词出错\n$it", it, true)
         }
     }
 

@@ -124,7 +124,7 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     fun getByGroup(group: String): List<BookSource>
 
     @Query(
-        """select * from book_sources_part 
+        """select * from book_sources
         where enabled = 1 
         and (bookSourceGroup = :group
             or bookSourceGroup like :group || ',%' 
@@ -132,21 +132,21 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
             or bookSourceGroup like  '%,' || :group || ',%')
         order by customOrder asc"""
     )
-    fun getEnabledPartByGroup(group: String): List<BookSourcePart>
+    fun getEnabledByGroup(group: String): List<BookSource>
 
 
-    @Query("select * from book_sources where enabled = 1 and bookSourceUrl = :baseUrl")
+    @Query("select * from book_sources where enabled = 1 and bookSourceUrl like :baseUrl || '%'")
     fun getBookSourceAddBook(baseUrl: String): BookSource?
 
     @get:Query(
-        """select bp.* 
-        from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl
+        """select b.* 
+        from book_sources b
         where b.enabled = 1 
-        and trim(b.bookUrlPattern) <> '' 
-        and trim(b.bookUrlPattern) <> 'NONE' 
+        and b.bookUrlPattern is not null 
+        and trim(b.bookUrlPattern) <> ''
         order by b.customOrder"""
     )
-    val hasBookUrlPattern: List<BookSourcePart>
+    val hasBookUrlPattern: List<BookSource>
 
     @get:Query("select * from book_sources where bookSourceGroup is null or bookSourceGroup = ''")
     val noGroup: List<BookSource>

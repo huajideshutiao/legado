@@ -14,7 +14,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
@@ -70,9 +69,9 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private var fromReadBookActivity = false
     private var oldBook: Book? = null
     private var screenKey: String = ""
-    private var bookSourceParts = arrayListOf<BookSourcePart>()
+    private var bookSources = arrayListOf<BookSource>()
     val totalSourceCount: Int
-        get() = bookSourceParts.size
+        get() = bookSources.size
     private var searchBookList = arrayListOf<SearchBook>()
     private val searchBooks = Collections.synchronizedList(arrayListOf<SearchBook>())
     private val tocMap = ConcurrentHashMap<String, List<BookChapter>>()
@@ -189,21 +188,21 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             stopSearch()
             if (searchBooks.isNotEmpty())searchBooks.clear()
             searchCallback?.upAdapter()
-            bookSourceParts.clear()
+            bookSources.clear()
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
             _changeSourceProgress.value = 0 to ""
             val searchGroup = AppConfig.searchGroup
             if (searchGroup.isBlank()) {
-                bookSourceParts.addAll(appDb.bookSourceDao.allEnabledPart)
+                bookSources.addAll(appDb.bookSourceDao.allEnabled)
             } else {
-                val sources = appDb.bookSourceDao.getEnabledPartByGroup(searchGroup)
+                val sources = appDb.bookSourceDao.getEnabledByGroup(searchGroup)
                 if (sources.isEmpty()) {
                     AppConfig.searchGroup = ""
-                    bookSourceParts.addAll(appDb.bookSourceDao.allEnabledPart)
+                    bookSources.addAll(appDb.bookSourceDao.allEnabled)
                 } else {
-                    bookSourceParts.addAll(sources)
+                    bookSources.addAll(sources)
                 }
             }
             initSearchPool()
@@ -214,11 +213,11 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun startSearch(origin: String) {
         execute {
             stopSearch()
-            bookSourceParts.clear()
+            bookSources.clear()
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
-            bookSourceParts.add(appDb.bookSourceDao.getBookSourcePart(origin)!!)
+            bookSources.add(appDb.bookSourceDao.getBookSource(origin)!!)
             searchBooks.removeIf { it.origin == origin }
             initSearchPool()
             search()
@@ -228,7 +227,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private fun search() {
         task = viewModelScope.launch(searchPool!!) {
             flow {
-                appDb.bookSourceDao.getBookSourcesFix(bookSourceParts.map { it.bookSourceUrl }).map {
+                bookSources.map {
                     emit(it)
                 }
             }.onStart {
@@ -382,7 +381,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 }
             }.onStart {
                 searchStateData.postValue(true)
-            }.mapParallelSafe(threadCount,bookSourceParts.size) {
+            }.mapParallelSafe(threadCount,bookSources.size) {
                 val source = appDb.bookSourceDao.getBookSource(it.origin)!!
                 withTimeout(timeLimit) {
                     loadBookInfo(source, it.toBook())

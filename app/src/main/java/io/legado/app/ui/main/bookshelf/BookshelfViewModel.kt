@@ -5,9 +5,10 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -17,9 +18,9 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.model.webBook.WebBook.preciseSearchAwait
 import io.legado.app.utils.GSON
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
@@ -34,44 +35,16 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
 
     fun addBookByUrl(bookUrls: String) {
         var successCount = 0
+        val urls = bookUrls.split("\n")
         addBookJob = execute {
-            val hasBookUrlPattern: List<BookSourcePart> by lazy {
-                appDb.bookSourceDao.hasBookUrlPattern
-            }
-            val urls = bookUrls.split("\n")
             for (url in urls) {
                 val bookUrl = url.trim()
                 if (bookUrl.isEmpty()) continue
-                if (appDb.bookDao.getBook(bookUrl) != null) {
-                    successCount++
-                    continue
-                }
-                val baseUrl = NetworkUtils.getBaseUrl(bookUrl) ?: continue
-                var source = appDb.bookSourceDao.getBookSourceAddBook(baseUrl)
-                if (source == null) {
-                    for (bookSource in hasBookUrlPattern) {
-                        try {
-                            val bs = bookSource.getBookSource()!!
-                            if (bookUrl.matches(bs.bookUrlPattern!!.toRegex())) {
-                                source = bs
-                                break
-                            }
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-                val bookSource = source ?: continue
-                val book = Book(
-                    bookUrl = bookUrl,
-                    origin = bookSource.bookSourceUrl,
-                    originName = bookSource.bookSourceName
-                )
-                kotlin.runCatching {
-                    getBookInfoAwait(bookSource, book)
-                }.onSuccess {
+                try{
+                    getBookInfoByUrlAwait(bookUrl).let{
                     val dbBook = appDb.bookDao.getBook(it.name, it.author)
                     if (dbBook != null) {
-                        val toc = WebBook.getChapterListAwait(bookSource, it).getOrThrow()
+                        val toc = WebBook.getChapterListAwait(GlobalVars.nowSource as BookSource, it).getOrThrow()
                         dbBook.migrateTo(it, toc)
                         appDb.bookDao.insert(it)
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
@@ -82,15 +55,15 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                     successCount++
                     addBookProgressLiveData.postValue(successCount)
                 }
+                }catch (e: Throwable){
+                    AppLog.put("添加 $bookUrl 失败\n${e.localizedMessage}", e, true)
+                }
             }
         }.onSuccess {
-            if (successCount > 0) {
-                context.toastOnUi(R.string.success)
-            } else {
-                context.toastOnUi("添加网址失败")
-            }
-        }.onError {
-            AppLog.put("添加网址出错\n${it.localizedMessage}", it, true)
+            context.toastOnUi(if (successCount > 0) {
+                successCount.toString()+"/"+urls.size+" "+R.string.success
+            } else "添加网址失败"
+            )
         }.onFinally {
             addBookProgressLiveData.postValue(-1)
         }

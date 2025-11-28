@@ -1,17 +1,23 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
+import io.legado.app.utils.GSON
+import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -26,11 +32,11 @@ object WebBook {
         page: Int? = 1,
         filter: ((name: String, author: String) -> Boolean)? = null,
         shouldBreak: ((size: Int) -> Boolean)? = null,
-        type: String = "search"
+        isSearch: Boolean = true,
     ): ArrayList<SearchBook> {
         var url = key
         var key : String? = key
-        if (type == "search"){
+        if (isSearch){
             key = null
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
             else url = bookSource.searchUrl!!
@@ -52,7 +58,7 @@ object WebBook {
             analyzeUrl = analyzeUrl,
             baseUrl = res.url,
             body = res.body,
-            isSearch = type == "search",
+            isSearch = isSearch,
             isRedirect = checkRedirect(bookSource, res),
             filter = filter,
             shouldBreak = shouldBreak,
@@ -96,6 +102,35 @@ object WebBook {
             )
         }
         return book
+    }
+
+    suspend fun getBookInfoByUrlAwait(bookUrl: String): Book{
+        if(appDb.bookDao.has(bookUrl)) throw NoStackTraceException("已在书架")
+        val baseUrl = NetworkUtils.getBaseUrl(bookUrl)
+            ?: throw NoStackTraceException("书籍地址格式不对")
+        val urlMatcher = AnalyzeUrl.paramPattern.matcher(bookUrl)
+        val source = if (urlMatcher.find()) {
+            GSON.fromJsonObject<AnalyzeUrl.UrlOption>(
+                bookUrl.substring(urlMatcher.end())
+            ).getOrNull()?.getOrigin()?.let {
+                appDb.bookSourceDao.getBookSource(it)
+            }
+        }else appDb.bookSourceDao.getBookSourceAddBook(baseUrl)
+            ?: appDb.bookSourceDao.hasBookUrlPattern.first { source ->
+            bookUrl.matches(source.bookUrlPattern!!.toRegex())
+        }
+        try {
+            GlobalVars.nowSource = source
+            val book = Book(
+                bookUrl = bookUrl,
+                type = source!!.getBookType(),
+                origin = source.bookSourceUrl,
+                originName = source.bookSourceName
+            )
+            return getBookInfoAwait(source, book)
+        } catch (_: Exception) {
+            throw NoStackTraceException("未找到匹配书源")
+        }
     }
 
     suspend fun getChapterListAwait(

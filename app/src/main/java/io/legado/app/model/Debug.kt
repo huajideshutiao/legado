@@ -213,7 +213,7 @@ object Debug {
     private fun exploreDebug(scope: CoroutineScope, bookSource: BookSource, url: String) {
         log(debugSource, "︾开始解析发现页")
         val explore = Coroutine.async(scope) {
-            WebBook.getBookListAwait(bookSource, url, 1)
+            WebBook.getBookListAwait(bookSource, url, 1, isSearch = false)
         }.onSuccess { exploreBooks ->
                 if (exploreBooks.isNotEmpty()) {
                     log(debugSource, "︽发现页解析完成")

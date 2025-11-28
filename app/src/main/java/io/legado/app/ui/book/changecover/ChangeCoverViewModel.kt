@@ -11,7 +11,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.webBook.WebBook
@@ -39,7 +38,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
     private var searchPool: ExecutorCoroutineDispatcher? = null
     private var searchSuccess: ((SearchBook) -> Unit)? = null
     private var upAdapter: (() -> Unit)? = null
-    private var bookSourceParts = arrayListOf<BookSourcePart>()
+    private var bookSources = arrayListOf<BookSource>()
     private val defaultCover by lazy {
         listOf(
             SearchBook(
@@ -100,8 +99,8 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             stopSearch()
             searchBooks.clear()
             upAdapter?.invoke()
-            bookSourceParts.clear()
-            bookSourceParts.addAll(appDb.bookSourceDao.allEnabledPart)
+            bookSources.clear()
+            bookSources.addAll(appDb.bookSourceDao.allEnabled.filter { !it.ruleSearch?.coverUrl.isNullOrBlank() })
             initSearchPool()
             search()
         }
@@ -110,14 +109,10 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
     private fun search() {
         task = viewModelScope.launch(searchPool!!) {
             flow {
-                for (bs in bookSourceParts) {
-                    bs.getBookSource()?.let {
-                        emit(it)
-                    }
-                }
+                for (bs in bookSources) { emit(bs) }
             }.onStart {
                 searchStateData.postValue(true)
-            }.mapParallelSafe(threadCount, bookSourceParts.size) {
+            }.mapParallelSafe(threadCount, bookSources.size) {
                 withTimeout(timeLimit) {
                     search(it)
                 }

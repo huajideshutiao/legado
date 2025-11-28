@@ -51,31 +51,8 @@ class LrcAdapter(private var lyrics: List<Pair<Int, String>>) :
         super.onViewRecycled(holder)
         holder.textView.apply {
             setTextColor(holder.secondaryText)
-//            clearAnimation()
-//            animate().cancel()
         }
     }
-//  private fun animator(view: TextView, position: Int) {
-//    val primaryText = getColor(view.context, R.color.primaryText)
-//    val secondaryText = getColor(view.context, R.color.secondaryText)
-//    when (position) {
-//        oldIndex -> animateView(view, 1f, primaryText, secondaryText)
-//        currentIndex -> animateView(view, 1.05f, secondaryText,primaryText)
-//    }
-//}
-//private fun animateView(view: TextView, scale: Float, startColor: Int,endColor: Int) {
-//    view.animate()
-//        .scaleX(scale).scaleY(scale)
-//        .setDuration(300)
-//        .start()
-//    ValueAnimator.ofArgb(startColor,endColor).apply {
-//        duration = 300
-//        addUpdateListener { animator ->
-//            view.setTextColor(animator.animatedValue as Int)
-//        }
-//        start()
-//    }
-//}
   private fun animator(holder: ViewHolder,position: Int) {
     // 创建缩放动画
     val scaleAnimation = ScaleAnimation(1f, 1.05f, 1f, 1.05f,

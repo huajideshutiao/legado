@@ -4,8 +4,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
@@ -38,7 +37,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var mSearchId = 0L
     private var searchPage = 1
     private var searchKey: String = ""
-    private var bookSourceParts = emptyList<BookSourcePart>()
+    private var bookSources = emptyList<BookSource>()
     private var searchBooks = arrayListOf<SearchBook>()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
@@ -60,8 +59,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 close()
             }
             searchBooks.clear()
-            bookSourceParts = callBack.getSearchScope().getBookSourceParts()
-            if (bookSourceParts.isEmpty()) {
+            bookSources = callBack.getSearchScope().getBookSources()
+            if (bookSources.isEmpty()) {
                 callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
                 return
             }
@@ -79,13 +78,13 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         var hasMore = false
         searchJob = scope.launch(searchPool!!) {
             flow {
-                appDb.bookSourceDao.getBookSourcesFix(bookSourceParts.map { it.bookSourceUrl }).forEach {
+                bookSources.forEach {
                     emit(it)
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(threadCount,bookSourceParts.size) {
+            }.mapParallelSafe(threadCount,bookSources.size) {
                 withTimeout(timeLimit) {
                     WebBook.getBookListAwait(
                         it, searchKey, searchPage,
