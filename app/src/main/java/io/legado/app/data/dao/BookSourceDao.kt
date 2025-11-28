@@ -157,6 +157,9 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @get:Query("select * from book_sources_part order by customOrder asc")
     val allPart: List<BookSourcePart>
 
+    @get:Query("select * from book_sources where enabled = 1 order by customOrder asc")
+    val allEnabled: List<BookSource>
+
     @get:Query("select * from book_sources_part where enabled = 1 order by customOrder asc")
     val allEnabledPart: List<BookSourcePart>
 

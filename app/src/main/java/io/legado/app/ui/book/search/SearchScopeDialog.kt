@@ -13,6 +13,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSearchScopeBinding
 import io.legado.app.databinding.ItemCheckBoxBinding
@@ -138,7 +139,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
                 AppLog.put("多分组/书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
                 screenSources.clear()
-                screenSources.addAll(data)
+                screenSources.addAll(data.sortedBy { it.customOrder })
                 adapter.notifyDataSetChanged()
                 delay(500)
             }
