@@ -1,9 +1,11 @@
 package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.icu.text.SimpleDateFormat
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -146,10 +148,8 @@ class AudioPlayActivity :
         }
         return super.onCompatOptionsItemSelected(item)
     }
-
-    private val scroller by lazy {
-        object : LinearSmoothScroller(this) {
-//            override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
+    private class Scroller(context : Context) : LinearSmoothScroller(context) {
+//          override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
             override fun calculateTimeForScrolling(dx: Int): Int {
                 var baseTime = super.calculateTimeForScrolling(dx)
                 if (baseTime<300) baseTime = 4*baseTime + 200
@@ -166,12 +166,10 @@ class AudioPlayActivity :
             return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
         }
     }
-}
-
-
-
+    private lateinit var scroller : Scroller
 
     private fun initView() {
+        scroller = Scroller(this)
         binding.ivPlayMode.setOnClickListener {
             AudioPlay.changePlayMode()
         }
@@ -180,6 +178,7 @@ class AudioPlayActivity :
             binding.ivLrc.post {
                 binding.ivLrc.setPadding(24.dpToPx(), binding.ivLrc.height / 2, 24.dpToPx(), binding.ivLrc.height / 2
                 )
+
                 scroller.targetPosition = adapter.update()
                 binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
             }
@@ -363,6 +362,7 @@ class AudioPlayActivity :
             }
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
+            Log.e("error",it.toString())
             adapter.update(it)
             scroller.targetPosition = it
             binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
@@ -389,10 +389,6 @@ class AudioPlayActivity :
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
             adapter.setData(lrc)
-            binding.ivLrc.post {
-                scroller.targetPosition = adapter.update()
-                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-            }
         }
     }
     override fun upCover(url: String) {

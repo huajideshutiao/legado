@@ -15,6 +15,7 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.AudioFocusRequestCompat
@@ -483,6 +484,7 @@ class AudioPlayService : BaseService(),
                     position = i
                 } else break
             }
+
             if(position!=-1)postEvent(EventBus.AUDIO_LRCPROGRESS, position)
             while (isActive) {
                     if (position > lrc.size - 2) break
