@@ -23,6 +23,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ActivityBookSourceBinding
@@ -695,7 +696,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun edit(bookSource: BookSourcePart) {
         startActivity<BookSourceEditActivity> {
-            putExtra("sourceUrl", bookSource.bookSourceUrl)
+            GlobalVars.nowSource = bookSource.getBookSource()
         }
     }
 

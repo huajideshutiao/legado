@@ -322,9 +322,8 @@ class VideoPlayActivity(
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
             R.id.menu_edit_source -> viewModel.bookSource?.let {
-                sourceEditResult.launch {
-                    putExtra("sourceUrl", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                sourceEditResult.launch{}
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()

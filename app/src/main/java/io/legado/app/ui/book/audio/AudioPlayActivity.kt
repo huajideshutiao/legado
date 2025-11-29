@@ -77,6 +77,7 @@ class AudioPlayActivity :
     private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
     private val adapter = LrcAdapter(mutableListOf())
     private var adjustProgress = false
+    private var pendingPosition : Int? = null
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 
     private val progressTimeFormat by lazy {
@@ -146,15 +147,13 @@ class AudioPlayActivity :
         }
         return super.onCompatOptionsItemSelected(item)
     }
-
-    private val scroller by lazy {
-        object : LinearSmoothScroller(this) {
-//            override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
-            override fun calculateTimeForScrolling(dx: Int): Int {
-                var baseTime = super.calculateTimeForScrolling(dx)
-                if (baseTime<300) baseTime = 4*baseTime + 200
-                return baseTime
-            }
+    private val scroller by lazy {object : LinearSmoothScroller(this) {
+        //          override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
+        override fun calculateTimeForScrolling(dx: Int): Int {
+            var baseTime = super.calculateTimeForScrolling(dx)
+            if (baseTime<300) baseTime = 4*baseTime + 200
+            return baseTime
+        }
 
         override fun calculateDtToFit(
             viewStart: Int,
@@ -166,10 +165,7 @@ class AudioPlayActivity :
             return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
         }
     }
-}
-
-
-
+    }
 
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
@@ -244,11 +240,11 @@ class AudioPlayActivity :
             private var tmp = false
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 when (newState) {
-                    RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
                     RecyclerView.SCROLL_STATE_DRAGGING -> {
                         tmp = true
                         job?.cancel()
                     }
+                    RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
                 }
             }
             private fun scheduleAction() {
@@ -364,8 +360,11 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
             adapter.update(it)
-            scroller.targetPosition = it
-            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+            if(adapter.itemCount == 0)pendingPosition = it
+            if (it != 0) {
+                scroller.targetPosition = it
+                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+            }
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
@@ -389,10 +388,9 @@ class AudioPlayActivity :
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
             adapter.setData(lrc)
-            binding.ivLrc.post {
-                scroller.targetPosition = adapter.update()
-                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-            }
+            binding.ivLrc.layoutManager?.scrollToPosition(pendingPosition?:0)
+            if (pendingPosition != null)adapter.update(pendingPosition!!)
+            pendingPosition = null
         }
     }
     override fun upCover(url: String) {

@@ -463,7 +463,7 @@ class AudioPlayService : BaseService(),
         upPlayProgressJob = lifecycleScope.launch {
             while (isActive) {
                 //更新buffer位置
-                AudioPlay.playPositionChanged(exoPlayer.currentPosition.toInt())
+                AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
@@ -483,6 +483,7 @@ class AudioPlayService : BaseService(),
                     position = i
                 } else break
             }
+
             if(position!=-1)postEvent(EventBus.AUDIO_LRCPROGRESS, position)
             while (isActive) {
                     if (position > lrc.size - 2) break
