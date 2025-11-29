@@ -112,4 +112,6 @@ object AppConst {
 
     const val bookSourcePartEntities = "bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore, (loginUrl is not null and trim(loginUrl) <> '') hasLoginUrl, lastUpdateTime, respondTime, weight, (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl"
 
+    const val coverRuleConfigKey = "legadoCoverRuleConfig"
+
 }

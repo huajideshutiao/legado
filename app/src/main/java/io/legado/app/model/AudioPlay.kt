@@ -70,7 +70,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
     var durCoverUrl: String? = null
-    var durLrcData: MutableList<Pair<Int, String>> = mutableListOf()
+    var durLrcData: List<Pair<Int, String>>? = null
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -96,7 +96,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             upDurChapter()
         }else {
             durCoverUrl?.let { callback?.upCover(it) }
-            if (durLrcData.isNotEmpty()) callback?.upLrc(durLrcData)
+            if (durLrcData!=null) callback?.upLrc(durLrcData!!)
         }
 
     }
@@ -170,6 +170,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val lrcRule = bookSource.getContentRule().lrcRule
+            val tmp = mutableListOf<Pair<Int, String>>()
             var durLrcContent: NativeArray? = null
             if (!lrcRule.isNullOrBlank() && context == activityContext) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
@@ -180,8 +181,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             }
 
             durLrcContent?.let { nativeArray ->
-                for (i in nativeArray.indices) {
-                    var oldIndex = 0
+                loop@ for (i in nativeArray.indices) {
                     (nativeArray[i] as String).replace("00-1", "000").lineSequence().forEach { line ->
                         val line = line.trim()
                         if (line.length < 3) return@forEach
@@ -198,30 +198,28 @@ object AudioPlay : CoroutineScope by MainScope() {
                             if (split == 8) sec = line[4].code
                             val time = min * 60_000 + sec * 1000 + ms
                             if (i != 0) {
+                                if(textPart.isBlank()) return@forEach
                                 val index =
-                                    durLrcData.subList(oldIndex, durLrcData.size)
-                                        .indexOfFirst { it.first == time }
+                                    tmp.indexOfFirst { it.first == time }
                                 if (index == -1) return@forEach
-                                oldIndex += index
-                                durLrcData[oldIndex] = Pair(
+                                tmp[index] = Pair(
                                     time,
-                                    "${durLrcData[oldIndex].second}\n$textPart"
+                                    "${tmp[index].second}\n$textPart"
                                 )
                             } else {
-                                durLrcData.add(Pair(time, textPart))
+                                tmp.add(Pair(time, textPart))
                             }
                         }
                     }
                 }
             }
+            //sb网易云有的歌词乱序
+            tmp.sortBy { it.first }
+            return@async tmp
         }.onSuccess {
-            callback?.upLrc(durLrcData)
-            context.startService<AudioPlayService> {
-                action = IntentAction.playData
-            }
+            durLrcData = it
+            callback?.upLrc(it)
         }.onError{
-            durLrcData.clear()
-            callback?.upLrc(mutableListOf())
             AppLog.put("获取歌词出错\n$it", it, true)
         }
     }
@@ -244,7 +242,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 upLoading(true)
                 durCoverUrl = null
                 getCoverUrl(bookSource, book, chapter)
-                durLrcData.clear()
+                durLrcData = null
                 getLrcData(bookSource, book, chapter)
                 Coroutine.async(this) {
                     getContentAwait(bookSource, book, chapter, needSave = false)
@@ -355,7 +353,6 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
-        saveRead()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.adjustProgress

@@ -7,7 +7,9 @@ import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.databinding.DialogCoverRuleConfigBinding
+import io.legado.app.help.CacheManager
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.GSON
@@ -42,13 +44,13 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
                 toastOnUi("搜索url和cover规则不能为空")
             } else {
                 BookCover.CoverRule(enable, searchUrl, coverRule).let { config ->
-                    BookCover.saveCoverRule(config)
+                    CacheManager.put(coverRuleConfigKey, GSON.toJson(config))
                 }
                 dismissAllowingStateLoss()
             }
         }
         binding.tvFooterLeft.onClick {
-            BookCover.delCoverRule()
+            CacheManager.delete(coverRuleConfigKey)
             dismissAllowingStateLoss()
         }
     }

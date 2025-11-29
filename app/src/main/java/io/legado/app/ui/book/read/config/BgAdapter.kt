@@ -2,12 +2,12 @@ package io.legado.app.ui.book.read.config
 
 import android.content.Context
 import android.view.ViewGroup
+import com.bumptech.glide.Glide
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ItemBgImageBinding
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.utils.postEvent
 import java.io.File
 
@@ -25,8 +25,7 @@ class BgAdapter(context: Context, val textColor: Int) :
         payloads: MutableList<Any>
     ) {
         binding.run {
-            ImageLoader.load(
-                context,
+            Glide.with(context).load(
                 context.assets.open("bg${File.separator}$item").readBytes()
             )
                 .centerCrop()

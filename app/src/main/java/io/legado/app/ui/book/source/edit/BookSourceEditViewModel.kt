@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
@@ -35,8 +36,9 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
 
     fun initData(intent: Intent, onFinally: () -> Unit) {
         execute {
-            val sourceUrl = intent.getStringExtra("sourceUrl") ?: return@execute
-            bookSource = appDb.bookSourceDao.getBookSource(sourceUrl) ?:return@execute
+            bookSource = GlobalVars.nowSource as BookSource?
+            if(bookSource==null) {val sourceUrl = intent.getStringExtra("sourceUrl") ?: return@execute
+            bookSource = appDb.bookSourceDao.getBookSource(sourceUrl) ?:return@execute}
         }.onFinally {
             onFinally()
         }

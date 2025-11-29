@@ -20,6 +20,8 @@ fun String?.safeTrim() = if (this.isNullOrBlank()) null else this.trim()
 
 fun String?.isContentScheme(): Boolean = this?.startsWith("content://") == true
 
+fun String?.isFilePath(): Boolean = this?.startsWith("/storage") == true
+
 fun String.toEditable(): Editable = Editable.Factory.getInstance().newEditable(this)
 
 fun String.parseToUri(): Uri {

@@ -13,17 +13,15 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.constant.AppPattern
-import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
+import io.legado.app.utils.lifecycle
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
 
@@ -204,55 +202,12 @@ class CoverImageView @JvmOverloads constructor(
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
         defaultCover = true
         invalidate()
-
-        val type = if (inBookshelf)"covers" else "default"
-
-        if (AppConfig.useDefaultCover) {
-            ImageLoader.load(context, BookCover.defaultDrawable)
-                .centerCrop()
-                .into(this)
-        } else {
-            var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-            if (sourceOrigin != null) {
-                options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-            }
-            var builder = if (fragment != null && lifecycle != null) {
-                ImageLoader.load(fragment, lifecycle, path,type)
-            } else {
-                ImageLoader.load(context, path,type)//Glide自动识别http://,content://和file://
-            }
-            builder = builder.apply(options)
-                .placeholder(BookCover.defaultDrawable)
-                .error(BookCover.defaultDrawable)
-                .listener(glideListener)
-            if (onLoadFinish != null) {
-                builder = builder.addListener(object : RequestListener<Drawable> {
-                    override fun onLoadFailed(
-                        e: GlideException?,
-                        model: Any?,
-                        target: Target<Drawable?>,
-                        isFirstResource: Boolean
-                    ): Boolean {
-                        onLoadFinish.invoke()
-                        return false
-                    }
-
-                    override fun onResourceReady(
-                        resource: Drawable,
-                        model: Any,
-                        target: Target<Drawable?>?,
-                        dataSource: DataSource,
-                        isFirstResource: Boolean
-                    ): Boolean {
-                        onLoadFinish.invoke()
-                        return false
-                    }
-                })
-            }
-            builder
-                .centerCrop()
-                .into(this)
-        }
+        val requestManager = if (fragment != null && lifecycle != null) Glide.with(fragment).lifecycle(lifecycle)
+        else Glide.with(context)
+        BookCover.load(requestManager, path, loadOnlyWifi, sourceOrigin, inBookshelf, onLoadFinish)
+            .placeholder(BookCover.defaultDrawable)
+            .error(BookCover.defaultDrawable)
+            .listener(glideListener)
+            .centerCrop().into(this)
     }
-
 }

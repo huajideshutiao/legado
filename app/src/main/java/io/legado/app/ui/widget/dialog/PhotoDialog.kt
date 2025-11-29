@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestOptions
@@ -50,7 +51,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             BookHelp.getImage(book, src)
         }
         if (file?.exists() == true) {
-            ImageLoader.load(requireContext(), file)
+            Glide.with(requireContext()).load(file)
                 .error(R.drawable.image_loading_error)
                 .dontTransform()
                 .downsample(DownsampleStrategy.NONE)

@@ -4,15 +4,20 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.net.Uri
-import androidx.annotation.DrawableRes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.RequestManager
+import com.bumptech.glide.load.Transformation
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
+import io.legado.app.utils.isFilePath
 import io.legado.app.utils.lifecycle
 import java.io.File
 
@@ -24,35 +29,21 @@ object ImageLoader {
     /**
      * 自动判断path类型
      */
-    fun load(context: Context, path: String?, type: String = "default"): RequestBuilder<Drawable> {
-        return when {
-            path.isNullOrEmpty() -> Glide.with(context).load(path)
-            path.isDataUrl() -> Glide.with(context).load(path)
-            path.isAbsUrl() -> Glide.with(context).load(path)
-            path.isContentScheme() -> Glide.with(context).load(Uri.parse(path))
-            else -> kotlin.runCatching {
-                Glide.with(context).load(File(path))
-            }.getOrElse {
-                Glide.with(context).load(path)
-            }
-        }.signature(ObjectKey(type))
-    }
+    fun load(requestManager: RequestManager, path: String?, inBookshelf: Boolean = false): RequestBuilder<Drawable> {
+        val type = if (inBookshelf) "covers" else "default"
+    return when {
+        path.isFilePath() -> requestManager.load(File(path))
+        else -> requestManager.load(path)
+    }.signature(ObjectKey(type))
+}
 
-    fun load(fragment: Fragment, lifecycle: Lifecycle, path: String?, type: String = "default"): RequestBuilder<Drawable> {
-        val requestManager = Glide.with(fragment).lifecycle(lifecycle)
-        return when {
-            path.isNullOrEmpty() -> requestManager.load(path)
-            path.isDataUrl() -> requestManager.load(path)
-            path.isAbsUrl() -> requestManager.load(path)
-            path.isContentScheme() -> requestManager.load(Uri.parse(path))
+fun load(context: Context, path: String?, inBookshelf: Boolean = false): RequestBuilder<Drawable> {
+    return load(Glide.with(context), path, inBookshelf)
+}
 
-            else -> kotlin.runCatching {
-                requestManager.load(File(path))
-            }.getOrElse {
-                requestManager.load(path)
-            }
-        }.signature(ObjectKey(type))
-    }
+fun load(fragment: Fragment, lifecycle: Lifecycle, path: String?, inBookshelf: Boolean = false): RequestBuilder<Drawable> {
+    return load(Glide.with(fragment).lifecycle(lifecycle), path, inBookshelf)
+}
 
     fun loadBitmap(context: Context, path: String?): RequestBuilder<Bitmap> {
         val requestManager = Glide.with(context).`as`(Bitmap::class.java)
@@ -69,41 +60,49 @@ object ImageLoader {
         }
     }
 
-    fun loadFile(context: Context, path: String?): RequestBuilder<File> {
-        return when {
-            path.isNullOrEmpty() -> Glide.with(context).asFile().load(path)
-            path.isAbsUrl() -> Glide.with(context).asFile().load(path)
-            path.isContentScheme() -> Glide.with(context).asFile().load(Uri.parse(path))
-            else -> kotlin.runCatching {
-                Glide.with(context).asFile().load(File(path))
-            }.getOrElse {
-                Glide.with(context).asFile().load(path)
-            }
+    /**
+     * 加载漫画图片
+     */
+    fun loadManga(
+        context: Context,
+        path: String?,
+        loadOnlyWifi: Boolean = false,
+        sourceOrigin: String? = null,
+        transformation: Transformation<Bitmap>? = null,
+    ): RequestBuilder<Drawable> {
+        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
+            .set(OkHttpModelLoader.mangaOption, true)
+        if (sourceOrigin != null) {
+            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
+        return load(context, path)
+            .apply(options)
+            .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .skipMemoryCache(true).let {
+                if (transformation != null) {
+                    it.transform(transformation)
+                } else {
+                    it
+                }
+            }
     }
 
-    fun load(context: Context, @DrawableRes resId: Int?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(resId)
-    }
-
-    fun load(context: Context, file: File?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(file)
-    }
-
-    fun load(context: Context, uri: Uri?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(uri)
-    }
-
-    fun load(context: Context, drawable: Drawable?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(drawable)
-    }
-
-    fun load(context: Context, bitmap: Bitmap?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(bitmap)
-    }
-
-    fun load(context: Context, bytes: ByteArray?): RequestBuilder<Drawable> {
-        return Glide.with(context).load(bytes)
+    fun preloadManga(
+        context: Context,
+        path: String?,
+        loadOnlyWifi: Boolean = false,
+        sourceOrigin: String? = null,
+    ): RequestBuilder<File?> {
+        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
+            .set(OkHttpModelLoader.mangaOption, true)
+        if (sourceOrigin != null) {
+            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
+        }
+        return Glide.with(context)
+            .downloadOnly()
+            .apply(options)
+            .load(path)
     }
 
 }

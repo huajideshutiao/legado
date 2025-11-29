@@ -37,10 +37,9 @@ object WebBook {
         var url = key
         var key : String? = key
         if (isSearch){
-            key = null
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
             else url = bookSource.searchUrl!!
-        }
+        }else key = null
         val ruleData = RuleData()
         val analyzeUrl = AnalyzeUrl(
             mUrl = url,

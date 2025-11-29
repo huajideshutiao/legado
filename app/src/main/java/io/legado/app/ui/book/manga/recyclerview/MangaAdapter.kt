@@ -22,8 +22,8 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter.Companion.TYPE_FOOTER_VIEW
 import io.legado.app.databinding.ItemBookMangaEdgeBinding
 import io.legado.app.databinding.ItemBookMangaPageBinding
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.progress.ProgressManager
-import io.legado.app.model.BookCover
 import io.legado.app.model.ReadManga
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.EpaperTransformation
@@ -228,7 +228,7 @@ class MangaAdapter(private val context: Context) :
 
     override fun getPreloadRequestBuilder(item: Any): RequestBuilder<*>? {
         if (item is MangaPage) {
-            return BookCover.preloadManga(
+            return ImageLoader.preloadManga(
                 context,
                 item.mImageUrl,
                 sourceOrigin = ReadManga.book?.origin,

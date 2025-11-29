@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -366,7 +367,7 @@ class BookInfoActivity :
         //if (book.type ==2048)binding.ivCover.layoutParams.let {it.width = it.height/9*16}
         binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin, inBookshelf = viewModel.inBookshelf) {
             if (!AppConfig.isEInkMode) {
-                BookCover.loadBlur(this, book.getDisplayCover(), false, book.origin,viewModel.inBookshelf)
+                BookCover.loadBlur(Glide.with(this), book.getDisplayCover(), false, book.origin,viewModel.inBookshelf).placeholder(binding.bgBook.drawable)
                     .into(binding.bgBook)
             }
         }

@@ -1233,4 +1233,5 @@
     <string name="rule_music_cover">music cover url rule</string>
     <string name="show_video_ui">Video UI</string>
     <string name="book_url">Book Path</string>
+    <string name="copy_chapter_url">Copy Chapter Url</string>
 </resources>

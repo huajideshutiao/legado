@@ -99,7 +99,9 @@ class LrcAdapter(private var lyrics: List<Pair<Int, String>>) :
   }
 
   fun setData(newData: List<Pair<Int, String>>) {
-    this.lyrics = newData
-    notifyDataSetChanged()
+      this.lyrics = newData
+      currentIndex = null
+      oldIndex = null
+      notifyDataSetChanged()
   }
 }

@@ -1,24 +1,19 @@
 package io.legado.app.model
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.annotation.Keep
-import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.RequestManager
 import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.Transformation
-import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
-import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import io.legado.app.R
+import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
@@ -38,12 +33,9 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
-import java.io.File
 
 @Keep
 object BookCover {
-
-    private const val coverRuleConfigKey = "legadoCoverRuleConfig"
     var drawBookName = true
         private set
     var drawBookAuthor = true
@@ -84,21 +76,21 @@ object BookCover {
      * 加载封面
      */
     fun load(
-        context: Context,
+        requestManager: RequestManager,
         path: String?,
         loadOnlyWifi: Boolean = false,
         sourceOrigin: String? = null,
+        inBookshelf: Boolean = false,
         onLoadFinish: (() -> Unit)? = null,
     ): RequestBuilder<Drawable> {
         if (AppConfig.useDefaultCover) {
-            return ImageLoader.load(context, defaultDrawable)
-                .centerCrop()
+            return requestManager.load(defaultDrawable).centerCrop()
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        var builder = ImageLoader.load(context, path)
+        var builder = ImageLoader.load(requestManager, path, inBookshelf)
             .apply(options)
         if (onLoadFinish != null) {
             builder = builder.addListener(object : RequestListener<Drawable> {
@@ -124,81 +116,31 @@ object BookCover {
                 }
             })
         }
-        return builder.placeholder(defaultDrawable)
-            .error(defaultDrawable)
+        return builder.error(defaultDrawable)
             .centerCrop()
-    }
-
-    /**
-     * 加载漫画图片
-     */
-    fun loadManga(
-        context: Context,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-        transformation: Transformation<Bitmap>? = null,
-    ): RequestBuilder<Drawable> {
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-            .set(OkHttpModelLoader.mangaOption, true)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        return ImageLoader.load(context, path)
-            .apply(options)
-            .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
-            .diskCacheStrategy(DiskCacheStrategy.ALL)
-            .skipMemoryCache(true).let {
-                if (transformation != null) {
-                    it.transform(transformation)
-                } else {
-                    it
-                }
-            }
-    }
-
-    fun preloadManga(
-        context: Context,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-    ): RequestBuilder<File?> {
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-            .set(OkHttpModelLoader.mangaOption, true)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        return Glide.with(context)
-            .downloadOnly()
-            .apply(options)
-            .load(path)
     }
 
     /**
      * 加载模糊封面
      */
     fun loadBlur(
-        context: Context,
+        requestManager: RequestManager,
         path: String?,
         loadOnlyWifi: Boolean = false,
         sourceOrigin: String? = null,
         inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
-        val loadBlur = ImageLoader.load(context, defaultDrawable)
-            .transform(BlurTransformation(25), CenterCrop())
         if (AppConfig.useDefaultCover) {
-            return loadBlur
+            return requestManager.load(defaultDrawable)
+                .transform(BlurTransformation(25), CenterCrop())
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        val type = if (inBookshelf) "covers" else "default"
-        return ImageLoader.load(context, path,type)
+        return ImageLoader.load(requestManager, path,inBookshelf)
             .apply(options)
             .transform(BlurTransformation(25), CenterCrop())
-            .transition(DrawableTransitionOptions.withCrossFade(1500))
-            .thumbnail(loadBlur)
     }
 
     fun getCoverRule(): CoverRule {
@@ -225,15 +167,6 @@ object BookCover {
         analyzeRule.setContent(res.body)
         analyzeRule.setRedirectUrl(res.url)
         return analyzeRule.getString(config.coverRule, isUrl = true)
-    }
-
-    fun saveCoverRule(config: CoverRule) {
-        val json = GSON.toJson(config)
-        CacheManager.put(coverRuleConfigKey, json)
-    }
-
-    fun delCoverRule() {
-        CacheManager.delete(coverRuleConfigKey)
     }
 
     @Keep

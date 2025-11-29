@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -130,15 +131,15 @@ class AudioPlayActivity :
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
                 GlobalVars.nowSource = it
-                startActivity<SourceLoginActivity>{}
+                startActivity<SourceLoginActivity>()
             }
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
             R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
+            R.id.menu_copy_chapter_url -> sendToClip(AudioPlay.durChapter?.url ?: "")
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
-                sourceEditResult.launch {
-                    putExtra("sourceUrl", it.bookSourceUrl)
-                }
+                GlobalVars.nowSource = it
+                sourceEditResult.launch{}
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
@@ -148,28 +149,27 @@ class AudioPlayActivity :
 
     private val scroller by lazy {
         object : LinearSmoothScroller(this) {
-            //        override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float {
-//            return 100f / displayMetrics.densityDpi // 调整滚动速度
-//            return 1f / displayMetrics.density
-//        }
+//            override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
             override fun calculateTimeForScrolling(dx: Int): Int {
-//            val baseTime = super.calculateTimeForScrolling(dx)
-//            // 应用插值器
-//            return (baseTime * AccelerateDecelerateInterpolator().getInterpolation(dx.toFloat() / binding.ivLrc.width)).toInt()
-                return 300
+                var baseTime = super.calculateTimeForScrolling(dx)
+                if (baseTime<300) baseTime = 4*baseTime + 200
+                return baseTime
             }
 
-            override fun calculateDtToFit(
-                viewStart: Int,
-                viewEnd: Int,
-                boxStart: Int,
-                boxEnd: Int,
-                snapPreference: Int
-            ): Int {
-                return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
-            }
+        override fun calculateDtToFit(
+            viewStart: Int,
+            viewEnd: Int,
+            boxStart: Int,
+            boxEnd: Int,
+            snapPreference: Int
+        ): Int {
+            return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
         }
     }
+}
+
+
+
 
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
@@ -241,14 +241,19 @@ class AudioPlayActivity :
         binding.ivLrc.itemAnimator = null
         binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             private var job: Job? = null
+            private var tmp = false
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 when (newState) {
                     RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
-                    else -> job?.cancel()
+                    RecyclerView.SCROLL_STATE_DRAGGING -> {
+                        tmp = true
+                        job?.cancel()
+                    }
                 }
             }
             private fun scheduleAction() {
                 job?.cancel()
+                if (tmp)tmp = false else return
                 job = CoroutineScope(lifecycle.coroutineScope.coroutineContext).launch {
                     delay(5000)
                     scroller.targetPosition = adapter.update()
@@ -383,17 +388,19 @@ class AudioPlayActivity :
     }
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
-            scroller.targetPosition = 0
-            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-            adapter.setData(lrc.toList())
+            adapter.setData(lrc)
+            binding.ivLrc.post {
+                scroller.targetPosition = adapter.update()
+                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+            }
         }
     }
     override fun upCover(url: String) {
         runOnUiThread {
-            BookCover.load(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
-                BookCover.loadBlur(this, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                    .into(binding.ivBg)
-            }.into(binding.ivCover)
+            BookCover.load(Glide.with(this), url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
+                BookCover.loadBlur(Glide.with(this), url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+                    .placeholder(binding.ivBg.drawable).into(binding.ivBg)
+            }.placeholder(binding.ivCover.drawable).into(binding.ivCover)
         }
     }
 

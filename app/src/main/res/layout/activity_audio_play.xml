@@ -19,7 +19,7 @@
         android:id="@+id/vw_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#50818181" />
+        android:background="#CC818181" />
 
     <io.legado.app.ui.widget.TitleBar
         android:id="@+id/title_bar"
@@ -195,9 +195,9 @@
                 app:backgroundTint="@color/md_white_1000"
                 app:elevation="2dp"
                 app:fabSize="normal"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:pressedTranslationZ="2dp"
                 tools:ignore="ImageContrastCheck" />
@@ -207,12 +207,12 @@
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:visibility="invisible"
-                app:layout_constraintWidth="parent"
-                app:layout_constraintHeight="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHeight="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintWidth="parent" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 

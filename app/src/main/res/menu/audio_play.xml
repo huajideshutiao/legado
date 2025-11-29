@@ -21,6 +21,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_copy_chapter_url"
+        android:title="@string/copy_chapter_url"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_edit_source"
         android:title="@string/edit_book_source"
         app:showAsAction="never" />

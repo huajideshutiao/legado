@@ -22,8 +22,8 @@ import com.bumptech.glide.load.Transformation
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.progress.ProgressManager
-import io.legado.app.model.BookCover
 import io.legado.app.model.ReadManga
 import io.legado.app.utils.printOnDebug
 
@@ -70,7 +70,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         }
         try {
             mImage.tag = imageUrl
-            BookCover.loadManga(
+            ImageLoader.loadManga(
                 context,
                 imageUrl,
                 sourceOrigin = ReadManga.book?.origin,

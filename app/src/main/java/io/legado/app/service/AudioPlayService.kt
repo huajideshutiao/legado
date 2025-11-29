@@ -153,7 +153,6 @@ class AudioPlayService : BaseService(),
                 IntentAction.play -> {
                     exoPlayer.stop()
                     upPlayProgressJob?.cancel()
-                    upPlayProgressForLrcJob?.cancel()
                     pause = false
                     position = AudioPlay.book?.durChapterPos ?: 0
                     url = AudioPlay.durPlayUrl
@@ -205,7 +204,6 @@ class AudioPlayService : BaseService(),
                 IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
                 IntentAction.adjustProgress -> {
                     adjustProgress(intent.getIntExtra("position", position))
-                    upPlayProgressForLrc(durLrcData)
                 }
 
                 IntentAction.stop -> stopSelf()
@@ -263,6 +261,7 @@ class AudioPlayService : BaseService(),
             exoPlayer.playWhenReady = true
             exoPlayer.seekTo(position.toLong())
             exoPlayer.prepare()
+            upPlayProgressForLrc(durLrcData)
         }.onError {
             AppLog.put("播放出错\n${it.localizedMessage}", it)
             toastOnUi("$url ${it.localizedMessage}")
@@ -332,6 +331,7 @@ class AudioPlayService : BaseService(),
     private fun adjustProgress(position: Int) {
         this.position = position
         exoPlayer.seekTo(position.toLong())
+        upPlayProgressForLrc(durLrcData)
     }
 
     /**
@@ -376,8 +376,6 @@ class AudioPlayService : BaseService(),
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaMetadata()
                 upPlayProgress()
-//                if (callback != null) upPlayProgressForLrc() else upPlayProgressForLrcJob?.cancel()
-                upPlayProgressForLrc(durLrcData)
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
@@ -479,21 +477,19 @@ class AudioPlayService : BaseService(),
         upPlayProgressForLrcJob?.cancel()
         if (lrc == null) return
         upPlayProgressForLrcJob = lifecycleScope.launch {
-            var position: Int? = null
+            var position: Int = -1
             for (i in lrc.indices) {
                 if (lrc[i].first <= exoPlayer.currentPosition) {
                     position = i
                 } else break
             }
-            postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+            if(position!=-1)postEvent(EventBus.AUDIO_LRCPROGRESS, position)
             while (isActive) {
-                position?.let {
-                    if (it > lrc.size - 2) break
-                    if (lrc[it + 1].first <= exoPlayer.currentPosition + 10) {
+                    if (position > lrc.size - 2) break
+                    if (lrc[position + 1].first <= exoPlayer.currentPosition + 10) {
                         position += 1
                         postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                     }
-                }
                 delay(50)
             }
         }
