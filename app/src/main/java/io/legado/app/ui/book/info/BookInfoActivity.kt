@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -43,6 +44,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
@@ -367,8 +369,8 @@ class BookInfoActivity :
         //if (book.type ==2048)binding.ivCover.layoutParams.let {it.width = it.height/9*16}
         binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin, inBookshelf = viewModel.inBookshelf) {
             if (!AppConfig.isEInkMode) {
-                BookCover.loadBlur(Glide.with(this), book.getDisplayCover(), false, book.origin,viewModel.inBookshelf).placeholder(binding.bgBook.drawable)
-                    .into(binding.bgBook)
+                BookCover.loadBlur(Glide.with(this), book.getDisplayCover(), sourceOrigin = book.origin, inBookshelf = viewModel.inBookshelf)
+                    .placeholder(binding.bgBook.drawable).into(binding.bgBook)
             }
         }
     }

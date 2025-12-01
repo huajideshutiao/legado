@@ -282,7 +282,7 @@ object WebBook {
         }catch (e: Throwable){
             throw tmp ?: e
         }
-        return res!!
+        return res ?: throw tmp!!
     }
 
     /**

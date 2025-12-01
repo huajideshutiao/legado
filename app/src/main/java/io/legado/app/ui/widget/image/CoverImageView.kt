@@ -205,9 +205,6 @@ class CoverImageView @JvmOverloads constructor(
         val requestManager = if (fragment != null && lifecycle != null) Glide.with(fragment).lifecycle(lifecycle)
         else Glide.with(context)
         BookCover.load(requestManager, path, loadOnlyWifi, sourceOrigin, inBookshelf, onLoadFinish)
-            .placeholder(BookCover.defaultDrawable)
-            .error(BookCover.defaultDrawable)
-            .listener(glideListener)
-            .centerCrop().into(this)
+            .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
     }
 }
