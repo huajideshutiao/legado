@@ -279,7 +279,7 @@
     <string name="load_over_time">加载超时</string>
     <string name="join_group">关注：%s</string>
     <string name="copy_complete">已拷贝</string>
-    <string name="bookshelf_management">书籍管理</string>
+    <string name="bookshelf_management">书架管理</string>
     <string name="clear_bookshelf_s">这将会删除所有书籍，请谨慎操作。</string>
     <string name="search_book_source">搜索书源</string>
     <string name="search_rss_source">搜索订阅源</string>
@@ -1227,6 +1227,8 @@
     <string name="disable_horizontal_animation">禁用水平滚动动画</string>
     <string name="enable_manga_gray">开启图片灰色</string>
     <string name="sure_cache_book">是否确认开始缓存？</string>
+    <string name="auto_check_new_backup_t">自动检查新备份</string>
+    <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="rule_lrc_rule">歌词规则（lrcRule）</string>
     <string name="rule_music_cover">音乐封面URL规则（musicCoverUrl）</string>
     <string name="show_video_ui">视频界面</string>
