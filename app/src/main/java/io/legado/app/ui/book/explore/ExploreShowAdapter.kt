@@ -84,11 +84,12 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
-        getItem(holder.layoutPosition)?.toBook()?.let { book ->
-            if (callBack.isInBookshelf(book.name, book.author)) book.addType(BookType.notShelf)
-            holder.itemView.setOnClickListener { callBack.showBookInfo(book) }
-            holder.itemView.setOnLongClickListener { callBack.showBookInfo(book, true) ; true }
+        val tmp = {
+            getItem(holder.layoutPosition)?.toBook()?.apply {
+            if (!binding.ivInBookshelf.isVisible) addType(BookType.notShelf) }
         }
+        holder.itemView.setOnClickListener { tmp.invoke()?.let { book -> callBack.showBookInfo(book) } }
+        holder.itemView.setOnLongClickListener { tmp.invoke()?.let { book -> callBack.showBookInfo(book, true) }; true }
     }
 
     interface CallBack {
