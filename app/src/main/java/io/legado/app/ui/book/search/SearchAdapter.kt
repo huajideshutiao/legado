@@ -78,7 +78,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
                 callBack.showBookInfo(it.toBook().apply {
-                    if (!callBack.isInBookshelf(it.name, it.author))addType(BookType.notShelf)
+                    if (!binding.ivInBookshelf.isVisible)addType(BookType.notShelf)
                 })
             }
         }

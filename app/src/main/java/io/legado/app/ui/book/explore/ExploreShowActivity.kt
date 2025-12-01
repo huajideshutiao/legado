@@ -90,7 +90,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         return viewModel.isInBookShelf(name, author)
     }
 
-    override fun showBookInfo(book: Book) {
+    override fun showBookInfo(book: Book, action: Boolean) {
         if (book.bookUrl.contains("::")) {
             startActivity<ExploreShowActivity> {
                 putExtra("exploreName", book.bookUrl.split("::")[0])
@@ -99,10 +99,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
         } else {
             GlobalVars.nowBook = book
-            if (book.isVideo&& AppConfig.showVideoUi) startActivity<VideoPlayActivity>()
-            else startActivity<BookInfoActivity> {
-                putExtra("name", book.name)
-                putExtra("author", book.author)
+            if (action || !book.isVideo || !AppConfig.showVideoUi) {
+                startActivity<BookInfoActivity> {
+                    putExtra("name", book.name)
+                    putExtra("author", book.author)
+                }
+            } else {
+                startActivity<VideoPlayActivity>()
             }
         }
     }

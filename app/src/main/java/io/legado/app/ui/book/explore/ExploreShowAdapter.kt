@@ -84,12 +84,10 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
-        holder.itemView.setOnClickListener {
-            getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.toBook().apply {
-                    if (!callBack.isInBookshelf(it.name, it.author))addType(BookType.notShelf)
-                })
-            }
+        getItem(holder.layoutPosition)?.toBook()?.let { book ->
+            if (callBack.isInBookshelf(book.name, book.author)) book.addType(BookType.notShelf)
+            holder.itemView.setOnClickListener { callBack.showBookInfo(book) }
+            holder.itemView.setOnLongClickListener { callBack.showBookInfo(book, true) ; true }
         }
     }
 
@@ -99,6 +97,6 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
          */
         fun isInBookshelf(name: String, author: String): Boolean
 
-        fun showBookInfo(book: Book)
+        fun showBookInfo(book: Book, action: Boolean = false)
     }
 }
