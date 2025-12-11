@@ -13,7 +13,6 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
-import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
@@ -33,7 +32,6 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
-import java.io.File
 
 @Keep
 @Suppress("ConstPropertyName")
@@ -176,19 +174,6 @@ object BookCover {
         analyzeRule.setContent(res.body)
         analyzeRule.setRedirectUrl(res.url)
         return analyzeRule.getString(config.coverRule, isUrl = true)
-    }
-
-    fun saveCoverRule(config: CoverRule) {
-        val json = GSON.toJson(config)
-        saveCoverRule(json)
-    }
-
-    fun saveCoverRule(json: String) {
-        CacheManager.put(coverRuleConfigKey, json)
-    }
-
-    fun delCoverRule() {
-        CacheManager.delete(coverRuleConfigKey)
     }
 
     @Keep

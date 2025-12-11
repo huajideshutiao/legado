@@ -7,6 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppConst.androidId
+import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -25,6 +26,7 @@ import io.legado.app.data.entities.RuleSub
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.help.CacheManager
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.isLocal
@@ -215,8 +217,7 @@ object Restore {
         File(path, BookCover.configFileName).takeIf {
             it.exists()
         }?.runCatching {
-            val json = readText()
-            BookCover.saveCoverRule(json)
+            CacheManager.put(coverRuleConfigKey, readText())
         }?.onFailure {
             AppLog.put("恢复封面规则出错\n${it.localizedMessage}", it)
         }
