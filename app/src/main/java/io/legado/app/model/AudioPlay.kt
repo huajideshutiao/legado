@@ -239,6 +239,11 @@ object AudioPlay : CoroutineScope by MainScope() {
                     removeLoading(index)
                     return
                 }
+                if (chapter.isVolume) {
+                    skipTo(index + 1)
+                    removeLoading(index)
+                    return
+                }
                 upLoading(true)
                 durCoverUrl = null
                 getCoverUrl(bookSource, book, chapter)
@@ -310,6 +315,8 @@ object AudioPlay : CoroutineScope by MainScope() {
         val book = book ?: return
         durChapter = appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         durAudioSize = durChapter?.end?.toInt() ?: 0
+        val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
+        postEvent(EventBus.AUDIO_SUB_TITLE, title)
         postEvent(
             EventBus.AUDIO_SUB_TITLE,
             durChapter?.title ?: appCtx.getString(R.string.data_loading)
@@ -353,6 +360,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
+        saveRead()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.adjustProgress
@@ -364,11 +372,13 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun skipTo(index: Int) {
         Coroutine.async {
             stopPlay()
-            durChapterIndex = index
-            durChapterPos = 0
-            durPlayUrl = ""
-            saveRead()
-            loadPlayUrl()
+            if (index in 0..<simulatedChapterSize) {
+                durChapterIndex = index
+                durChapterPos = 0
+                durPlayUrl = ""
+                saveRead()
+                loadPlayUrl()
+            }
         }
     }
 
