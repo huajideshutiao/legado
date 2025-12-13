@@ -19,7 +19,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.CacheManager
 import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.BlurTransformation
+import io.legado.app.help.glide.FastBlurTransformation
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -136,7 +136,7 @@ object BookCover {
     ): RequestBuilder<Drawable> {
         if (AppConfig.useDefaultCover) {
             return requestManager.load(defaultDrawable)
-                .transform(BlurTransformation(25), CenterCrop())
+                .transform(FastBlurTransformation(25), CenterCrop())
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
@@ -144,7 +144,7 @@ object BookCover {
         }
         return ImageLoader.load(requestManager, path,inBookshelf)
             .apply(options)
-            .transform(BlurTransformation(25), CenterCrop())
+            .transform(FastBlurTransformation(), CenterCrop())
     }
 
     fun getCoverRule(): CoverRule {

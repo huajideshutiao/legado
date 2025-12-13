@@ -1,18 +1,14 @@
 package io.legado.app.help.glide
 
 import android.graphics.Bitmap
-import androidx.annotation.IntRange
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import io.legado.app.utils.stackBlur
 import java.security.MessageDigest
+import androidx.core.graphics.scale
 
-/**
- * 模糊
- * @radius: 0..25
- */
-class BlurTransformation(
-    @param:IntRange(from = 0, to = 25) private val radius: Int
+class FastBlurTransformation(
+    private val maxShortSide: Int = 400
 ) : BitmapTransformation() {
 
     override fun transform(
@@ -21,10 +17,22 @@ class BlurTransformation(
         outWidth: Int,
         outHeight: Int
     ): Bitmap {
-        return toTransform.stackBlur(radius)
+        var targetWidth = toTransform.width
+        var targetHeight = toTransform.height
+        if (targetWidth > targetHeight) {
+            val ratio = targetWidth.toFloat() / targetHeight
+            targetWidth = (maxShortSide * ratio).toInt()
+            targetHeight = maxShortSide
+        } else {
+            val ratio = targetHeight.toFloat() / targetWidth
+            targetHeight = (maxShortSide * ratio).toInt()
+            targetWidth = maxShortSide
+        }
+        return toTransform.scale(targetWidth, targetHeight).stackBlur(3)
     }
 
+
     override fun updateDiskCacheKey(messageDigest: MessageDigest) {
-        messageDigest.update("blur transformation".toByteArray())
+        messageDigest.update("fast blur transformation".toByteArray())
     }
 }
