@@ -508,12 +508,12 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
-        if (book != null && durLrcData == null) {
+        if (book != null ){if( durLrcData == null) {
             getLrcData(bookSource!!, book!!, durChapter!!)
             context.startService<AudioPlayService> {
                 action = IntentAction.playData
             }
-        }else durLrcData?.let { callback!!.upLrc(it) }
+        }else callback!!.upLrc(durLrcData!!) }
     }
 
     fun unregister(context: Context) {

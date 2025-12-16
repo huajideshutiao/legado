@@ -29,6 +29,7 @@ class AudioPlayViewModel(application: Application) : BaseViewModel(application) 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
             val book = (if(intent.action != "activity") GlobalVars.nowBook else AudioPlay.book)?: return@execute
+            GlobalVars.nowBook = book
             inBookshelf = !book.isNotShelf
             if (AudioPlay.book?.bookUrl == book.bookUrl) AudioPlay.upData(book)
             else resetData(book)
