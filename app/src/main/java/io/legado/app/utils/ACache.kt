@@ -464,6 +464,7 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
      */
     private object Utils {
 
+        @Suppress("ConstPropertyName")
         private const val mSeparator = ' '
 
         /**

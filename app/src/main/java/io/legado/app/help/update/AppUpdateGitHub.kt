@@ -13,6 +13,7 @@ import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CoroutineScope
 
 @Keep
+@Suppress("unused")
 object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
     private val checkVariant: AppVariant
@@ -36,7 +37,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
             throw NoStackTraceException("获取新版本出错(${res.code})")
         }
         val body = res.body.text()
-        if (body.isNullOrBlank()) {
+        if (body.isBlank()) {
             throw NoStackTraceException("获取新版本出错")
         }
         return GSON.fromJsonObject<GithubRelease>(body)

@@ -38,6 +38,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
+@Suppress("unused", "MemberVisibilityCanBePrivate")
 open class WebDav(
     val path: String,
     val authorization: Authorization
@@ -396,11 +397,12 @@ open class WebDav(
     @Throws(WebDavException::class)
     suspend fun downloadInputStream(): InputStream {
         val url = httpUrl ?: throw WebDavException("WebDav下载出错\nurl为空")
-        return webDavClient.newCallResponse {
+        val byteStream = webDavClient.newCallResponse {
             url(url)
         }.apply {
             checkResult(this)
         }.body.byteStream()
+        return byteStream
     }
 
     /**
