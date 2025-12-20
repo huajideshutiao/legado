@@ -103,7 +103,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     override var sortAscending = true
         private set
     private var snackBar: Snackbar? = null
-    private var showDuplicationSource = false
+    private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
     private val qrResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
@@ -255,9 +255,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 searchView.setQuery(getString(R.string.disabled_explore), true)
             }
 
-            R.id.menu_show_same_source -> {
+            R.id.menu_group_sources_by_domain -> {
                 item.isChecked = !item.isChecked
-                showDuplicationSource = item.isChecked
+                groupSourcesByDomain = item.isChecked
                 adapter.showSourceHost = item.isChecked
                 upBookSource(searchView.query?.toString())
             }
@@ -333,7 +333,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
             }.map { data ->
                 hostMap.clear()
-                if (showDuplicationSource) {
+                if (groupSourcesByDomain) {
                     data.sortedWith(
                         compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
                             .thenBy { getSourceHost(it.bookSourceUrl) }
@@ -366,7 +366,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             }.flowOn(IO).conflate().collect { data ->
                 adapter.setItems(data, adapter.diffItemCallback, !Debug.isChecking)
                 itemTouchCallback.isCanDrag =
-                    sort == BookSourceSort.Default && !showDuplicationSource
+                    sort == BookSourceSort.Default && !groupSourcesByDomain
                 delay(500)
             }
         }

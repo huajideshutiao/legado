@@ -156,4 +156,5 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             }
         }
     }
+
 }
