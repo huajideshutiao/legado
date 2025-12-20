@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import androidx.core.view.indices
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
@@ -277,11 +278,22 @@ class OtherConfigFragment : PreferenceFragment(),
     @SuppressLint("InflateParams")
     fun configBookshelf() {
         alert(titleResource = R.string.bookshelf_layout) {
-            val bookshelfLayout = AppConfig.bookshelfLayout
-            val bookshelfSort = AppConfig.bookshelfSort
+            var bookshelfLayout = AppConfig.bookshelfLayout
+            var bookshelfSort = AppConfig.bookshelfSort
             val alertBinding =
                 DialogBookshelfConfigBinding.inflate(layoutInflater)
                     .apply {
+                        if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
+                            AppConfig.bookGroupStyle = 0
+                        }
+                        if (bookshelfLayout !in rgLayout.indices) {
+                            bookshelfLayout = 0
+                            AppConfig.bookshelfLayout = 0
+                        }
+                        if (bookshelfSort !in rgSort.indices) {
+                            bookshelfSort = 0
+                            AppConfig.bookshelfSort = 0
+                        }
                         spGroupStyle.setSelection(AppConfig.bookGroupStyle)
                         swShowUnread.isChecked = AppConfig.showUnread
                         swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime

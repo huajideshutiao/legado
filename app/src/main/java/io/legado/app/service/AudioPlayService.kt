@@ -15,7 +15,6 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.AudioFocusRequestCompat
@@ -175,8 +174,9 @@ class AudioPlayService : BaseService(),
                             }
                         }
                     }
-                    upPlayProgressForLrc(durLrcData)
                 }
+
+                IntentAction.lrc -> {upPlayProgressForLrc(durLrcData)}
 
                 IntentAction.playNew -> {
                     exoPlayer.stop()
@@ -480,7 +480,7 @@ class AudioPlayService : BaseService(),
         upPlayProgressForLrcJob = lifecycleScope.launch {
             var position: Int = -1
             for (i in lrc.indices) {
-                if (lrc[i].first <= exoPlayer.currentPosition) {
+                if (lrc[i].first <= exoPlayer.currentPosition+10) {
                     position = i
                 } else break
             }

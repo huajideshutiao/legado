@@ -3,9 +3,7 @@ package io.legado.app.ui.book.audio
 import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.MutableLiveData
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
@@ -17,60 +15,22 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
-import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.toastOnUi
 
 class AudioPlayViewModel(application: Application) : BaseViewModel(application) {
     val titleData = MutableLiveData<String>()
 
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
-            val book = (if(intent.action != "activity") GlobalVars.nowBook else AudioPlay.book)?: return@execute
+            val book = (if(intent.action != "activity") GlobalVars.nowBook else book)?: return@execute
             inBookshelf = !book.isNotShelf
-            if (AudioPlay.book?.bookUrl == book.bookUrl) AudioPlay.upData(book)
+            if (AudioPlay.book?.bookUrl == book.bookUrl) upData(book)
             else resetData(book)
             titleData.postValue(book.name)
-            if (book.tocUrl.isEmpty() && !loadBookInfo(book)) return@execute
-            if (chapterSize == 0 && !loadChapterList(book)) return@execute
-            if (status == Status.STOP) AudioPlay.loadOrUpPlayUrl()
+            if (status == Status.STOP) loadOrUpPlayUrl()
         }.onFinally {
             saveRead()
-        }
-    }
-
-    private suspend fun loadBookInfo(book: Book): Boolean {
-        val bookSource = AudioPlay.bookSource ?: return true
-        try {
-            WebBook.getBookInfoAwait(bookSource, book)
-            return true
-        } catch (e: Exception) {
-            AppLog.put("详情页出错: ${e.localizedMessage}", e, true)
-            return false
-        }
-    }
-
-    private suspend fun loadChapterList(book: Book): Boolean {
-        val bookSource = AudioPlay.bookSource ?: return true
-        try {
-            val oldBook = book.copy()
-            val cList = WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-            if (oldBook.bookUrl == book.bookUrl) {
-                appDb.bookDao.update(book)
-            } else {
-                appDb.bookDao.replace(oldBook, book)
-            }
-            appDb.bookChapterDao.delByBook(book.bookUrl)
-            appDb.bookChapterDao.insert(*cList.toTypedArray())
-            AudioPlay.chapterSize = cList.size
-            AudioPlay.simulatedChapterSize = book.simulatedTotalChapterNum()
-            AudioPlay.upDurChapter()
-            return true
-        } catch (_: Exception) {
-            context.toastOnUi(R.string.error_load_toc)
-            return false
         }
     }
 

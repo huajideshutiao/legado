@@ -128,7 +128,8 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             }
             ivDownload.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { book ->
-                    CacheBook.cacheBookMap[book.bookUrl]?.let {
+                    val cs = callBack.cacheChapters[book.bookUrl]?.size
+                    if (cs != book.totalChapterNum)CacheBook.cacheBookMap[book.bookUrl]?.let {
                         if (!it.isStop()) {
                             CacheBook.remove(context, book.bookUrl)
                         } else {

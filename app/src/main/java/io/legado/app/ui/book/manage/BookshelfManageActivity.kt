@@ -404,7 +404,8 @@ class BookshelfManageActivity :
             R.id.menu_download_after -> {
                 if (!CacheBook.isRun) {
                     adapter.selection.forEach { book ->
-                        CacheBook.start(
+                        val cs = cacheChapters[book.bookUrl]?.size
+                        if (cs != book.totalChapterNum)CacheBook.start(
                             this@BookshelfManageActivity,
                             book,
                             book.durChapterIndex,

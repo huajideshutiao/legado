@@ -42,19 +42,15 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                 if (bookUrl.isEmpty()) continue
                 try{
                     getBookInfoByUrlAwait(bookUrl).let{
-                    val dbBook = appDb.bookDao.getBook(it.name, it.author)
-                    if (dbBook != null) {
+                        val dbBook = appDb.bookDao.getBook(it.name, it.author)
                         val toc = WebBook.getChapterListAwait(GlobalVars.nowSource as BookSource, it).getOrThrow()
-                        dbBook.migrateTo(it, toc)
+                        if (dbBook != null) dbBook.migrateTo(it, toc)
+                        else it.order = appDb.bookDao.minOrder - 1
                         appDb.bookDao.insert(it)
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
-                    } else {
-                        it.order = appDb.bookDao.minOrder - 1
-                        it.save()
+                        successCount++
+                        addBookProgressLiveData.postValue(successCount)
                     }
-                    successCount++
-                    addBookProgressLiveData.postValue(successCount)
-                }
                 }catch (e: Throwable){
                     AppLog.put("添加 $bookUrl 失败\n${e.localizedMessage}", e, true)
                 }

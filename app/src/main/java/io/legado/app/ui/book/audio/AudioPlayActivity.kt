@@ -77,7 +77,6 @@ class AudioPlayActivity :
     private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
     private val adapter = LrcAdapter(mutableListOf())
     private var adjustProgress = false
-    private var pendingPosition : Int? = null
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 
     private val progressTimeFormat by lazy {
@@ -360,11 +359,8 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
             adapter.update(it)
-            if(adapter.itemCount == 0)pendingPosition = it
-            if (it != 0) {
-                scroller.targetPosition = it
-                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-            }
+            scroller.targetPosition = it
+            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
@@ -388,9 +384,7 @@ class AudioPlayActivity :
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
             adapter.setData(lrc)
-            binding.ivLrc.layoutManager?.scrollToPosition(pendingPosition?:0)
-            if (pendingPosition != null)adapter.update(pendingPosition!!)
-            pendingPosition = null
+            binding.ivLrc.layoutManager?.scrollToPosition(0)
         }
     }
     override fun upCover(url: String) {

@@ -95,8 +95,16 @@ object AudioPlay : CoroutineScope by MainScope() {
             durAudioSize = 0
             upDurChapter()
         }else {
-            durCoverUrl?.let { callback?.upCover(it) }
-            if (durLrcData!=null) callback?.upLrc(durLrcData!!)
+            durCoverUrl?.let { callback!!.upCover(it) }
+            if (durLrcData==null){
+                getLrcData(bookSource!!, book, durChapter!!).onSuccess {
+                    durLrcData = it
+                    callback?.upLrc(it)
+                    context.startService<AudioPlayService> {
+                        action = IntentAction.lrc
+                    }
+                }
+            }else callback!!.upLrc(durLrcData!!)
         }
 
     }
@@ -167,8 +175,8 @@ object AudioPlay : CoroutineScope by MainScope() {
         bookSource: BookSource,
         book: Book,
         chapter: BookChapter
-    ) {
-        Coroutine.async {
+    ): Coroutine<MutableList<Pair<Int, String>>> {
+        return Coroutine.async {
             val lrcRule = bookSource.getContentRule().lrcRule
             val tmp = mutableListOf<Pair<Int, String>>()
             var durLrcContent: NativeArray? = null
@@ -246,9 +254,9 @@ object AudioPlay : CoroutineScope by MainScope() {
                 }
                 upLoading(true)
                 durCoverUrl = null
-                getCoverUrl(bookSource, book, chapter)
                 durLrcData = null
-                getLrcData(bookSource, book, chapter)
+                getCoverUrl(bookSource, book, chapter)
+                callback?.let{getLrcData(bookSource, book, chapter)}
                 Coroutine.async(this) {
                     getContentAwait(bookSource, book, chapter, needSave = false)
                 }.onSuccess { content ->
@@ -508,12 +516,6 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
-        if (book != null && durLrcData == null) {
-            getLrcData(bookSource!!, book!!, durChapter!!)
-            context.startService<AudioPlayService> {
-                action = IntentAction.playData
-            }
-        }else durLrcData?.let { callback!!.upLrc(it) }
     }
 
     fun unregister(context: Context) {
