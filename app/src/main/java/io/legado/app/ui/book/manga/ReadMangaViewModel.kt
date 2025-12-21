@@ -64,8 +64,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
 
     private fun initManga(book: Book) {
         val isSameBook = ReadManga.book?.bookUrl == book.bookUrl
-        if (isSameBook) ReadManga.upData(book)
-        else ReadManga.resetData(book)
+        ReadManga.initData(book)
         GlobalVars.nowBook = book
         //开始加载内容
         if (!isSameBook) ReadManga.loadContent()
@@ -170,7 +169,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
             ReadManga.book?.delete()
             appDb.bookDao.insert(book)
             appDb.bookChapterDao.insert(*toc.toTypedArray())
-            ReadManga.resetData(book)
+            ReadManga.initData(book)
             ReadManga.loadContent()
         }.onError {
             AppLog.put("换源失败\n$it", it, true)

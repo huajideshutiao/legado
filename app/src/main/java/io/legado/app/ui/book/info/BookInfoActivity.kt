@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -44,7 +43,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
@@ -483,16 +481,10 @@ class BookInfoActivity :
                 toastOnUi(R.string.chapter_list_empty)
                 return@setOnClickListener
             }
-            viewModel.getBook()?.let { book ->
-                if (!viewModel.inBookshelf) {
-                    viewModel.saveBook(book) {
-                        viewModel.saveChapterList {
-                            openChapterList()
-                        }
-                    }
-                } else {
-                    openChapterList()
-                }
+            viewModel.getBook()?.let {
+                GlobalVars.nowBook = it
+                GlobalVars.nowChapterList = viewModel.chapterListData.value
+                tocActivityResult.launch(it.bookUrl)
             }
         }
         tvChangeGroup.setOnClickListener {
@@ -618,13 +610,6 @@ class BookInfoActivity :
         }
     }
 
-    private fun openChapterList() {
-        viewModel.getBook()?.let {
-            GlobalVars.nowBook = it
-            tocActivityResult.launch(it.bookUrl)
-        }
-    }
-
     private fun showWebFileDownloadAlert(
         onClick: ((Book) -> Unit)? = null,
     ) {
@@ -692,13 +677,10 @@ class BookInfoActivity :
     }
 
     private fun readBook(book: Book) {
+        GlobalVars.nowChapterList = viewModel.chapterListData.value
         if (!viewModel.inBookshelf) {
             book.addType(BookType.notShelf)
-            viewModel.saveBook(book) {
-                viewModel.saveChapterList {
-                    startReadActivity(book)
-                }
-            }
+            startReadActivity(book)
         } else {
             viewModel.saveBook(book) {
                 startReadActivity(book)

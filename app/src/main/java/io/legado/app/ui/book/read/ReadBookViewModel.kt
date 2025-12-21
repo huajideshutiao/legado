@@ -100,11 +100,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
-        if (isSameBook) {
-            ReadBook.upData(book)
-        } else {
-            ReadBook.resetData(book)
-        }
+        ReadBook.initData(book)
         GlobalVars.nowBook = book
         isInitFinish = true
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
@@ -263,7 +259,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             ReadBook.book?.delete()
             appDb.bookDao.insert(book)
             appDb.bookChapterDao.insert(*toc.toTypedArray())
-            ReadBook.resetData(book)
+            ReadBook.initData(book)
             ReadBook.upMsg(null)
             ReadBook.loadContent(resetPageOffset = true)
         }.onError {

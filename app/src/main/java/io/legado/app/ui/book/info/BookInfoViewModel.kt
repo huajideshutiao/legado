@@ -205,7 +205,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 LocalBook.getChapterList(book).let {
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookChapterDao.insert(*it.toTypedArray())
+                    GlobalVars.nowChapterList = it
+                    if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
                     ReadBook.onChapterListUpdated(book)
                     bookData.postValue(book)
                     chapterListData.postValue(it)
@@ -232,7 +233,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                             BookHelp.updateCacheFolder(oldBook, book)
                         }
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                        appDb.bookChapterDao.insert(*it.toTypedArray())
+                        GlobalVars.nowChapterList = it
+                        if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
                         ReadBook.onChapterListUpdated(book)
                     }
                     bookData.postValue(book)
@@ -355,7 +357,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 book.removeType(BookType.updateError)
                 bookData.value?.delete()
                 appDb.bookDao.insert(book)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
+                GlobalVars.nowChapterList = toc
+                if (!book.isNotShelf) appDb.bookChapterDao.insert(*toc.toTypedArray())
             }
             bookData.postValue(book)
             chapterListData.postValue(toc)
@@ -387,21 +390,6 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 book.durChapterTitle = it.durChapterTitle
             }
             book.save()
-            if (ReadBook.book?.isSameNameAuthor(book) == true) {
-                ReadBook.book = book
-            } else if (AudioPlay.book?.isSameNameAuthor(book) == true) {
-                AudioPlay.book = book
-            }
-        }.onSuccess {
-            success?.invoke()
-        }
-    }
-
-    fun saveChapterList(success: (() -> Unit)?) {
-        execute {
-            chapterListData.value?.let {
-                appDb.bookChapterDao.insert(*it.toTypedArray())
-            }
         }.onSuccess {
             success?.invoke()
         }

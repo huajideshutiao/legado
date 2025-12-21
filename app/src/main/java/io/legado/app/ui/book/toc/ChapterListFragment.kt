@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.EventBus
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -121,11 +122,17 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
+                var chapterList = GlobalVars.nowChapterList?.subList(0, end)
+                if (chapterList?.get(0)?.bookUrl != book?.bookUrl){
+                    chapterList = null
+                    GlobalVars.nowChapterList = null
+                }
                 when {
                     searchKey.isNullOrBlank() ->
-                        appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end)
+                        chapterList ?: appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end)
 
-                    else -> appDb.bookChapterDao.search(viewModel.bookUrl, searchKey, 0, end)
+                    else -> chapterList?.filter { it.title.contains(searchKey) }
+                        ?: appDb.bookChapterDao.search(viewModel.bookUrl, searchKey, 0, end)
                 }
             }.let {
                 adapter.setItems(it)

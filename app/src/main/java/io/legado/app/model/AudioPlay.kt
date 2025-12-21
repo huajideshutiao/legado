@@ -8,12 +8,14 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.Status
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
@@ -65,6 +67,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var book: Book? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
+    var chapterList : List<BookChapter>? = null
     var durChapterIndex = 0
     var durChapterPos = 0
     var durChapter: BookChapter? = null
@@ -84,7 +87,13 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun upData(book: Book) {
         if (durChapterIndex != book.durChapterIndex) {
             AudioPlay.book = book
+            chapterList = GlobalVars.nowChapterList
+            if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+                chapterList = null
+                GlobalVars.nowChapterList = null
+            }
             chapterSize = if(book.totalChapterNum!=0) book.totalChapterNum
+            else if (chapterList!= null) chapterList!!.size
             else appDb.bookChapterDao.getChapterCount(book.bookUrl)
             simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
             else chapterSize
@@ -112,7 +121,12 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun resetData(book: Book) {
         stop()
         AudioPlay.book = book
-        chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        chapterList = GlobalVars.nowChapterList
+        if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+            chapterList = null
+            GlobalVars.nowChapterList = null
+        }
+        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
             book.simulatedTotalChapterNum()
         } else {
@@ -321,7 +335,7 @@ object AudioPlay : CoroutineScope by MainScope() {
      */
     fun upDurChapter() {
         val book = book ?: return
-        durChapter = appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+        durChapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         durAudioSize = durChapter?.end?.toInt() ?: 0
         val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
@@ -476,7 +490,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             book.durChapterIndex = durChapterIndex
             book.durChapterPos = durChapterPos
             if (chapterChanged) {
-                appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
+                durChapter?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
                         book.getUseReplaceRule()
@@ -495,7 +509,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         Coroutine.async {
             durAudioSize = audioSize.toInt()
             chapter.end = audioSize
-            appDb.bookChapterDao.update(chapter)
+            if(!book!!.isNotShelf) appDb.bookChapterDao.update(chapter)
         }
     }
 

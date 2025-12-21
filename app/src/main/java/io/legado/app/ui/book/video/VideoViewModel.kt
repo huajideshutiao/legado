@@ -41,6 +41,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
             if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, canReName = true)
             val tmp1= if (book.totalChapterNum==0)WebBook.getChapterListAwait(bookSource!!, book, true).getOrNull()!!
+            else if (GlobalVars.nowChapterList!=null&& GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl) GlobalVars.nowChapterList!!
             else appDb.bookChapterDao.getChapterList(book.bookUrl)
             chapterList.postValue(tmp1)
             initChapter(tmp1[(book.durChapterIndex)])

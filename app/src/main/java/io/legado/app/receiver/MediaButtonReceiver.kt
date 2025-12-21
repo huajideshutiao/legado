@@ -110,7 +110,7 @@ class MediaButtonReceiver : BroadcastReceiver() {
                         ReadBook.readAloud()
                     } else {
                         appDb.bookDao.lastReadBook?.let {
-                            ReadBook.resetData(it)
+                            ReadBook.initData(it)
                             ReadBook.clearTextChapter()
                             ReadBook.loadContent(false) {
                                 ReadBook.readAloud()

@@ -307,6 +307,7 @@ class AudioPlayActivity :
                     AudioPlay.book?.removeType(BookType.notShelf)
                     AudioPlay.book?.save()
                     AudioPlay.inBookshelf = true
+                    appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray())
                     setResult(RESULT_OK)
                 }
                 noButton {

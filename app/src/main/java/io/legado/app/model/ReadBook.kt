@@ -3,6 +3,7 @@ package io.legado.app.model
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim.scrollPageAnim
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -24,7 +25,6 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
-import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.CacheBookService
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -62,6 +62,7 @@ object ReadBook : CoroutineScope by MainScope() {
     var book: Book? = null
     var callBack: CallBack? = null
     var inBookshelf = false
+    var chapterList : List<BookChapter>? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
     var durChapterIndex = 0
@@ -95,57 +96,46 @@ object ReadBook : CoroutineScope by MainScope() {
     val preDownloadSemaphore = Semaphore(2)
     val executor = globalExecutor
 
-    fun resetData(book: Book) {
+    fun initData(book: Book) {
+        val isDiffBook = ReadManga.book?.bookUrl != book.bookUrl
         ReadBook.book = book
-        readRecord.bookName = book.name
-        readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
-        chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-        simulatedChapterSize = if (book.readSimulating()) {
-            book.simulatedTotalChapterNum()
-        } else {
-            chapterSize
+        if (isDiffBook){
+            readRecord.bookName = book.name
+            readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
+        chapterList = GlobalVars.nowChapterList
+        if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+            chapterList = null
+            GlobalVars.nowChapterList = null
+        }
+        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
+        else chapterSize
         contentProcessor = ContentProcessor.get(book)
-        durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos  * (if (book.durChapterPos<0)-1 else 1)
-        isLocalBook = book.isLocal
-        clearTextChapter()
-        callBack?.upContent()
-        callBack?.upMenuView()
-        callBack?.upPageAnim()
-        upWebBook(book)
-        lastBookProgress = null
-        webBookProgress = null
-        TextFile.clear()
-        synchronized(this) {
-            loadingChapters.clear()
-            downloadedChapters.clear()
-            downloadFailChapters.clear()
-        }
-    }
-
-    fun upData(book: Book) {
-        ReadBook.book = book
-        chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-        simulatedChapterSize = if (book.readSimulating()) {
-            book.simulatedTotalChapterNum()
-        } else {
-            chapterSize
-        }
-        if (durChapterIndex != book.durChapterIndex) {
+        if (isDiffBook||durChapterIndex != book.durChapterIndex){
             durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos * (if (book.durChapterPos<0)-1 else 1)
+            durChapterPos = book.durChapterPos  * (if (book.durChapterPos<0)-1 else 1)
+            isLocalBook = book.isLocal
             clearTextChapter()
         }
-        if (curTextChapter?.isCompleted == false) {
-            curTextChapter = null
+        if (!isDiffBook){
+            if (curTextChapter?.isCompleted == false) {
+                curTextChapter = null
+            }
+            if (nextTextChapter?.isCompleted == false) {
+                nextTextChapter = null
+            }
+            if (prevTextChapter?.isCompleted == false) {
+                prevTextChapter = null
+            }
+        }else{
+            callBack?.upContent()
+            callBack?.upPageAnim()
+            lastBookProgress = null
+            webBookProgress = null
+            TextFile.clear()
         }
-        if (nextTextChapter?.isCompleted == false) {
-            nextTextChapter = null
-        }
-        if (prevTextChapter?.isCompleted == false) {
-            prevTextChapter = null
-        }
+
         callBack?.upMenuView()
         upWebBook(book)
         synchronized(this) {
@@ -564,7 +554,7 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val book = book!!
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
+            val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
                     contentLoadFinish(
@@ -595,7 +585,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (addLoading(index)) {
             try {
                 val book = book!!
-                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
+                val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
@@ -612,12 +602,9 @@ object ReadBook : CoroutineScope by MainScope() {
      */
     private suspend fun downloadIndex(index: Int) {
         if (index < 0) return
-        if (index > chapterSize - 1) {
-            upToc()
-            return
-        }
+        if (index > chapterSize - 1)return
         val book = book ?: return
-        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
+        val chapter = chapterList?.get(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
         if (BookHelp.hasContent(book, chapter)) {
             downloadedChapters.add(chapter.index)
         } else {
@@ -850,29 +837,6 @@ object ReadBook : CoroutineScope by MainScope() {
             }
             AppLog.put("ChapterProvider ERROR", it)
             appCtx.toastOnUi("ChapterProvider ERROR:\n${it.stackTraceStr}")
-        }
-    }
-
-    @Synchronized
-    fun upToc() {
-        val bookSource = bookSource ?: return
-        val book = book ?: return
-        if (!book.canUpdate) return
-        if (System.currentTimeMillis() - book.lastCheckTime < 600000) return
-        book.lastCheckTime = System.currentTimeMillis()
-        Coroutine.async(this) {
-            getChapterListAwait(bookSource, book).getOrThrow()
-        }.onSuccess(IO) { cList ->
-            if (book.bookUrl == ReadBook.book?.bookUrl
-                && cList.size > chapterSize
-            ) {
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*cList.toTypedArray())
-                saveRead()
-                chapterSize = cList.size
-                simulatedChapterSize = book.simulatedTotalChapterNum()
-                nextTextChapter ?: loadContent(durChapterIndex + 1)
-            }
         }
     }
 
