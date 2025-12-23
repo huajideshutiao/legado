@@ -89,6 +89,11 @@ object ReadManga : CoroutineScope by MainScope() {
             durChapterPos = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
             clearMangaChapter()
         }
+        if (durChapterIndex !in 0 until simulatedChapterSize){
+            book.durChapterIndex = 0
+            durChapterIndex = 0
+            durChapterPos = 0
+        }
         upWebBook(book)
         synchronized(this) {
             loadingChapters.clear()
@@ -151,7 +156,7 @@ object ReadManga : CoroutineScope by MainScope() {
     private fun loadContent(index: Int) {
         Coroutine.async {
             val book = book!!
-            val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
+            val chapter = chapterList?.get(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
                     contentLoadFinish(chapter, it)
@@ -391,7 +396,7 @@ object ReadManga : CoroutineScope by MainScope() {
         if (index < 0) return
         if (index > chapterSize - 1)return
         val book = book ?: return
-        val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
+        val chapter = chapterList?.get(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
         if (BookHelp.hasContent(book, chapter)) {
             downloadedChapters.add(chapter.index)
         } else {
