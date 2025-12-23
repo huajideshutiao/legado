@@ -23,6 +23,9 @@ class HandleFileContract :
         input?.let {
             handleFileParam.apply(input)
         }
+        if (handleFileParam.mode == IMAGE) {
+            handleFileParam.allowExtensions = arrayOf("jpg", "png", "bmp", "webp")
+        }
         handleFileParam.let {
             requestCode = it.requestCode
             intent.putExtra("mode", it.mode)
@@ -56,6 +59,7 @@ class HandleFileContract :
         const val FILE = 1
         const val DIR_SYS = 2
         const val EXPORT = 3
+        const val IMAGE = 4
     }
 
     @Suppress("ArrayInDataClass")
