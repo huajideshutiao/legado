@@ -122,7 +122,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
-                var chapterList = GlobalVars.nowChapterList?.subList(0, end)
+                var chapterList = GlobalVars.nowChapterList?.subList(0, end+1)
                 if (chapterList?.get(0)?.bookUrl != book?.bookUrl){
                     chapterList = null
                     GlobalVars.nowChapterList = null
