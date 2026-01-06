@@ -382,6 +382,7 @@
     <string name="page_anim_simulation">Simulação</string>
     <string name="page_anim_scroll">Deslizar</string>
     <string name="page_anim_none">Nenhum</string>
+    <string name="disable_manga_page_anim">Desativar animação de virada</string>
     <string name="up_change_source_last_chapter_t">Atualizar o último capítulo após a alteração de origem em segundo plano</string>
     <string name="up_change_source_last_chapter_s">se ativado, a atualização será iniciada 1 minuto depois o App for aberto</string>
     <string name="behavior_main_t">Auto esconder a barra de ferramentas</string>
@@ -607,7 +608,7 @@
     <string name="rss_source">Fonte de assinatura</string>
     <string name="rss_source_edit">Editar a fonte de assinatura</string>
     <string name="screen">Filtrar</string>
-    <string name="screen_find">Pesquisar as fontes da Descoberta</string>
+    <string name="screen_find">Search Discovery sources</string>
     <string name="dur_pos">Localização atual：</string>
     <string name="precision_search">Busca precisa</string>
     <string name="service_starting">Iniciação do serviço</string>

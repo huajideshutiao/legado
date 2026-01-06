@@ -200,11 +200,9 @@ class Coroutine<T>(
 
     private suspend inline fun dispatchVoidCallback(scope: CoroutineScope, callback: VoidCallback) {
         if (null == callback.context) {
-            withContext(scope.coroutineContext) {
-                callback.block.invoke(scope)
-            }
+            callback.block.invoke(scope)
         } else {
-            withContext(scope.coroutineContext + callback.context) {
+            withContext(callback.context) {
                 callback.block.invoke(this)
             }
         }
@@ -219,7 +217,7 @@ class Coroutine<T>(
         if (null == callback.context) {
             callback.block.invoke(scope, value)
         } else {
-            withContext(scope.coroutineContext + callback.context) {
+            withContext(callback.context) {
                 callback.block.invoke(this, value)
             }
         }
@@ -231,7 +229,7 @@ class Coroutine<T>(
         timeMillis: Long,
         noinline block: suspend CoroutineScope.() -> T
     ): T {
-        return withContext(scope.coroutineContext + context) {
+        return withContext(context) {
             if (timeMillis > 0L) withTimeout(timeMillis) {
                 block()
             } else {

@@ -378,6 +378,7 @@
     <string name="page_anim_simulation">模擬</string>
     <string name="page_anim_scroll">滾動</string>
     <string name="page_anim_none">無動畫</string>
+    <string name="disable_manga_page_anim">禁用翻頁動畫</string>
     <string name="up_change_source_last_chapter_t">後台更新換源最新章節</string>
     <string name="up_change_source_last_chapter_s">開啟則會在軟體打開1分鐘後開始更新</string>
     <string name="behavior_main_t">書架ToolBar自動隱藏</string>
@@ -603,7 +604,7 @@
     <string name="rss_source">訂閱源</string>
     <string name="rss_source_edit">編輯訂閱源</string>
     <string name="screen">篩選</string>
-    <string name="screen_find">篩選發現</string>
+    <string name="screen_find">篩選發現源</string>
     <string name="dur_pos">目前位置：</string>
     <string name="precision_search">精準搜尋</string>
     <string name="service_starting">正在啟動服務</string>
