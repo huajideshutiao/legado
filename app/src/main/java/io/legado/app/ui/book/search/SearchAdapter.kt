@@ -82,6 +82,14 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
                 })
             }
         }
+        binding.root.setOnLongClickListener {
+            getItem(holder.layoutPosition)?.let {
+                callBack.showBookInfo(it.toBook().apply {
+                    if (!binding.ivInBookshelf.isVisible)addType(BookType.notShelf)
+                }, "")
+            }
+            true
+        }
     }
 
     private fun bind(binding: ItemSearchBinding, searchBook: SearchBook) {
@@ -157,6 +165,6 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         /**
          * 显示书籍详情
          */
-        fun showBookInfo(book: Book)
+        fun showBookInfo(book: Book, type : String = "click")
     }
 }

@@ -126,6 +126,7 @@ class BookInfoEditActivity :
         book.author = tieBookAuthor.text?.toString() ?: ""
         val local = if (book.isLocal) BookType.local else 0
         val bookType = when (spType.selectedItemPosition) {
+            4 -> BookType.video or local
             2 -> BookType.image or local
             1 -> BookType.audio or local
             else -> BookType.text or local

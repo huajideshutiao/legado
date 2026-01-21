@@ -67,7 +67,6 @@ import splitties.init.appCtx
 import kotlin.math.abs
 
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    BookAdapter.CallBack,
     HistoryKeyAdapter.CallBack,
     SearchScopeDialog.Callback,
     SearchAdapter.CallBack {
@@ -461,9 +460,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: Book) {
+    override fun showBookInfo(book: Book, type : String) {
         GlobalVars.nowBook = book
-        if (book.isVideo&& AppConfig.showVideoUi)startActivity<VideoPlayActivity>()
+        if (type == "click"&&book.isVideo&& AppConfig.showVideoUi)startActivity<VideoPlayActivity>()
         else startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)

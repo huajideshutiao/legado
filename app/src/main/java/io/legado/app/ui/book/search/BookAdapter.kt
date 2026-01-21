@@ -11,6 +11,7 @@ import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
+import io.legado.app.ui.book.search.SearchAdapter.CallBack
 
 
 class BookAdapter(context: Context, val callBack: CallBack) :
@@ -55,6 +56,12 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                     callBack.showBookInfo(it)
                 }
             }
+            setOnLongClickListener {
+                getItem(holder.layoutPosition)?.let {
+                    callBack.showBookInfo(it,"")
+                }
+                true
+            }
         }
     }
 
@@ -77,9 +84,5 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             llKind.visible()
             llKind.setLabels(kinds)
         }
-    }
-
-    interface CallBack {
-        fun showBookInfo(book: Book)
     }
 }

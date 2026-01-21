@@ -98,6 +98,6 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
          */
         fun isInBookshelf(book: SearchBook): Boolean
 
-        fun showBookInfo(book: SearchBook, action: Boolean = false)
+        fun showBookInfo(book: Book, action: Boolean = false)
     }
 }
