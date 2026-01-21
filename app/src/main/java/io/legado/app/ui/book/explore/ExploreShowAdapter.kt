@@ -45,7 +45,7 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
         binding.run {
             tvName.text = item.name
             tvAuthor.text = context.getString(R.string.author_show, item.author)
-            ivInBookshelf.isVisible = callBack.isInBookshelf(item.name, item.author)
+            ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             if (item.latestChapterTitle.isNullOrEmpty()) {
                 tvLasted.gone()
             } else {
@@ -77,7 +77,7 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
             bundle.keySet().forEach {
                 when (it) {
                     "isInBookshelf" -> ivInBookshelf.isVisible =
-                        callBack.isInBookshelf(item.name, item.author)
+                        callBack.isInBookshelf(item)
                 }
             }
         }
@@ -96,8 +96,8 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
         /**
          * 是否已经加入书架
          */
-        fun isInBookshelf(name: String, author: String): Boolean
+        fun isInBookshelf(book: SearchBook): Boolean
 
-        fun showBookInfo(book: Book, action: Boolean = false)
+        fun showBookInfo(book: SearchBook, action: Boolean = false)
     }
 }

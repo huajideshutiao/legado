@@ -86,8 +86,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
     }
 
-    override fun isInBookshelf(name: String, author: String): Boolean {
-        return viewModel.isInBookShelf(name, author)
+    override fun isInBookshelf(book: SearchBook): Boolean {
+        return viewModel.isInBookShelf(book)
     }
 
     override fun showBookInfo(book: Book, action: Boolean) {

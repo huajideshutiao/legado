@@ -13,6 +13,7 @@ import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
@@ -504,6 +505,26 @@ object ReadManga : CoroutineScope by MainScope() {
         mCallback?.showLoading()
     }
 
+    fun loadFail(msg: String, retry: Boolean = true) {
+        mCallback?.loadFail(msg, retry)
+    }
+
+    fun onChapterListUpdated(newBook: Book) {
+        if (newBook.isSameNameAuthor(book)) {
+            book = newBook
+            chapterSize = newBook.totalChapterNum
+            simulatedChapterSize = newBook.simulatedTotalChapterNum()
+            if (simulatedChapterSize > 0 && durChapterIndex > simulatedChapterSize - 1) {
+                durChapterIndex = simulatedChapterSize - 1
+            }
+            if (mCallback == null) {
+                clearMangaChapter()
+            } else {
+                loadContent()
+            }
+        }
+    }
+
     /**
      * 注册回调
      */
@@ -561,7 +582,7 @@ object ReadManga : CoroutineScope by MainScope() {
 
     interface Callback {
         fun upContent()
-        fun loadFail(msg: String)
+        fun loadFail(msg: String, retry: Boolean = true)
         fun sureNewProgress(progress: BookProgress)
         fun showLoading()
         fun startLoad()
