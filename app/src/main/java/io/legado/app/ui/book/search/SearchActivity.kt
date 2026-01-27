@@ -225,6 +225,15 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.rvBookshelfSearch.layoutManager = FlexboxLayoutManager(this)
         binding.rvBookshelfSearch.adapter = bookAdapter
         binding.rvBookshelfSearch.applyNavigationBarMargin()
+        binding.rvBookshelfSearch.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(recyclerView, newState)
+                // 当用户开始拖拽列表时清除焦点（收起键盘）
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    searchView.clearFocus()
+                }
+            }
+        })
         binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
         binding.rvHistoryKey.adapter = historyKeyAdapter
         binding.rvHistoryKey.applyNavigationBarMargin()
@@ -461,6 +470,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 显示书籍详情
      */
     override fun showBookInfo(book: Book, type : String) {
+        searchView.clearFocus()
         GlobalVars.nowBook = book
         if (type == "click"&&book.isVideo&& AppConfig.showVideoUi)startActivity<VideoPlayActivity>()
         else startActivity<BookInfoActivity> {

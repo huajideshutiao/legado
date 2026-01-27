@@ -40,29 +40,36 @@ object BookController {
     private var bookUrl: String = ""
     private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
 
-    /**
-     * 书架所有书籍
+    /*
+    * 分组号及名称
      */
-    val bookshelf: ReturnData
+    val groups: ReturnData
         get() {
-            val books = appDb.bookDao.all
             val returnData = ReturnData()
-            return if (books.isEmpty()) {
-                returnData.setErrorMsg("还没有添加小说")
-            } else {
-                val data = when (AppConfig.bookshelfSort) {
-                    1 -> books.sortedByDescending { it.latestChapterTime }
-                    2 -> books.sortedWith { o1, o2 ->
-                        o1.name.cnCompare(o2.name)
-                    }
-
-                    3 -> books.sortedBy { it.order }
-                    else -> books.sortedByDescending { it.durChapterTime }
-                }
-                returnData.setData(data)
-            }
+            return returnData.setData(appDb.bookGroupDao.all)
         }
 
+    /**
+     * 通过group id获取书籍
+     */
+    fun getBooks(parameters: Map<String, List<String>>): ReturnData {
+        val groupId = parameters["group"]?.firstOrNull()?.toLong()
+        val books = if(groupId==null)appDb.bookDao.all else appDb.bookDao.getBooksByGroup(groupId)
+        return if (books.isEmpty()) {
+            ReturnData().setErrorMsg("未找到")
+        }else {
+            val data = when (AppConfig.bookshelfSort) {
+                1 -> books.sortedByDescending { it.latestChapterTime }
+                2 -> books.sortedWith { o1, o2 ->
+                    o1.name.cnCompare(o2.name)
+                }
+
+                3 -> books.sortedBy { it.order }
+                else -> books.sortedByDescending { it.durChapterTime }
+            }
+            ReturnData().setData(data)
+        }
+    }
     /**
      * 获取封面
      */
