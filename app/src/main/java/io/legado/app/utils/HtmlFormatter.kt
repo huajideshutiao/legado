@@ -17,7 +17,8 @@ object HtmlFormatter {
         "<img[^>]*\\ssrc\\s*=\\s*['\"]([^'\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})['\"][^>]*>|<img[^>]*\\s(?:data-src|src)\\s*=\\s*['\"]([^'\">]+)['\"][^>]*>|<img[^>]*\\sdata-[^=>]*=\\s*['\"]([^'\">]*)['\"][^>]*>",
         Pattern.CASE_INSENSITIVE
     )
-    private val onClickRegex = "onclick\\s*=\\s*['\"]([^'\">]+)".toRegex()
+    private val onClickRegex = "onclick\\s*?=\\s*?['\"]([^'\">]+)".toRegex()
+    private val styleRegex = "style\\s*?=\\s*?['\"]([^'\">]+)".toRegex()
     private val indent1Regex = "\\s*\\n+\\s*".toRegex()
     private val indent2Regex = "^[\\n\\s]+".toRegex()
     private val lastRegex = "[\\n\\s]+$".toRegex()
@@ -45,21 +46,28 @@ object HtmlFormatter {
         val sb = StringBuilder()
         while (matcher.find()) {
             val onClick = onClickRegex.find(matcher.group())
+            val style = styleRegex.find(matcher.group())
             var param = ""
             sb.append(
-                keepImgHtml.substring(appendPos, matcher.start()), "<img src=\"${
-                    NetworkUtils.getAbsoluteURL(
-                        redirectUrl,
-                        matcher.group(1)?.let {
-                            val urlMatcher = AnalyzeUrl.paramPattern.matcher(it)
-                            if (urlMatcher.find()) {
-                                param = ',' + it.substring(urlMatcher.end())
-                                it.substring(0, urlMatcher.start())
-                            } else it
-                        } ?: matcher.group(2) ?: matcher.group(3)!!
-                    ) + param
-                }\""+if(onClick==null||onClick.groupValues[1].isBlank())">"
-                else " onclick=\"${onClick.groupValues[1]}\">"
+                keepImgHtml.substring(appendPos, matcher.start()),
+                "<img src=\"",
+                NetworkUtils.getAbsoluteURL(
+                    redirectUrl,
+                    matcher.group(1)?.let {
+                        val urlMatcher = AnalyzeUrl.paramPattern.matcher(it)
+                        if (urlMatcher.find()) {
+                            param = ',' + it.substring(urlMatcher.end())
+                            it.substring(0, urlMatcher.start())
+                        } else it
+                    } ?: matcher.group(2) ?: matcher.group(3)!!
+                ),
+                param,
+                "\"",
+                if(onClick==null||onClick.groupValues[1].isBlank()) ""
+                else " onclick=\"${onClick.groupValues[1]}\"",
+                if(style==null||style.groupValues[1].isBlank()) ""
+                else " style=\"${style.groupValues[1]}\"",
+                ">"
             )
             appendPos = matcher.end()
         }

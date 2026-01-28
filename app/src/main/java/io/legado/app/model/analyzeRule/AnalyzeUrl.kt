@@ -57,7 +57,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.URLEncoder
 import java.nio.charset.Charset
@@ -431,7 +430,7 @@ class AnalyzeUrl(
         sourceRegex: String? = null,
         useWebView: Boolean = true,
     ): StrResponse {
-        if (type != null) {
+        if (url.startsWith("data:")) {
             return StrResponse(url, HexUtil.encodeHexStr(getByteArrayAwait()))
         }
         concurrentRateLimiter.withLimit {
@@ -566,9 +565,6 @@ class AnalyzeUrl(
     }
 
     private fun getByteArrayIfDataUri(): ByteArray? {
-        if (!urlNoQuery.startsWith("data:")) {
-            return null
-        }
         val dataUriFindResult = dataUriRegex.find(urlNoQuery)
         if (dataUriFindResult != null) {
             val dataUriBase64 = dataUriFindResult.groupValues[1]
@@ -578,18 +574,14 @@ class AnalyzeUrl(
                 byteArrayOf()
             }
             return byteArray
-        }
-        return null
+        }else return null
     }
 
     /**
      * 访问网站,返回ByteArray
      */
     suspend fun getByteArrayAwait(): ByteArray {
-        getByteArrayIfDataUri()?.let {
-            return it
-        }
-        return getResponseAwait().body.bytes()
+        return getByteArrayIfDataUri() ?: getResponseAwait().body.bytes()
     }
 
     fun getByteArray(): ByteArray {
@@ -602,10 +594,7 @@ class AnalyzeUrl(
      * 访问网站,返回InputStream
      */
     suspend fun getInputStreamAwait(): InputStream {
-        getByteArrayIfDataUri()?.let {
-            return ByteArrayInputStream(it)
-        }
-        return getResponseAwait().body.byteStream()
+        return getByteArrayIfDataUri()?.inputStream() ?: getResponseAwait().body.byteStream()
     }
 
     fun getInputStream(): InputStream {
