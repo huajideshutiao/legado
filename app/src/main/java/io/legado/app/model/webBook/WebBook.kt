@@ -146,7 +146,6 @@ object WebBook {
                     bookSource = bookSource,
                     book = book,
                     baseUrl = book.tocUrl,
-                    redirectUrl = book.tocUrl,
                     body = book.tocHtml
                 )
             } else {
@@ -190,20 +189,21 @@ object WebBook {
             Debug.log(bookSource.bookSourceUrl, "⇒一级目录正文不解析规则")
             return bookChapter.tag ?: ""
         }
+        val chapterUrl = bookChapter.getAbsoluteURL(book)
         return if (bookChapter.url == book.bookUrl && !book.tocHtml.isNullOrEmpty()) {
             BookContent.analyzeContent(
                 bookSource = bookSource,
                 book = book,
                 bookChapter = bookChapter,
-                baseUrl = bookChapter.getAbsoluteURL(),
-                redirectUrl = bookChapter.getAbsoluteURL(),
+                baseUrl = chapterUrl,
+                redirectUrl = chapterUrl,
                 body = book.tocHtml,
                 nextChapterUrl = nextChapterUrl,
                 needSave = needSave
             )
         } else {
             val analyzeUrl = AnalyzeUrl(
-                mUrl = bookChapter.getAbsoluteURL(),
+                mUrl = chapterUrl,
                 baseUrl = book.tocUrl,
                 source = bookSource,
                 ruleData = book,
@@ -216,7 +216,7 @@ object WebBook {
                 bookSource = bookSource,
                 book = book,
                 bookChapter = bookChapter,
-                baseUrl = bookChapter.getAbsoluteURL(),
+                baseUrl = chapterUrl,
                 redirectUrl = res.url,
                 body = res.body,
                 nextChapterUrl = nextChapterUrl,

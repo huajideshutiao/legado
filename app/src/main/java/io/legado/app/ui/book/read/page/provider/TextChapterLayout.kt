@@ -77,7 +77,7 @@ class TextChapterLayout(
     private val useZhLayout = ReadBookConfig.useZhLayout
     private val isMiddleTitle = ReadBookConfig.isMiddleTitle
     private val textFullJustify = ReadBookConfig.textFullJustify
-    private val pageAnim = book.getPageAnim()
+    private val pageAnim = ReadBookConfig.pageAnim
 
     private var pendingTextPage = TextPage()
 

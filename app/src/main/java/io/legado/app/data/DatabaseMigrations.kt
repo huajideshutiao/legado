@@ -363,12 +363,18 @@ object DatabaseMigrations {
 
     }
 
-
     @Suppress("ClassName")
     @DeleteColumn(
         tableName = "book_sources",
         columnName = "enabledReview"
     )
     class Migration_64_65 : AutoMigrationSpec
+
+    @Suppress("ClassName")
+    @DeleteColumn(
+        tableName = "chapters",
+        columnName = "baseUrl"
+    )
+    class Migration_75_76 : AutoMigrationSpec
 
 }

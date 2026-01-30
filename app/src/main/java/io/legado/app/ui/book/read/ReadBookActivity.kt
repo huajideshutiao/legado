@@ -585,7 +585,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     val imageStyle = imgStyles[index]
                     ReadBook.book?.setImageStyle(imageStyle)
                     if (imageStyle == Book.imgStyleSingle) {
-                        ReadBook.book?.setPageAnim(0)  // 切换图片样式single后，自动切换为覆盖
                         binding.readView.upPageAnim()
                     }
                     ReadBook.loadContent(false)

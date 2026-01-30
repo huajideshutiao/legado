@@ -368,8 +368,7 @@ abstract class BaseReadBookActivity :
         items.add(getString(R.string.page_anim_simulation))
         items.add(getString(R.string.page_anim_scroll))
         items.add(getString(R.string.page_anim_none))
-        selector(R.string.page_anim, items) { _, i ->
-            ReadBook.book?.setPageAnim(i - 1)
+        selector(R.string.page_anim, items) { _, _ ->
             success()
         }
     }

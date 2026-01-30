@@ -505,7 +505,7 @@ class ReadMenu @JvmOverloads constructor(
             binding.tvChapterName.text = it.title
             binding.tvChapterName.visible()
             if (!ReadBook.isLocalBook) {
-                binding.tvChapterUrl.text = it.chapter.getAbsoluteURL()
+                binding.tvChapterUrl.text = it.chapter.getAbsoluteURL(ReadBook.book!!)
                 binding.tvChapterUrl.visible()
             } else {
                 binding.tvChapterUrl.gone()

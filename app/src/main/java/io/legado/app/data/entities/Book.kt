@@ -180,10 +180,8 @@ data class Book(
     @IgnoredOnParcel
     val config: ReadConfig
         get() {
-            if (readConfig == null) {
-                readConfig = ReadConfig()
-            }
-            return readConfig!!
+            return if (readConfig == null) ReadConfig()
+            else readConfig!!
         }
 
     fun setReverseToc(reverseToc: Boolean) {
@@ -216,19 +214,6 @@ data class Book(
 
     fun getReSegment(): Boolean {
         return config.reSegment
-    }
-
-    fun setPageAnim(pageAnim: Int?) {
-        config.pageAnim = pageAnim
-    }
-
-    fun getPageAnim(): Int {
-        var pageAnim = config.pageAnim
-            ?: if (isImage) PageAnim.scrollPageAnim else ReadBookConfig.pageAnim
-        if (pageAnim < 0) {
-            pageAnim = ReadBookConfig.pageAnim
-        }
-        return pageAnim
     }
 
     fun setImageStyle(imageStyle: String?) {
@@ -394,7 +379,7 @@ data class Book(
     @Parcelize
     data class ReadConfig(
         var reverseToc: Boolean = false,
-        var pageAnim: Int? = null,
+        //var pageAnim: Int? = null,
         var reSegment: Boolean = false,
         var imageStyle: String? = null,
         var useReplaceRule: Boolean? = null,// 正文使用净化替换规则
@@ -410,7 +395,10 @@ data class Book(
     class Converters {
 
         @TypeConverter
-        fun readConfigToString(config: ReadConfig?): String = GSON.toJson(config)
+        fun readConfigToString(config: ReadConfig?): String? {
+            return if (config != ReadConfig()) GSON.toJson(config)
+            else null
+        }
 
         @TypeConverter
         fun stringToReadConfig(json: String?) = GSON.fromJsonObject<ReadConfig>(json).getOrNull()

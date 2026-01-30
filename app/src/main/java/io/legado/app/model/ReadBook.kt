@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PageAnim.scrollPageAnim
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
@@ -160,9 +161,6 @@ object ReadBook : CoroutineScope by MainScope() {
                         imageStyle = Book.imgStyleFull
                     }
                     book.setImageStyle(imageStyle)
-                    if (imageStyle.equals(Book.imgStyleSingle, true)) {
-                        book.setPageAnim(0)
-                    }
                 }
             } ?: let {
                 bookSource = null
@@ -841,7 +839,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun pageAnim(): Int {
-        return book?.getPageAnim() ?: ReadBookConfig.pageAnim
+        return if(book?.getImageStyle().equals(Book.imgStyleSingle,true))PageAnim.coverPageAnim else ReadBookConfig.pageAnim
     }
 
     fun setCharset(charset: String) {

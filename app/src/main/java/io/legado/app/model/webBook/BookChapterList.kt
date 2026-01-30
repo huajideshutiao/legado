@@ -26,7 +26,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
 import org.mozilla.javascript.Context
 import splitties.init.appCtx
-import kotlin.coroutines.coroutineContext
 
 /**
  * 获取目录
@@ -37,7 +36,7 @@ object BookChapterList {
         bookSource: BookSource,
         book: Book,
         baseUrl: String,
-        redirectUrl: String,
+        redirectUrl: String = baseUrl,
         body: String?
     ): List<BookChapter> {
         body ?: throw NoStackTraceException(
@@ -218,7 +217,7 @@ object BookChapterList {
             elements.forEachIndexed { index, item ->
                 currentCoroutineContext().ensureActive()
                 analyzeRule.setContent(item)
-                val bookChapter = BookChapter(bookUrl = book.bookUrl, baseUrl = redirectUrl)
+                val bookChapter = BookChapter(bookUrl = book.bookUrl)
                 analyzeRule.setChapter(bookChapter)
                 bookChapter.title = analyzeRule.getString(nameRule)
                 bookChapter.url = analyzeRule.getString(urlRule)
