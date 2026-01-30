@@ -27,6 +27,7 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
@@ -53,8 +54,8 @@ object BookController {
      * 通过group id获取书籍
      */
     fun getBooks(parameters: Map<String, List<String>>): ReturnData {
-        val groupId = parameters["group"]?.firstOrNull()?.toLong()
-        val books = if(groupId==null)appDb.bookDao.all else appDb.bookDao.getBooksByGroup(groupId)
+        val groupId = parameters["groupId"]?.firstOrNull()?.toLong()
+        val books = if(groupId==null)appDb.bookDao.all else runBlocking{appDb.bookDao.flowByGroup(groupId).first()}
         return if (books.isEmpty()) {
             ReturnData().setErrorMsg("未找到")
         }else {

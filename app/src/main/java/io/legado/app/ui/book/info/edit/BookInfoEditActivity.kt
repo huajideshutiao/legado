@@ -131,7 +131,7 @@ class BookInfoEditActivity :
             1 -> BookType.audio or local
             else -> BookType.text or local
         }
-        book.removeType(BookType.local, BookType.image, BookType.audio, BookType.text)
+        book.removeType(BookType.local, BookType.image, BookType.audio, BookType.text, BookType.video)
         book.addType(bookType)
         val customCoverUrl = tieCoverUrl.text?.toString()
         book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
