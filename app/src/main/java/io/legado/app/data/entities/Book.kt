@@ -178,21 +178,22 @@ data class Book(
     @IgnoredOnParcel
     val config: ReadConfig
         get() {
-            return if (readConfig == null) ReadConfig()
-            else readConfig!!
+            if (readConfig == null){
+                readConfig = ReadConfig()
+            }
+            return readConfig!!
         }
 
     fun setReverseToc(reverseToc: Boolean) {
         config.reverseToc = reverseToc
-    }
-
+            }
     fun getReverseToc(): Boolean {
         return config.reverseToc
     }
 
     fun setUseReplaceRule(useReplaceRule: Boolean) {
         config.useReplaceRule = useReplaceRule
-    }
+        }
 
     fun getUseReplaceRule(): Boolean {
         val useReplaceRule = config.useReplaceRule
@@ -251,7 +252,6 @@ data class Book(
     fun setStartDate(startDate: LocalDate?) {
         config.startDate = startDate
     }
-
     fun getStartDate(): LocalDate? {
         if (!config.readSimulating || config.startDate == null) {
             return LocalDate.now()
@@ -263,7 +263,6 @@ data class Book(
     fun setStartChapter(startChapter: Int) {
         config.startChapter = startChapter
     }
-
     fun getStartChapter(): Int {
         if (config.readSimulating) return config.startChapter ?: 0
         return this.durChapterIndex
@@ -277,7 +276,6 @@ data class Book(
     fun getDailyChapters(): Int {
         return config.dailyChapters
     }
-
     fun getDelTag(tag: Long): Boolean {
         return config.delTag and tag == tag
     }
