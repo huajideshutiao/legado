@@ -20,6 +20,7 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
+            migration_76_77
         )
     }
 
@@ -376,5 +377,47 @@ object DatabaseMigrations {
         columnName = "baseUrl"
     )
     class Migration_75_76 : AutoMigrationSpec
+
+    private val migration_76_77 = object : Migration(76, 77) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. 创建新表，包含 WITHOUT ROWID
+            db.execSQL(
+                """
+            CREATE TABLE `chapters_new` (
+            `url` TEXT NOT NULL, 
+            `title` TEXT NOT NULL, 
+            `isVolume` INTEGER NOT NULL, 
+            `bookUrl` TEXT NOT NULL, 
+            `index` INTEGER NOT NULL, 
+            `isVip` INTEGER NOT NULL, 
+            `isPay` INTEGER NOT NULL, 
+            `resourceUrl` TEXT, 
+            `tag` TEXT, 
+            `wordCount` TEXT, 
+            `start` INTEGER, 
+            `end` INTEGER, 
+            `startFragmentId` TEXT, 
+            `endFragmentId` TEXT, 
+            `variable` TEXT, 
+            PRIMARY KEY(`bookUrl`, `url`), 
+            FOREIGN KEY(`bookUrl`) REFERENCES `books`(`bookUrl`) ON UPDATE NO ACTION ON DELETE CASCADE 
+            ) WITHOUT ROWID
+        """.trimIndent()
+            )
+
+            // 2. 迁移数据
+            db.execSQL(
+                """
+            INSERT INTO `chapters_new` (`url`, `title`, `isVolume`, `bookUrl`, `index`, `isVip`, `isPay`, `resourceUrl`, `tag`, `wordCount`, `start`, `end`, `startFragmentId`, `endFragmentId`, `variable`)
+            SELECT `url`, `title`, `isVolume`, `bookUrl`, `index`, `isVip`, `isPay`, `resourceUrl`, `tag`, `wordCount`, `start`, `end`, `startFragmentId`, `endFragmentId`, `variable` FROM `chapters`
+        """.trimIndent()
+            )
+
+            // 3. 删除旧表并重命名
+            db.execSQL("DROP TABLE `chapters`")
+            db.execSQL("ALTER TABLE `chapters_new` RENAME TO `chapters`")
+        }
+    }
+
 
 }

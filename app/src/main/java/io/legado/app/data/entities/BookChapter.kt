@@ -5,7 +5,6 @@ import android.os.Parcelable
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Ignore
-import androidx.room.Index
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
@@ -29,9 +28,7 @@ import splitties.init.appCtx
 @Parcelize
 @Entity(
     tableName = "chapters",
-    primaryKeys = ["url", "bookUrl"],
-    indices = [(Index(value = ["bookUrl"], unique = false)),
-        (Index(value = ["bookUrl", "index"], unique = true))],
+    primaryKeys = ["bookUrl","url"],
     foreignKeys = [(ForeignKey(
         entity = Book::class,
         parentColumns = ["bookUrl"],
