@@ -146,7 +146,6 @@ class ContentProcessor private constructor(
             if (useReplace && book.getUseReplaceRule()) {
                 //替换
                 effectiveReplaceRules = arrayListOf()
-                mContent = mContent.lines().joinToString("\n") { it.trim() }
                 getContentReplaceRules().forEach { item ->
                     if (item.pattern.isEmpty()) {
                         return@forEach
@@ -177,30 +176,19 @@ class ContentProcessor private constructor(
                 }
             }
         }
+        val content = mutableListOf<String>()
         if (includeTitle) {
             //重新添加标题
-            mContent = chapter.getDisplayTitle(
+            content.add(chapter.getDisplayTitle(
                 getTitleReplaceRules(),
                 useReplace = useReplace && book.getUseReplaceRule()
-            ) + "\n" + mContent
+            ))
         }
         if (isAndroid8) {
             mContent = mContent.replace('\u00A0', ' ')
         }
-        val contents = arrayListOf<String>()
-        mContent.split("\n").forEach { str ->
-            val paragraph = str.trim {
-                it.code <= 0x20 || it == '　'
-            }
-            if (paragraph.isNotEmpty()) {
-                if (contents.isEmpty() && includeTitle) {
-                    contents.add(paragraph)
-                } else {
-                    contents.add("${ReadBookConfig.paragraphIndent}$paragraph")
-                }
-            }
-        }
-        return BookContent(sameTitleRemoved, contents, effectiveReplaceRules)
+        content.add(mContent)
+        return BookContent(sameTitleRemoved, content, effectiveReplaceRules)
     }
 
 }

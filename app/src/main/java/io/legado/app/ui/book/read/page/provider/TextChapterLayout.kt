@@ -34,6 +34,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
 import java.util.LinkedList
 import kotlin.math.roundToInt
 
@@ -217,124 +220,54 @@ class TextChapterLayout(
         var isSetTypedImage = false
         contents.forEach { content ->
             currentCoroutineContext().ensureActive()
-            if (isTextImageStyle) {
-                //图片样式为文字嵌入类型
-                var text = content.replace(ChapterProvider.srcReplaceChar, "▣")
-                val srcList = LinkedList<String>()
-                sb.setLength(0)
-                val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    val onclick = "onclick=\"([^\"]+)".toRegex().find(matcher.group())
-                    matcher.group(1)?.let { src ->
-                        srcList.add(src +"\n"+if (onclick != null) onclick.groupValues[1] else "")
-                        matcher.appendReplacement(sb, ChapterProvider.srcReplaceChar)
-                    }
-                }
-                matcher.appendTail(sb)
-                text = sb.toString()
-                setTypeText(
-                    book,
-                    text,
-                    contentPaint,
-                    contentPaintTextHeight,
-                    contentPaintFontMetrics,
-                    imageStyle,
-                    srcList = srcList
-                )
-            } else {
-                if (isSingleImageStyle && isSetTypedImage) {
-                    isSetTypedImage = false
-                    prepareNextPageIfNeed()
-                }
-                if (content.contains("<img")) {
-                    val matcher = AppPattern.imgPattern.matcher(content)
-                    val textSegments = mutableListOf<String>()
-                    val embeddedImages = mutableListOf<String>()
-                    var lastEnd = 0
-                    var hasNonEmbeddedImage = false
-                    var isFirstSegment = true
-                    while (matcher.find()) {
-                        currentCoroutineContext().ensureActive()
-                        var src = matcher.group(1)!!+"\n"
-                        val isTextEmbedded = matcher.group().contains("style=\"text\"")
-                        val textBefore = content.substring(lastEnd, matcher.start())
-                        val onclick = "onclick=\"([^\"]+)".toRegex().find(matcher.group())
-                        if (onclick != null) {
-                            src += onclick.groupValues[1]
-                        }
-                        if (textBefore.isNotBlank()) {
-                            textSegments.add(textBefore)
-                        }
-                        if (isTextEmbedded) {
-                            embeddedImages.add(src)
-                            textSegments.add(ChapterProvider.srcReplaceChar)
-                        } else {
-                            hasNonEmbeddedImage = true
-                            if (textSegments.isNotEmpty()) {
-                                val combinedText = textSegments.joinToString("")
-                                setTypeText(
-                                    book,
-                                    combinedText,
-                                    contentPaint,
-                                    contentPaintTextHeight,
-                                    contentPaintFontMetrics,
-                                    "TEXT",
-                                    isFirstLine = isFirstSegment,
-                                    srcList = LinkedList(embeddedImages)
-                                )
-                                textSegments.clear()
-                                embeddedImages.clear()
-                                isFirstSegment = false
-                            }
-                            setTypeImage(
-                                book,
-                                src,
-                                contentPaintTextHeight,
-                                imageStyle
-                            )
-                            isSetTypedImage = true
-                        }
-
-                        lastEnd = matcher.end()
-                    }
-                    if (lastEnd < content.length) {
-                        val remainingText = content.substring(lastEnd)
-                        if (remainingText.isNotBlank()) {
-                            textSegments.add(remainingText)
-                        }
-                    }
-                    if (textSegments.isNotEmpty()) {
-                        val combinedText = textSegments.joinToString("")
-                        setTypeText(
-                            book,
-                            combinedText,
-                            contentPaint,
-                            contentPaintTextHeight,
-                            contentPaintFontMetrics,
-                            "TEXT",
-                            isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
-                            srcList = LinkedList(embeddedImages)
-                        )
-                    }
-                } else {
-                    if (content.isNotBlank()) {
-                        setTypeText(
-                            book,
-                            if (AppConfig.enableReview) content + ChapterProvider.reviewChar else content,
-                            contentPaint,
-                            contentPaintTextHeight,
-                            contentPaintFontMetrics,
-                            imageStyle,
-                            isFirstLine = true
-                        )
-                    }
+            val imgList = mutableListOf<Element>()
+            val textImg = TextNode(ChapterProvider.srcReplaceChar)
+            val otherImg = TextNode("\n${ChapterProvider.srcReplaceChar}\n")
+            val body = Jsoup.parse(content)
+            body.select("img").forEach {
+                imgList.add(it)
+                if(it.attr("style").equals(Book.imgStyleText, true)){
+                    it.replaceWith(textImg)
+                }else{
+                    it.replaceWith(otherImg)
                 }
             }
+            val content = body.html()
+            var x = 0f
+            var y = 0f
+            var passImgNum = 0
+            val widthsArray = allocateFloatArray(content.length)
+            contentPaint.getTextWidthsCompat(content, widthsArray)
+            for (i in content.indices){
+                var textLine = TextLine()
+                if (x>=visibleWidth){
+                    textLine = TextLine()
+                    x = 0f
+                }else x += widthsArray[i]
+                textLine.addColumn(if (content[i]!=ChapterProvider.srcReplaceChar[0]){
+                    TextColumn(
+                        start = absStartX + x - widthsArray[i],
+                        end = absStartX + x,
+                        charData = content[i].toString()
+                    )
+                }else{
+                    ImageColumn(
+                        start = absStartX + x - widthsArray[i],
+                        end = absStartX + x,
+                        src = imgList[passImgNum].attr("src"),
+                        imgList[passImgNum++].attr("onclick")
+                    )
+                })
+                pendingTextPage.addLine(textLine)
+                if (isSingleImageStyle) {
+                    prepareNextPageIfNeed()
+                }
+            }
+        }
             if (pendingTextPage.lines.isNotEmpty()) {
                 pendingTextPage.lines.last().isParagraphEnd = true
             }
-            stringBuilder.append("\n")
-        }
+
         val textPage = pendingTextPage
         val endPadding = 20.dpToPx()
         val durYPadding = durY + endPadding
@@ -343,7 +276,7 @@ class TextChapterLayout(
         } else {
             textPage.height += endPadding
         }
-        textPage.text = stringBuilder.toString()
+        textPage.text = contents.toString()
         currentCoroutineContext().ensureActive()
         onPageCompleted()
         onCompleted()
