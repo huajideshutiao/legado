@@ -34,6 +34,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import org.jsoup.Jsoup
+import org.jsoup.nodes.TextNode
 import java.util.LinkedList
 import kotlin.math.roundToInt
 
@@ -96,6 +98,7 @@ class TextChapterLayout(
 
     var channel = Channel<TextPage>(Channel.UNLIMITED)
 
+    data class Img(val src: String,val style: String,val onclick: String)
 
     init {
         job = Coroutine.async(
@@ -213,127 +216,99 @@ class TextChapterLayout(
             }
         }
 
-        val sb = StringBuffer()
         var isSetTypedImage = false
         contents.forEach { content ->
             currentCoroutineContext().ensureActive()
-            if (isTextImageStyle) {
-                //图片样式为文字嵌入类型
-                var text = content.replace(ChapterProvider.srcReplaceChar, "▣")
-                val srcList = LinkedList<String>()
-                sb.setLength(0)
-                val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    val onclick = "onclick=\"([^\"]+)".toRegex().find(matcher.group())
-                    matcher.group(1)?.let { src ->
-                        srcList.add(src +"\n"+if (onclick != null) onclick.groupValues[1] else "")
-                        matcher.appendReplacement(sb, ChapterProvider.srcReplaceChar)
-                    }
+            var content = content.replace(ChapterProvider.srcReplaceChar, "▣")
+            val imgList = LinkedList<Img>()
+            if (content.contains("<img")) {
+                val body = Jsoup.parse(content)
+                body.select("img").forEach {
+                    imgList.add(
+                        Img(
+                            it.attr("src"),
+                            it.attr("style"),
+                            it.attr("onclick")
+                        )
+                    )
+                    it.replaceWith(TextNode(ChapterProvider.srcReplaceChar))
                 }
-                matcher.appendTail(sb)
-                text = sb.toString()
+                content = body.wholeText()
+            }
+            content.lines().forEach{
+            if (isTextImageStyle || imgList.isEmpty()) {
+                //图片样式为文字嵌入类型
                 setTypeText(
                     book,
-                    text,
+                    it,
                     contentPaint,
                     contentPaintTextHeight,
                     contentPaintFontMetrics,
                     imageStyle,
-                    srcList = srcList
+                    imgList = imgList
                 )
             } else {
                 if (isSingleImageStyle && isSetTypedImage) {
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
-                if (content.contains("<img")) {
-                    val matcher = AppPattern.imgPattern.matcher(content)
-                    val textSegments = mutableListOf<String>()
-                    val embeddedImages = mutableListOf<String>()
-                    var lastEnd = 0
-                    var hasNonEmbeddedImage = false
-                    var isFirstSegment = true
-                    while (matcher.find()) {
-                        currentCoroutineContext().ensureActive()
-                        var src = matcher.group(1)!!+"\n"
-                        val isTextEmbedded = matcher.group().contains("style=\"text\"")
-                        val textBefore = content.substring(lastEnd, matcher.start())
-                        val onclick = "onclick=\"([^\"]+)".toRegex().find(matcher.group())
-                        if (onclick != null) {
-                            src += onclick.groupValues[1]
-                        }
-                        if (textBefore.isNotBlank()) {
-                            textSegments.add(textBefore)
-                        }
+                val embeddedImages = LinkedList<Img>()
+                val hasNonEmbeddedImage = it.contains(ChapterProvider.srcReplaceChar)
+                var isFirstSegment = true
+                val tmp = StringBuilder()
+                it.forEach { char ->
+                    currentCoroutineContext().ensureActive()
+                    if (char == ChapterProvider.srcReplaceChar[0]){
+                        val img = imgList.removeFirst()
+                        val isTextEmbedded = img.style.equals("TEXT",true)
                         if (isTextEmbedded) {
-                            embeddedImages.add(src)
-                            textSegments.add(ChapterProvider.srcReplaceChar)
+                            embeddedImages.add(img)
+                            tmp.append(char)
                         } else {
-                            hasNonEmbeddedImage = true
-                            if (textSegments.isNotEmpty()) {
-                                val combinedText = textSegments.joinToString("")
+                            if (tmp.isNotEmpty()) {
                                 setTypeText(
                                     book,
-                                    combinedText,
+                                    tmp.toString(),
                                     contentPaint,
                                     contentPaintTextHeight,
                                     contentPaintFontMetrics,
                                     "TEXT",
                                     isFirstLine = isFirstSegment,
-                                    srcList = LinkedList(embeddedImages)
+                                    imgList = embeddedImages
                                 )
-                                textSegments.clear()
+                                tmp.clear()
                                 embeddedImages.clear()
                                 isFirstSegment = false
                             }
-                            setTypeImage(
-                                book,
-                                src,
-                                contentPaintTextHeight,
-                                imageStyle
-                            )
-                            isSetTypedImage = true
-                        }
-
-                        lastEnd = matcher.end()
-                    }
-                    if (lastEnd < content.length) {
-                        val remainingText = content.substring(lastEnd)
-                        if (remainingText.isNotBlank()) {
-                            textSegments.add(remainingText)
-                        }
-                    }
-                    if (textSegments.isNotEmpty()) {
-                        val combinedText = textSegments.joinToString("")
-                        setTypeText(
+                        setTypeImage(
                             book,
-                            combinedText,
-                            contentPaint,
+                            img,
                             contentPaintTextHeight,
-                            contentPaintFontMetrics,
-                            "TEXT",
-                            isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
-                            srcList = LinkedList(embeddedImages)
+                            imageStyle
                         )
-                    }
-                } else {
-                    if (content.isNotBlank()) {
-                        setTypeText(
-                            book,
-                            if (AppConfig.enableReview) content + ChapterProvider.reviewChar else content,
-                            contentPaint,
-                            contentPaintTextHeight,
-                            contentPaintFontMetrics,
-                            imageStyle,
-                            isFirstLine = true
-                        )
-                    }
+                        isSetTypedImage = true
+                        }
+                }else tmp.append(char)
                 }
+                if (tmp.isNotEmpty()) {
+                    setTypeText(
+                        book,
+                        tmp.toString(),
+                        contentPaint,
+                        contentPaintTextHeight,
+                        contentPaintFontMetrics,
+                        "TEXT",
+                        isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
+                        imgList = embeddedImages
+                    )
+                }
+
             }
             if (pendingTextPage.lines.isNotEmpty()) {
                 pendingTextPage.lines.last().isParagraphEnd = true
             }
             stringBuilder.append("\n")
+        }
         }
         val textPage = pendingTextPage
         val endPadding = 20.dpToPx()
@@ -354,13 +329,11 @@ class TextChapterLayout(
      */
     private suspend fun setTypeImage(
         book: Book,
-        src: String,
+        img: Img,
         textHeight: Float,
         imageStyle: String?
     ) {
-        val size = ImageProvider.getImageSize(book, src, ReadBook.bookSource)
-        val srcWithClick = src.split("\n")
-        val src = srcWithClick[0]
+        val size = ImageProvider.getImageSize(book, img.src, ReadBook.bookSource)
         if (size.width > 0 && size.height > 0) {
             prepareNextPageIfNeed(durY)
             var height = size.height
@@ -420,7 +393,7 @@ class TextChapterLayout(
                 Pair(0f, width.toFloat())
             }
             textLine.addColumn(
-                ImageColumn(start = absStartX + start, end = absStartX + end, src = src, onClick = srcWithClick[1])
+                ImageColumn(absStartX + start,absStartX + end, img.src,img.onclick)
             )
             calcTextLinePosition(textPages, textLine, stringBuilder.length)
             stringBuilder.append(" ") // 确保翻页时索引计算正确
@@ -444,7 +417,7 @@ class TextChapterLayout(
         isFirstLine: Boolean = true,
         emptyContent: Boolean = false,
         isVolumeTitle: Boolean = false,
-        srcList: LinkedList<String>? = null
+        imgList: LinkedList<Img>? = null
     ) {
         val widthsArray = allocateFloatArray(text.length)
         textPaint.getTextWidthsCompat(text, widthsArray)
@@ -504,7 +477,7 @@ class TextChapterLayout(
                     //多行的第一行 非标题
                     addCharsToLineFirst(
                         book, absStartX, textLine, words, textPaint,
-                        desiredWidth, widths, srcList
+                        desiredWidth, widths, imgList
                     )
                 }
 
@@ -522,7 +495,7 @@ class TextChapterLayout(
                     }
                     addCharsToLineNatural(
                         book, absStartX, textLine, words,
-                        startX, !isTitle && lineIndex == 0, widths, srcList
+                        startX, !isTitle && lineIndex == 0, widths, imgList
                     )
                 }
 
@@ -536,13 +509,13 @@ class TextChapterLayout(
                         val startX = (visibleWidth - desiredWidth) / 2
                         addCharsToLineNatural(
                             book, absStartX, textLine, words,
-                            startX, false, widths, srcList
+                            startX, false, widths, imgList
                         )
                     } else {
                         //中间行
                         addCharsToLineMiddle(
                             book, absStartX, textLine, words, textPaint,
-                            desiredWidth, 0f, widths, srcList
+                            desiredWidth, 0f, widths, imgList
                         )
                     }
                 }
@@ -595,13 +568,13 @@ class TextChapterLayout(
         /**自然排版长度**/
         desiredWidth: Float,
         textWidths: List<Float>,
-        srcList: LinkedList<String>?
+        imgList: LinkedList<Img>?
     ) {
         var x = 0f
         if (!textFullJustify) {
             addCharsToLineNatural(
                 book, absStartX, textLine, words,
-                x, true, textWidths, srcList
+                x, true, textWidths, imgList
             )
             return
         }
@@ -624,7 +597,7 @@ class TextChapterLayout(
             val textWidths1 = textWidths.subList(bodyIndent.length, textWidths.size)
             addCharsToLineMiddle(
                 book, absStartX, textLine, text1, textPaint,
-                desiredWidth, x, textWidths1, srcList
+                desiredWidth, x, textWidths1, imgList
             )
         }
     }
@@ -643,12 +616,12 @@ class TextChapterLayout(
         /**起始x坐标**/
         startX: Float,
         textWidths: List<Float>,
-        srcList: LinkedList<String>?
+        imgList: LinkedList<Img>?
     ) {
         if (!textFullJustify) {
             addCharsToLineNatural(
                 book, absStartX, textLine, words,
-                startX, false, textWidths, srcList
+                startX, false, textWidths, imgList
             )
             return
         }
@@ -669,7 +642,7 @@ class TextChapterLayout(
                 }
                 addCharToLine(
                     book, absStartX, textLine, char,
-                    x, x1, index + 1 == words.size, srcList
+                    x, x1, index + 1 == words.size, imgList
                 )
                 x = x1
             }
@@ -685,7 +658,7 @@ class TextChapterLayout(
                 val x1 = if (index != words.lastIndex) (x + cw + d) else (x + cw)
                 addCharToLine(
                     book, absStartX, textLine, char,
-                    x, x1, index + 1 == words.size, srcList
+                    x, x1, index + 1 == words.size, imgList
                 )
                 x = x1
             }
@@ -704,7 +677,7 @@ class TextChapterLayout(
         startX: Float,
         hasIndent: Boolean,
         textWidths: List<Float>,
-        srcList: LinkedList<String>?
+        imgList: LinkedList<Img>?
     ) {
         val indentLength = paragraphIndent.length
         var x = startX
@@ -713,7 +686,7 @@ class TextChapterLayout(
             val char = words[index]
             val cw = textWidths[index]
             val x1 = x + cw
-            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, srcList)
+            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
             x = x1
             if (hasIndent && index == indentLength - 1) {
                 textLine.indentWidth = x
@@ -733,18 +706,17 @@ class TextChapterLayout(
         xStart: Float,
         xEnd: Float,
         isLineEnd: Boolean,
-        srcList: LinkedList<String>?
+        imgList: LinkedList<Img>?
     ) {
         val column = when {
-            srcList != null && char == ChapterProvider.srcReplaceChar -> {
-                val srcWithClick = srcList.removeFirst().split("\n")
-                val src = srcWithClick[0]
-                ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+            imgList != null && char == ChapterProvider.srcReplaceChar -> {
+                val img = imgList.removeFirst()
+                ImageProvider.cacheImage(book, img.src, ReadBook.bookSource)
                 ImageColumn(
                     start = absStartX + xStart,
                     end = absStartX + xEnd,
-                    src = src,
-                    srcWithClick[1]
+                    src = img.src,
+                    img.onclick
                 )
             }
 

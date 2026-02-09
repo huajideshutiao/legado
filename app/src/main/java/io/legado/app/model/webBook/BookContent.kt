@@ -23,9 +23,14 @@ import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
-import org.apache.commons.text.StringEscapeUtils
+import org.checkerframework.checker.units.qual.s
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
+import org.jsoup.safety.Safelist
 import splitties.init.appCtx
-import kotlin.coroutines.coroutineContext
 
 /**
  * 获取正文
@@ -78,7 +83,7 @@ object BookContent {
             }
         }
         var contentData = analyzeContent(
-            book, baseUrl, redirectUrl, body, contentRule, bookChapter, bookSource, mNextChapterUrl
+            book, baseUrl, body, contentRule, bookChapter, bookSource, mNextChapterUrl
         )
         contentList.add(contentData.first)
         if (contentData.second.size == 1) {
@@ -99,7 +104,7 @@ object BookContent {
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 res.body?.let { nextBody ->
                     contentData = analyzeContent(
-                        book, nextUrl, res.url, nextBody, contentRule,
+                        book, nextUrl, nextBody, contentRule,
                         bookChapter, bookSource, mNextChapterUrl,
                         printLog = false
                     )
@@ -125,7 +130,7 @@ object BookContent {
                 )
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 analyzeContent(
-                    book, urlStr, res.url, res.body!!, contentRule,
+                    book, urlStr, res.body!!, contentRule,
                     bookChapter, bookSource, mNextChapterUrl,
                     getNextPageUrl = false,
                     printLog = false
@@ -143,6 +148,7 @@ object BookContent {
             contentStr = analyzeRule.getString(replaceRegex, contentStr)
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { "　　$it" }
         }
+        contentStr = HtmlFormatter.formatKeepImg(contentStr, redirectUrl)
         Debug.log(bookSource.bookSourceUrl, "┌获取章节名称")
         Debug.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
         Debug.log(bookSource.bookSourceUrl, "┌获取正文内容")
@@ -160,7 +166,6 @@ object BookContent {
     private suspend fun analyzeContent(
         book: Book,
         baseUrl: String,
-        redirectUrl: String,
         body: String,
         contentRule: ContentRule,
         chapter: BookChapter,
@@ -172,16 +177,16 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setCoroutineContext(currentCoroutineContext())
-        val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
+        //val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.setNextChapterUrl(nextChapterUrl)
         val nextUrlList = arrayListOf<String>()
         analyzeRule.setChapter(chapter)
         //获取正文
-        var content = analyzeRule.getString(contentRule.content, unescape = false)
-        content = HtmlFormatter.formatKeepImg(content, rUrl)
-        if (content.indexOf('&') > -1) {
-            content = StringEscapeUtils.unescapeHtml4(content)
-        }
+        val content = analyzeRule.getString(contentRule.content, unescape = false)
+//        content = HtmlFormatter.formatKeepImg(content, rUrl)
+//        if (content.indexOf('&') > -1) {
+//            content = StringEscapeUtils.unescapeHtml4(content)
+//        }
         //获取下一页链接
         if (getNextPageUrl) {
             val nextUrlRule = contentRule.nextContentUrl

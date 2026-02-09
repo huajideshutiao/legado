@@ -326,11 +326,8 @@ class ExportBookService : BaseService() {
             val srcList = arrayListOf<SrcData>()
             content?.split("\n")?.forEachIndexed { index, text ->
                 val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    matcher.group(1)?.let {
-                        val src = NetworkUtils.getAbsoluteURL(chapter.url, it)
-                        srcList.add(SrcData(chapter.title, index, src))
-                    }
+                if (matcher.find()) {
+                    srcList.add(SrcData(chapter.title, index, matcher.group(1)!!))
                 }
             }
             return Pair("\n\n$content1", srcList)
@@ -600,9 +597,8 @@ class ExportBookService : BaseService() {
         content.split("\n").forEach { text ->
             var text1 = text
             val matcher = AppPattern.imgPattern.matcher(text)
-            while (matcher.find()) {
-                matcher.group(1)?.let {
-                    val src = NetworkUtils.getAbsoluteURL(chapter.url, it)
+            if (matcher.find()) {
+                matcher.group(1)?.let { src ->
                     val originalHref =
                         "${MD5Utils.md5Encode16(src)}.${BookHelp.getImageSuffix(src)}"
                     val href =

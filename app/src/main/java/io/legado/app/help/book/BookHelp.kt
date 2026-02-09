@@ -141,8 +141,7 @@ object BookHelp {
                 val matcher = AppPattern.imgPattern.matcher(content)
                 while (matcher.find()) {
                     val src = matcher.group(1) ?: continue
-                    val mSrc = NetworkUtils.getAbsoluteURL(it.url, src)
-                    imgNames.add("${MD5Utils.md5Encode16(mSrc)}.${getImageSuffix(mSrc)}")
+                    imgNames.add("${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}")
                 }
             }
         }
@@ -198,8 +197,7 @@ object BookHelp {
             val matcher = AppPattern.imgPattern.matcher(content)
             while (matcher.find()) {
                 val src = matcher.group(1) ?: continue
-                val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
-                emit(mSrc)
+                emit(src)
             }
         }
     }

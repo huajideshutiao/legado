@@ -1,6 +1,11 @@
 package io.legado.app.utils
 
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 import java.net.URL
 import java.util.regex.Pattern
 
@@ -36,47 +41,75 @@ object HtmlFormatter {
             .replace(lastRegex, "")
     }
 
-    fun formatKeepImg(html: String?, redirectUrl: URL? = null): String {
-        html ?: return ""
-        val keepImgHtml = format(html, notImgHtmlRegex)
-
-        //正则的“|”处于顶端而不处于（）中时，具有类似||的熔断效果，故以此机制简化原来的代码
-        val matcher = formatImagePattern.matcher(keepImgHtml)
-        var appendPos = 0
-        val sb = StringBuilder()
-        while (matcher.find()) {
-            val onClick = onClickRegex.find(matcher.group())
-            val style = styleRegex.find(matcher.group())
-            var param = ""
-            sb.append(
-                keepImgHtml.substring(appendPos, matcher.start()),
-                "<img src=\"",
-                NetworkUtils.getAbsoluteURL(
-                    redirectUrl,
-                    matcher.group(1)?.let {
-                        val urlMatcher = AnalyzeUrl.paramPattern.matcher(it)
-                        if (urlMatcher.find()) {
-                            param = ',' + it.substring(urlMatcher.end())
-                            it.substring(0, urlMatcher.start())
-                        } else it
-                    } ?: matcher.group(2) ?: matcher.group(3)!!
-                ),
-                param,
-                "\"",
-                if(onClick==null||onClick.groupValues[1].isBlank()) ""
-                else " onclick=\"${onClick.groupValues[1]}\"",
-                if(style==null||style.groupValues[1].isBlank()) ""
-                else " style=\"${style.groupValues[1]}\"",
-                ">"
-            )
-            appendPos = matcher.end()
+//    fun formatKeepImgOld(html: String?, redirectUrl: URL? = null): String {
+//        html ?: return ""
+//        val keepImgHtml = format(html, notImgHtmlRegex)
+//
+//        //正则的“|”处于顶端而不处于（）中时，具有类似||的熔断效果，故以此机制简化原来的代码
+//        val matcher = formatImagePattern.matcher(keepImgHtml)
+//        var appendPos = 0
+//        val sb = StringBuilder()
+//        while (matcher.find()) {
+//            val onClick = onClickRegex.find(matcher.group())
+//            val style = styleRegex.find(matcher.group())
+//            var param = ""
+//            sb.append(
+//                keepImgHtml.substring(appendPos, matcher.start()),
+//                "<img src=\"",
+//                NetworkUtils.getAbsoluteURL(
+//                    redirectUrl,
+//                    matcher.group(1)?.let {
+//                        val urlMatcher = AnalyzeUrl.paramPattern.matcher(it)
+//                        if (urlMatcher.find()) {
+//                            param = ',' + it.substring(urlMatcher.end())
+//                            it.substring(0, urlMatcher.start())
+//                        } else it
+//                    } ?: matcher.group(2) ?: matcher.group(3)!!
+//                ),
+//                param,
+//                "\"",
+//                if(onClick==null||onClick.groupValues[1].isBlank()) ""
+//                else " onclick=\"${onClick.groupValues[1]}\"",
+//                if(style==null||style.groupValues[1].isBlank()) ""
+//                else " style=\"${style.groupValues[1]}\"",
+//                ">"
+//            )
+//            appendPos = matcher.end()
+//        }
+//        if (appendPos < keepImgHtml.length) sb.append(
+//            keepImgHtml.substring(
+//                appendPos,
+//                keepImgHtml.length
+//            )
+//        )
+//        return sb.toString()
+//    }
+    fun formatKeepImg(html: String?, redirectUrl: String? = null): String {
+        val content = Jsoup.parse(html, redirectUrl).body()
+        val str = StringBuilder()
+        fun extractFromNode(node: Node, result: StringBuilder) {
+            for (child in node.childNodes()) {
+                when (child) {
+                    is TextNode -> {
+                        val text = child.wholeText.trim { it.code <= 0x20 || it == '　' }
+                        if (text.isNotEmpty()) result.append("\n").append(ReadBookConfig.paragraphIndent).append(text)
+                    }
+                    is Element if child.tagName().equals("img", ignoreCase = true) -> {
+                        child.attr("src",
+                            when{
+                                child.hasAttr("data-src") -> child.absUrl("data-src")
+                                child.hasAttr("data-original") -> child.absUrl("data-original")
+                                else -> child.absUrl("src")
+                            }
+                        )
+                        result.append(child.outerHtml())
+                    }
+                    is Element -> extractFromNode(child, result)
+                }
+            }
         }
-        if (appendPos < keepImgHtml.length) sb.append(
-            keepImgHtml.substring(
-                appendPos,
-                keepImgHtml.length
-            )
-        )
-        return sb.toString()
+        extractFromNode(content,str)
+        if(str.startsWith("\n"))str.deleteCharAt(0)
+        return str.toString()
     }
 }
