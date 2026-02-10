@@ -111,13 +111,13 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                             mImage.updateLayoutParams<FrameLayout.LayoutParams> {
                                 height = ViewGroup.LayoutParams.WRAP_CONTENT
                             }
-                            itemView.minimumHeight = minHeight
+                            //itemView.minimumHeight = minHeight
                         } else {
                             mImage.updateLayoutParams<FrameLayout.LayoutParams> {
                                 height = ViewGroup.LayoutParams.MATCH_PARENT
                             }
-                            itemView.minimumHeight = 0
                         }
+                        itemView.minimumHeight = 0
                         mImage.scaleType = ImageView.ScaleType.FIT_XY
                     } else {
                         itemView.updateLayoutParams<ViewGroup.LayoutParams> {

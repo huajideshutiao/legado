@@ -73,6 +73,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import splitties.init.appCtx
 import java.text.DecimalFormat
 import kotlin.math.ceil
 
@@ -164,6 +165,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             ReadManga.loadOrUpContent()
         }
         binding.pbLoading.isVisible = !AppConfig.isEInkMode
+        mAdapter
         loadMoreView.setOnClickListener {
             if (!loadMoreView.isLoading && ReadManga.hasNextChapter) {
                 loadMoreView.startLoad()
@@ -736,6 +738,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
 
     private fun scrollPageTo(direction: Int) {
         if (!binding.recyclerView.canScroll(direction)) {
+            appCtx.toastOnUi(R.string.bottom_line)
             return
         }
         var dx = 0

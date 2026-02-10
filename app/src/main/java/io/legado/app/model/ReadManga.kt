@@ -574,7 +574,6 @@ object ReadManga : CoroutineScope by MainScope() {
         } else {
             pages.add(ReaderLoading(chapter.index, -1, "阅读 ${chapter.title}"))
             pages.addAll(list)
-            pages.add(ReaderLoading(chapter.index, imageCount, "已读完 ${chapter.title}"))
         }
 
         return MangaChapter(chapter, pages, imageCount)
