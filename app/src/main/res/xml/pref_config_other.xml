@@ -42,6 +42,10 @@
             android:title="@string/show_rss"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="bookshelfLayout"
+            android:title="@string/bookshelf_layout" />
+
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="bookshelf"
             android:key="defaultHomePage"
@@ -50,10 +54,6 @@
             app:allowDividerBelow="false"
             app:entries="@array/default_home_page"
             app:entryValues="@array/default_home_page_value" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="bookshelfLayout"
-            android:title="@string/bookshelf_layout" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
 

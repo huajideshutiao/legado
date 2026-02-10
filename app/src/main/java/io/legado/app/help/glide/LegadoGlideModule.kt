@@ -76,7 +76,7 @@ class LegadoGlideModule : AppGlideModule() {
         val bitmapPool = AsyncRecycleBitmapPool(calculator.bitmapPoolSize)
         builder.setMemorySizeCalculator(calculator)
         builder.setBitmapPool(bitmapPool)
-        builder.setDiskCache(MultiDiskCacheFactory(context, 1024 * 1024 * 1000))
+        builder.setDiskCache(MultiDiskCacheFactory(context, 512 * 1024 * 1000))
         if (!BuildConfig.DEBUG && !AppConfig.recordLog) {
             builder.setLogLevel(Log.ERROR)
         }
