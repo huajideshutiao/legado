@@ -236,11 +236,12 @@ class TextChapterLayout(
                 content = body.wholeText()
             }
             content.lines().forEach{
-            if (isTextImageStyle || imgList.isEmpty()) {
+                val line = if (it.startsWith("　　"))paragraphIndent+it.slice(2..<it.length) else it
+                if (isTextImageStyle || imgList.isEmpty()) {
                 //图片样式为文字嵌入类型
                 setTypeText(
                     book,
-                    it,
+                    line,
                     contentPaint,
                     contentPaintTextHeight,
                     contentPaintFontMetrics,
@@ -253,10 +254,10 @@ class TextChapterLayout(
                     prepareNextPageIfNeed()
                 }
                 val embeddedImages = LinkedList<Img>()
-                val hasNonEmbeddedImage = it.contains(ChapterProvider.srcReplaceChar)
+                val hasNonEmbeddedImage = line.contains(ChapterProvider.srcReplaceChar)
                 var isFirstSegment = true
                 val tmp = StringBuilder()
-                it.forEach { char ->
+                line.forEach { char ->
                     currentCoroutineContext().ensureActive()
                     if (char == ChapterProvider.srcReplaceChar[0]){
                         val img = imgList.removeFirst()
@@ -428,112 +429,137 @@ class TextChapterLayout(
         } else {
             StaticLayout(text, textPaint, visibleWidth, Layout.Alignment.ALIGN_NORMAL, 0f, 0f, true)
         }
-        durY = when {
-            //标题y轴居中
-            emptyContent && textPages.isEmpty() -> {
-                val textPage = pendingTextPage
-                if (textPage.lineSize == 0) {
-                    val ty = (visibleHeight - layout.lineCount * textHeight) / 2
-                    if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
-                } else {
-                    var textLayoutHeight = layout.lineCount * textHeight
-                    val fistLine = textPage.getLine(0)
-                    if (fistLine.lineTop < textLayoutHeight + titleTopSpacing) {
-                        textLayoutHeight = fistLine.lineTop - titleTopSpacing
-                    }
-                    textPage.lines.forEach {
-                        it.lineTop -= textLayoutHeight
-                        it.lineBase -= textLayoutHeight
-                        it.lineBottom -= textLayoutHeight
-                    }
-                    durY - textLayoutHeight
-                }
-            }
 
-            isTitle && textPages.isEmpty() && pendingTextPage.lines.isEmpty() -> {
-                when (imageStyle?.uppercase()) {
-                    Book.imgStyleSingle -> {
-                        val ty = (visibleHeight - layout.lineCount * textHeight) / 2
-                        if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
-                    }
+        // 计算初始Y位置
+        durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
 
-                    else -> durY + titleTopSpacing
-                }
-            }
+        // 判断标题是否需要居中
+        val shouldCenterTitle = isTitle && 
+            (isMiddleTitle || emptyContent || isVolumeTitle || imageStyle?.uppercase() == Book.imgStyleSingle)
 
-            else -> durY
-        }
+        // 处理每一行文本
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)
             prepareNextPageIfNeed(durY + textHeight)
+
             val lineStart = layout.getLineStart(lineIndex)
             val lineEnd = layout.getLineEnd(lineIndex)
             val lineText = text.substring(lineStart, lineEnd)
             val (words, widths) = measureTextSplit(lineText, widthsArray, lineStart)
             val desiredWidth = widths.fastSum()
             textLine.text = lineText
+
+            // 判断是否需要添加缩进
+            val needsIndent = isFirstLine && lineIndex == 0 && layout.lineCount > 1 && !isTitle
+            val (adjustedWords, adjustedWidths, startX) = if (needsIndent) {
+                // 添加缩进字符
+                val indentLength = paragraphIndent.length
+                val indentX = addIndentChars(absStartX, textLine, indentLength)
+                val remainingWords = words.subList(indentLength, words.size)
+                val remainingWidths = widths.subList(indentLength, widths.size)
+                Triple(remainingWords, remainingWidths, indentX)
+            } else {
+                Triple(words, widths, 0f)
+            }
+
+            // 判断是否为最后一行
+            val isLastLine = lineIndex == layout.lineCount - 1
+
+            // 根据行类型选择排版方式
             when {
-                lineIndex == 0 && layout.lineCount > 1 && !isTitle && isFirstLine -> {
-                    //多行的第一行 非标题
-                    addCharsToLineFirst(
-                        book, absStartX, textLine, words, textPaint,
-                        desiredWidth, widths, imgList
-                    )
-                }
-
-                lineIndex == layout.lineCount - 1 -> {
-                    //最后一行、单行
-                    //标题x轴居中
-                    val startX = if (
-                        isTitle &&
-                        (isMiddleTitle || emptyContent || isVolumeTitle
-                                || imageStyle?.uppercase() == Book.imgStyleSingle)
-                    ) {
-                        (visibleWidth - desiredWidth) / 2
-                    } else {
-                        0f
-                    }
+                shouldCenterTitle -> {
+                    // 标题居中
+                    val centeredStartX = (visibleWidth - desiredWidth) / 2
                     addCharsToLineNatural(
-                        book, absStartX, textLine, words,
-                        startX, !isTitle && lineIndex == 0, widths, imgList
+                        book, absStartX, textLine, adjustedWords,
+                        centeredStartX, adjustedWidths, imgList
                     )
                 }
-
+                isLastLine -> addCharsToLineNatural(
+                    book, absStartX, textLine, adjustedWords,
+                    0f, adjustedWidths, imgList
+                )
                 else -> {
-                    if (
-                        isTitle &&
-                        (isMiddleTitle || emptyContent || isVolumeTitle
-                                || imageStyle?.uppercase() == Book.imgStyleSingle)
-                    ) {
-                        //标题居中
-                        val startX = (visibleWidth - desiredWidth) / 2
-                        addCharsToLineNatural(
-                            book, absStartX, textLine, words,
-                            startX, false, widths, imgList
-                        )
-                    } else {
-                        //中间行
-                        addCharsToLineMiddle(
-                            book, absStartX, textLine, words, textPaint,
-                            desiredWidth, 0f, widths, imgList
-                        )
-                    }
+                    // 中间行使用两端对齐
+                    addCharsToLineMiddle(
+                        book, absStartX, textLine, adjustedWords, textPaint,
+                        desiredWidth, startX, adjustedWidths, imgList
+                    )
                 }
             }
-            if (doublePage) {
-                textLine.isLeftLine = absStartX < viewWidth / 2
-            }
-            calcTextLinePosition(textPages, textLine, stringBuilder.length)
-            stringBuilder.append(lineText)
-            textLine.upTopBottom(durY, textHeight, fontMetrics)
-            val textPage = pendingTextPage
-            textPage.addLine(textLine)
-            durY += textHeight * lineSpacingExtra
-            if (textPage.height < durY) {
-                textPage.height = durY
-            }
+
+            // 更新文本行信息
+            updateTextLineInfo(textLine, lineText, textHeight, fontMetrics)
         }
         durY += textHeight * paragraphSpacing / 10f
+    }
+
+    /**
+     * 计算初始Y位置
+     */
+    private fun calculateInitialYPosition(
+        layout: Layout,
+        textHeight: Float,
+        emptyContent: Boolean,
+        isTitle: Boolean,
+        imageStyle: String?
+    ): Float {
+        // 标题Y轴居中
+        if (emptyContent && textPages.isEmpty()) {
+            val textPage = pendingTextPage
+            if (textPage.lineSize == 0) {
+                val ty = (visibleHeight - layout.lineCount * textHeight) / 2
+                return if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
+            } else {
+                var textLayoutHeight = layout.lineCount * textHeight
+                val firstLine = textPage.getLine(0)
+                if (firstLine.lineTop < textLayoutHeight + titleTopSpacing) {
+                    textLayoutHeight = firstLine.lineTop - titleTopSpacing
+                }
+                textPage.lines.forEach {
+                    it.lineTop -= textLayoutHeight
+                    it.lineBase -= textLayoutHeight
+                    it.lineBottom -= textLayoutHeight
+                }
+                return durY - textLayoutHeight
+            }
+        }
+
+        // 标题Y轴居中（单图模式）
+        if (isTitle && textPages.isEmpty() && pendingTextPage.lines.isEmpty()) {
+            return when (imageStyle?.uppercase()) {
+                Book.imgStyleSingle -> {
+                    val ty = (visibleHeight - layout.lineCount * textHeight) / 2
+                    if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
+                }
+                else -> durY + titleTopSpacing
+            }
+        }
+
+        return durY
+    }
+
+    /**
+     * 更新文本行信息
+     */
+    private fun updateTextLineInfo(
+        textLine: TextLine,
+        lineText: String,
+        textHeight: Float,
+        fontMetrics: Paint.FontMetrics
+    ) {
+        if (doublePage) {
+            textLine.isLeftLine = absStartX < viewWidth / 2
+        }
+        calcTextLinePosition(textPages, textLine, stringBuilder.length)
+        stringBuilder.append(lineText)
+        textLine.upTopBottom(durY, textHeight, fontMetrics)
+        val textPage = pendingTextPage
+        textPage.addLine(textLine)
+        durY += textHeight * lineSpacingExtra
+        if (textPage.height < durY) {
+            textPage.height = durY
+        }
     }
 
     private fun calcTextLinePosition(
@@ -557,29 +583,16 @@ class TextChapterLayout(
     }
 
     /**
-     * 有缩进,两端对齐
+     * 添加缩进字符到文本行
+     * @return 缩进后的X坐标
      */
-    private suspend fun addCharsToLineFirst(
-        book: Book,
+    private fun addIndentChars(
         absStartX: Int,
         textLine: TextLine,
-        words: List<String>,
-        textPaint: TextPaint,
-        /**自然排版长度**/
-        desiredWidth: Float,
-        textWidths: List<Float>,
-        imgList: LinkedList<Img>?
-    ) {
+        indentLength: Int
+    ): Float {
         var x = 0f
-        if (!textFullJustify) {
-            addCharsToLineNatural(
-                book, absStartX, textLine, words,
-                x, true, textWidths, imgList
-            )
-            return
-        }
-        val bodyIndent = paragraphIndent
-        repeat(bodyIndent.length) {
+        repeat(indentLength) {
             val x1 = x + indentCharWidth
             textLine.addColumn(
                 TextColumn(
@@ -591,15 +604,8 @@ class TextChapterLayout(
             x = x1
             textLine.indentWidth = x
         }
-        textLine.indentSize = bodyIndent.length
-        if (words.size > bodyIndent.length) {
-            val text1 = words.subList(bodyIndent.length, words.size)
-            val textWidths1 = textWidths.subList(bodyIndent.length, textWidths.size)
-            addCharsToLineMiddle(
-                book, absStartX, textLine, text1, textPaint,
-                desiredWidth, x, textWidths1, imgList
-            )
-        }
+        textLine.indentSize = indentLength
+        return x
     }
 
     /**
@@ -618,52 +624,84 @@ class TextChapterLayout(
         textWidths: List<Float>,
         imgList: LinkedList<Img>?
     ) {
+        // 如果不需要两端对齐，使用自然排版
         if (!textFullJustify) {
             addCharsToLineNatural(
                 book, absStartX, textLine, words,
-                startX, false, textWidths, imgList
+                startX, textWidths, imgList
             )
             return
         }
+
+        textLine.startX = absStartX + startX
         val residualWidth = visibleWidth - desiredWidth
         val spaceSize = words.count { it == " " }
-        textLine.startX = absStartX + startX
-        if (spaceSize > 1) {
-            val d = residualWidth / spaceSize
-            textLine.wordSpacing = d
-            var x = startX
-            for (index in words.indices) {
-                val char = words[index]
-                val cw = textWidths[index]
-                val x1 = if (char == " ") {
-                    if (index != words.lastIndex) (x + cw + d) else (x + cw)
-                } else {
-                    (x + cw)
-                }
-                addCharToLine(
-                    book, absStartX, textLine, char,
-                    x, x1, index + 1 == words.size, imgList
-                )
-                x = x1
-            }
-        } else {
-            val gapCount: Int = words.lastIndex
-            val d = if (gapCount > 0) residualWidth / gapCount else 0f
-            textLine.extraLetterSpacingOffsetX = -d / 2
-            textLine.extraLetterSpacing = d / textPaint.textSize
-            var x = startX
-            for (index in words.indices) {
-                val char = words[index]
-                val cw = textWidths[index]
-                val x1 = if (index != words.lastIndex) (x + cw + d) else (x + cw)
-                addCharToLine(
-                    book, absStartX, textLine, char,
-                    x, x1, index + 1 == words.size, imgList
-                )
-                x = x1
-            }
-        }
+        if (spaceSize > 0) {
+            justifyBySpaces(book, absStartX, textLine, words, startX, textWidths, residualWidth, spaceSize, imgList)
+        } else justifyByLetterSpacing(book, absStartX, textLine, words, startX, textWidths, residualWidth, textPaint, imgList)
+
         exceed(absStartX, textLine, words)
+    }
+
+    /**
+     * 通过调整空格间距实现两端对齐
+     */
+    private suspend fun justifyBySpaces(
+        book: Book,
+        absStartX: Int,
+        textLine: TextLine,
+        words: List<String>,
+        startX: Float,
+        textWidths: List<Float>,
+        residualWidth: Float,
+        spaceSize: Int,
+        imgList: LinkedList<Img>?
+    ) {
+        val d = residualWidth / spaceSize
+        textLine.wordSpacing = d
+        var x = startX
+
+        for (index in words.indices) {
+            val char = words[index]
+            val cw = textWidths[index]
+            val x1 = if (char == " " && index != words.lastIndex) x + cw + d else x + cw
+            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
+            x = x1
+        }
+    }
+
+    /**
+     * 通过调整字母间距实现两端对齐
+     */
+    private suspend fun justifyByLetterSpacing(
+        book: Book,
+        absStartX: Int,
+        textLine: TextLine,
+        words: List<String>,
+        startX: Float,
+        textWidths: List<Float>,
+        residualWidth: Float,
+        textPaint: TextPaint,
+        imgList: LinkedList<Img>?
+    ) {
+        // 计算每个字符之间的间距，使整行能够顶到边缘
+        val gapCount = words.lastIndex
+        val d = if (gapCount > 0) residualWidth / gapCount else 0f
+
+        // 设置额外的字母间距，但不改变字符之间的相对位置
+        textLine.extraLetterSpacingOffsetX = 0f
+        textLine.extraLetterSpacing = d / textPaint.textSize
+
+        var x = startX
+
+        for (index in words.indices) {
+            val char = words[index]
+            val cw = textWidths[index]
+            // 在每个字符之间添加相同的间距，除了最后一个字符
+            val x1 = if (index != words.lastIndex) x + cw + d else x + cw
+            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
+            x = x1
+        }
     }
 
     /**
@@ -675,23 +713,20 @@ class TextChapterLayout(
         textLine: TextLine,
         words: List<String>,
         startX: Float,
-        hasIndent: Boolean,
         textWidths: List<Float>,
         imgList: LinkedList<Img>?
     ) {
-        val indentLength = paragraphIndent.length
-        var x = startX
         textLine.startX = absStartX + startX
+        var x = startX
+
         for (index in words.indices) {
             val char = words[index]
             val cw = textWidths[index]
             val x1 = x + cw
             addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
             x = x1
-            if (hasIndent && index == indentLength - 1) {
-                textLine.indentWidth = x
-            }
         }
+
         exceed(absStartX, textLine, words)
     }
 
@@ -708,35 +743,39 @@ class TextChapterLayout(
         isLineEnd: Boolean,
         imgList: LinkedList<Img>?
     ) {
-        val column = when {
-            imgList != null && char == ChapterProvider.srcReplaceChar -> {
-                val img = imgList.removeFirst()
-                ImageProvider.cacheImage(book, img.src, ReadBook.bookSource)
-                ImageColumn(
-                    start = absStartX + xStart,
-                    end = absStartX + xEnd,
-                    src = img.src,
-                    img.onclick
-                )
-            }
-
-//            isLineEnd && char == ChapterProvider.reviewChar -> {
-//                ReviewColumn(
-//                    start = absStartX + xStart,
-//                    end = absStartX + xEnd,
-//                    count = 100
-//                )
-//            }
-
-            else -> {
-                TextColumn(
-                    start = absStartX + xStart,
-                    end = absStartX + xEnd,
-                    charData = char
-                )
-            }
-        }
+        val column = createColumn(book, absStartX, char, xStart, xEnd, imgList)
         textLine.addColumn(column)
+    }
+
+    /**
+     * 创建文本列或图片列
+     */
+    private suspend fun createColumn(
+        book: Book,
+        absStartX: Int,
+        char: String,
+        xStart: Float,
+        xEnd: Float,
+        imgList: LinkedList<Img>?
+    ) = when {
+        // 图片占位符
+        imgList != null && char == ChapterProvider.srcReplaceChar -> {
+            val img = imgList.removeFirst()
+            ImageProvider.cacheImage(book, img.src, ReadBook.bookSource)
+            ImageColumn(
+                absStartX + xStart,
+                absStartX + xEnd,
+                img.src,
+                img.onclick
+            )
+        }
+
+        // 普通文本字符
+        else -> TextColumn(
+            absStartX + xStart,
+            absStartX + xEnd,
+            char
+        )
     }
 
     /**
