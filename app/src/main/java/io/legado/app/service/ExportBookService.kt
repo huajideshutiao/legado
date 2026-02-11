@@ -65,6 +65,7 @@ import me.ag2s.epublib.domain.TOCReference
 import me.ag2s.epublib.epub.EpubWriter
 import me.ag2s.epublib.epub.EpubWriterProcessor
 import me.ag2s.epublib.util.ResourceUtil
+import org.jsoup.Jsoup
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.nio.charset.Charset
@@ -325,7 +326,7 @@ class ExportBookService : BaseService() {
             //txt导出图片文件
             val srcList = arrayListOf<SrcData>()
             content?.split("\n")?.forEachIndexed { index, text ->
-                val matcher = AppPattern.imgPattern.matcher(text)
+                val matcher = HtmlFormatter.formatImagePattern.matcher(text)
                 if (matcher.find()) {
                     srcList.add(SrcData(chapter.title, index, matcher.group(1)!!))
                 }
@@ -596,7 +597,7 @@ class ExportBookService : BaseService() {
         val resources = arrayListOf<Resource>()
         content.split("\n").forEach { text ->
             var text1 = text
-            val matcher = AppPattern.imgPattern.matcher(text)
+            val matcher = HtmlFormatter.formatImagePattern.matcher(text)
             if (matcher.find()) {
                 matcher.group(1)?.let { src ->
                     val originalHref =

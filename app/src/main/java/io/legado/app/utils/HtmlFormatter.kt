@@ -18,7 +18,7 @@ object HtmlFormatter {
     private val commentRegex = "<!--[^>]*-->".toRegex() //注释
     private val notImgHtmlRegex = "</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     private val otherHtmlRegex = "</?[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
-    private val formatImagePattern = Pattern.compile(
+    val formatImagePattern = Pattern.compile(
         "<img[^>]*\\ssrc\\s*=\\s*['\"]([^'\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})['\"][^>]*>|<img[^>]*\\s(?:data-src|src)\\s*=\\s*['\"]([^'\">]+)['\"][^>]*>|<img[^>]*\\sdata-[^=>]*=\\s*['\"]([^'\">]*)['\"][^>]*>",
         Pattern.CASE_INSENSITIVE
     )
@@ -109,7 +109,7 @@ object HtmlFormatter {
             }
         }
         extractFromNode(content,str)
-        //if(str.startsWith("\n"))str.deleteCharAt(0)
+        if(str.startsWith("\n"))str.deleteCharAt(0)
         return str.toString()
     }
 }

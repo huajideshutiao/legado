@@ -143,8 +143,8 @@ object ReadManga : CoroutineScope by MainScope() {
     fun loadContent() {
         clearMangaChapter()
         loadContent(durChapterIndex)
-        loadContent(durChapterIndex + 1)
-        loadContent(durChapterIndex - 1)
+        if (durChapterIndex + 1 < chapterSize) loadContent(durChapterIndex + 1)
+        if (durChapterIndex - 1 >= 0) loadContent(durChapterIndex - 1)
     }
 
     fun loadOrUpContent() {

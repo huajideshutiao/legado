@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.apache.commons.text.similarity.JaccardSimilarity
+import org.jsoup.Jsoup
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -138,9 +139,10 @@ object BookHelp {
         chapterList.forEach {
             val content = getContent(book, it)
             if (content != null) {
-                val matcher = AppPattern.imgPattern.matcher(content)
-                while (matcher.find()) {
-                    val src = matcher.group(1) ?: continue
+                val imgList = Jsoup.parse(content).select("img")
+                for (i in imgList) {
+                    val src = i.attr("src")
+                    if (src.isBlank())continue
                     imgNames.add("${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}")
                 }
             }
@@ -194,9 +196,10 @@ object BookHelp {
 
     fun flowImages(bookChapter: BookChapter, content: String): Flow<String> {
         return flow {
-            val matcher = AppPattern.imgPattern.matcher(content)
-            while (matcher.find()) {
-                val src = matcher.group(1) ?: continue
+            val imgList = Jsoup.parse(content).select("img")
+            for (i in imgList) {
+                val src = i.attr("src")
+                if (src.isBlank())continue
                 emit(src)
             }
         }
@@ -361,9 +364,9 @@ object BookHelp {
         val op = BitmapFactory.Options()
         op.inJustDecodeBounds = true
         getContent(book, bookChapter)?.let {
-            val matcher = AppPattern.imgPattern.matcher(it)
-            while (matcher.find()) {
-                val src = matcher.group(1)!!
+            val imgList = Jsoup.parse(it).select("img")
+            for (i in imgList) {
+                val src = i.attr("src")
                 val image = getImage(book, src)
                 if (!image.exists()) {
                     ret = false
