@@ -117,7 +117,6 @@ class BookInfoActivity :
     private val readBookResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        viewModel.upBook()
         when (it.resultCode) {
             RESULT_OK -> {
                 viewModel.inBookshelf = true
@@ -223,6 +222,7 @@ class BookInfoActivity :
 
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
+                GlobalVars.nowBook = viewModel.bookData.value
                 startActivity<SourceLoginActivity>{}
             }
 

@@ -16,9 +16,9 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
 
     fun loadBook() {
             book = GlobalVars.nowBook
-            book?.let {
-                bookData.postValue(it)
-            }
+//            book?.let {
+//                bookData.postValue(it)
+//            }
     }
 
     fun saveBook(book: Book, bookUrl: String?, success: (() -> Unit)?) {

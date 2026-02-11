@@ -317,6 +317,8 @@ class VideoPlayActivity(
             R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
+                GlobalVars.nowBook = viewModel.book
+                GlobalVars.nowChapter = viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)
                 startActivity<SourceLoginActivity>{}
             }
 

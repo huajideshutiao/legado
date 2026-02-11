@@ -124,6 +124,7 @@ class AudioPlayActivity :
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
                 GlobalVars.nowSource = it
+                GlobalVars.nowBook = AudioPlay.book
                 startActivity<SourceLoginActivity>()
             }
 

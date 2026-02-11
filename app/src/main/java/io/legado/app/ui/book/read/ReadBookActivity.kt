@@ -1264,6 +1264,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showLogin() {
         ReadBook.bookSource?.let {
             GlobalVars.nowSource = it
+            GlobalVars.nowBook = ReadBook.book
+            GlobalVars.nowChapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex)
             startActivity<SourceLoginActivity>{}
         }
     }

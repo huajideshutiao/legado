@@ -73,13 +73,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun upBook() {
-        bookData.value = GlobalVars.nowBook
-    }
-
     private fun upBook(book: Book) {
         execute {
-            GlobalVars.nowBook = book
             bookData.postValue(book)
             upCoverByRule(book)
             bookSource = if (book.isLocal) null else

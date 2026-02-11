@@ -28,8 +28,10 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var searchKey: String? = null
 
     fun initBook() {
-        bookUrl = GlobalVars.nowBook!!.bookUrl
-        bookData.postValue(GlobalVars.nowBook)
+        GlobalVars.nowBook?.let {
+            bookData.postValue(it)
+            bookUrl = it.bookUrl
+        }
     }
 
     fun upBookTocRule(book: Book, complete: (Throwable?) -> Unit) {

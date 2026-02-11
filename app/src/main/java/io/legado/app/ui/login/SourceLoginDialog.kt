@@ -12,6 +12,7 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
@@ -44,6 +45,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
     private val viewModel by activityViewModels<SourceLoginViewModel>()
+    private val book by lazy { GlobalVars.nowBook }
+    private val chapter by lazy { GlobalVars.nowChapter }
 
     override fun onStart() {
         super.onStart()
@@ -140,6 +143,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
                             put("result", getLoginData(loginUi))
+                            put("book", book)
+                            put("chapter", chapter)
                         }
                     }
                 }.onFailure { e ->

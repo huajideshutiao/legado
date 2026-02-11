@@ -73,6 +73,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     fun initReadBookConfig() {
         val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?:return
+        GlobalVars.nowBook = book
         ReadBook.upReadBookConfig(book)
     }
 
@@ -81,7 +82,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: ReadBook.book
+            val book = GlobalVars.nowBook ?: ReadBook.book
             if(book != null){
                 ReadBook.inBookshelf = !book.isNotShelf
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
@@ -101,7 +102,6 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
         ReadBook.initData(book)
-        GlobalVars.nowBook = book
         isInitFinish = true
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return

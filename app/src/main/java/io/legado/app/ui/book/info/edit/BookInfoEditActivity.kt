@@ -48,10 +48,8 @@ class BookInfoEditActivity :
     override val viewModel by viewModels<BookInfoEditViewModel>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        viewModel.bookData.observe(this) { upView(it) }
-        if (viewModel.bookData.value == null) {
-            viewModel.loadBook()
-        }
+        //viewModel.bookData.observe(this) { upView(it) }
+        viewModel.loadBook()
         initView()
         initEvent()
     }
@@ -79,7 +77,7 @@ class BookInfoEditActivity :
 
     private fun initEvent() = binding.run {
         tvChangeCover.setOnClickListener {
-            viewModel.bookData.value?.let {
+            viewModel.book?.let {
                 showDialogFragment(
                     ChangeCoverDialog(it.name, it.author)
                 )

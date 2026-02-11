@@ -6,6 +6,8 @@ import io.legado.app.data.entities.BookChapter
 
 object GlobalVars {
     var nowBook : Book? = null
+        get() = field.also { field = null }
     var nowSource : BaseSource? = null
     var nowChapterList :List<BookChapter>? = null
+    var nowChapter : BookChapter? = null
 }
