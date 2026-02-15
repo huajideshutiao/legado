@@ -40,6 +40,7 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                     .inflate(LayoutInflater.from(parent.context), parent, false)
                 CheckBoxViewHolder(binding)
             }
+
             else -> {
                 val binding = ItemSourceEditBinding
                     .inflate(LayoutInflater.from(parent.context), parent, false)
@@ -117,14 +118,12 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {
-            checkBox.setOnCheckedChangeListener(null)
             checkBox.text = editEntity.hint
             checkBox.isChecked = editEntity.value.isTrue()
-            checkBox.setOnCheckedChangeListener { _, isChecked ->
+            checkBox.setOnUserCheckedChangeListener { isChecked ->
                 editEntity.value = isChecked.toString()
             }
         }
-
 
     }
 

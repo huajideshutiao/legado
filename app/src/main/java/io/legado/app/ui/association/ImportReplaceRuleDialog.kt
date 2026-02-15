@@ -218,6 +218,7 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
                             || item.replacement != localRule.replacement
                             || item.isRegex != localRule.isRegex
                             || item.scope != localRule.scope -> "更新"
+
                     else -> "已有"
                 }
             }
@@ -225,11 +226,9 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
             binding.run {
-                cbSourceName.setOnCheckedChangeListener { buttonView, isChecked ->
-                    if (buttonView.isPressed) {
-                        viewModel.selectStatus[holder.layoutPosition] = isChecked
-                        upSelectText()
-                    }
+                cbSourceName.setOnUserCheckedChangeListener { isChecked ->
+                    viewModel.selectStatus[holder.layoutPosition] = isChecked
+                    upSelectText()
                 }
                 root.onClick {
                     cbSourceName.isChecked = !cbSourceName.isChecked
