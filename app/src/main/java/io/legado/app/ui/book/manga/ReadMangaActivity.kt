@@ -692,8 +692,8 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         menu.findItem(R.id.menu_epaper_manga).isChecked = AppConfig.enableMangaEInk
         menu.findItem(R.id.menu_epaper_manga_setting).isVisible = AppConfig.enableMangaEInk
         menu.findItem(R.id.menu_disable_horizontal_page_snap).run {
-            isVisible = AppConfig.enableMangaHorizontalScroll && !AppConfig.disableMangaPageAnim
-            isChecked = AppConfig.disableHorizontalPageSnap || AppConfig.disableMangaPageAnim
+            isVisible = AppConfig.enableMangaHorizontalScroll
+            isChecked = AppConfig.disableHorizontalPageSnap
         }
         menu.findItem(R.id.menu_disable_manga_page_anim).isChecked = AppConfig.disableMangaPageAnim
         menu.findItem(R.id.menu_gray_manga).isChecked = AppConfig.enableMangaGray
