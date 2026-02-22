@@ -28,4 +28,8 @@ class RhinoContext(factory: ContextFactory) : Context(factory) {
         }
     }
 
+    companion object {
+        val threadLocalContext = ThreadLocal<RhinoContext>()
+    }
+
 }

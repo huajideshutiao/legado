@@ -1,6 +1,6 @@
 [versions]
 
-kotlin = "2.3.0"
+kotlin = "2.3.10"
 ksp = "2.3.4"
 agp = "8.13.2"
 appcompat = "1.7.1"
@@ -21,7 +21,7 @@ liveeventbus = "1.8.14"
 markwon = "4.6.2"
 material = "1.13.0"
 media = "1.7.1"
-media3Ui = "1.8.0"
+media3Ui = "1.9.2"
 nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
 preference = "1.2.1"
@@ -34,7 +34,7 @@ desugar = "2.1.5"
 swiperefreshlayout = "1.2.0"
 collection = "1.5.0"
 
-zxingLite = "3.3.0"
+zxingLite = "3.4.0"
 
 #不要更新版本
 #noinspection NewerVersionAvailable
@@ -45,19 +45,15 @@ protobufJavalite = "4.26.1"
 
 # issue #3811，不要更新版本，新版引入了一个破坏性变更（详见https://github.com/jhy/jsoup/pull/2017）
 # 若要升级请确保相关代码不会受此变更影响（如AnalyzeByJSoup.kt、JsoupXpath库等）
-#noinspection NewerVersionAvailable
-jsoup = "1.16.2"
+jsoup = "1.22.1"
 
 # 新版本使用了 Android 6 以下缺少的 Arrays.setAll 方法，导致进入阅读界面会崩溃
-#noinspection GradleDependency,NewerVersionAvailable
-commonsText = "1.13.1"
+commonsText = "1.15.0"
 
 # 新版本使用了 Android 8 以下无法编译的 VarHandle.compareAndExchange 方法
-#noinspection GradleDependency
-rhino = "1.8.1"
+rhino = "1.9.1"
 
-#noinspection GradleDependency,NewerVersionAvailable
-media3 = "1.8.0"
+media3 = "1.9.2"
 
 #noinspection GradleDependency
 webkit = "1.14.0"
@@ -104,7 +100,7 @@ fragment-fragment = { module = "androidx.fragment:fragment", version.ref = "frag
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 fragment-testing = { module = "androidx.fragment:fragment-testing", version.ref = "fragment" }
 
-androidx-junit = { module = "androidx.test.ext:junit", version = "1.2.1" }
+androidx-junit = { module = "androidx.test.ext:junit", version = "1.3.0" }
 
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 
@@ -144,7 +140,7 @@ glide-glide = { module = "com.github.bumptech.glide:glide", version.ref = "glide
 glide-okhttp = { module = "com.github.bumptech.glide:okhttp3-integration", version.ref = "glide" }
 glide-recyclerview = { module = "com.github.bumptech.glide:recyclerview-integration", version.ref = "glide" }
 glide-compiler = { module = "com.github.bumptech.glide:compiler", version.ref = "glide" }
-glide-compose = { module = "com.github.bumptech.glide:compose", version = "1.0.0-beta01" }
+glide-compose = { module = "com.github.bumptech.glide:compose", version = "1.0.0-beta08" }
 glide-ksp = { module = "com.github.bumptech.glide:ksp", version.ref = "glide" }
 glide-avif = { module = "com.github.bumptech.glide:avif-integration", version.ref = "glide" }
 avif = { module = "org.aomedia.avif.android:avif", version = "1.1.1.14d8e3c4" }
@@ -156,7 +152,7 @@ splitties-activities = { module = "com.louiscad.splitties:splitties-activities",
 splitties-systemservices = { module = "com.louiscad.splitties:splitties-systemservices", version.ref = "splitties" }
 splitties-views = { module = "com.louiscad.splitties:splitties-views", version.ref = "splitties" }
 
-androidx-runner = { module = "androidx.test:runner", version = "1.6.2" }
+androidx-runner = { module = "androidx.test:runner", version = "1.7.0" }
 androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
 androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
 androidx-viewpager2 = { module = "androidx.viewpager2:viewpager2", version.ref = "viewpager2" }
@@ -211,11 +207,11 @@ kotlin-sam = { id = "org.jetbrains.kotlin.plugin.sam.with.receiver", version.ref
 kotlin-lombok = { id = "org.jetbrains.kotlin.plugin.lombok", version.ref = "kotlin" }
 kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
 
-google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
+google-services = { id = "com.google.gms.google-services", version = "4.4.4" }
 
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
 
 #protobuf = { id = "com.google.protobuf", version = "0.9.4" }
 
-download = { id = "de.undercouch.download", version = "5.6.0" }
+download = { id = "de.undercouch.download", version = "5.7.0" }

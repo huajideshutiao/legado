@@ -84,8 +84,8 @@ object HtmlFormatter {
 //        )
 //        return sb.toString()
 //    }
-    fun formatKeepImg(html: String?, redirectUrl: String? = null): String {
-        val content = Jsoup.parse(html, redirectUrl).body()
+    fun formatKeepImg(html: String, redirectUrl: String? = null): String {
+        val content = Jsoup.parse(html, redirectUrl?: "").body()
         val str = StringBuilder()
         fun extractFromNode(node: Node, result: StringBuilder) {
             for (child in node.childNodes()) {

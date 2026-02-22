@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -206,6 +207,7 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
+                    GlobalVars.nowBook = it
                     infoEditResult.launch{}
                 }
             }

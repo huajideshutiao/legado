@@ -2,8 +2,9 @@ package com.script.rhino
 
 import org.mozilla.javascript.NativeJavaObject
 import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.lc.type.TypeInfo
 
-class ReadOnlyJavaObject(scope: Scriptable?, javaObject: Any, staticType: Class<*>?) :
+class ReadOnlyJavaObject(scope: Scriptable?, javaObject: Any, staticType: TypeInfo?) :
     NativeJavaObject(scope, javaObject, staticType) {
 
     override fun has(name: String, start: Scriptable): Boolean {

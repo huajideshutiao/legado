@@ -22,7 +22,7 @@ object CookieStore : CookieManagerInterface {
      */
     override fun setCookie(url: String, cookie: String?) {
         try {
-            if(url.startsWith("data:"))return
+            if(!url.startsWith("http"))return
             val domain = NetworkUtils.getSubDomain(url)
             CacheManager.putMemory("${domain}_cookie", cookie ?: "")
             val cookieBean = Cookie(domain, cookie ?: "")

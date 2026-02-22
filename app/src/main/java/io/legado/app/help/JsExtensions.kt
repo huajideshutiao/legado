@@ -247,7 +247,7 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     fun startBrowserAwait(url: String, title: String): StrResponse {
-        return startBrowserAwait(url, title, true)
+        return startBrowserAwait(url, title, false)
     }
 
     /**

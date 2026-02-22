@@ -89,7 +89,7 @@ internal class RhinoCompiledScript(
     override suspend fun evalSuspend(scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
         var ret: Any?
-        withContext(VMBridgeReflect.contextLocal.asContextElement()) {
+        withContext(RhinoContext.threadLocalContext.asContextElement(cx)) {
             cx.allowScriptRun = true
             cx.recursiveCount++
             try {
