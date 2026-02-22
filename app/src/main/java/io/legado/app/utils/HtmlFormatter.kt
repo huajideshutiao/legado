@@ -1,12 +1,9 @@
 package io.legado.app.utils
 
-import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import java.net.URL
 import java.util.regex.Pattern
 
 @Suppress("RegExpRedundantEscape")
@@ -16,14 +13,11 @@ object HtmlFormatter {
     private val noPrintRegex = "(&thinsp;|&zwnj;|&zwj;|\u2009|\u200C|\u200D)".toRegex()
     private val wrapHtmlRegex = "</?(?:div|p|br|hr|h\\d|article|dd|dl)[^>]*>".toRegex()
     private val commentRegex = "<!--[^>]*-->".toRegex() //注释
-    private val notImgHtmlRegex = "</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     private val otherHtmlRegex = "</?[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     val formatImagePattern = Pattern.compile(
         "<img[^>]*\\ssrc\\s*=\\s*['\"]([^'\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})['\"][^>]*>|<img[^>]*\\s(?:data-src|src)\\s*=\\s*['\"]([^'\">]+)['\"][^>]*>|<img[^>]*\\sdata-[^=>]*=\\s*['\"]([^'\">]*)['\"][^>]*>",
         Pattern.CASE_INSENSITIVE
     )
-    private val onClickRegex = "onclick\\s*?=\\s*?['\"]([^'\">]+)".toRegex()
-    private val styleRegex = "style\\s*?=\\s*?['\"]([^'\">]+)".toRegex()
     private val indent1Regex = "\\s*\\n+\\s*".toRegex()
     private val indent2Regex = "^[\\n\\s]+".toRegex()
     private val lastRegex = "[\\n\\s]+$".toRegex()
