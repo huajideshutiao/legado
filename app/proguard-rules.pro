@@ -121,6 +121,10 @@ cn.hutool.core.util.**{*;}
 -keep class org.jsoup.**{*;}
 -dontwarn org.jspecify.annotations.NullMarked
 
+# 保留 Jsoup RE2J 正则表达式引擎相关类
+-keep class com.google.re2j.** { *; }
+-dontwarn com.google.re2j.**
+
 ## ExoPlayer 反射设置ua 保证该私有变量不被混淆
 -keepclassmembers class androidx.media3.datasource.cache.CacheDataSource$Factory {
     *** upstreamDataSourceFactory;

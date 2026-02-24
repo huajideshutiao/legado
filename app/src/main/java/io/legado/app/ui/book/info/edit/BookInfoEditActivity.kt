@@ -52,6 +52,7 @@ class BookInfoEditActivity :
         viewModel.loadBook()
         initView()
         initEvent()
+        upView(viewModel.book!!)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
