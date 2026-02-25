@@ -665,7 +665,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         mAdapter.isHorizontal = enable
         if (enable) {
             if (!enableAutoScroll) {
-                if (AppConfig.disableHorizontalPageSnap || AppConfig.disableMangaPageAnim) {
+                if (AppConfig.disableHorizontalPageSnap) {
                     mPagerSnapHelper.attachToRecyclerView(null)
                 } else {
                     mPagerSnapHelper.attachToRecyclerView(binding.recyclerView)

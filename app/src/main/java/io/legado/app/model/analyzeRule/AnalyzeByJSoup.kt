@@ -213,7 +213,6 @@ class AnalyzeByJSoup(doc: Any) {
             for (elt in elements) {
                 es.addAll(ElementsSingle().getElementsSingle(elt, rules[i]))
             }
-            elements.clear()
             elements = es
         }
         return if (elements.isEmpty()) null else getResultLast(elements, rules[last])

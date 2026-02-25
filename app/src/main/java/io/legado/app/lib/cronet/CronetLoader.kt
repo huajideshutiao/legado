@@ -152,8 +152,6 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 val fileMD5 = getFileMD5(soFile)
                 if (fileMD5 != null && fileMD5.equals(md5, ignoreCase = true)) {
                     //md5值一样，则加载
-                    //确保文件可读
-                    soFile.setReadable(true, false)
                     System.load(soFile.absolutePath)
                     DebugLog.d(javaClass.simpleName, "load from:$soFile")
                     return
@@ -163,10 +161,6 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
             }
             //不存在则下载
             download(soUrl, md5, downloadFile, soFile)
-            //确保文件可读
-            if (soFile.exists()) {
-                soFile.setReadable(true, false)
-            }
             //使用系统加载方法
             System.loadLibrary(libName)
         } finally {
@@ -236,7 +230,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 outputStream.flush()
             }
             //确保文件可读
-            destFile.setReadable(true, false)
+            destFile.setReadable(true, true)
             return true
         } catch (e: Throwable) {
             e.printOnDebug()
@@ -329,7 +323,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 os.write(buffer, 0, length)
             }
             //确保文件可读
-            dest.setReadable(true, false)
+            dest.setReadable(true)
             return true
         } catch (e: Exception) {
             e.printOnDebug()

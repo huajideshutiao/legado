@@ -20,7 +20,7 @@ static def releaseTime() {
 }
 
 def name = "legado"
-def version = "3.24.102710"
+def version = "3." + releaseTime()
 def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
 
 android {
