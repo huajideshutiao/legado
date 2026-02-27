@@ -8,6 +8,7 @@ import type {
   Book,
   BookChapter,
   BookProgress,
+  BookGroup,
   SeachBook,
 } from '@/book'
 import type { Source } from '@/source'
@@ -69,7 +70,12 @@ const saveBookProgressWithBeacon = (bookProgress: BookProgress) => {
   )
 }
 
-const getBookShelf = () => ajax.get<LeagdoApiResponse<Book[]>>('getBookshelf')
+const getGroups = () => ajax.get<LeagdoApiResponse<BookGroup[]>>('getGroups')
+
+const getBookShelf = (groupId?: number | string) => {
+  const url = groupId !== undefined ? `getBookshelf?groupId=${groupId}` : 'getBookshelf'
+  return ajax.get<LeagdoApiResponse<Book[]>>(url)
+}
 
 const getChapterList = (/** @type {string} */ bookUrl: string) =>
   ajax.get<LeagdoApiResponse<BookChapter[]>>(
@@ -208,6 +214,7 @@ export default {
   saveReadConfig,
   saveBookProgress,
   saveBookProgressWithBeacon,
+  getGroups,
   getBookShelf,
   getChapterList,
   getBookContent,

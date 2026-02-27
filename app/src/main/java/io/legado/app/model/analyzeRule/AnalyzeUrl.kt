@@ -110,7 +110,7 @@ class AnalyzeUrl(
     private var webJs: String? = null
     private val enabledCookieJar = source?.enabledCookieJar == true
     private val domain: String
-    private var webViewDelayTime: Long = 0
+    private var webViewDelayTime: Long = 1000L
     private val concurrentRateLimiter = ConcurrentRateLimiter(source)
 
     // 服务器ID

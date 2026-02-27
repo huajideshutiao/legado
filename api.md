@@ -8,7 +8,7 @@
 
 ### Web
 
-以下说明假设您的操作在本机进行，且开放端口为1234。  
+以下说明假设您的操作在本机进行，且开放端口为1122。  
 如果您要从远程计算机访问[阅读]()，请将`127.0.0.1`替换成手机IP。
 
 #### 插入单个书源
@@ -17,7 +17,7 @@
 格式参考[这个文件](/app/src/main/java/io/legado/app/data/entities/BookSource.kt)
 
 ```
-URL = http://127.0.0.1:1234/saveBookSource
+URL = http://127.0.0.1:1122/saveBookSource
 Method = POST
 ```
 
@@ -27,24 +27,24 @@ Method = POST
 格式参考[这个文件](/app/src/main/java/io/legado/app/data/entities/BookSource.kt)，**为数组格式**。
 
 ```
-URL = http://127.0.0.1:1234/saveBookSources
-URL = http://127.0.0.1:1234/saveRssSources
+URL = http://127.0.0.1:1122/saveBookSources
+URL = http://127.0.0.1:1122/saveRssSources
 Method = POST
 ```
 
 #### 获取书源
 
 ```
-URL = http://127.0.0.1:1234/getBookSource?url=xxx
-URL = http://127.0.0.1:1234/getRssSource?url=xxx
+URL = http://127.0.0.1:1122/getBookSource?url=xxx
+URL = http://127.0.0.1:1122/getRssSource?url=xxx
 Method = GET
 ``` 
 
 #### 获取所有书源or订阅源
 
 ```
-URL = http://127.0.0.1:1234/getBookSources
-URL = http://127.0.0.1:1234/getRssSources
+URL = http://127.0.0.1:1122/getBookSources
+URL = http://127.0.0.1:1122/getRssSources
 Method = GET
 ```
 
@@ -54,8 +54,8 @@ Method = GET
 格式参考[这个文件](/app/src/main/java/io/legado/app/data/entities/BookSource.kt)，**为数组格式**。
 
 ```
-URL = http://127.0.0.1:1234/deleteBookSources
-URL = http://127.0.0.1:1234/deleteRssSources
+URL = http://127.0.0.1:1122/deleteBookSources
+URL = http://127.0.0.1:1122/deleteRssSources
 Method = POST
 ```
 
@@ -72,7 +72,7 @@ Message = { key: [String], tag: [String] }
 #### 获取替换规则
 
 ```
-URL = http://127.0.0.1:1234/getReplaceRules
+URL = http://127.0.0.1:1122/getReplaceRules
 Method = GET
 ```
 
@@ -84,14 +84,14 @@ Method = GET
 ##### 删除
 
 ```
-URL = http://127.0.0.1:1234/deleteReplaceRule
+URL = http://127.0.0.1:1122/deleteReplaceRule
 Method = POST
 Body = [ReplaceRule]
 ```
 ##### 插入
 
 ```
-URL = http://127.0.0.1:1234/saveReplaceRule
+URL = http://127.0.0.1:1122/saveReplaceRule
 Method = POST
 Body = [ReplaceRule]
 ```
@@ -101,7 +101,7 @@ Body = [ReplaceRule]
 返回测试文本text替换结果
 
 ```
-URL = http://127.0.0.1:1234/testReplaceRule
+URL = http://127.0.0.1:1122/testReplaceRule
 Method = POST
 Body = { rule: [ReplaceRule], text: [String] }
 ```
@@ -121,30 +121,39 @@ Message = { key: [String] }
 格式参考[这个文件](/app/src/main/java/io/legado/app/data/entities/Book.kt)。
 
 ```
-URL = http://127.0.0.1:1234/saveBook
+URL = http://127.0.0.1:1122/saveBook
 Method = POST
 ```
 
 #### 删除书籍
 
 ```
-URL = http://127.0.0.1:1234/deleteBook
+URL = http://127.0.0.1:1122/deleteBook
 Method = POST
 ```
 
-#### 获取所有书籍
+#### 获取书籍
 
 ```
-URL = http://127.0.0.1:1234/getBookshelf
+URL = http://127.0.0.1:1122/getBookshelf?groupId=xxx
 Method = GET
 ```
 
-获取APP内的所有书籍。
+获取APP内的指定分组的书籍，留空groupId获取所有书籍。
+
+#### 获取所有分组
+
+```
+URL = http://127.0.0.1:1122/getGroups
+Method = GET
+```
+
+获取APP内的所有分组（包含默认分组和用户创建）。
 
 #### 获取书籍章节列表
 
 ```
-URL = http://127.0.0.1:1234/getChapterList?url=xxx
+URL = http://127.0.0.1:1122/getChapterList?url=xxx
 Method = GET
 ```
 
@@ -153,7 +162,7 @@ Method = GET
 #### 获取书籍内容
 
 ```
-URL = http://127.0.0.1:1234/getBookContent?url=xxx&index=1
+URL = http://127.0.0.1:1122/getBookContent?url=xxx&index=1
 Method = GET
 ```
 
@@ -162,14 +171,14 @@ Method = GET
 #### 获取封面
 
 ```
-URL = http://127.0.0.1:1234/cover?path=xxxxx
+URL = http://127.0.0.1:1122/cover?path=xxxxx
 Method = GET
 ```
 
 #### 获取正文图片
 
 ```
-URL = http://127.0.0.1:1234/image?url=${bookUrl}&path=${picUrl}&width=${width}
+URL = http://127.0.0.1:1122/image?url=${bookUrl}&path=${picUrl}&width=${width}
 Method = GET
 ```
 
@@ -179,7 +188,7 @@ Method = GET
 格式参考[这个文件](/app/src/main/java/io/legado/app/data/entities/BookProgress.kt)。
 
 ```
-URL = http://127.0.0.1:1234/saveBookProgress
+URL = http://127.0.0.1:1122/saveBookProgress
 Method = POST
 ```
 

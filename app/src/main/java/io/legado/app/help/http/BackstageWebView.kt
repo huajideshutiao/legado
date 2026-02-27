@@ -43,7 +43,7 @@ class BackstageWebView(
     private val sourceRegex: String? = null,
     private val overrideUrlRegex: String? = null,
     private val javaScript: String? = null,
-    private val delayTime: Long = 0,
+    private val delayTime: Long = 1000L,
 ) {
 
     private val mHandler = Handler(Looper.getMainLooper())
@@ -155,11 +155,7 @@ class BackstageWebView(
             view: WebView,
             request: WebResourceRequest
         ): Boolean {
-            isRedirect = isRedirect || if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                request.isRedirect
-            } else {
-                request.url.toString() != view.url
-            }
+            isRedirect = isRedirect || request.isRedirect
             return super.shouldOverrideUrlLoading(view, request)
         }
 
@@ -169,7 +165,7 @@ class BackstageWebView(
                 runnable = EvalJsRunnable(view, url, getJs())
             }
             mHandler.removeCallbacks(runnable!!)
-            mHandler.postDelayed(runnable!!, 1000 + delayTime)
+            mHandler.postDelayed(runnable!!, delayTime)
         }
 
         @SuppressLint("WebViewClientOnReceivedSslError")
@@ -298,7 +294,7 @@ class BackstageWebView(
             setCookie(url)
             if (!javaScript.isNullOrEmpty()) {
                 val runnable = LoadJsRunnable(webView, javaScript)
-                mHandler.postDelayed(runnable, 1000L + delayTime)
+                mHandler.postDelayed(runnable, delayTime)
             }
         }
 

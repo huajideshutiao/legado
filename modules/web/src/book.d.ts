@@ -77,7 +77,7 @@ export type SeachBook = BaseBook & {
   time: number
   originOrder: number
   chapterWordCountText?: string
-  chapterWordCount: number0
+  chapterWordCount: number
   respondTime: number
 }
 export type BookProgress = Pick<
@@ -106,4 +106,14 @@ export type BookChapter = {
   startFragmentId?: string //EPUB书籍当前章节的fragmentId
   endFragmentId?: string //EPUB书籍下一章节的fragmentId
   variable?: string //变量
+}
+
+export type BookGroup = {
+  groupId: number
+  groupName: string
+  cover?: string
+  order: number
+  enableRefresh: boolean
+  show: boolean
+  bookSort: number
 }

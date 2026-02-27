@@ -5,10 +5,12 @@ import type {
   Book,
   BookChapter,
   BookProgress,
+  BookGroup,
   SeachBook,
 } from '@/book'
 import type { webReadConfig } from '@/web'
 import { ElMessage } from 'element-plus/es'
+import { toRaw } from 'vue'
 
 const default_config: webReadConfig = {
   theme: 0,
@@ -31,6 +33,8 @@ export const useBookStore = defineStore('book', {
     return {
       searchBooks: [] as SeachBook[],
       shelf: [] as Book[],
+      groups: [] as BookGroup[],
+      currentGroupId: undefined as number | string | undefined,
       catalog: [] as BookChapter[],
       readingBook: { chapterPos: 0, chapterIndex: 0 } as BaseBook & {
         chapterPos: number
@@ -66,16 +70,31 @@ export const useBookStore = defineStore('book', {
     isNight: state => state.config.theme == 6,
   },
   actions: {
+    /** 获取所有分组 */
+    async loadGroups() {
+      try {
+        const resp = await API.getGroups()
+        const { isSuccess, data, errorMsg } = resp.data
+        if (isSuccess) {
+          this.groups = data
+        } else {
+          console.error('获取分组失败:', errorMsg)
+        }
+      } catch (e) {
+        console.error('获取分组出错:', e)
+      }
+    },
     /** 从后端加载书架书籍，优先返回内存缓存 */
-    async loadBookShelf(): Promise<Book[]> {
-      const fetchBookshellf_promise = API.getBookShelf().then(resp => {
+    async loadBookShelf(groupId?: number | string): Promise<Book[]> {
+      const fetchBookshellf_promise = API.getBookShelf(groupId).then(resp => {
         console.log('API.getBookShelf数据返回')
         const { isSuccess, data, errorMsg } = resp.data
         if (isSuccess === true) {
           if (
             this.shelf.length !== data.length &&
             this.shelf.length > 0 &&
-            data.length > 0
+            data.length > 0 &&
+            groupId === this.currentGroupId
           ) {
             ElMessage.info(`书架数据已更新`)
           }
@@ -95,11 +114,12 @@ export const useBookStore = defineStore('book', {
         return this.shelf
       })
 
-      if (this.shelf.length > 0) {
+      if (this.shelf.length > 0 && groupId === this.currentGroupId) {
         // bookshelf data fetched before:do not await
         console.log('返回缓存书架数据')
         return this.shelf
       } else {
+        this.currentGroupId = groupId
         console.log('从阅读后端获取书架数据...')
         return await fetchBookshellf_promise
       }

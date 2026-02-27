@@ -167,7 +167,7 @@ interface JsExtensions : JsEncodeUtils {
      * @param js 用来取返回值的js语句, 没有就返回整个源代码
      * @return 返回js获取的内容
      */
-    fun webView(html: String?, url: String?, js: String?): String? {
+    fun webView(html: String?, url: String?, js: String?, delayTime: Long?): String? {
         if (isMainThread) {
             error("webView must be called on a background thread")
         }
@@ -177,7 +177,8 @@ interface JsExtensions : JsEncodeUtils {
                 html = html,
                 javaScript = js,
                 headerMap = getSource()?.getHeaderMap(true),
-                tag = getSource()?.getKey()
+                tag = getSource()?.getKey(),
+                delayTime = delayTime ?: 1000L
             ).getStrResponse().body
         }
     }
@@ -185,7 +186,7 @@ interface JsExtensions : JsEncodeUtils {
     /**
      * 使用webView获取资源url
      */
-    fun webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String): String? {
+    fun webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String?, delayTime: Long?): String? {
         if (isMainThread) {
             error("webViewGetSource must be called on a background thread")
         }
@@ -196,7 +197,8 @@ interface JsExtensions : JsEncodeUtils {
                 javaScript = js,
                 headerMap = getSource()?.getHeaderMap(true),
                 tag = getSource()?.getKey(),
-                sourceRegex = sourceRegex
+                sourceRegex = sourceRegex,
+                delayTime = delayTime ?: 1000L
             ).getStrResponse().body
         }
     }
@@ -208,7 +210,8 @@ interface JsExtensions : JsEncodeUtils {
         html: String?,
         url: String?,
         js: String?,
-        overrideUrlRegex: String
+        overrideUrlRegex: String?,
+        delayTime: Long?
     ): String? {
         if (isMainThread) {
             error("webViewGetOverrideUrl must be called on a background thread")
@@ -220,7 +223,8 @@ interface JsExtensions : JsEncodeUtils {
                 javaScript = js,
                 headerMap = getSource()?.getHeaderMap(true),
                 tag = getSource()?.getKey(),
-                overrideUrlRegex = overrideUrlRegex
+                overrideUrlRegex = overrideUrlRegex,
+                delayTime = delayTime ?: 1000L
             ).getStrResponse().body
         }
     }
