@@ -32,6 +32,8 @@ data class RssSource(
     // 启用okhttp CookieJAr 自动保存每次请求的cookie
     @ColumnInfo(defaultValue = "0")
     override var enabledCookieJar: Boolean? = true,
+    @ColumnInfo(defaultValue = "0")
+    override var enableDangerousApi: Boolean? = false,
     /**并发率**/
     override var concurrentRate: String? = null,
     /**请求头**/

@@ -63,6 +63,13 @@
                 android:text="@string/auto_save_cookie" />
 
             <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_is_enable_dangerous_api"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="@string/enable_dangerous_api" />
+
+            <io.legado.app.lib.theme.view.ThemeCheckBox
                 android:id="@+id/cb_is_enable_review"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

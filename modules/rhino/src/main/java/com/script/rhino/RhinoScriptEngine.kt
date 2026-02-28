@@ -44,6 +44,7 @@ import org.mozilla.javascript.ContinuationPending
 import org.mozilla.javascript.Function
 import org.mozilla.javascript.JavaScriptException
 import org.mozilla.javascript.RhinoException
+import org.mozilla.javascript.ScriptRuntime
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
 import org.mozilla.javascript.Undefined
@@ -95,6 +96,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
+        if (scope is ScriptBindings) cx.dangerousApi = scope.dangerousApi
         cx.allowScriptRun = true
         cx.recursiveCount++
         val ret: Any?
@@ -127,6 +129,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
     @Throws(ContinuationPending::class)
     override suspend fun evalSuspend(reader: Reader, scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
+        if (scope is ScriptBindings) cx.dangerousApi = scope.dangerousApi
         var ret: Any?
         withContext(RhinoContext.threadLocalContext.asContextElement(cx)) {
             cx.allowScriptRun = true
@@ -294,7 +297,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
 
     fun wrapArguments(args: Array<Any?>?): Array<Any?> {
         return if (args == null) {
-            Context.emptyArgs
+            ScriptRuntime.emptyArgs
         } else {
             val res = arrayOfNulls<Any>(args.size)
             for (i in res.indices) {

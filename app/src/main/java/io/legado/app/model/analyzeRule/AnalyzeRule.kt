@@ -785,6 +785,7 @@ class AnalyzeRule(
             bindings["src"] = content
             bindings["nextChapterUrl"] = nextChapterUrl
             bindings["rssArticle"] = rssArticle
+            bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef?.get()
         val scope = if (topScope == null) {

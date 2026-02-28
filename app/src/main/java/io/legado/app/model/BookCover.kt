@@ -187,6 +187,7 @@ object BookCover {
         override var header: String? = null,
         override var jsLib: String? = null,
         override var enabledCookieJar: Boolean? = false,
+        override var enableDangerousApi: Boolean? = false,
     ) : BaseSource {
 
         override fun getTag(): String {

@@ -27,6 +27,8 @@ data class HttpTTS(
     override var jsLib: String? = null,
     @ColumnInfo(defaultValue = "0")
     override var enabledCookieJar: Boolean? = false,
+    @ColumnInfo(defaultValue = "0")
+    override var enableDangerousApi: Boolean? = false,
     var loginCheckJs: String? = null,
     @ColumnInfo(defaultValue = "0")
     var lastUpdateTime: Long = System.currentTimeMillis()

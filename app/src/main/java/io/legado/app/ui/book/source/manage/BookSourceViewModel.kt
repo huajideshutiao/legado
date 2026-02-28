@@ -157,6 +157,7 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
                     keys.contains(it.bookSourceUrl)
                 }
             }
+            sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
             saveToFile(sources, success)
         }
     }

@@ -51,6 +51,11 @@ interface BaseSource : JsExtensions {
      */
     var enabledCookieJar: Boolean?
 
+    /*
+    * 高危api
+    * */
+    var enableDangerousApi: Boolean?
+
     /**
      * js库
      */
@@ -245,6 +250,7 @@ interface BaseSource : JsExtensions {
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
             bindings.apply(bindingsConfig)
+            bindings.dangerousApi = enableDangerousApi == true
         }
         val sharedScope = getShareScope()
         val scope = if (sharedScope == null) {

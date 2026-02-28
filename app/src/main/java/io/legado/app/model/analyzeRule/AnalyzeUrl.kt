@@ -389,6 +389,7 @@ class AnalyzeUrl(
             bindings["book"] = ruleData as? Book
             bindings["source"] = source
             bindings["result"] = result
+            bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val sharedScope = source?.getShareScope(coroutineContext)
         val scope = if (sharedScope == null) {

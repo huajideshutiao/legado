@@ -1238,4 +1238,6 @@
     <string name="show_video_ui">Video UI</string>
     <string name="book_url">Book Path</string>
     <string name="copy_chapter_url">Copy Chapter Url</string>
+    <string name="enable_dangerous_api">Dangerous Api</string>
+    <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危api会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
 </resources>

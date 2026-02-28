@@ -6,6 +6,8 @@ import org.mozilla.javascript.ScriptableObject
 
 class ScriptBindings : NativeObject() {
 
+    var dangerousApi = false
+
     companion object {
         private val topLevelScope: ScriptableObject by lazy {
             val cx = Context.enter()

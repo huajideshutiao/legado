@@ -207,6 +207,22 @@ class BookSourceEditActivity :
             softKeyboardTool.initialPadding = imeHeight
             windowInsets
         }
+
+        // 为 cbIsEnableDangerousApi 添加点击事件处理
+        binding.cbIsEnableDangerousApi.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                alert(R.string.enable_dangerous_api) {
+                    setMessage(R.string.enable_dangerous_api_confirm)
+                    positiveButton(R.string.ok)
+                    negativeButton(R.string.cancel) {
+                        binding.cbIsEnableDangerousApi.isChecked = false
+                    }
+                    onCancelled {
+                        binding.cbIsEnableDangerousApi.isChecked = false
+                    }
+                }
+            }
+        }
     }
 
     override fun finish() {
@@ -248,6 +264,7 @@ class BookSourceEditActivity :
             binding.cbIsEnable.isChecked = it.enabled
             binding.cbIsEnableExplore.isChecked = it.enabledExplore
             binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
+            binding.cbIsEnableDangerousApi.isChecked = it.enableDangerousApi ?: false
             binding.spType.setSelection(
                 when (it.bookSourceType) {
                     BookSourceType.video -> 4
@@ -377,6 +394,7 @@ class BookSourceEditActivity :
         source.enabled = binding.cbIsEnable.isChecked
         source.enabledExplore = binding.cbIsEnableExplore.isChecked
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
+        source.enableDangerousApi = binding.cbIsEnableDangerousApi.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
             4 -> BookSourceType.video
             3 -> BookSourceType.file

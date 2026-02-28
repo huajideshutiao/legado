@@ -24,7 +24,6 @@
  */
 package com.script.rhino
 
-import android.os.Build
 import org.mozilla.javascript.ClassShutter
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.Scriptable
@@ -135,14 +134,13 @@ object RhinoClassShutter : ClassShutter {
             okio.FileHandle::class.java,
             okio.Path::class.java,
             android.content.Context::class.java,
-        ) + if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            arrayOf(FileSystem::class.java, Path::class.java)
-        } else {
-            emptyArray()
-        }
+        ) +
+                arrayOf(FileSystem::class.java, Path::class.java)
     }
 
     fun visibleToScripts(obj: Any): Boolean {
+        val cx = Context.getCurrentContext() as? RhinoContext
+        if (cx?.dangerousApi == true) return true
         when (obj) {
             is ClassLoader,
             is Class<*>,
@@ -155,16 +153,16 @@ object RhinoClassShutter : ClassShutter {
             is okio.Path,
             is android.content.Context -> return false
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            when (obj) {
-                is FileSystem,
-                is Path -> return false
-            }
+        when (obj) {
+            is FileSystem,
+            is Path -> return false
         }
         return visibleToScripts(obj.javaClass.name)
     }
 
     fun visibleToScripts(clazz: Class<*>): Boolean {
+        val cx = Context.getCurrentContext() as? RhinoContext
+        if (cx?.dangerousApi == true) return true
         protectedClasses.forEach {
             if (it.isAssignableFrom(clazz)) {
                 return false
@@ -174,6 +172,8 @@ object RhinoClassShutter : ClassShutter {
     }
 
     fun wrapJavaClass(scope: Scriptable, javaClass: Class<*>): Scriptable {
+        val cx = Context.getCurrentContext() as? RhinoContext
+        if (cx?.dangerousApi == true) return org.mozilla.javascript.NativeJavaClass(scope, javaClass)
         return when (javaClass) {
             System::class.java -> {
                 ProtectedNativeJavaClass(scope, javaClass, systemClassProtectedName)
@@ -184,6 +184,8 @@ object RhinoClassShutter : ClassShutter {
     }
 
     override fun visibleToScripts(fullClassName: String): Boolean {
+        val cx = Context.getCurrentContext() as? RhinoContext
+        if (cx?.dangerousApi == true) return true
         return !protectedClassNamesMatcher.match(fullClassName)
     }
 

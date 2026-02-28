@@ -11,6 +11,7 @@ class RhinoContext(factory: ContextFactory) : Context(factory) {
     var coroutineContext: CoroutineContext? = null
     var allowScriptRun = false
     var recursiveCount = 0
+    var dangerousApi = false
 
     @Throws(RhinoInterruptError::class)
     fun ensureActive() {
