@@ -27,7 +27,7 @@ object SharedJsScope {
 
     private val scopeMap = LruCache<String, WeakReference<Scriptable>>(16)
 
-    fun getScope(jsLib: String?, coroutineContext: CoroutineContext?): Scriptable? {
+    fun getScope(jsLib: String?, enableDangerousApi: Boolean, coroutineContext: CoroutineContext?): Scriptable? {
         if (jsLib.isNullOrBlank()) {
             return null
         }
@@ -35,7 +35,9 @@ object SharedJsScope {
         var scope = scopeMap[key]?.get()
         if (scope == null) {
             scope = RhinoScriptEngine.run {
-                getRuntimeScope(ScriptBindings())
+                getRuntimeScope(ScriptBindings().apply {
+                    this.dangerousApi = enableDangerousApi
+                })
             }
             if (jsLib.isJsonObject()) {
                 val jsMap: Map<String, String> = GSON.fromJson(

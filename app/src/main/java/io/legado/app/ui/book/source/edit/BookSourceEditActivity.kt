@@ -28,6 +28,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
@@ -210,6 +211,12 @@ class BookSourceEditActivity :
 
         // 为 cbIsEnableDangerousApi 添加点击事件处理
         binding.cbIsEnableDangerousApi.setOnCheckedChangeListener { _, isChecked ->
+            viewModel.bookSource?.jsLib?.takeIf { it.isNotBlank() }?.let {
+                if (isChecked != viewModel.bookSource?.enableDangerousApi) {
+                    SharedJsScope.remove(it)
+                }
+            }
+
             if (isChecked) {
                 alert(R.string.enable_dangerous_api) {
                     setMessage(R.string.enable_dangerous_api_confirm)

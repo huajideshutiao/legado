@@ -9,7 +9,7 @@ import org.mozilla.javascript.Scriptable
 import kotlin.coroutines.CoroutineContext
 
 fun BaseSource.getShareScope(coroutineContext: CoroutineContext? = null): Scriptable? {
-    return SharedJsScope.getScope(jsLib, coroutineContext)
+    return SharedJsScope.getScope(jsLib, enableDangerousApi == true, coroutineContext)
 }
 
 fun BaseSource.getSourceType(): Int {
