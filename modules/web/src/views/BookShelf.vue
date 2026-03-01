@@ -42,6 +42,24 @@
             </el-tag>
           </div>
         </div>
+        <div class="group-wrapper">
+          <div class="group-title">书架分组</div>
+          <div class="group-selector">
+            <el-select
+              v-model="currentGroupId"
+              placeholder="选择分组"
+              @change="handleGroupChange"
+              class="group-select"
+            >
+              <el-option
+                v-for="group in groups"
+                :key="group.groupId"
+                :label="group.groupName"
+                :value="group.groupId"
+              />
+            </el-select>
+          </div>
+        </div>
         <div class="setting-wrapper">
           <div class="setting-title">基本设定</div>
           <div class="setting-item">
@@ -128,6 +146,10 @@ const books = shallowRef<Book[] | SeachBook[]>([])
 const shelf = computed(() => store.shelf)
 const searchWord = ref('')
 const isSearching = ref(false)
+
+// 分组相关
+const groups = computed(() => store.groups)
+const currentGroupId = ref<number | string | undefined>(undefined)
 watchEffect(() => {
   if (isSearching.value && searchWord.value != '') return
   isSearching.value = false
@@ -285,8 +307,26 @@ const toDetail = (
 const loadShelf = async () => {
   await store.loadWebConfig()
   await store.saveBookProgress()
-  //确保各种网络情况下同步请求先完成
-  await store.loadBookShelf()
+  // 先获取分组列表
+  await store.loadGroups()
+  // 获取第一个分组的书籍
+  if (groups.value.length > 0) {
+    currentGroupId.value = groups.value[0].groupId
+    await store.loadBookShelf(currentGroupId.value)
+  } else {
+    // 如果没有分组，加载所有书籍
+    await store.loadBookShelf()
+  }
+}
+
+// 分组切换处理
+const handleGroupChange = async (groupId: number | string) => {
+  showLoading()
+  try {
+    await store.loadBookShelf(groupId)
+  } finally {
+    closeLoading()
+  }
 }
 
 onMounted(() => {
@@ -345,6 +385,24 @@ onMounted(() => {
     .bottom-wrapper {
       display: flex;
       flex-direction: column;
+    }
+
+    .group-wrapper {
+      margin-top: 36px;
+
+      .group-title {
+        font-size: 14px;
+        color: #b1b1b1;
+        font-family: FZZCYSK;
+      }
+
+      .group-selector {
+        margin: 18px 0;
+
+        .group-select {
+          width: 100%;
+        }
+      }
     }
 
     .recent-wrapper {
@@ -438,6 +496,7 @@ onMounted(() => {
           margin-top: 18px;
 
           .reading-recent,
+          .group-selector,
           .setting-item {
             margin-bottom: 0px;
           }

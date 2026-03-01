@@ -23,13 +23,6 @@ import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
-import org.checkerframework.checker.units.qual.s
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
-import org.jsoup.nodes.TextNode
-import org.jsoup.safety.Safelist
 import splitties.init.appCtx
 
 /**
