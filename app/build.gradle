@@ -121,10 +121,16 @@ android {
 
     android.applicationVariants.configureEach { variant ->
         variant.outputs.configureEach { output ->
-            def flavor = variant.productFlavors[0].name
             def abi = output.getFilter(com.android.build.OutputFile.ABI)
-            if (abi == null) abi = "universal"
-            outputFileName = "${name}_${flavor}_${abi}_${defaultConfig.versionName}.apk"
+            // 简写架构名称
+            def abiShortMap = [
+                    "arm64-v8a"  : "arm64",
+                    "armeabi-v7a": "armv7",
+                    "x86_64"     : "x64",
+                    "x86"        : "x86",
+                    null         : "all"
+            ]
+            outputFileName = "${name}_${abiShortMap.get(abi)}_${defaultConfig.versionName}.apk"
         }
     }
 
