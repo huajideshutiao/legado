@@ -208,28 +208,6 @@ class BookSourceEditActivity :
             softKeyboardTool.initialPadding = imeHeight
             windowInsets
         }
-
-        // 为 cbIsEnableDangerousApi 添加点击事件处理
-        binding.cbIsEnableDangerousApi.setOnCheckedChangeListener { _, isChecked ->
-            viewModel.bookSource?.jsLib?.takeIf { it.isNotBlank() }?.let {
-                if (isChecked != viewModel.bookSource?.enableDangerousApi) {
-                    SharedJsScope.remove(it)
-                }
-            }
-
-            if (isChecked) {
-                alert(R.string.enable_dangerous_api) {
-                    setMessage(R.string.enable_dangerous_api_confirm)
-                    positiveButton(R.string.ok)
-                    negativeButton(R.string.cancel) {
-                        binding.cbIsEnableDangerousApi.isChecked = false
-                    }
-                    onCancelled {
-                        binding.cbIsEnableDangerousApi.isChecked = false
-                    }
-                }
-            }
-        }
     }
 
     override fun finish() {
@@ -281,6 +259,23 @@ class BookSourceEditActivity :
                     else -> 0
                 }
             )
+            binding.cbIsEnableDangerousApi.setOnCheckedChangeListener { btn, isChecked ->
+                if (isChecked != it.enableDangerousApi) {
+                    SharedJsScope.remove(it.jsLib)
+                }
+                if (isChecked) {
+                    alert(R.string.enable_dangerous_api) {
+                        setMessage(R.string.enable_dangerous_api_confirm)
+                        positiveButton(R.string.ok)
+                        negativeButton(R.string.cancel) {
+                            btn.isChecked = false
+                        }
+                        onCancelled {
+                            btn.isChecked = false
+                        }
+                    }
+                }
+            }
         }
         // 基本信息
         sourceEntities.clear()

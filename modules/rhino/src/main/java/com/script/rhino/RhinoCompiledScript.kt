@@ -25,6 +25,7 @@
 package com.script.rhino
 
 import com.script.CompiledScript
+import com.script.ScriptBindings
 import com.script.ScriptEngine
 import com.script.ScriptException
 import kotlinx.coroutines.Job
@@ -60,12 +61,15 @@ internal class RhinoCompiledScript(
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
+        if (scope is ScriptBindings) {
+            cx.dangerousApi = scope.dangerousApi == true
+        }
         cx.allowScriptRun = true
         cx.recursiveCount++
         val result: Any?
         try {
             cx.checkRecursive()
-            val ret = script.exec(cx, scope)
+            val ret = script.exec(cx, scope, scope)
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
             val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
