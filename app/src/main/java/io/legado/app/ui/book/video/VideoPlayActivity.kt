@@ -93,7 +93,6 @@ class VideoPlayActivity(
                 val item = binding.titleBar.menu.findItem(R.id.menu_shelf)
                 item.setIcon(R.drawable.ic_star)
                 item.setTitle(R.string.in_favorites)
-                item.icon?.setTintMutate(primaryTextColor)
                 viewModel.book.removeType(BookType.notShelf) 
             }
         }
@@ -273,7 +272,6 @@ class VideoPlayActivity(
                     setIcon(R.drawable.ic_star_border)
                     setTitle(R.string.out_favorites)
                 }
-            icon?.setTintMutate(primaryTextColor)
         }
         return super.onPrepareOptionsMenu(menu)
     }
@@ -309,7 +307,6 @@ class VideoPlayActivity(
                         setResult(RESULT_OK)
                         item.setIcon(R.drawable.ic_star)
                         item.setTitle(R.string.in_favorites)
-                        item.icon?.setTintMutate(primaryTextColor)
                     }
                 }
             }

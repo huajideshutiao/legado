@@ -6,19 +6,15 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.constant.BookType
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
-import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
 
-class ExploreShowAdapter(context: Context, val callBack: CallBack) :
-    RecyclerAdapter<SearchBook, ItemSearchBinding>(context) {
+class ExploreShowAdapter(context: Context, callBack: CallBack) :
+    BaseExploreShowAdapter<ItemSearchBinding>(context, callBack) {
 
     override fun getViewBinding(parent: ViewGroup): ItemSearchBinding {
         return ItemSearchBinding.inflate(inflater, parent, false)
@@ -60,7 +56,6 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 llKind.visible()
                 llKind.setLabels(kinds)
             }
-            //if (item.type ==2048)ivCover.layoutParams.let {it.width = it.height/9*16}
             ivCover.load(
                 item.coverUrl,
                 item.name,
@@ -81,23 +76,5 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 }
             }
         }
-    }
-
-    override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
-        val tmp = {
-            getItem(holder.layoutPosition)?.toBook()?.apply {
-            if (!binding.ivInBookshelf.isVisible) addType(BookType.notShelf) }
-        }
-        holder.itemView.setOnClickListener { tmp.invoke()?.let { book -> callBack.showBookInfo(book) } }
-        holder.itemView.setOnLongClickListener { tmp.invoke()?.let { book -> callBack.showBookInfo(book, true) }; true }
-    }
-
-    interface CallBack {
-        /**
-         * 是否已经加入书架
-         */
-        fun isInBookshelf(book: SearchBook): Boolean
-
-        fun showBookInfo(book: Book, action: Boolean = false)
     }
 }

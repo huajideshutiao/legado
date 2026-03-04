@@ -1,23 +1,30 @@
 package io.legado.app.ui.book.explore
 
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.viewModels
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.os.bundleOf
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.GlobalVars
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -25,33 +32,17 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 发现列表
  */
 class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
-    ExploreShowAdapter.CallBack {
+    BaseExploreShowAdapter.CallBack {
     override val binding by viewBinding(ActivityExploreShowBinding::inflate)
     override val viewModel by viewModels<ExploreShowViewModel>()
-
-    private val adapter by lazy { ExploreShowAdapter(this, this) }
+    private lateinit var adapter: BaseExploreShowAdapter<*>
     private val loadMoreView by lazy { LoadMoreView(this) }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
-        initRecyclerView()
-        viewModel.booksData.observe(this) { upData(it) }
-        viewModel.initData(intent)
-        viewModel.errorLiveData.observe(this) {
-            loadMoreView.error(it)
-        }
-        viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
-        }
-    }
-
-    private fun initRecyclerView() {
+        adapter = ExploreShowAdapter(this, this)
         binding.recyclerView.addItemDecoration(VerticalDivider(this))
-        binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
-        adapter.addFooterView {
-            ViewLoadMoreBinding.bind(loadMoreView)
-        }
         loadMoreView.startLoad()
         loadMoreView.setOnClickListener {
             if (!loadMoreView.isLoading) {
@@ -66,6 +57,53 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 }
             }
         })
+        bindAdapter()
+        viewModel.booksData.observe(this) { upData(it) }
+        viewModel.initData(intent)
+        viewModel.errorLiveData.observe(this) {
+            loadMoreView.error(it)
+        }
+        viewModel.upAdapterLiveData.observe(this) {
+            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
+        }
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.explore_bar, menu)
+        return super.onCompatCreateOptionsMenu(menu)
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_switch_layout -> {
+                when(adapter){
+                    is ExploreShowAdapter -> {
+                        adapter = BigExploreShowAdapter(this, this)
+                        item.setIcon(R.drawable.ic_layout_grid)
+                    }
+                    is BigExploreShowAdapter -> {
+                        binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
+                        adapter = GridExploreShowAdapter(this, this)
+                        item.setIcon(R.drawable.ic_layout_list)
+                    }
+                    is GridExploreShowAdapter -> {
+                        binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
+                        adapter = ExploreShowAdapter(this, this)
+                        item.setIcon(R.drawable.ic_layout_big_card)
+                    }
+                }
+                bindAdapter()
+                viewModel.booksData.value?.let { upData(it) }
+            }
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun bindAdapter() {
+        binding.recyclerView.adapter = adapter
+        adapter.addFooterView {
+            ViewLoadMoreBinding.bind(loadMoreView)
+        }
     }
 
     private fun scrollToBottom(forceLoad: Boolean = false) {
@@ -86,16 +124,17 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
     }
 
-    override fun isInBookshelf(book: SearchBook): Boolean {
+    override fun isInBookshelf(book: BaseBook): Boolean {
         return viewModel.isInBookShelf(book)
     }
 
     override fun showBookInfo(book: Book, action: Boolean) {
         if (book.bookUrl.contains("::")) {
+            val tmp = book.bookUrl.split("::")
             startActivity<ExploreShowActivity> {
-                putExtra("exploreName", book.bookUrl.split("::")[0])
+                putExtra("exploreName", tmp[0])
                 putExtra("sourceUrl", intent.getStringExtra("sourceUrl"))
-                putExtra("exploreUrl", book.bookUrl.split("::")[1])
+                putExtra("exploreUrl", tmp[1])
             }
         } else {
             GlobalVars.nowBook = book
