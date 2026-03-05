@@ -15,6 +15,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -25,8 +26,6 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -85,44 +84,6 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         if (!book.isLocal && ReadManga.bookSource == null) {
             autoChangeSource(book.name, book.author)
             return
-        }
-    }
-
-    private suspend fun loadChapterListAwait(book: Book): Boolean {
-        val bookSource = ReadManga.bookSource ?: return true
-        val oldBook = book.copy()
-        WebBook.getChapterListAwait(bookSource, book, true).onSuccess { cList ->
-            if (oldBook.bookUrl == book.bookUrl) {
-                appDb.bookDao.update(book)
-            } else {
-                appDb.bookDao.replace(oldBook, book)
-                BookHelp.updateCacheFolder(oldBook, book)
-            }
-            appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-            appDb.bookChapterDao.insert(*cList.toTypedArray())
-            ReadManga.onChapterListUpdated(book)
-            return true
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            //加载章节出错
-            ReadManga.mCallback?.loadFail(appCtx.getString(R.string.error_load_toc))
-            return false
-        }
-        return true
-    }
-
-    /**
-     * 加载详情页
-     */
-    private suspend fun loadBookInfo(book: Book): Boolean {
-        val source = ReadManga.bookSource ?: return true
-        try {
-            WebBook.getBookInfoAwait(source, book, canReName = false)
-            return true
-        } catch (e: Throwable) {
-            currentCoroutineContext().ensureActive()
-            ReadManga.mCallback?.loadFail("详情页出错: ${e.localizedMessage}")
-            return false
         }
     }
 

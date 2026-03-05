@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import io.legado.app.R
-import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
@@ -20,24 +19,7 @@ class ExploreShowAdapter(context: Context, callBack: CallBack) :
         return ItemSearchBinding.inflate(inflater, parent, false)
     }
 
-    override fun convert(
-        holder: ItemViewHolder,
-        binding: ItemSearchBinding,
-        item: SearchBook,
-        payloads: MutableList<Any>
-    ) {
-        if (payloads.isEmpty()) {
-            bind(binding, item)
-        } else {
-            for (i in payloads.indices) {
-                val bundle = payloads[i] as Bundle
-                bindChange(binding, item, bundle)
-            }
-        }
-
-    }
-
-    private fun bind(binding: ItemSearchBinding, item: SearchBook) {
+    override fun bind(binding: ItemSearchBinding, item: SearchBook) {
         binding.run {
             tvName.text = item.name
             tvAuthor.text = context.getString(R.string.author_show, item.author)
@@ -66,8 +48,7 @@ class ExploreShowAdapter(context: Context, callBack: CallBack) :
             )
         }
     }
-
-    private fun bindChange(binding: ItemSearchBinding, item: SearchBook, bundle: Bundle) {
+    override fun bindChange(binding: ItemSearchBinding, item: SearchBook, bundle: Bundle) {
         binding.run {
             bundle.keySet().forEach {
                 when (it) {

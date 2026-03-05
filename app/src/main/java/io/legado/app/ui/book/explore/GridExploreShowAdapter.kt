@@ -2,8 +2,9 @@ package io.legado.app.ui.book.explore
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Bundle
 import android.view.ViewGroup
-import io.legado.app.base.adapter.ItemViewHolder
+import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGridBinding
 
@@ -16,14 +17,13 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
     }
 
     @SuppressLint("CheckResult")
-    override fun convert(
-        holder: ItemViewHolder,
+    override fun bind(
         binding: ItemBookshelfGridBinding,
-        item: SearchBook,
-        payloads: MutableList<Any>
+        item: SearchBook
     ) {
         binding.run {
             tvName.text = item.name
+            ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             ivCover.load(
                 item.coverUrl,
                 item.name,
@@ -34,4 +34,17 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
             )
             }
         }
+
+
+        override fun bindChange(binding: ItemBookshelfGridBinding, item: SearchBook, bundle: Bundle) {
+            binding.run {
+                bundle.keySet().forEach {
+                    when (it) {
+                        "isInBookshelf" -> ivInBookshelf.isVisible =
+                            callBack.isInBookshelf(item)
+                    }
+                }
+            }
+        }
+
     }

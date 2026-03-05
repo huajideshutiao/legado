@@ -63,6 +63,17 @@
                 app:loading_width="2dp"
                 tools:ignore="RtlHardcoded" />
 
+            <ImageView
+                android:id="@+id/iv_in_bookshelf"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone"
+                app:layout_constraintDimensionRatio="1:1"
+                app:layout_constraintStart_toStartOf="@+id/iv_cover"
+                app:layout_constraintTop_toTopOf="@+id/iv_cover"
+                app:layout_constraintWidth_percent="0.25"
+                app:srcCompat="@drawable/ic_bookmark" />
+
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <TextView
