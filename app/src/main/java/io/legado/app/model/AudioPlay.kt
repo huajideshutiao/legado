@@ -67,7 +67,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var book: Book? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
-    var chapterList : List<BookChapter>? = null
+    var chapterList: List<BookChapter>? = null
     var durChapterIndex = 0
     var durChapterPos = 0
     var durChapter: BookChapter? = null
@@ -88,12 +88,12 @@ object AudioPlay : CoroutineScope by MainScope() {
         if (durChapterIndex != book.durChapterIndex) {
             AudioPlay.book = book
             chapterList = GlobalVars.nowChapterList
-            if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+            if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
                 chapterList = null
                 GlobalVars.nowChapterList = null
             }
-            chapterSize = if(book.totalChapterNum!=0) book.totalChapterNum
-            else if (chapterList!= null) chapterList!!.size
+            chapterSize = if (book.totalChapterNum != 0) book.totalChapterNum
+            else if (chapterList != null) chapterList!!.size
             else appDb.bookChapterDao.getChapterCount(book.bookUrl)
             simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
             else chapterSize
@@ -103,17 +103,10 @@ object AudioPlay : CoroutineScope by MainScope() {
             durPlayUrl = ""
             durAudioSize = 0
             upDurChapter()
-        }else {
+        } else {
             durCoverUrl?.let { callback!!.upCover(it) }
-            if (durLrcData==null){
-                getLrcData(bookSource!!, book, durChapter!!).onSuccess {
-                    durLrcData = it
-                    callback?.upLrc(it)
-                    context.startService<AudioPlayService> {
-                        action = IntentAction.lrc
-                    }
-                }
-            }else callback!!.upLrc(durLrcData!!)
+            if (durLrcData == null) getLrcData(bookSource!!, book, durChapter!!)
+            else callback!!.upLrc(durLrcData!!)
         }
 
     }
@@ -122,7 +115,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         stop()
         AudioPlay.book = book
         chapterList = GlobalVars.nowChapterList
-        if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+        if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
             chapterList = null
             GlobalVars.nowChapterList = null
         }
@@ -201,38 +194,57 @@ object AudioPlay : CoroutineScope by MainScope() {
                 analyzeRule.setChapter(chapter)
                 durLrcContent = analyzeRule.evalJS(lrcRule) as? NativeArray
             }
-
-            durLrcContent?.let { nativeArray ->
-                loop@ for (i in nativeArray.indices) {
-                    (nativeArray[i] as String).replace("00-1", "000").lineSequence().forEach { line ->
-                        val line = line.trim()
-                        if (line.length < 3) return@forEach
-                        val split = line.indexOf("]")
-                        if (line[1].isDigit()) {
-                            val textPart = line.substring(split + 1)
-                            val min = line.substring(1, 3).toInt()
-                            var sec = line.substring(4, 6).toInt()
-                            var ms = 0
-                            if (split > 6) {
-                                ms = line.substring(7, split).toInt()
-                                ms *= (if (split == 10) 1 else 10)
-                            }
-                            if (split == 8) sec = line[4].code
-                            val time = min * 60_000 + sec * 1000 + ms
-                            if (i != 0) {
-                                if(textPart.isBlank()) return@forEach
-                                val index =
-                                    tmp.indexOfFirst { it.first == time }
-                                if (index == -1) return@forEach
-                                tmp[index] = Pair(
-                                    time,
-                                    "${tmp[index].second}\n$textPart"
-                                )
-                            } else {
-                                tmp.add(Pair(time, textPart))
+            if (durLrcData == null) durLrcData = tmp
+            else {
+                for (i in durLrcContent!!.indices) {
+                    (durLrcContent[i] as String).replace("00-1", "000")
+                        .lineSequence().forEach { line ->
+                            val line = line.trim()
+                            if (line.length < 3) return@forEach
+                            val split = line.indexOf("]")
+                            if (line[1].isDigit()) {
+                                val textPart = line.substring(split + 1)
+                                //适配[00.00],[00:0.00],[00:00.000]
+                                val min = line.substring(1, 3).toInt()
+                                var sec = line.substring(4, 6).toInt()
+                                var ms = 0
+                                if (split > 7) {
+                                    ms = line.substring(7, split).padEnd(3, '0').toInt()
+                                }
+                                if (split == 8) sec = line[4].code
+                                val time = min * 60_000 + sec * 1000 + ms
+//                                if (false) {
+//                                    val tmpp = StringBuilder()
+//                                    val ty = mutableListOf<String>()
+//                                    for (char in line) {
+//                                        if (char == '[') continue
+//                                        if (char.isDigit()) tmpp.append(char)
+//                                        else {
+//                                            ty.add(tmpp.toString())
+//                                            tmpp.clear()
+//                                        }
+//                                        if (char == ']') break
+//                                    }
+//                                    val tt =
+//                                        ty[0].toInt() * 60_000 + ty[1].toInt() * 1000 + ty[2].padEnd(
+//                                            3,
+//                                            '0'
+//                                        ).toInt()
+//                                }
+                                if (i != 0) {
+                                    if (textPart.isBlank()) return@forEach
+                                    val index =
+                                        tmp.indexOfFirst { it.first == time }
+                                    if (index == -1) return@forEach
+                                    tmp[index] = Pair(
+                                        time,
+                                        "${tmp[index].second}\n$textPart"
+                                    )
+                                } else {
+                                    tmp.add(Pair(time, textPart))
+                                }
                             }
                         }
-                    }
                 }
             }
             //sb网易云有的歌词乱序
@@ -240,13 +252,12 @@ object AudioPlay : CoroutineScope by MainScope() {
             return@async tmp
         }.onSuccess {
             durLrcData = it
-            callback?.run {
-                upLrc(it)
-                context.startService<AudioPlayService> {
-                    action = IntentAction.lrc
-                }
+            callback!!.upLrc(it)
+            context.startService<AudioPlayService> {
+                action = IntentAction.lrc
             }
-        }.onError{
+
+        }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }
     }
@@ -275,23 +286,23 @@ object AudioPlay : CoroutineScope by MainScope() {
                 durCoverUrl = null
                 durLrcData = null
                 getCoverUrl(bookSource, book, chapter)
-                callback?.let{getLrcData(bookSource, book, chapter)}
+                callback?.let { getLrcData(bookSource, book, chapter) }
                 Coroutine.async(this) {
                     getContentAwait(bookSource, book, chapter, needSave = false)
                 }.onSuccess { content ->
-                        if (content.isEmpty()) {
-                            appCtx.toastOnUi("未获取到资源链接")
-                        } else {
-                            contentLoadFinish(chapter, content)
-                        }
-                    }.onError {
-                        AppLog.put("获取资源链接出错\n$it", it, true)
-                        upLoading(false)
-                    }.onCancel {
-                        removeLoading(index)
-                    }.onFinally {
-                        removeLoading(index)
+                    if (content.isEmpty()) {
+                        appCtx.toastOnUi("未获取到资源链接")
+                    } else {
+                        contentLoadFinish(chapter, content)
                     }
+                }.onError {
+                    AppLog.put("获取资源链接出错\n$it", it, true)
+                    upLoading(false)
+                }.onCancel {
+                    removeLoading(index)
+                }.onFinally {
+                    removeLoading(index)
+                }
             } else {
                 removeLoading(index)
                 appCtx.toastOnUi("book or source is null")
@@ -340,7 +351,10 @@ object AudioPlay : CoroutineScope by MainScope() {
      */
     fun upDurChapter() {
         val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+        durChapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(
+            book.bookUrl,
+            durChapterIndex
+        )
         durAudioSize = durChapter?.end?.toInt() ?: 0
         val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
@@ -514,7 +528,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         Coroutine.async {
             durAudioSize = audioSize.toInt()
             chapter.end = audioSize
-            if(!book!!.isNotShelf) appDb.bookChapterDao.update(chapter)
+            if (!book!!.isNotShelf) appDb.bookChapterDao.update(chapter)
         }
     }
 
@@ -529,7 +543,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     private fun isPlayToEnd(): Boolean {
         return durChapterIndex + 1 == simulatedChapterSize
-            && durChapterPos == durAudioSize
+                && durChapterPos == durAudioSize
     }
 
     fun register(context: Context) {
