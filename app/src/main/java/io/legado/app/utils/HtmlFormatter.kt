@@ -86,7 +86,7 @@ object HtmlFormatter {
                 when (child) {
                     is TextNode -> {
                         val text = child.wholeText.trim { it.code <= 0x20 || it == '　' }
-                        if (text.isNotEmpty()) result.append("\n　　").append(text)
+                        if (text.isNotEmpty()) result.append("\n").append(text)
                     }
                     is Element if child.tagName().equals("img", ignoreCase = true) -> {
                         child.attr("src",
@@ -103,7 +103,7 @@ object HtmlFormatter {
             }
         }
         extractFromNode(content,str)
-        if(str.startsWith("\n"))str.deleteCharAt(0)
-        return str.toString()
+        if(str.startsWith("\n"))str.replace(0,1,"　　")
+        return str.replace(Regex("\n"),"\n　　")
     }
 }

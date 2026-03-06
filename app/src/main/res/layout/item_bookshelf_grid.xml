@@ -30,12 +30,12 @@
             <io.legado.app.ui.widget.image.CoverImageView
                 android:id="@+id/iv_cover"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
                 android:layout_margin="8dp"
-                android:scaleType="centerCrop"
                 android:scrollbars="none"
                 android:src="@drawable/image_cover_default"
                 android:transitionName="img_cover"
+                app:layout_constraintDimensionRatio="W,7:5"
                 app:layout_constraintTop_toTopOf="parent"
                 tools:ignore="UnusedAttribute,ImageContrastCheck"
                 tools:layout_editor_absoluteX="8dp" />

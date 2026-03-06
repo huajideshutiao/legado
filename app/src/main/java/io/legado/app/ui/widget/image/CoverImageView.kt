@@ -9,7 +9,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
-import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
@@ -44,39 +43,18 @@ class CoverImageView @JvmOverloads constructor(
     private var nameHeight = 0f
     private var authorHeight = 0f
     private val namePaint by lazy {
-        val textPaint = TextPaint()
-        textPaint.typeface = Typeface.DEFAULT_BOLD
-        textPaint.isAntiAlias = true
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint
+        TextPaint().apply {
+            typeface = Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+        }
     }
     private val authorPaint by lazy {
-        val textPaint = TextPaint()
-        textPaint.typeface = Typeface.DEFAULT
-        textPaint.isAntiAlias = true
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint
-    }
-//
-    override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
-        if (params != null) {
-            val width = params.width
-            if (width >= 0) {
-                params.height = width * 7 / 5
-            } else {
-                params.height = ViewGroup.LayoutParams.WRAP_CONTENT
-            }
+        TextPaint().apply {
+            typeface = Typeface.DEFAULT
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
         }
-        super.setLayoutParams(params)
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val measuredWidth = MeasureSpec.getSize(widthMeasureSpec)
-        val measuredHeight = measuredWidth * 7 / 5
-        super.onMeasure(
-            widthMeasureSpec,
-            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY)
-        )
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -84,19 +62,8 @@ class CoverImageView @JvmOverloads constructor(
         viewWidth = width.toFloat()
         viewHeight = height.toFloat()
         filletPath.reset()
-        if (width > 10 && viewHeight > 10) {
-            filletPath.apply {
-                moveTo(10f, 0f)
-                lineTo(viewWidth - 10, 0f)
-                quadTo(viewWidth, 0f, viewWidth, 10f)
-                lineTo(viewWidth, viewHeight - 10)
-                quadTo(viewWidth, viewHeight, viewWidth - 10, viewHeight)
-                lineTo(10f, viewHeight)
-                quadTo(0f, viewHeight, 0f, viewHeight - 10)
-                lineTo(0f, 10f)
-                quadTo(0f, 0f, 10f, 0f)
-                close()
-            }
+        if (width > 10 && height > 10) {
+            filletPath.addRoundRect(0f, 0f, viewWidth, viewHeight, 10f, 10f, Path.Direction.CW)
         }
     }
 
@@ -202,8 +169,9 @@ class CoverImageView @JvmOverloads constructor(
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
         defaultCover = true
         invalidate()
-        val requestManager = if (fragment != null && lifecycle != null) Glide.with(fragment).lifecycle(lifecycle)
-        else Glide.with(context)
+        val requestManager =
+            if (fragment != null && lifecycle != null) Glide.with(fragment).lifecycle(lifecycle)
+            else Glide.with(context)
         BookCover.load(requestManager, path, loadOnlyWifi, sourceOrigin, inBookshelf, onLoadFinish)
             .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
     }

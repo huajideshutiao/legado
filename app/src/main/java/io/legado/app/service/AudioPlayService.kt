@@ -133,18 +133,8 @@ class AudioPlayService : BaseService(),
         initBroadcastReceiver()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         doDs()
-        execute {
-            ImageLoader
-                .loadBitmap(this@AudioPlayService, AudioPlay.book?.getDisplayCover())
-                .submit()
-                .get()
-        }.onSuccess {
-            if (it.width > 16 && it.height > 16) {
-                cover = it
-                upMediaMetadata()
-                upAudioPlayNotification()
-            }
-        }
+        // 使用 Glide 加载图片，利用缓存机制避免重复下载
+        loadCover(AudioPlay.book?.getDisplayCover())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -160,23 +150,13 @@ class AudioPlayService : BaseService(),
                 }
 
                 IntentAction.playData -> {
-                    if (!durCoverUrl.isNullOrBlank()) {
-                        execute {
-                            ImageLoader
-                                .loadBitmap(this@AudioPlayService, durCoverUrl)
-                                .submit()
-                                .get()
-                        }.onSuccess {
-                            if (it.width > 16 && it.height > 16) {
-                                cover = it
-                                upMediaMetadata()
-                                upAudioPlayNotification()
-                            }
-                        }
-                    }
+                    // 使用统一的 loadCover 方法加载封面，利用 Glide 缓存
+                    loadCover(durCoverUrl)
                 }
 
-                IntentAction.lrc -> {upPlayProgressForLrc(durLrcData)}
+                IntentAction.lrc -> {
+                    upPlayProgressForLrc(durLrcData)
+                }
 
                 IntentAction.playNew -> {
                     exoPlayer.stop()
@@ -480,18 +460,18 @@ class AudioPlayService : BaseService(),
         upPlayProgressForLrcJob = lifecycleScope.launch {
             var position: Int = -1
             for (i in lrc.indices) {
-                if (lrc[i].first <= exoPlayer.currentPosition+10) {
+                if (lrc[i].first <= exoPlayer.currentPosition + 60) {
                     position = i
                 } else break
             }
 
-            if(position!=-1)postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+            if (position != -1) postEvent(EventBus.AUDIO_LRCPROGRESS, position)
             while (isActive) {
-                    if (position > lrc.size - 2) break
-                    if (lrc[position + 1].first <= exoPlayer.currentPosition + 10) {
-                        position += 1
-                        postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                    }
+                if (position > lrc.size - 2) break
+                if (lrc[position + 1].first <= exoPlayer.currentPosition + 60) {
+                    position += 1
+                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                }
                 delay(50)
             }
         }
@@ -723,6 +703,27 @@ class AudioPlayService : BaseService(),
     private fun abandonFocus() {
         @Suppress("DEPRECATION")
         audioManager.abandonAudioFocus(this)
+    }
+
+    /**
+     * 加载封面图片
+     * 使用 Glide 加载图片，利用缓存机制避免重复下载
+     */
+    private fun loadCover(url: String?) {
+        if (url.isNullOrBlank()) return
+        execute {
+            // 使用 Glide 加载图片，会自动利用缓存
+            ImageLoader
+                .loadBitmap(this@AudioPlayService, url)
+                .submit()
+                .get()
+        }.onSuccess {
+            if (it.width > 16 && it.height > 16) {
+                cover = it
+                upMediaMetadata()
+                upAudioPlayNotification()
+            }
+        }
     }
 
 }
