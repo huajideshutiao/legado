@@ -69,7 +69,7 @@ internal class RhinoCompiledScript(
         val result: Any?
         try {
             cx.checkRecursive()
-            val ret = script.exec(cx, scope, scope)
+            val ret = script.exec(cx, scope)
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
             val line = if (re.lineNumber() == 0) -1 else re.lineNumber()

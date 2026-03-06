@@ -240,7 +240,12 @@ object AudioPlay : CoroutineScope by MainScope() {
             return@async tmp
         }.onSuccess {
             durLrcData = it
-            callback?.upLrc(it)
+            callback?.run {
+                upLrc(it)
+                context.startService<AudioPlayService> {
+                    action = IntentAction.lrc
+                }
+            }
         }.onError{
             AppLog.put("获取歌词出错\n$it", it, true)
         }

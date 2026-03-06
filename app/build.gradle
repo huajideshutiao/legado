@@ -128,7 +128,7 @@ android {
                     "armeabi-v7a": "armv7",
                     "x86_64"     : "x64",
                     "x86"        : "x86",
-                    null         : "all"
+                    "null"       : "all"
             ]
             outputFileName = "${name}_${abiShortMap.get(abi)}_${defaultConfig.versionName}.apk"
         }
