@@ -328,7 +328,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
                     var percent =
                         df.format(
                             chapterIndex * 1.0f / chapterSize + 1.0f /
-                                    chapterSize * (chapterPos + 1) / imageCount.toDouble()
+                                chapterSize * (chapterPos + 1) / imageCount.toDouble()
                         )
                     if (percent == "100.0%" && (chapterIndex + 1 != chapterSize || chapterPos + 1 != imageCount)) {
                         percent = "99.9%"
@@ -477,9 +477,9 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
 
             R.id.menu_catalog -> {
-                ReadManga.book?.let {
-                    tocActivity.launch(it.bookUrl)
-                }
+                GlobalVars.nowBook = ReadManga.book
+                GlobalVars.nowChapterList = ReadManga.chapterList
+                tocActivity.launch("")
             }
 
             R.id.menu_refresh -> {

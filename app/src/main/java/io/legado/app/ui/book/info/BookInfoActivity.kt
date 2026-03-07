@@ -703,6 +703,7 @@ class BookInfoActivity :
 
     private fun startReadActivity(book: Book) {
         GlobalVars.nowBook = book
+        GlobalVars.nowChapterList = viewModel.chapterListData.value
         readBookResult.launch(
             Intent(
                 this,

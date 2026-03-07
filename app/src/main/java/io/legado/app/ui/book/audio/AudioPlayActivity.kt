@@ -210,6 +210,7 @@ class AudioPlayActivity :
         })
         binding.ivChapter.setOnClickListener {
             GlobalVars.nowBook = AudioPlay.book
+            GlobalVars.nowChapterList = AudioPlay.chapterList
             tocActivityResult.launch("")
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {

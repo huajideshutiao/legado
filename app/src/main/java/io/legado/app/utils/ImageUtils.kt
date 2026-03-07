@@ -43,12 +43,13 @@ object ImageUtils {
         if (ruleJs.isNullOrBlank()) return inputStream
         //解密库hutool.crypto ByteArray|InputStream -> ByteArray
         return kotlin.runCatching {
-            val bytes = source?.evalJS(ruleJs) {
-                put("book", book)
-                put("result", inputStream)
-                put("src", src)
-            } as ByteArray
-            ByteArrayInputStream(bytes)
+            ByteArrayInputStream(
+                source?.evalJS(ruleJs) {
+                    put("book", book)
+                    put("result", inputStream)
+                    put("src", src)
+                } as ByteArray
+            )
         }.onFailure {
             AppLog.putDebug("${src}解密错误", it)
         }.getOrNull()

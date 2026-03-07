@@ -130,14 +130,14 @@ class OkHttpStreamFetcher(
                 if (manga) {
                     ImageUtils.decode(
                         url.toString(),
-                        responseBody!!.bytes(),
+                        responseBody!!.byteStream(),
                         isCover = false,
                         source,
                         ReadManga.book
-                    )?.inputStream()
+                    )
                 } else {
                     ImageUtils.decode(
-                        analyzedUrl.toStringUrl(), responseBody!!.byteStream(),
+                        url.toString(), responseBody!!.byteStream(),
                         isCover = true, source
                     )
                 }
