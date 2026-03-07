@@ -38,6 +38,17 @@
 
 -flattenpackagehierarchy
 
+
+# 启用更激进的优化
+-optimizationpasses 5
+-dontskipnonpubliclibraryclasses
+-dontpreverify
+
+# 资源压缩和优化
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
 #############################################
 #
 # Android开发中一些需要保留的公共部分
@@ -62,15 +73,18 @@
 # 数据类
 -keep class **.data.entities.**{*;}
 # hutool-core hutool-crypto
--keep class
-!cn.hutool.core.util.RuntimeUtil,
-!cn.hutool.core.util.ClassLoaderUtil,
-!cn.hutool.core.util.ReflectUtil,
-!cn.hutool.core.util.SerializeUtil,
-!cn.hutool.core.util.ClassUtil,
-cn.hutool.core.codec.**,
-cn.hutool.core.util.**{*;}
--keep class cn.hutool.crypto.**{*;}
+# 保留 hutool 核心工具类（排除不需要的特定工具类）
+-keep class cn.hutool.core.codec.** { *; }
+-keep class cn.hutool.core.util.** { *; }
+# 排除不需要混淆的特定工具类
+-dontwarn cn.hutool.core.util.RuntimeUtil
+-dontwarn cn.hutool.core.util.ClassLoaderUtil
+-dontwarn cn.hutool.core.util.ReflectUtil
+-dontwarn cn.hutool.core.util.SerializeUtil
+-dontwarn cn.hutool.core.util.ClassUtil
+# 保留加密相关类
+-keep class cn.hutool.crypto.** { *; }
+# 忽略 hutool 相关的警告
 -dontwarn cn.hutool.**
 # 缓存 Cookie
 -keep class **.help.http.CookieStore{*;}
