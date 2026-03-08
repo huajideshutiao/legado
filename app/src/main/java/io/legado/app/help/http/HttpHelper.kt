@@ -57,8 +57,8 @@ val okHttpClient: OkHttpClient by lazy {
     val builder = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
         //.cookieJar(cookieJar = cookieJar)
         .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory, SSLHelper.unsafeTrustManager)
         .retryOnConnectionFailure(true)
@@ -91,11 +91,15 @@ val okHttpClient: OkHttpClient by lazy {
             }
 
             val networkResponse = chain.proceed(request)
+            val url = request.url.toString()
+            val progressResponse = networkResponse.newBuilder()
+                .body(ProgressResponseBody(url, LISTENER, networkResponse.body))
+                .build()
 
             if (enableCookieJar) {
-                CookieManager.saveResponse(networkResponse)
+                CookieManager.saveResponse(progressResponse)
             }
-            networkResponse
+            progressResponse
         }
     if (AppConfig.isCronet) {
         if (Cronet.loader?.install() == true) {
