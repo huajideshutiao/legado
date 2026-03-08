@@ -1173,9 +1173,9 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 打开目录
      */
     override fun openChapterList() {
-        ReadBook.book?.let {
-            tocActivity.launch(it.bookUrl)
-        }
+        GlobalVars.nowBook = ReadBook.book
+        GlobalVars.nowChapterList = ReadBook.chapterList
+        tocActivity.launch("")
     }
 
     /**
@@ -1267,7 +1267,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             GlobalVars.nowSource = it
             GlobalVars.nowBook = ReadBook.book
             GlobalVars.nowChapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex)
-            startActivity<SourceLoginActivity>{}
+            startActivity<SourceLoginActivity> {}
         }
     }
 
