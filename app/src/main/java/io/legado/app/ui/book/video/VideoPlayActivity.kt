@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.icu.text.SimpleDateFormat
-import android.net.Uri
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.Menu
@@ -18,13 +17,10 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -59,6 +55,22 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
+// Android 核心包
+import android.net.Uri
+
+// Media3 基础和通用包
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+
+// Media3 数据源 (DataSource) 相关包
+import androidx.media3.datasource.ByteArrayDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
+
+// Media3 HLS (m3u8) 专属解析包
+import androidx.media3.exoplayer.hls.HlsMediaSource
 
 class VideoPlayActivity(
 ) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(),
@@ -196,14 +208,73 @@ class VideoPlayActivity(
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(videoUrl: String) {
         if (videoUrl.startsWith("http")) {
-            player.setMediaItem(MediaItem.fromUri(videoUrl))
-        } else {
-            // 视为 m3u8 文件内容，使用 ByteArrayDataSource
-            val dataSource = ByteArrayDataSource(videoUrl.toByteArray(Charsets.UTF_8))
-            val mediaSource = DefaultMediaSourceFactory { dataSource }
-                .createMediaSource(MediaItem.EMPTY)
-            player.setMediaSource(mediaSource)
+    player.setMediaItem(MediaItem.fromUri(videoUrl))
+} else {
+    // 1. 创建一个自定义的假 URI 代表你的内存 m3u8
+    val customM3u8Uri = Uri.parse("custom://memory.m3u8")
+    val m3u8Bytes = videoUrl.toByteArray(Charsets.UTF_8)
+
+    // 2. 告诉 ExoPlayer 这是一个 HLS 流 (APPLICATION_M3U8)
+    val mediaItem = MediaItem.Builder()
+        .setUri(customM3u8Uri)
+        .setMimeType(MimeTypes.APPLICATION_M3U8) 
+        .build()
+
+    // 3. 构建一个智能的 DataSource Factory
+    val dataSourceFactory = DataSource.Factory {
+        object : DataSource {
+            // 底层使用 HttpDataSource 来下载真正的视频切片
+            private val httpDataSource = DefaultHttpDataSource.Factory().createDataSource()
+            // 使用 ByteArrayDataSource 来返回内存中的 m3u8 文本
+            private val byteArrayDataSource = ByteArrayDataSource(m3u8Bytes)
+            
+            private var isMemoryData = false
+
+            override fun addTransferListener(transferListener: TransferListener) {
+                httpDataSource.addTransferListener(transferListener)
+                byteArrayDataSource.addTransferListener(transferListener)
+            }
+
+            override fun open(dataSpec: DataSpec): Long {
+                // 如果是请求我们自定义的假 URI，就走内存
+                return if (dataSpec.uri == customM3u8Uri) {
+                    isMemoryData = true
+                    byteArrayDataSource.open(dataSpec)
+                } else {
+                    // 否则（例如请求 .ts 切片），走网络下载
+                    isMemoryData = false
+                    httpDataSource.open(dataSpec)
+                }
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                return if (isMemoryData) {
+                    byteArrayDataSource.read(buffer, offset, length)
+                } else {
+                    httpDataSource.read(buffer, offset, length)
+                }
+            }
+
+            override fun getUri(): Uri? {
+                return if (isMemoryData) byteArrayDataSource.uri else httpDataSource.uri
+            }
+
+            override fun close() {
+                if (isMemoryData) {
+                    byteArrayDataSource.close()
+                } else {
+                    httpDataSource.close()
+                }
+            }
         }
+    }
+
+    // 4. 使用专门处理 HLS 的 HlsMediaSource
+    val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+        .createMediaSource(mediaItem)
+
+    player.setMediaSource(mediaSource)
+}
         player.apply {
             if (viewModel.position != 0L) seekTo(viewModel.position)
             play()
