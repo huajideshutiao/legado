@@ -100,8 +100,8 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun initData(book: Book) {
         releaseAndCancel()
-        val isDiffBook = ReadManga.book?.bookUrl != book.bookUrl
-        ReadBook.book = book
+        val isDiffBook = this.book?.bookUrl != book.bookUrl
+        this.book = book
         if (isDiffBook){
             readRecord.bookName = book.name
             readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0

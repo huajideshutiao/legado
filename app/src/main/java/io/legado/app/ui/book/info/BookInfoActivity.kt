@@ -3,7 +3,6 @@ package io.legado.app.ui.book.info
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -122,6 +121,7 @@ class BookInfoActivity :
                 viewModel.inBookshelf = true
                 upTvBookshelf()
             }
+
             RESULT_DELETED -> {
                 setResult(RESULT_DELETED)
                 finish()
@@ -205,7 +205,7 @@ class BookInfoActivity :
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
                     GlobalVars.nowBook = it
-                    infoEditResult.launch{}
+                    infoEditResult.launch {}
                 }
             }
 
@@ -222,7 +222,7 @@ class BookInfoActivity :
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.bookData.value
-                startActivity<SourceLoginActivity>{}
+                startActivity<SourceLoginActivity> {}
             }
 
             R.id.menu_top -> viewModel.topBook()
@@ -363,10 +363,24 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
-        //if (book.type ==2048)binding.ivCover.layoutParams.let {it.width = it.height/9*16}
-        binding.ivCover.load(book.getDisplayCover(), book.name, book.author, false, book.origin, inBookshelf = viewModel.inBookshelf) {
+        if (book.isVideo)binding.ivCover.layoutParams.apply {
+            width = height * 16 / 9
+        }
+        binding.ivCover.load(
+            book.getDisplayCover(),
+            book.name,
+            book.author,
+            false,
+            book.origin,
+            inBookshelf = viewModel.inBookshelf
+        ) {
             if (!AppConfig.isEInkMode) {
-                BookCover.loadBlur(Glide.with(this), book.getDisplayCover(), sourceOrigin = book.origin, inBookshelf = viewModel.inBookshelf)
+                BookCover.loadBlur(
+                    Glide.with(this),
+                    book.getDisplayCover(),
+                    sourceOrigin = book.origin,
+                    inBookshelf = viewModel.inBookshelf
+                )
                     .placeholder(binding.bgBook.drawable).into(binding.bgBook)
             }
         }
@@ -689,6 +703,7 @@ class BookInfoActivity :
 
     private fun startReadActivity(book: Book) {
         GlobalVars.nowBook = book
+        GlobalVars.nowChapterList = viewModel.chapterListData.value
         readBookResult.launch(
             Intent(
                 this,
@@ -697,9 +712,9 @@ class BookInfoActivity :
                     !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
                     book.isAudio -> AudioPlayActivity::class.java
                     else -> ReadBookActivity::class.java
-                    }
-                ).putExtra("chapterChanged", chapterChanged)
-          )
+                }
+            ).putExtra("chapterChanged", chapterChanged)
+        )
     }
 
     override val oldBook: Book?

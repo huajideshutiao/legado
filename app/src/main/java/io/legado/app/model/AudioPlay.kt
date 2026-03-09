@@ -34,7 +34,6 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import org.mozilla.javascript.NativeArray
 import splitties.init.appCtx
-import kotlin.collections.mutableListOf
 
 @SuppressLint("StaticFieldLeak")
 @Suppress("unused")
@@ -187,68 +186,49 @@ object AudioPlay : CoroutineScope by MainScope() {
             val lrcRule = bookSource.getContentRule().lrcRule
             val tmp = mutableListOf<Pair<Int, String>>()
             var durLrcContent: NativeArray? = null
-            if (!lrcRule.isNullOrBlank() && context == activityContext) {
+            if (!lrcRule.isNullOrBlank()) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
                 analyzeRule.setCoroutineContext(currentCoroutineContext())
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
                 durLrcContent = analyzeRule.evalJS(lrcRule) as? NativeArray
             }
-            if (durLrcData == null) durLrcData = tmp
-            else {
-                for (i in durLrcContent!!.indices) {
-                    (durLrcContent[i] as String).replace("00-1", "000")
-                        .lineSequence().forEach { line ->
-                            val line = line.trim()
-                            if (line.length < 3) return@forEach
-                            val split = line.indexOf("]")
-                            if (line[1].isDigit()) {
-                                val textPart = line.substring(split + 1)
-                                //适配[00.00],[00:0.00],[00:00.000]
-                                val min = line.substring(1, 3).toInt()
-                                var sec = line.substring(4, 6).toInt()
-                                var ms = 0
-                                if (split > 7) {
-                                    ms = line.substring(7, split).padEnd(3, '0').toInt()
-                                }
-                                if (split == 8) sec = line[4].code
-                                val time = min * 60_000 + sec * 1000 + ms
-//                                if (false) {
-//                                    val tmpp = StringBuilder()
-//                                    val ty = mutableListOf<String>()
-//                                    for (char in line) {
-//                                        if (char == '[') continue
-//                                        if (char.isDigit()) tmpp.append(char)
-//                                        else {
-//                                            ty.add(tmpp.toString())
-//                                            tmpp.clear()
-//                                        }
-//                                        if (char == ']') break
-//                                    }
-//                                    val tt =
-//                                        ty[0].toInt() * 60_000 + ty[1].toInt() * 1000 + ty[2].padEnd(
-//                                            3,
-//                                            '0'
-//                                        ).toInt()
-//                                }
-                                if (i != 0) {
-                                    if (textPart.isBlank()) return@forEach
-                                    val index =
-                                        tmp.indexOfFirst { it.first == time }
-                                    if (index == -1) return@forEach
-                                    tmp[index] = Pair(
-                                        time,
-                                        "${tmp[index].second}\n$textPart"
-                                    )
-                                } else {
-                                    tmp.add(Pair(time, textPart))
-                                }
+            if (durLrcContent != null)for (i in durLrcContent.indices) {
+                (durLrcContent[i] as String).replace("00-1", "000")
+                    .lineSequence().forEach { line ->
+                        val line = line.trim()
+                        if (line.length < 3) return@forEach
+                        val split = line.indexOf("]")
+                        if (line[1].isDigit()) {
+                            val textPart = line.substring(split + 1)
+                            val matcherResult =
+                                Regex("\\d+").findAll(line.substring(1, split))
+                            val iterator = matcherResult.iterator()
+                            val min = iterator.next().groupValues[0].toInt()
+                            val sec = iterator.next().groupValues[0].toInt()
+                            val ms =
+                                if (iterator.hasNext()) iterator.next().groupValues[0].padEnd(
+                                    3,
+                                    '0'
+                                ).toInt()
+                                else 0
+                            val time = min * 60_000 + sec * 1000 + ms
+                            if (i != 0) {
+                                if (textPart.isBlank()) return@forEach
+                                val index = tmp.binarySearch { it.first.compareTo(time) }
+                                if (index == -1) return@forEach
+                                tmp[index] = Pair(
+                                    time,
+                                    "${tmp[index].second}\n$textPart"
+                                )
+                            } else {
+                                tmp.add(Pair(time, textPart))
                             }
                         }
-                }
+                    }
+                //sb网易云有的歌词乱序
+                if (i == 0) tmp.sortBy { it.first }
             }
-            //sb网易云有的歌词乱序
-            tmp.sortBy { it.first }
             return@async tmp
         }.onSuccess {
             durLrcData = it
@@ -543,7 +523,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     private fun isPlayToEnd(): Boolean {
         return durChapterIndex + 1 == simulatedChapterSize
-                && durChapterPos == durAudioSize
+            && durChapterPos == durAudioSize
     }
 
     fun register(context: Context) {

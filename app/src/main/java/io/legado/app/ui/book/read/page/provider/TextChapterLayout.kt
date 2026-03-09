@@ -5,7 +5,6 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -236,7 +235,7 @@ class TextChapterLayout(
                 content = body.wholeText()
             }
             content.lines().forEach{
-                val line = if (it.startsWith("　　"))paragraphIndent+it.slice(2..<it.length) else it
+                val line = if (it.startsWith("　　"))paragraphIndent+it.substring(2) else it
                 if (isTextImageStyle || imgList.isEmpty()) {
                 //图片样式为文字嵌入类型
                 setTypeText(

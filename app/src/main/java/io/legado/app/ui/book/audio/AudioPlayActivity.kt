@@ -133,31 +133,33 @@ class AudioPlayActivity :
             R.id.menu_copy_chapter_url -> sendToClip(AudioPlay.durChapter?.url ?: "")
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 GlobalVars.nowSource = it
-                sourceEditResult.launch{}
+                sourceEditResult.launch {}
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
     }
-    private val scroller by lazy {object : LinearSmoothScroller(this) {
-        //          override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
-        override fun calculateTimeForScrolling(dx: Int): Int {
-            var baseTime = super.calculateTimeForScrolling(dx)
-            if (baseTime<300) baseTime = 4*baseTime + 200
-            return baseTime
-        }
 
-        override fun calculateDtToFit(
-            viewStart: Int,
-            viewEnd: Int,
-            boxStart: Int,
-            boxEnd: Int,
-            snapPreference: Int
-        ): Int {
-            return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
+    private val scroller by lazy {
+        object : LinearSmoothScroller(this) {
+            //          override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
+            override fun calculateTimeForScrolling(dx: Int): Int {
+                var baseTime = super.calculateTimeForScrolling(dx)
+                if (baseTime < 300) baseTime = 4 * baseTime + 200
+                return baseTime
+            }
+
+            override fun calculateDtToFit(
+                viewStart: Int,
+                viewEnd: Int,
+                boxStart: Int,
+                boxEnd: Int,
+                snapPreference: Int
+            ): Int {
+                return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
+            }
         }
-    }
     }
 
     private fun initView() {
@@ -167,7 +169,8 @@ class AudioPlayActivity :
         binding.ivCover.setOnClickListener {
             it.isGone = true
             binding.ivLrc.post {
-                binding.ivLrc.setPadding(24.dpToPx(), binding.ivLrc.height / 2, 24.dpToPx(), binding.ivLrc.height / 2
+                binding.ivLrc.setPadding(
+                    24.dpToPx(), binding.ivLrc.height / 2, 24.dpToPx(), binding.ivLrc.height / 2
                 )
                 scroller.targetPosition = adapter.update()
                 binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
@@ -206,9 +209,9 @@ class AudioPlayActivity :
             }
         })
         binding.ivChapter.setOnClickListener {
-            AudioPlay.book?.let {
-                tocActivityResult.launch(it.bookUrl)
-            }
+            GlobalVars.nowBook = AudioPlay.book
+            GlobalVars.nowChapterList = AudioPlay.chapterList
+            tocActivityResult.launch("")
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             binding.ivFastForward.invisible()
@@ -220,12 +223,14 @@ class AudioPlayActivity :
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.llPlayMenu.applyNavigationBarPadding()
-        binding.ivLrc.post { binding.ivLrc.setPadding(
-            24.dpToPx(),
-            binding.ivLrc.height / 2,
-            24.dpToPx(),
-            binding.ivLrc.height / 2
-        ) }
+        binding.ivLrc.post {
+            binding.ivLrc.setPadding(
+                24.dpToPx(),
+                binding.ivLrc.height / 2,
+                24.dpToPx(),
+                binding.ivLrc.height / 2
+            )
+        }
         binding.ivLrc.layoutManager = LinearLayoutManager(this)
         binding.ivLrc.itemAnimator = null
         binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -237,12 +242,14 @@ class AudioPlayActivity :
                         tmp = true
                         job?.cancel()
                     }
+
                     RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
                 }
             }
+
             private fun scheduleAction() {
                 job?.cancel()
-                if (tmp)tmp = false else return
+                if (tmp) tmp = false else return
                 job = CoroutineScope(lifecycle.coroutineScope.coroutineContext).launch {
                     delay(5000)
                     scroller.targetPosition = adapter.update()
@@ -256,6 +263,7 @@ class AudioPlayActivity :
     private fun updatePlayModeIcon() {
         binding.ivPlayMode.setImageResource(playMode.iconRes)
     }
+
     private fun playButton() {
         when (AudioPlay.status) {
             Status.PLAY -> AudioPlay.pause(this)
@@ -374,18 +382,26 @@ class AudioPlayActivity :
             binding.progressLoading.visible(loading)
         }
     }
+
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
             adapter.setData(lrc)
             binding.ivLrc.layoutManager?.scrollToPosition(0)
         }
     }
+
     override fun upCover(url: String) {
         runOnUiThread {
-            BookCover.load(Glide.with(this), url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl) {
-                BookCover.loadBlur(Glide.with(this), url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                    .placeholder(binding.ivBg.drawable).into(binding.ivBg)
-            }.placeholder(binding.ivCover.drawable).into(binding.ivCover)
+            // 使用同一个 Glide 实例加载图片，利用缓存机制避免重复下载
+            val glide = Glide.with(this)
+            val loadRequest = BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+
+            // 先加载封面
+            loadRequest.placeholder(binding.ivCover.drawable).into(binding.ivCover)
+
+            // 加载模糊背景（Glide 会自动复用缓存）
+            BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+                .placeholder(binding.ivBg.drawable).into(binding.ivBg)
         }
     }
 

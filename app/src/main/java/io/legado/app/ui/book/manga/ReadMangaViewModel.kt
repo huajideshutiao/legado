@@ -66,7 +66,6 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
     private fun initManga(book: Book) {
         val isSameBook = ReadManga.book?.bookUrl == book.bookUrl
         ReadManga.initData(book)
-        GlobalVars.nowBook = book
         //开始加载内容
         if (!isSameBook) ReadManga.loadContent()
         else ReadManga.loadOrUpContent()
