@@ -13,6 +13,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.help.coroutine.Coroutine
@@ -49,11 +50,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         payloads: MutableList<Any>
     ) {
         binding.run {
-            if (holder.layoutPosition == itemCount - 1) {
-                root.setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 12.dpToPx())
-            } else {
-                root.setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 0)
-            }
             if (payloads.isEmpty()) {
                 tvName.text = item.bookSourceName
             }
@@ -91,8 +87,16 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             kinds.forEach { kind ->
                 val tv = getFlexboxChild(flexbox)
                 flexbox.addView(tv)
-                tv.text = kind.title
-                kind.style().apply(tv)
+                if (kind.title.startsWith("TITLE:")) {
+                    tv.text = kind.title.substring(6)
+                    FlexChildStyle(
+                        layout_flexBasisPercent = 1F,
+                        layout_flexGrow = 1F
+                    ).apply(tv)
+                } else {
+                    tv.text = kind.title
+                    kind.style().apply(tv)
+                }
                 if (kind.url.isNullOrBlank()) {
                     tv.setOnClickListener(null)
                 } else {

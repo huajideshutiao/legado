@@ -4,22 +4,21 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/bg_item_focused_on_tv"
+    android:focusable="true"
     android:gravity="center"
     android:orientation="vertical"
-    android:focusable="true"
-    android:background="@drawable/bg_item_focused_on_tv">
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <LinearLayout
         android:id="@+id/ll_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
         android:background="@drawable/bg_find_book_group"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:padding="8dp">
 
         <TextView
             android:id="@+id/tv_name"
@@ -33,9 +32,9 @@
             android:id="@+id/rotate_loading"
             android:layout_width="20dp"
             android:layout_height="20dp"
-            android:visibility="gone"
             android:layout_gravity="center"
             android:layout_marginRight="4dp"
+            android:visibility="gone"
             app:loading_width="1dp"
             tools:ignore="RtlHardcoded" />
 
@@ -52,18 +51,16 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="8dp"
-        android:paddingRight="8dp"
         android:layout_gravity="center">
 
         <com.google.android.flexbox.FlexboxLayout
             android:id="@+id/flexbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:clipToPadding="false"
             android:overScrollMode="never"
             android:padding="3dp"
-            android:layout_marginTop="8dp"
             android:visibility="gone"
             app:dividerDrawable="@drawable/shape_space_divider"
             app:flexDirection="row"

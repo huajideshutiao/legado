@@ -48,7 +48,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    private fun initChapter(chapter: BookChapter) {
+    fun initChapter(chapter: BookChapter) {
         Coroutine.async(viewModelScope) {
             getContentAwait(bookSource!!, book, chapter, needSave = false)
         }.onSuccess { content ->

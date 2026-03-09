@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.icu.text.SimpleDateFormat
-import android.os.Build
+import android.net.Uri
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.Menu
@@ -17,10 +17,12 @@ import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -29,6 +31,7 @@ import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
+import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -40,7 +43,6 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
@@ -49,7 +51,6 @@ import io.legado.app.ui.book.toc.ChapterListAdapter
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -83,65 +84,67 @@ class VideoPlayActivity(
         }
     private val bookInfoResult =
         registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) { result ->
-        when (result.resultCode) {
-            RESULT_DELETED -> {
-                setResult(RESULT_DELETED)
-                super.finish()
-            }
-            RESULT_OK -> {
-                setResult(RESULT_OK)
-                val item = binding.titleBar.menu.findItem(R.id.menu_shelf)
-                item.setIcon(R.drawable.ic_star)
-                item.setTitle(R.string.in_favorites)
-                viewModel.book.removeType(BookType.notShelf) 
+            when (result.resultCode) {
+                RESULT_DELETED -> {
+                    setResult(RESULT_DELETED)
+                    super.finish()
+                }
+
+                RESULT_OK -> {
+                    setResult(RESULT_OK)
+                    val item = binding.titleBar.menu.findItem(R.id.menu_shelf)
+                    item.setIcon(R.drawable.ic_star)
+                    item.setTitle(R.string.in_favorites)
+                    viewModel.book.removeType(BookType.notShelf)
+                }
             }
         }
-    }
     private val progressTimeFormat by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            SimpleDateFormat("mm:ss", Locale.getDefault())
-        } else {
-            java.text.SimpleDateFormat("mm:ss", Locale.getDefault())
-        }
+        SimpleDateFormat("mm:ss", Locale.getDefault())
     }
 
     @delegate:SuppressLint("UnsafeOptInUsageError")
     private val player by lazy {
-        val baseDataSourceFactory = DefaultDataSource.Factory(
-            this,
-            DefaultHttpDataSource.Factory()
-        )
-        ExoPlayer.Builder(this).setMediaSourceFactory(
-            DefaultMediaSourceFactory(this).apply {
-                setDataSourceFactory(
-                    ResolvingDataSource.Factory(baseDataSourceFactory) { dataSpec ->
-                        dataSpec.withRequestHeaders(viewModel.videoUrl.value?.headerMap ?: mapOf())
-                    })
-            }
-        ).build().apply {
-            binding.ivPlayer.player = this
-            binding.ivPlayer.controllerAutoShow = false
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
-                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
-                    }
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    if (error is ExoPlaybackException) {
-                        this@VideoPlayActivity.toastOnUi(
-                        when (error.sourceException) {
-                            is UnrecognizedInputFormatException -> "不是视频链接"
-                            is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
-                            else -> "视频播放出错"
+        ExoPlayer.Builder(this)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(this).apply {
+                    setDataSourceFactory(
+                        ResolvingDataSource.Factory(
+                            DefaultDataSource.Factory(
+                                this@VideoPlayActivity,
+                                DefaultHttpDataSource.Factory()
+                            )
+                        ) { dataSpec ->
+                            dataSpec.withRequestHeaders(
+                                viewModel.videoUrl.value?.headerMap ?: mapOf()
+                            )
                         })
-                    }
-                    super.onPlayerError(error)
                 }
-            })
-        }
+            ).build().apply {
+                binding.ivPlayer.player = this
+                binding.ivPlayer.controllerAutoShow = false
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        super.onPlaybackStateChanged(playbackState)
+                        if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
+                            openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        if (error is ExoPlaybackException) {
+                            this@VideoPlayActivity.toastOnUi(
+                                when (error.sourceException) {
+                                    is UnrecognizedInputFormatException -> "不是视频链接"
+                                    is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
+                                    else -> "视频播放出错"
+                                }
+                            )
+                        }
+                        super.onPlayerError(error)
+                    }
+                })
+            }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -153,7 +156,7 @@ class VideoPlayActivity(
             refreshPlayer(it.url)
         }
         viewModel.chapterList.observe(this) {
-            if (it.size>1){
+            if (it.size > 1) {
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
                 binding.recyclerView.adapter = adapter
                 adapter.setItems(it)
@@ -163,9 +166,22 @@ class VideoPlayActivity(
             showChapterList(it)
         }
         binding.titleBar.toolbar.setOnClickListener {
-                bookInfoResult.launch {
-                    player.pause()
-                }
+            bookInfoResult.launch {
+                player.pause()
+            }
+        }
+        binding.ivPlayer.findViewById<View>(R.id.tv_force_resolution)?.setOnClickListener {
+            TrackSelectionDialogBuilder(
+                this,
+                getString(R.string.resolution),
+                player,
+                C.TRACK_TYPE_VIDEO
+            ).build().show()
+        }
+        binding.ivPlayer.setFullscreenButtonClickListener { isFullScreenRequested ->
+            if (isFullScreen != isFullScreenRequested) {
+                toggleFullScreen()
+            }
         }
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
@@ -179,8 +195,16 @@ class VideoPlayActivity(
 
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(videoUrl: String) {
+        if (videoUrl.startsWith("http")) {
+            player.setMediaItem(MediaItem.fromUri(videoUrl))
+        } else {
+            // 视为 m3u8 文件内容，使用 ByteArrayDataSource
+            val dataSource = ByteArrayDataSource(videoUrl.toByteArray(Charsets.UTF_8))
+            val mediaSource = DefaultMediaSourceFactory { dataSource }
+                .createMediaSource(MediaItem.EMPTY)
+            player.setMediaSource(mediaSource)
+        }
         player.apply {
-            setMediaItem(MediaItem.fromUri(videoUrl))
             if (viewModel.position != 0L) seekTo(viewModel.position)
             play()
             prepare()
@@ -265,13 +289,13 @@ class VideoPlayActivity(
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_shelf).apply {
-                if (!viewModel.book.isNotShelf) {
-                    setIcon(R.drawable.ic_star)
-                    setTitle(R.string.in_favorites)
-                } else {
-                    setIcon(R.drawable.ic_star_border)
-                    setTitle(R.string.out_favorites)
-                }
+            if (!viewModel.book.isNotShelf) {
+                setIcon(R.drawable.ic_star)
+                setTitle(R.string.in_favorites)
+            } else {
+                setIcon(R.drawable.ic_star_border)
+                setTitle(R.string.out_favorites)
+            }
         }
         return super.onPrepareOptionsMenu(menu)
     }
@@ -280,7 +304,7 @@ class VideoPlayActivity(
         when (item.itemId) {
 //            R.id.menu_change_source -> {
 //            }
-            R.id.menu_refresh -> TODO()
+            R.id.menu_refresh -> viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
             R.id.menu_shelf -> {
                 if (!viewModel.book.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
@@ -312,17 +336,27 @@ class VideoPlayActivity(
             }
 
             R.id.menu_full_screen -> toggleFullScreen()
+            R.id.menu_resolution -> {
+                TrackSelectionDialogBuilder(
+                    this,
+                    getString(R.string.resolution),
+                    player,
+                    C.TRACK_TYPE_VIDEO
+                ).build().show()
+            }
+
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.book
-                GlobalVars.nowChapter = viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)
-                startActivity<SourceLoginActivity>{}
+                GlobalVars.nowChapter =
+                    viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)
+                startActivity<SourceLoginActivity> {}
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
             R.id.menu_edit_source -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
-                sourceEditResult.launch{}
+                sourceEditResult.launch {}
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
@@ -331,26 +365,57 @@ class VideoPlayActivity(
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        // 根据屏幕方向更新全屏状态
         when (newConfig.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> isFullScreen = false
-            Configuration.ORIENTATION_PORTRAIT -> isFullScreen = true
+            Configuration.ORIENTATION_LANDSCAPE -> {
+                // 横屏时进入全屏
+                if (!isFullScreen) {
+                    isFullScreen = true
+                    enterFullScreen()
+                }
+            }
+
+            Configuration.ORIENTATION_PORTRAIT -> {
+                // 竖屏时退出全屏
+                if (isFullScreen) {
+                    isFullScreen = false
+                    exitFullScreen()
+                }
+            }
         }
-        toggleFullScreen()
         super.onConfigurationChanged(newConfig)
     }
 
     private fun toggleFullScreen() {
-        isFullScreen = !isFullScreen
-        toggleSystemBar(!isFullScreen)
         if (isFullScreen) {
-            supportActionBar?.hide()
-            binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
-            binding.recyclerView.isVisible = false
+            exitFullScreen()
         } else {
-            supportActionBar?.show()
-            viewModel.chapterList.value?.let { showChapterList(it) }
-
+            enterFullScreen()
         }
+    }
+
+    /**
+     * 进入全屏模式
+     */
+    private fun enterFullScreen() {
+        isFullScreen = true
+        toggleSystemBar(false) // 隐藏系统栏
+        supportActionBar?.hide()
+        binding.titleBar.isVisible = false
+        binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+        binding.recyclerView.isVisible = false
+    }
+
+    /**
+     * 退出全屏模式
+     */
+    private fun exitFullScreen() {
+        isFullScreen = false
+        toggleSystemBar(true) // 显示系统栏
+        supportActionBar?.show()
+        binding.titleBar.isVisible = true
+        binding.ivPlayer.layoutParams.height = 0
+        viewModel.chapterList.value?.let { showChapterList(it) }
     }
 
     private fun showChapterList(list: List<BookChapter>) {

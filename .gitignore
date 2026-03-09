@@ -16,3 +16,5 @@ package-lock.json
 .idea/
 # Kotlin 2.0
 .kotlin/
+.vscode
+.proxyai
