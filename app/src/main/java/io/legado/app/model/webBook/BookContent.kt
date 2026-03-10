@@ -134,6 +134,7 @@ object BookContent {
             }
         }
         var contentStr = contentList.joinToString("\n")
+        contentStr = HtmlFormatter.formatKeepImg(contentStr, redirectUrl, needSave)
         //全文替换
         val replaceRegex = contentRule.replaceRegex
         if (!replaceRegex.isNullOrEmpty()) {
@@ -141,7 +142,6 @@ object BookContent {
             contentStr = analyzeRule.getString(replaceRegex, contentStr)
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { "　　$it" }
         }
-        contentStr = HtmlFormatter.formatKeepImg(contentStr, redirectUrl)
         Debug.log(bookSource.bookSourceUrl, "┌获取章节名称")
         Debug.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
         Debug.log(bookSource.bookSourceUrl, "┌获取正文内容")

@@ -29,7 +29,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     var position: Long = 0L
     var bookSource: BookSource? = null
-    val book: Book by lazy {GlobalVars.nowBook!!}
+    val book: Book by lazy { GlobalVars.nowBook!! }
     private var oldChapterIndex: Int? = null
 
 
@@ -39,10 +39,16 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
             if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
-            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, canReName = true)
-            val tmp1= if (book.totalChapterNum==0)WebBook.getChapterListAwait(bookSource!!, book, true).getOrNull()!!
-            else if (GlobalVars.nowChapterList!=null&& GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl) GlobalVars.nowChapterList!!
-            else appDb.bookChapterDao.getChapterList(book.bookUrl)
+            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(
+                bookSource!!,
+                book,
+                canReName = true
+            )
+            val tmp1 =
+                if (book.totalChapterNum == 0) WebBook.getChapterListAwait(bookSource!!, book, true)
+                    .getOrNull()!!
+                else if (GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl) GlobalVars.nowChapterList!!
+                else appDb.bookChapterDao.getChapterList(book.bookUrl)
             chapterList.postValue(tmp1)
             initChapter(tmp1[(book.durChapterIndex)])
         }
@@ -52,15 +58,15 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
         Coroutine.async(viewModelScope) {
             getContentAwait(bookSource!!, book, chapter, needSave = false)
         }.onSuccess { content ->
-                    if (content.isEmpty()) {
-                        context.toastOnUi("未获取到资源链接")
-                    } else {
-                        val analyzeUrl = AnalyzeUrl(content, coroutineContext = coroutineContext)
-                        videoUrl.postValue(analyzeUrl)
-                    }
-                }.onError { e ->
-                    AppLog.put("获取资源链接出错\n$e", e, true)
-                }
+            if (content.isEmpty()) {
+                context.toastOnUi("未获取到资源链接")
+            } else {
+                val analyzeUrl = AnalyzeUrl(content, coroutineContext = coroutineContext)
+                videoUrl.postValue(analyzeUrl)
+            }
+        }.onError { e ->
+            AppLog.put("获取资源链接出错\n$e", e, true)
+        }
     }
 
     fun changeChapter(chapter: BookChapter) {

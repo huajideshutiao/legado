@@ -545,7 +545,7 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     fun htmlFormat(str: String): String {
-        return HtmlFormatter.formatKeepImg(str)
+        return HtmlFormatter.formatKeepImg(str,null,true)
     }
 
     fun t2s(text: String): String {

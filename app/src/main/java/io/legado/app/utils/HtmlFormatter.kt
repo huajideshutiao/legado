@@ -4,6 +4,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
+import org.jsoup.parser.Tag
 import java.util.regex.Pattern
 
 @Suppress("RegExpRedundantEscape")
@@ -35,7 +36,7 @@ object HtmlFormatter {
             .replace(lastRegex, "")
     }
 
-//    fun formatKeepImgOld(html: String?, redirectUrl: URL? = null): String {
+    //    fun formatKeepImgOld(html: String?, redirectUrl: URL? = null): String {
 //        html ?: return ""
 //        val keepImgHtml = format(html, notImgHtmlRegex)
 //
@@ -78,8 +79,8 @@ object HtmlFormatter {
 //        )
 //        return sb.toString()
 //    }
-    fun formatKeepImg(html: String, redirectUrl: String? = null): String {
-        val content = Jsoup.parse(html, redirectUrl?: "").body()
+    fun formatKeepImg(html: String, redirectUrl: String? = null, needSave: Boolean = true): String {
+        val content = Jsoup.parse(html, redirectUrl ?: "").body()
         val str = StringBuilder()
         fun extractFromNode(node: Node, result: StringBuilder) {
             for (child in node.childNodes()) {
@@ -88,22 +89,28 @@ object HtmlFormatter {
                         val text = child.wholeText.trim { it.code <= 0x20 || it == '　' }
                         if (text.isNotEmpty()) result.append("\n").append(text)
                     }
+
                     is Element if child.tagName().equals("img", ignoreCase = true) -> {
-                        child.attr("src",
-                            when{
+                        val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
+                        img.attr(
+                            "src",
+                            when {
                                 child.hasAttr("data-src") -> child.absUrl("data-src")
                                 child.hasAttr("data-original") -> child.absUrl("data-original")
                                 else -> child.absUrl("src")
                             }
                         )
-                        result.append(child.outerHtml())
+                        img.attr("style", child.attr("style"))
+                        img.attr("onclick", child.attr("onclick"))
+                        result.append(img.outerHtml())
                     }
+
                     is Element -> extractFromNode(child, result)
                 }
             }
         }
-        extractFromNode(content,str)
-        if(str.startsWith("\n"))str.replace(0,1,"　　")
-        return str.replace(Regex("\n"),"\n　　")
+        extractFromNode(content, str)
+        if (str[0] == '\n') str.deleteCharAt(0)
+        return if (needSave) str.replace(Regex("\n"), "\n　　") else str.toString()
     }
 }
