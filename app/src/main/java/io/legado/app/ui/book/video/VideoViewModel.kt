@@ -29,7 +29,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     var position: Long = 0L
     var bookSource: BookSource? = null
-    val book: Book by lazy { GlobalVars.nowBook!! }
+    val book: Book = GlobalVars.nowBook!!
     private var oldChapterIndex: Int? = null
 
 
@@ -61,7 +61,20 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             if (content.isEmpty()) {
                 context.toastOnUi("未获取到资源链接")
             } else {
-                val analyzeUrl = AnalyzeUrl(content, coroutineContext = coroutineContext)
+                val analyzeUrl = if (content.startsWith("http")) {
+                    AnalyzeUrl(content, coroutineContext = coroutineContext)
+                } else {
+                    AnalyzeUrl("", coroutineContext = coroutineContext).apply {
+                        var videoUrl = content
+                        val fakeUrl = if (content.startsWith("#BASE:")) {
+                            val index = content.indexOf("\n") + 1
+                            videoUrl = content.substring(index)
+                            content.substring(6, index - 1)
+                        } else "https://example.com/memory.m3u8"
+                        url = videoUrl
+                        headerMap["Referer"] = fakeUrl
+                    }
+                }
                 videoUrl.postValue(analyzeUrl)
             }
         }.onError { e ->

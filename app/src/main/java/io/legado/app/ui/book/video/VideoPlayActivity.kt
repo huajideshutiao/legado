@@ -65,6 +65,8 @@ import java.util.Locale
 import kotlin.math.abs
 import androidx.core.net.toUri
 import io.legado.app.constant.AppLog
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import android.content.pm.ActivityInfo
 
 @SuppressLint("UnsafeOptInUsageError")
 class VideoPlayActivity(
@@ -78,7 +80,7 @@ class VideoPlayActivity(
     private var currentSpeed = 1f
     private var originalSpeed = 1f
     private var position = 0L
-    private val screenWidth = Resources.getSystem().displayMetrics.widthPixels
+    private var screenWidth = Resources.getSystem().displayMetrics.widthPixels
     private var endX = 0f
     private var isPress = false
     private var isScroll = false
@@ -130,7 +132,9 @@ class VideoPlayActivity(
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         super.onPlaybackStateChanged(playbackState)
-                        if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
+                        if (playbackState == Player.STATE_ENDED
+                            && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1
+                        ) {
                             openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                         }
                     }
@@ -151,13 +155,59 @@ class VideoPlayActivity(
             }
     }
 
+    private val gestureDetector by lazy {
+        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onLongPress(e: MotionEvent) {
+                isPress = true
+                originalSpeed = player.playbackParameters.speed
+                currentSpeed = originalSpeed * 2f
+                player.playbackParameters =
+                    PlaybackParameters(currentSpeed, player.playbackParameters.pitch)
+                binding.tvVideoSpeed.text = "${currentSpeed}X"
+                binding.tvVideoSpeed.visibility = View.VISIBLE
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (player.isPlaying) player.pause() else player.play()
+                return true
+            }
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                binding.ivPlayer.performClick()
+                return true
+            }
+
+            override fun onScroll(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                if (abs(distanceX) > abs(distanceY)) {
+                    isScroll = true
+                    player.pause()
+                    endX += distanceX
+                    position = (player.currentPosition - (endX / screenWidth) * 180000).toLong()
+                        .coerceIn(0, player.duration)
+                    binding.tvVideoSpeed.text =
+                        progressTimeFormat.format(position) + "/" + progressTimeFormat.format(
+                            player.duration
+                        )
+                    binding.tvVideoSpeed.visibility = View.VISIBLE
+                    return true
+                }
+                return false
+            }
+        })
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData()
         viewModel.bookTitle.observe(this) {
             binding.titleBar.title = it
         }
         viewModel.videoUrl.observe(this) {
-            refreshPlayer(it.url)
+            refreshPlayer(it)
         }
         viewModel.chapterList.observe(this) {
             if (it.size > 1) {
@@ -183,139 +233,14 @@ class VideoPlayActivity(
             ).build().show()
         }
         binding.ivPlayer.setFullscreenButtonClickListener { isFullScreenRequested ->
-            if (isFullScreen != isFullScreenRequested) {
-                toggleFullScreen()
+            requestedOrientation = if (isFullScreenRequested) {
+                isFullScreen = true
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                isFullScreen = false
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
         }
-        onBackPressedDispatcher.addCallback(this) {
-            if (isFullScreen) {
-                toggleFullScreen()
-                return@addCallback
-            }
-            finish()
-        }
-
-    }
-
-    @SuppressLint("SetTextI18n")
-    private fun refreshPlayer(videoUrl0: String) {
-        if (videoUrl0.startsWith("http")) {
-            player.setMediaItem(MediaItem.fromUri(videoUrl0))
-        } else {
-            // 1. 创建一个自定义的假 URI 代表你的内存 m3u8
-            var videoUrl = videoUrl0
-            val customM3u8Uri = if (videoUrl.startsWith("#BASE:")) {
-                val index = videoUrl.indexOf("\n") + 1
-                videoUrl = videoUrl.substring(index)
-                videoUrl0.substring(6, index - 1).toUri()
-            } else "https://example.com/memory.m3u8".toUri()
-            val m3u8Bytes = videoUrl.toByteArray(Charsets.UTF_8)
-            // 2. 告诉 ExoPlayer 这是一个 HLS 流 (APPLICATION_M3U8)
-            val mediaItem = MediaItem.Builder()
-                .setUri(customM3u8Uri)
-                .setMimeType(MimeTypes.APPLICATION_M3U8)
-                .build()
-
-            // 3. 构建一个智能的 DataSource Factory
-            val dataSourceFactory = DataSource.Factory {
-                object : DataSource {
-                    // 底层使用 HttpDataSource 来下载真正的视频切片
-                    private val httpDataSource = DefaultHttpDataSource.Factory().createDataSource()
-
-                    // 使用 ByteArrayDataSource 来返回内存中的 m3u8 文本
-                    private val byteArrayDataSource = ByteArrayDataSource(m3u8Bytes)
-
-                    private var isMemoryData = false
-
-                    override fun addTransferListener(transferListener: TransferListener) {
-                        httpDataSource.addTransferListener(transferListener)
-                        byteArrayDataSource.addTransferListener(transferListener)
-                    }
-
-                    override fun open(dataSpec: DataSpec): Long {
-                        // 如果是请求我们自定义的假 URI，就走内存
-                        return if (dataSpec.uri == customM3u8Uri) {
-                            isMemoryData = true
-                            byteArrayDataSource.open(dataSpec)
-                        } else {
-                            // 否则（例如请求 .ts 切片），走网络下载
-                            isMemoryData = false
-                            httpDataSource.open(dataSpec)
-                        }
-                    }
-
-                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-                        return (if (isMemoryData) byteArrayDataSource else httpDataSource)
-                            .read(buffer, offset, length)
-                    }
-
-                    override fun getUri(): Uri? {
-                        return (if (isMemoryData) byteArrayDataSource else httpDataSource).uri
-                    }
-
-                    override fun close() {
-                        (if (isMemoryData) byteArrayDataSource else httpDataSource).close()
-                    }
-                }
-            }
-
-            // 4. 使用专门处理 HLS 的 HlsMediaSource
-            val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(mediaItem)
-
-            player.setMediaSource(mediaSource)
-        }
-        player.apply {
-            if (viewModel.position != 0L) seekTo(viewModel.position)
-            play()
-            prepare()
-        }
-        val gestureDetector =
-            GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-                override fun onLongPress(e: MotionEvent) {
-                    isPress = true
-                    originalSpeed = player.playbackParameters.speed
-                    currentSpeed = originalSpeed * 2f
-                    player.playbackParameters =
-                        PlaybackParameters(currentSpeed, player.playbackParameters.pitch)
-                    binding.tvVideoSpeed.text = "${currentSpeed}X"
-                    binding.tvVideoSpeed.visibility = View.VISIBLE
-                }
-
-                override fun onDoubleTap(e: MotionEvent): Boolean {
-                    if (player.isPlaying) player.pause() else player.play()
-                    return true
-                }
-
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    binding.ivPlayer.performClick()
-                    return true
-                }
-
-
-                override fun onScroll(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    distanceX: Float,
-                    distanceY: Float
-                ): Boolean {
-                    if (abs(distanceX) > abs(distanceY)) {
-                        isScroll = true
-                        player.pause()
-                        endX += distanceX
-                        position = (player.currentPosition - (endX / screenWidth) * 180000).toLong()
-                            .coerceIn(0, player.duration)
-                        binding.tvVideoSpeed.text =
-                            progressTimeFormat.format(position) + "/" + progressTimeFormat.format(
-                                player.duration
-                            )
-                        binding.tvVideoSpeed.visibility = View.VISIBLE
-                        return true
-                    }
-                    return false
-                }
-            })
-        @SuppressLint("ClickableViewAccessibility")
         binding.ivPlayer.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             when (event.action) {
@@ -338,8 +263,64 @@ class VideoPlayActivity(
             }
             true
         }
+        onBackPressedDispatcher.addCallback(this) {
+            if (isFullScreen) {
+                exitFullScreen()
+                return@addCallback
+            }
+            finish()
+        }
 
     }
+
+    @SuppressLint("SetTextI18n")
+    private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
+        if (analyzeUrl.url.startsWith("http")) {
+            player.setMediaItem(MediaItem.fromUri(analyzeUrl.url))
+        } else {
+            val fakeUrl = analyzeUrl.headerMap["Referer"]
+            val dataSourceFactory = DataSource.Factory {
+                object : DataSource {
+                    private val httpDataSource = DefaultHttpDataSource.Factory().createDataSource()
+                    private val byteArrayDataSource =
+                        ByteArrayDataSource(analyzeUrl.url.toByteArray(Charsets.UTF_8))
+                    private var isMemoryData = false
+                    private val dataSource get() = if (isMemoryData) byteArrayDataSource else httpDataSource
+
+                    override fun addTransferListener(transferListener: TransferListener) {
+                        httpDataSource.addTransferListener(transferListener)
+                        byteArrayDataSource.addTransferListener(transferListener)
+                    }
+
+                    override fun open(dataSpec: DataSpec): Long {
+                        isMemoryData = dataSpec.uri == fakeUrl?.toUri()
+                        return dataSource.open(dataSpec)
+                    }
+
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                        dataSource.read(buffer, offset, length)
+
+                    override fun getUri(): Uri? = dataSource.uri
+                    override fun close() = dataSource.close()
+                }
+            }
+            player.setMediaSource(
+                HlsMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(
+                        MediaItem.Builder()
+                            .setUri(fakeUrl)
+                            .setMimeType(MimeTypes.APPLICATION_M3U8)
+                            .build()
+                    )
+            )
+        }
+        player.apply {
+            if (viewModel.position != 0L) seekTo(viewModel.position)
+            play()
+            prepare()
+        }
+    }
+
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.video_play, menu)
@@ -363,8 +344,6 @@ class VideoPlayActivity(
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-//            R.id.menu_change_source -> {
-//            }
             R.id.menu_refresh -> viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
             R.id.menu_shelf -> {
                 if (!viewModel.book.isNotShelf) {
@@ -397,15 +376,6 @@ class VideoPlayActivity(
             }
 
             R.id.menu_full_screen -> toggleFullScreen()
-            R.id.menu_resolution -> {
-                TrackSelectionDialogBuilder(
-                    this,
-                    getString(R.string.resolution),
-                    player,
-                    C.TRACK_TYPE_VIDEO
-                ).build().show()
-            }
-
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.book
@@ -444,6 +414,7 @@ class VideoPlayActivity(
                 }
             }
         }
+        screenWidth = Resources.getSystem().displayMetrics.widthPixels
         super.onConfigurationChanged(newConfig)
     }
 
@@ -495,7 +466,10 @@ class VideoPlayActivity(
     }
 
     override fun onDestroy() {
-        viewModel.saveRead(if (player.currentPosition > player.duration - 1000) 0L else player.currentPosition)
+        viewModel.saveRead(
+            if (player.currentPosition > player.duration - 1000) 0L
+            else player.currentPosition
+        )
         player.release()
         super.onDestroy()
     }
