@@ -100,7 +100,7 @@ object ExoPlayerHelper {
     /**
      * Okhttp DataSource.Factory
      */
-    private val okhttpDataFactory by lazy {
+    val okhttpDataFactory by lazy {
         val client = okHttpClient.newBuilder()
             .callTimeout(0, TimeUnit.SECONDS)
             .build()

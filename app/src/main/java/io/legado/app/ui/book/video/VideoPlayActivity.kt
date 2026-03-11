@@ -27,15 +27,10 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlaybackException
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.recyclerview.widget.GridLayoutManager
@@ -68,6 +63,7 @@ import androidx.core.net.toUri
 import io.legado.app.constant.AppLog
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import android.content.pm.ActivityInfo
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.dpToPx
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -122,22 +118,7 @@ class VideoPlayActivity(
     }
 
     private val player by lazy {
-        ExoPlayer.Builder(this)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(this).apply {
-                    setDataSourceFactory(
-                        ResolvingDataSource.Factory(
-                            DefaultDataSource.Factory(
-                                this@VideoPlayActivity,
-                                DefaultHttpDataSource.Factory()
-                            )
-                        ) { dataSpec ->
-                            dataSpec.withRequestHeaders(
-                                viewModel.videoUrl.value?.headerMap ?: mapOf()
-                            )
-                        })
-                }
-            ).build().apply {
+        ExoPlayerHelper.createHttpExoPlayer(this).apply {
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         super.onPlaybackStateChanged(playbackState)
@@ -336,12 +317,12 @@ class VideoPlayActivity(
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
         if (analyzeUrl.url.startsWith("http")) {
-            player.setMediaItem(MediaItem.fromUri(analyzeUrl.url))
+            player.setMediaItem(ExoPlayerHelper.createMediaItem(analyzeUrl.url,analyzeUrl.headerMap))
         } else {
             val fakeUrl = analyzeUrl.headerMap["Referer"]
             val dataSourceFactory = DataSource.Factory {
                 object : DataSource {
-                    private val httpDataSource = DefaultHttpDataSource.Factory().createDataSource()
+                    private val httpDataSource = ExoPlayerHelper.okhttpDataFactory.createDataSource()
                     private val byteArrayDataSource =
                         ByteArrayDataSource(analyzeUrl.url.toByteArray(Charsets.UTF_8))
                     private var isMemoryData = false

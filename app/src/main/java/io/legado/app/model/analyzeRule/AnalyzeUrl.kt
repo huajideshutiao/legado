@@ -6,7 +6,6 @@ import androidx.annotation.Keep
 import androidx.media3.common.MediaItem
 import cn.hutool.core.codec.PercentCodec
 import cn.hutool.core.net.RFC3986
-import cn.hutool.core.util.HexUtil
 import com.bumptech.glide.load.model.GlideUrl
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
@@ -15,7 +14,6 @@ import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.JS_PATTERN
-import io.legado.app.constant.AppPattern.dataUriRegex
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -435,8 +433,8 @@ class AnalyzeUrl(
         sourceRegex: String? = null,
         useWebView: Boolean = true,
     ): StrResponse {
-        if (url.startsWith("data:")) {
-            return StrResponse(url, HexUtil.encodeHexStr(getByteArrayAwait()))
+        getByteArrayIfDataUri()?.let {
+            return StrResponse(url, it.toHexString())
         }
         concurrentRateLimiter.withLimit {
             setCookie()
@@ -570,16 +568,12 @@ class AnalyzeUrl(
     }
 
     private fun getByteArrayIfDataUri(): ByteArray? {
-        val dataUriFindResult = dataUriRegex.find(urlNoQuery)
-        if (dataUriFindResult != null) {
-            val dataUriBase64 = dataUriFindResult.groupValues[1]
-            val byteArray: ByteArray? = try {
-                Base64.decode(dataUriBase64, Base64.DEFAULT)
-            } catch (e: IllegalArgumentException) {
-                byteArrayOf()
-            }
-            return byteArray
-        }else return null
+        if (!url.startsWith("data:"))return null
+        val dataUriFindResult = urlNoQuery.indexOf(";base64,")
+        return if (dataUriFindResult != -1) {
+            val dataUriBase64 = urlNoQuery.substring(dataUriFindResult + 8)
+            Base64.decode(dataUriBase64, Base64.DEFAULT)
+        } else ByteArray(0)
     }
 
     /**

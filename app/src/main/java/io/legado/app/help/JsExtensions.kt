@@ -3,7 +3,6 @@ package io.legado.app.help
 import android.webkit.WebSettings
 import androidx.annotation.Keep
 import cn.hutool.core.codec.Base64
-import cn.hutool.core.util.HexUtil
 import com.script.rhino.rhinoContext
 import com.script.rhino.rhinoContextOrNull
 import io.legado.app.constant.AppConst
@@ -368,7 +367,7 @@ interface JsExtensions : JsEncodeUtils {
         )
         val file = File(path)
         file.createFileReplace()
-        HexUtil.decodeHex(content).let {
+        content.hexToByteArray().let {
             if (it.isNotEmpty()) {
                 file.writeBytes(it)
             }
@@ -496,19 +495,13 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     /* HexString 解码为字节数组 */
-    fun hexDecodeToByteArray(hex: String): ByteArray? {
-        return HexUtil.decodeHex(hex)
-    }
+    fun hexDecodeToByteArray(hex: String): ByteArray? = hex.hexToByteArray()
 
     /* hexString 解码为utf8String*/
-    fun hexDecodeToString(hex: String): String? {
-        return HexUtil.decodeHexStr(hex)
-    }
+    fun hexDecodeToString(hex: String): String? = hex.hexToByteArray().decodeToString()
 
     /* utf8 编码为hexString */
-    fun hexEncodeToString(utf8: String): String? {
-        return HexUtil.encodeHexStr(utf8)
-    }
+    fun hexEncodeToString(utf8: String): String? = utf8.toByteArray().toHexString()
 
     /**
      * 格式化时间
@@ -739,7 +732,7 @@ interface JsExtensions : JsEncodeUtils {
         val bytes = if (url.isAbsUrl()) {
             AnalyzeUrl(url, source = getSource(), coroutineContext = context).getByteArray()
         } else {
-            HexUtil.decodeHex(url)
+            url.hexToByteArray()
         }
         val bos = ByteArrayOutputStream()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
@@ -767,7 +760,7 @@ interface JsExtensions : JsEncodeUtils {
         val bytes = if (url.isAbsUrl()) {
             AnalyzeUrl(url, source = getSource(), coroutineContext = context).getByteArray()
         } else {
-            HexUtil.decodeHex(url)
+            url.hexToByteArray()
         }
 
         return ByteArrayInputStream(bytes).use {
@@ -785,7 +778,7 @@ interface JsExtensions : JsEncodeUtils {
         val bytes = if (url.isAbsUrl()) {
             AnalyzeUrl(url, source = getSource(), coroutineContext = context).getByteArray()
         } else {
-            HexUtil.decodeHex(url)
+            url.hexToByteArray()
         }
 
         return ByteArrayInputStream(bytes).use {
