@@ -89,6 +89,8 @@ class VideoPlayActivity(
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private var currentVolume = 0
     private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    private var lastScrollTime = 0L
+    private val scrollThrottleInterval = 33L // 1000ms / 30 = 33ms
 
     private val sourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
@@ -177,6 +179,11 @@ class VideoPlayActivity(
             distanceY: Float
         ): Boolean {
             e1 ?: return false
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastScrollTime < scrollThrottleInterval) {
+                return true
+            }
+            lastScrollTime = currentTime
             when (gestureMode) {
                 GestureMode.NONE -> {
                     val deltaX = abs(e2.x - startX)
@@ -208,10 +215,11 @@ class VideoPlayActivity(
                 }
 
                 GestureMode.BRIGHTNESS -> {
-                    val deltaBrightness = (e2.y - startY) / screenHeight
+                    val deltaBrightness = (e2.y - startY) / screenHeight / 20f
                     window.attributes = window.attributes.apply {
                         screenBrightness = (screenBrightness - deltaBrightness).coerceIn(0f, 1f)
                     }
+                    if (window.attributes.screenBrightness == 0f) startY = e2.y
                     binding.tvVideoSpeed.text =
                         "亮度: ${(window.attributes.screenBrightness * 100).toInt()}%"
                 }
@@ -219,6 +227,7 @@ class VideoPlayActivity(
                 GestureMode.VOLUME -> {
                     val deltaVolume = ((e2.y - startY) / screenHeight * maxVolume).toInt()
                     val newVolume = (currentVolume - deltaVolume).coerceIn(0, maxVolume)
+                    if (newVolume == 0)startY = e2.y
                     audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
                     binding.tvVideoSpeed.text = "音量: ${(newVolume * 100 / maxVolume)}%"
                 }
