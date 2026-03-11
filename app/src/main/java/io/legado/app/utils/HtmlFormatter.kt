@@ -35,6 +35,7 @@ object HtmlFormatter {
             .replace(indent2Regex, "　　")
             .replace(lastRegex, "")
     }
+
     fun formatKeepImg(html: String, redirectUrl: String? = null, needSave: Boolean = true): String {
         val content = Jsoup.parse(html, redirectUrl ?: "").body()
         val str = StringBuilder()
@@ -46,9 +47,10 @@ object HtmlFormatter {
                         if (text.isNotEmpty()) str.apply {
                             text.lines().forEach {
                                 val oo = it.trim()
-                                if(oo == "") return@forEach
+                                if (oo == "") return@forEach
+                                if (str.isNotEmpty()) append("\n")
                                 if (needSave) append("　　")
-                                append(oo).append("\n")
+                                append(oo)
                             }
                         }
                     }

@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.video
 
 import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.icu.text.SimpleDateFormat
@@ -16,6 +17,7 @@ import android.view.WindowManager
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
@@ -36,6 +38,7 @@ import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
@@ -43,7 +46,9 @@ import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
@@ -51,6 +56,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.StartActivityContract
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -59,12 +65,6 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
-import androidx.core.net.toUri
-import io.legado.app.constant.AppLog
-import io.legado.app.model.analyzeRule.AnalyzeUrl
-import android.content.pm.ActivityInfo
-import io.legado.app.help.exoplayer.ExoPlayerHelper
-import io.legado.app.utils.dpToPx
 
 @SuppressLint("UnsafeOptInUsageError")
 class VideoPlayActivity(
@@ -119,30 +119,30 @@ class VideoPlayActivity(
 
     private val player by lazy {
         ExoPlayerHelper.createHttpExoPlayer(this).apply {
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        super.onPlaybackStateChanged(playbackState)
-                        if (playbackState == Player.STATE_ENDED
-                            && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1
-                        ) {
-                            openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
-                        }
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    super.onPlaybackStateChanged(playbackState)
+                    if (playbackState == Player.STATE_ENDED
+                        && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1
+                    ) {
+                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                     }
+                }
 
-                    override fun onPlayerError(error: PlaybackException) {
-                        if (error is ExoPlaybackException) {
-                            val msg = when (error.sourceException) {
-                                is UnrecognizedInputFormatException -> "不是视频链接"
-                                is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
-                                else -> "视频播放出错"
-                            }
-                            AppLog.put(msg, error, true)
+                override fun onPlayerError(error: PlaybackException) {
+                    if (error is ExoPlaybackException) {
+                        val msg = when (error.sourceException) {
+                            is UnrecognizedInputFormatException -> "不是视频链接"
+                            is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
+                            else -> "视频播放出错"
                         }
-                        super.onPlayerError(error)
+                        AppLog.put(msg, error, true)
                     }
-                })
-                binding.ivPlayer.player = this
-            }
+                    super.onPlayerError(error)
+                }
+            })
+            binding.ivPlayer.player = this
+        }
     }
 
     private inner class VideoGestureListener : GestureDetector.SimpleOnGestureListener() {
@@ -208,7 +208,7 @@ class VideoPlayActivity(
                 }
 
                 GestureMode.BRIGHTNESS -> {
-                    val deltaBrightness = (e2.y - startY) * 20f / screenHeight
+                    val deltaBrightness = (e2.y - startY) / screenHeight
                     window.attributes = window.attributes.apply {
                         screenBrightness = (screenBrightness - deltaBrightness).coerceIn(0f, 1f)
                     }
@@ -231,8 +231,6 @@ class VideoPlayActivity(
                 GestureMode.PROGRESS -> {
                     player.seekTo(position)
                     player.play()
-                    gestureMode = GestureMode.NONE
-                    binding.tvVideoSpeed.visibility = View.GONE
                 }
 
                 GestureMode.NONE -> {
@@ -243,11 +241,10 @@ class VideoPlayActivity(
                         )
                 }
 
-                else -> {
-                    gestureMode = GestureMode.NONE
-                    binding.tvVideoSpeed.visibility = View.GONE
-                }
+                else -> {}
             }
+            gestureMode = GestureMode.NONE
+            binding.tvVideoSpeed.visibility = View.GONE
         }
     }
 
@@ -317,12 +314,18 @@ class VideoPlayActivity(
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
         if (analyzeUrl.url.startsWith("http")) {
-            player.setMediaItem(ExoPlayerHelper.createMediaItem(analyzeUrl.url,analyzeUrl.headerMap))
+            player.setMediaItem(
+                ExoPlayerHelper.createMediaItem(
+                    analyzeUrl.url,
+                    analyzeUrl.headerMap
+                )
+            )
         } else {
             val fakeUrl = analyzeUrl.headerMap["Referer"]
             val dataSourceFactory = DataSource.Factory {
                 object : DataSource {
-                    private val httpDataSource = ExoPlayerHelper.okhttpDataFactory.createDataSource()
+                    private val httpDataSource =
+                        ExoPlayerHelper.okhttpDataFactory.createDataSource()
                     private val byteArrayDataSource =
                         ByteArrayDataSource(analyzeUrl.url.toByteArray(Charsets.UTF_8))
                     private var isMemoryData = false
