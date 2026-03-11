@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.icu.text.SimpleDateFormat
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.GestureDetector
@@ -67,6 +68,7 @@ import androidx.core.net.toUri
 import io.legado.app.constant.AppLog
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import android.content.pm.ActivityInfo
+import io.legado.app.utils.dpToPx
 
 @SuppressLint("UnsafeOptInUsageError")
 class VideoPlayActivity(
@@ -77,13 +79,20 @@ class VideoPlayActivity(
     override val viewModel by viewModels<VideoViewModel>()
     private val adapter by lazy { ChapterListAdapter(this, this) }
     private var isFullScreen = false
-    private var currentSpeed = 1f
     private var originalSpeed = 1f
     private var position = 0L
     private var screenWidth = Resources.getSystem().displayMetrics.widthPixels
-    private var endX = 0f
-    private var isPress = false
-    private var isScroll = false
+    private val screenHeight = 350.dpToPx()
+
+    private enum class GestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
+
+    private var gestureMode = GestureMode.NONE
+    private var startX = 0f
+    private var startY = 0f
+    private val deadZoneSize by lazy { 15F.dpToPx() }
+    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+    private var currentVolume = 0
+    private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
 
     private val sourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
@@ -155,57 +164,121 @@ class VideoPlayActivity(
             }
     }
 
-    private val gestureDetector by lazy {
-        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onLongPress(e: MotionEvent) {
-                isPress = true
-                originalSpeed = player.playbackParameters.speed
-                currentSpeed = originalSpeed * 2f
-                player.playbackParameters =
-                    PlaybackParameters(currentSpeed, player.playbackParameters.pitch)
-                binding.tvVideoSpeed.text = "${currentSpeed}X"
-                binding.tvVideoSpeed.visibility = View.VISIBLE
-            }
+    private inner class VideoGestureListener : GestureDetector.SimpleOnGestureListener() {
+        override fun onLongPress(e: MotionEvent) {
+            originalSpeed = player.playbackParameters.speed
+            player.playbackParameters =
+                PlaybackParameters(originalSpeed * 2f, player.playbackParameters.pitch)
+            binding.tvVideoSpeed.text = "${originalSpeed * 2f}X"
+            binding.tvVideoSpeed.visibility = View.VISIBLE
+        }
 
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (player.isPlaying) player.pause() else player.play()
-                return true
-            }
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (player.isPlaying) player.pause() else player.play()
+            return true
+        }
 
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                binding.ivPlayer.performClick()
-                return true
-            }
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            binding.ivPlayer.performClick()
+            return true
+        }
 
-            override fun onScroll(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                distanceX: Float,
-                distanceY: Float
-            ): Boolean {
-                if (abs(distanceX) > abs(distanceY)) {
-                    isScroll = true
-                    player.pause()
-                    endX += distanceX
-                    position = (player.currentPosition - (endX / screenWidth) * 180000).toLong()
-                        .coerceIn(0, player.duration)
+        override fun onDown(e: MotionEvent): Boolean {
+            startX = e.x
+            startY = e.y
+            return true
+        }
+
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+            e1 ?: return false
+            when (gestureMode) {
+                GestureMode.NONE -> {
+                    val deltaX = abs(e2.x - startX)
+                    val deltaY = abs(e2.y - startY)
+
+                    if (deltaX < deadZoneSize && deltaY < deadZoneSize) return false
+
+                    gestureMode =
+                        when {
+                            deltaX > deltaY -> GestureMode.PROGRESS
+                            e1.x < screenWidth / 2 -> GestureMode.BRIGHTNESS
+                            else -> {
+                                currentVolume =
+                                    audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                GestureMode.VOLUME
+                            }
+                        }
+                    binding.tvVideoSpeed.visibility = View.VISIBLE
+                }
+
+                GestureMode.PROGRESS -> {
+                    position =
+                        (player.currentPosition + (e2.x - startX) / screenWidth * 180000).toLong()
+                            .coerceIn(0, player.duration)
                     binding.tvVideoSpeed.text =
                         progressTimeFormat.format(position) + "/" + progressTimeFormat.format(
                             player.duration
                         )
-                    binding.tvVideoSpeed.visibility = View.VISIBLE
-                    return true
                 }
-                return false
+
+                GestureMode.BRIGHTNESS -> {
+                    val deltaBrightness = (e2.y - startY) * 20f / screenHeight
+                    window.attributes = window.attributes.apply {
+                        screenBrightness = (screenBrightness - deltaBrightness).coerceIn(0f, 1f)
+                    }
+                    binding.tvVideoSpeed.text =
+                        "亮度: ${(window.attributes.screenBrightness * 100).toInt()}%"
+                }
+
+                GestureMode.VOLUME -> {
+                    val deltaVolume = ((e2.y - startY) / screenHeight * maxVolume).toInt()
+                    val newVolume = (currentVolume - deltaVolume).coerceIn(0, maxVolume)
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+                    binding.tvVideoSpeed.text = "音量: ${(newVolume * 100 / maxVolume)}%"
+                }
             }
-        })
+            return true
+        }
+
+        fun onUp(e: MotionEvent) {
+            when (gestureMode) {
+                GestureMode.PROGRESS -> {
+                    player.seekTo(position)
+                    player.play()
+                    gestureMode = GestureMode.NONE
+                    binding.tvVideoSpeed.visibility = View.GONE
+                }
+
+                GestureMode.NONE -> {
+                    if (originalSpeed != player.playbackParameters.speed)
+                        player.playbackParameters = PlaybackParameters(
+                            originalSpeed,
+                            player.playbackParameters.pitch
+                        )
+                }
+
+                else -> {
+                    gestureMode = GestureMode.NONE
+                    binding.tvVideoSpeed.visibility = View.GONE
+                }
+            }
+        }
     }
 
+    private val gestureListener by lazy { VideoGestureListener() }
+    private val gestureDetector by lazy {
+        GestureDetector(this, gestureListener)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData()
-        viewModel.bookTitle.observe(this) {
-            binding.titleBar.title = it
-        }
+        binding.titleBar.title = viewModel.bookTitle
         viewModel.videoUrl.observe(this) {
             refreshPlayer(it)
         }
@@ -243,32 +316,19 @@ class VideoPlayActivity(
         }
         binding.ivPlayer.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
-            when (event.action) {
-                MotionEvent.ACTION_UP -> {
-                    if (isScroll) {
-                        isScroll = false
-                        endX = 0F
-                        player.seekTo(position)
-                        player.play()
-                    }
-                    if (isPress) {
-                        isPress = false
-                        player.playbackParameters = PlaybackParameters(
-                            originalSpeed,
-                            player.playbackParameters.pitch
-                        )
-                    }
-                    binding.tvVideoSpeed.visibility = View.GONE
-                }
+            if (event.action == MotionEvent.ACTION_UP) {
+                gestureListener.onUp(event)
             }
             true
         }
         onBackPressedDispatcher.addCallback(this) {
-            if (isFullScreen) {
-                exitFullScreen()
-                return@addCallback
+            when {
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
+                isFullScreen -> exitFullScreen()
+                else -> finish()
             }
-            finish()
         }
 
     }
@@ -375,7 +435,12 @@ class VideoPlayActivity(
                 }
             }
 
-            R.id.menu_full_screen -> toggleFullScreen()
+            R.id.menu_full_screen -> if (isFullScreen) {
+                exitFullScreen()
+            } else {
+                enterFullScreen()
+            }
+
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.book
@@ -396,18 +461,13 @@ class VideoPlayActivity(
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
-        // 根据屏幕方向更新全屏状态
         when (newConfig.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
-                // 横屏时进入全屏
-                if (!isFullScreen) {
-                    isFullScreen = true
-                    enterFullScreen()
-                }
+                isFullScreen = true
+                enterFullScreen()
             }
 
             Configuration.ORIENTATION_PORTRAIT -> {
-                // 竖屏时退出全屏
                 if (isFullScreen) {
                     isFullScreen = false
                     exitFullScreen()
@@ -418,32 +478,18 @@ class VideoPlayActivity(
         super.onConfigurationChanged(newConfig)
     }
 
-    private fun toggleFullScreen() {
-        if (isFullScreen) {
-            exitFullScreen()
-        } else {
-            enterFullScreen()
-        }
-    }
-
-    /**
-     * 进入全屏模式
-     */
     private fun enterFullScreen() {
         isFullScreen = true
-        toggleSystemBar(false) // 隐藏系统栏
+        toggleSystemBar(false)
         supportActionBar?.hide()
         binding.titleBar.isVisible = false
         binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         binding.recyclerView.isVisible = false
     }
 
-    /**
-     * 退出全屏模式
-     */
     private fun exitFullScreen() {
         isFullScreen = false
-        toggleSystemBar(true) // 显示系统栏
+        toggleSystemBar(true)
         supportActionBar?.show()
         binding.titleBar.isVisible = true
         binding.ivPlayer.layoutParams.height = 0

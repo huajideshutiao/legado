@@ -236,6 +236,8 @@ class TextChapterLayout(
             }
             content.lines().forEach{
                 val line = if (it.startsWith("　　"))paragraphIndent+it.substring(2) else it
+//                if (it.isBlank())return@forEach
+//                val line = paragraphIndent+it.trim()
                 if (isTextImageStyle || imgList.isEmpty()) {
                 //图片样式为文字嵌入类型
                 setTypeText(

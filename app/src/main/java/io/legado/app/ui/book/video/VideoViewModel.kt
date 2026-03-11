@@ -15,6 +15,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
@@ -24,7 +25,7 @@ import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.toastOnUi
 
 class VideoViewModel(application: Application) : BaseViewModel(application) {
-    val bookTitle = MutableLiveData<String>()
+    val bookTitle by lazy { book.name }
     val chapterList = MutableLiveData<List<BookChapter>>()
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     var position: Long = 0L
@@ -36,19 +37,18 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     fun initData() {
         execute {
             bookSource = book.getBookSource() ?: return@execute
-            bookTitle.postValue(book.name)
             position = book.durChapterPos.toLong()
             if (oldChapterIndex == null) oldChapterIndex = book.durChapterIndex
-            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(
-                bookSource!!,
-                book,
-                canReName = true
-            )
-            val tmp1 =
-                if (book.totalChapterNum == 0) WebBook.getChapterListAwait(bookSource!!, book, true)
-                    .getOrNull()!!
-                else if (GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl) GlobalVars.nowChapterList!!
-                else appDb.bookChapterDao.getChapterList(book.bookUrl)
+            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, true)
+            val tmp1 = when {
+                GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl ->
+                    GlobalVars.nowChapterList!!
+
+                book.isNotShelf || book.totalChapterNum == 0 ->
+                    WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
+
+                else -> appDb.bookChapterDao.getChapterList(book.bookUrl)
+            }
             chapterList.postValue(tmp1)
             initChapter(tmp1[(book.durChapterIndex)])
         }

@@ -105,7 +105,7 @@ class ContentProcessor private constructor(
             if (!removeSameTitleCache.contains(fileName)) try {
                 val name = Pattern.quote(book.name)
                 var title = chapter.title.escapeRegex().replace(spaceRegex, "\\\\s*")
-                var matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title}(\\s)*")
+                var matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title} *\\n?")
                     .matcher(mContent)
                 if (matcher.find()) {
                     mContent = mContent.substring(matcher.end())
@@ -117,7 +117,7 @@ class ContentProcessor private constructor(
                             chineseConvert = false
                         )
                     )
-                    matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title}(\\s)*")
+                    matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title} *\\n?")
                         .matcher(mContent)
                     if (matcher.find()) {
                         mContent = mContent.substring(matcher.end())

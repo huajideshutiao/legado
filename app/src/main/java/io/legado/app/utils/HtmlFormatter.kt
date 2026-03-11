@@ -35,59 +35,22 @@ object HtmlFormatter {
             .replace(indent2Regex, "　　")
             .replace(lastRegex, "")
     }
-
-    //    fun formatKeepImgOld(html: String?, redirectUrl: URL? = null): String {
-//        html ?: return ""
-//        val keepImgHtml = format(html, notImgHtmlRegex)
-//
-//        //正则的“|”处于顶端而不处于（）中时，具有类似||的熔断效果，故以此机制简化原来的代码
-//        val matcher = formatImagePattern.matcher(keepImgHtml)
-//        var appendPos = 0
-//        val sb = StringBuilder()
-//        while (matcher.find()) {
-//            val onClick = onClickRegex.find(matcher.group())
-//            val style = styleRegex.find(matcher.group())
-//            var param = ""
-//            sb.append(
-//                keepImgHtml.substring(appendPos, matcher.start()),
-//                "<img src=\"",
-//                NetworkUtils.getAbsoluteURL(
-//                    redirectUrl,
-//                    matcher.group(1)?.let {
-//                        val urlMatcher = AnalyzeUrl.paramPattern.matcher(it)
-//                        if (urlMatcher.find()) {
-//                            param = ',' + it.substring(urlMatcher.end())
-//                            it.substring(0, urlMatcher.start())
-//                        } else it
-//                    } ?: matcher.group(2) ?: matcher.group(3)!!
-//                ),
-//                param,
-//                "\"",
-//                if(onClick==null||onClick.groupValues[1].isBlank()) ""
-//                else " onclick=\"${onClick.groupValues[1]}\"",
-//                if(style==null||style.groupValues[1].isBlank()) ""
-//                else " style=\"${style.groupValues[1]}\"",
-//                ">"
-//            )
-//            appendPos = matcher.end()
-//        }
-//        if (appendPos < keepImgHtml.length) sb.append(
-//            keepImgHtml.substring(
-//                appendPos,
-//                keepImgHtml.length
-//            )
-//        )
-//        return sb.toString()
-//    }
     fun formatKeepImg(html: String, redirectUrl: String? = null, needSave: Boolean = true): String {
         val content = Jsoup.parse(html, redirectUrl ?: "").body()
         val str = StringBuilder()
-        fun extractFromNode(node: Node, result: StringBuilder) {
+        fun extractFromNode(node: Node) {
             for (child in node.childNodes()) {
                 when (child) {
                     is TextNode -> {
-                        val text = child.wholeText.trim { it.code <= 0x20 || it == '　' }
-                        if (text.isNotEmpty()) result.append("\n").append(text)
+                        val text = child.wholeText
+                        if (text.isNotEmpty()) str.apply {
+                            text.lines().forEach {
+                                val oo = it.trim()
+                                if(oo == "") return@forEach
+                                if (needSave) append("　　")
+                                append(oo).append("\n")
+                            }
+                        }
                     }
 
                     is Element if child.tagName().equals("img", ignoreCase = true) -> {
@@ -102,15 +65,14 @@ object HtmlFormatter {
                         )
                         img.attr("style", child.attr("style"))
                         img.attr("onclick", child.attr("onclick"))
-                        result.append(img.outerHtml())
+                        str.append(img.outerHtml())
                     }
 
-                    is Element -> extractFromNode(child, result)
+                    is Element -> extractFromNode(child)
                 }
             }
         }
-        extractFromNode(content, str)
-        if (str[0] == '\n') str.deleteCharAt(0)
-        return if (needSave) str.replace(Regex("\n"), "\n　　") else str.toString()
+        extractFromNode(content)
+        return str.toString()
     }
 }
