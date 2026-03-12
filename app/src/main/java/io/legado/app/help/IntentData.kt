@@ -14,7 +14,7 @@ object IntentData {
 
     @Synchronized
     fun put(data: Any?): String {
-        val key = System.currentTimeMillis().toString()
+        val key = System.nanoTime().toString()
         data?.let {
             bigData[key] = data
         }

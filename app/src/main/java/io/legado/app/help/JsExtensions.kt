@@ -188,7 +188,13 @@ interface JsExtensions : JsEncodeUtils {
     /**
      * 使用webView获取资源url
      */
-    fun webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String?, delayTime: Long = 1000L): String? {
+    fun webViewGetSource(
+        html: String?,
+        url: String?,
+        js: String?,
+        sourceRegex: String?,
+        delayTime: Long = 1000L
+    ): String? {
         if (isMainThread) {
             error("webViewGetSource must be called on a background thread")
         }
@@ -541,7 +547,7 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     fun htmlFormat(str: String): String {
-        return HtmlFormatter.formatKeepImg(str,null,true)
+        return HtmlFormatter.formatKeepImg(str, null, true)
     }
 
     fun t2s(text: String): String {
@@ -1036,19 +1042,12 @@ interface JsExtensions : JsEncodeUtils {
         if (action !is Function || isMainThread || !cx.dangerousApi) return
         cx.ensureActive()
         val currentThread = Thread.currentThread()
-        var jsActivity: JsActivity? = null
-        val waitKey = IntentData.put { activity: JsActivity ->
-            jsActivity = activity
-            LockSupport.unpark(currentThread)
-        }
         appCtx.startActivity<JsActivity> {
-            putExtra("waitKey", waitKey)
+            putExtra("actionKey", IntentData.put(action))
+            putExtra("waitKey", IntentData.put {
+                LockSupport.unpark(currentThread)
+            })
         }
-        LockSupport.parkNanos(this, 3_000_000_000L)
-        jsActivity?.let { activity ->
-            val scope = action.parentScope
-            val jsThis = cx.wrapFactory.wrap(cx, scope, activity, JsActivity::class.java)
-            action.call(cx, scope, scope, arrayOf(jsThis))
-        }
+        LockSupport.park(currentThread)
     }
 }
