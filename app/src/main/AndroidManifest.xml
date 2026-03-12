@@ -335,7 +335,8 @@
         <activity
             android:name=".ui.association.OpenUrlConfirmActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:theme="@style/AppTheme.Transparent" /> <!-- 打开文件 -->
+            android:theme="@style/AppTheme.Transparent" /> <!-- JS Activity -->
+        <activity android:name=".ui.association.JsActivity" /> <!-- 打开文件 -->
         <activity
             android:name=".ui.association.FileAssociationActivity"
             android:exported="true"

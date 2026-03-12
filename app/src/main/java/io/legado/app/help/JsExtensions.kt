@@ -22,6 +22,7 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
+import io.legado.app.ui.association.JsActivity
 import io.legado.app.ui.association.OpenUrlConfirmActivity
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.ChineseUtils
@@ -54,6 +55,7 @@ import kotlinx.coroutines.runBlocking
 import okio.use
 import org.jsoup.Connection
 import org.jsoup.Jsoup
+import org.mozilla.javascript.Function
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -66,6 +68,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.SimpleTimeZone
 import java.util.UUID
+import java.util.concurrent.locks.LockSupport
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlin.coroutines.CoroutineContext
@@ -997,4 +1000,55 @@ interface JsExtensions : JsEncodeUtils {
         }
     }
 
+//    /**
+//     * 启动一个空白Activity，允许js操作
+//     */
+//    fun startJsActivity(action: Any?) {
+//        if (action !is org.mozilla.javascript.Function) return
+//        val cx = rhinoContext
+//        cx.ensureActive()
+//        if (isMainThread || !cx.dangerousApi) return
+//        val currentThread = Thread.currentThread()
+//        val waitKey = "jsActivity_${System.currentTimeMillis()}"
+//        IntentData.put(waitKey, object : (JsActivity) -> Unit {
+//            override fun invoke(activity: JsActivity) {
+//                IntentData.put(waitKey + "_res", activity)
+//                LockSupport.unpark(currentThread)
+//            }
+//        })
+//        appCtx.startActivity<JsActivity> {
+//            putExtra("waitKey", waitKey)
+//        }
+//        LockSupport.parkNanos(this, 3_000_000_000L)
+//        val activity = IntentData.get<JsActivity>(waitKey + "_res")
+//        if (activity != null) {
+//            val scope = action.parentScope
+//            val jsThis = cx.wrapFactory.wrap(cx, scope, activity, JsActivity::class.java)
+//            action.call(cx, scope, scope, arrayOf(jsThis))
+//        }
+//    }
+
+    /**
+     * 启动一个空白Activity，允许js操作
+     */
+    fun startJsActivity(action: Any?) {
+        val cx = rhinoContext
+        if (action !is Function || isMainThread || !cx.dangerousApi) return
+        cx.ensureActive()
+        val currentThread = Thread.currentThread()
+        var jsActivity: JsActivity? = null
+        val waitKey = IntentData.put { activity: JsActivity ->
+            jsActivity = activity
+            LockSupport.unpark(currentThread)
+        }
+        appCtx.startActivity<JsActivity> {
+            putExtra("waitKey", waitKey)
+        }
+        LockSupport.parkNanos(this, 3_000_000_000L)
+        jsActivity?.let { activity ->
+            val scope = action.parentScope
+            val jsThis = cx.wrapFactory.wrap(cx, scope, activity, JsActivity::class.java)
+            action.call(cx, scope, scope, arrayOf(jsThis))
+        }
+    }
 }

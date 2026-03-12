@@ -13,6 +13,8 @@ data class RowUi(
         const val text = "text"
         const val password = "password"
         const val button = "button"
+        const val checkbox = "checkbox"
+        const val title = "title"
 
     }
 

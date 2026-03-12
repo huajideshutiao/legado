@@ -145,6 +145,10 @@ java.startBrowser(url: String, title: String)
 
 * 使用内置浏览器打开链接，并等待网页结果 .body()获取网页内容
 java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean? = true): StrResponse
+
+* 启动一个空白Activity，允许js操作
+* @param action (activity) => {}
+java.startJsActivity(action: Any?)
 ```
 * 调试
 ```js

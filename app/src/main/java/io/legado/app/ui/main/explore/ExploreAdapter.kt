@@ -7,6 +7,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.view.children
 import com.google.android.flexbox.FlexboxLayout
+import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -15,6 +16,7 @@ import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.FlexChildStyle
+import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.help.coroutine.Coroutine
@@ -30,6 +32,9 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import splitties.views.onLongClick
 
 class ExploreAdapter(context: Context, val callBack: CallBack) :
@@ -80,33 +85,24 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun upKindList(flexbox: FlexboxLayout, sourcePart: BookSourcePart, kinds: List<ExploreKind>) {
+    private fun upKindList(
+        flexbox: FlexboxLayout,
+        sourcePart: BookSourcePart,
+        kinds: List<ExploreKind>
+    ) {
         if (kinds.isNotEmpty()) kotlin.runCatching {
             recyclerFlexbox(flexbox)
             flexbox.visible()
             kinds.forEach { kind ->
                 val tv = getFlexboxChild(flexbox)
                 flexbox.addView(tv)
-                var title = kind.title
-                when {
-                    kind.title.startsWith("BUTTON:") -> {
-                        title = kind.title.substring(7)
-                        kind.style().apply(tv)
-                    }
-
-                    kind.title.startsWith("TITLE:") -> {
-                        title = kind.title.substring(6)
-                        FlexChildStyle(
-                            layout_flexBasisPercent = 1F,
-                            layout_flexGrow = 1F
-                        ).apply(tv)
-                    }
-
-                    else -> {
-                        kind.style().apply(tv)
-                    }
-                }
-                tv.text = title
+                tv.text = kind.title
+                if (kind.type == RowUi.Type.title) {
+                    FlexChildStyle(
+                        layout_flexBasisPercent = 1F,
+                        layout_flexGrow = 1F
+                    ).apply(tv)
+                } else kind.style().apply(tv)
                 tv.setOnClickListener {
                     when {
                         kind.url.isNullOrBlank() -> {}
@@ -115,14 +111,18 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                                 TextDialog("ERROR", kind.url)
                             )
 
-                        kind.title.startsWith("BUTTON:") -> try {
-                            sourcePart.getBookSource()?.evalJS(kind.url)
-                        }catch (e: Exception) {
-                            AppLog.put("JS错误", e)
+                        kind.type == RowUi.Type.button -> CoroutineScope(IO).launch {
+                            kotlin.runCatching {
+                                runScriptWithContext {
+                                    sourcePart.getBookSource()?.evalJS(kind.url)
+                                }
+                            }.onFailure { e ->
+                                ensureActive()
+                                AppLog.put("JS错误${e.localizedMessage}", e, true)
+                            }
                         }
 
-
-                        else -> callBack.openExplore(sourcePart.bookSourceUrl, title, kind.url)
+                        else -> callBack.openExplore(sourcePart.bookSourceUrl, kind.title, kind.url)
                     }
                 }
 

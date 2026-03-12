@@ -6,6 +6,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -75,11 +76,24 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 } else {
                     ruleStr.split("(&&|\n)+".toRegex()).forEach { kindStr ->
                         val kindCfg = kindStr.split("::")
-                        kinds.add(ExploreKind(kindCfg.first(), kindCfg.getOrNull(1)))
+                        var title = kindCfg.first()
+                        var type = RowUi.Type.text
+                        when {
+                            title.startsWith("BUTTON:") -> {
+                                title = title.substring(7)
+                                type = RowUi.Type.button
+                            }
+
+                            title.startsWith("TITLE:") -> {
+                                title = title.substring(6)
+                                type = RowUi.Type.title
+                            }
+                        }
+                        kinds.add(ExploreKind(title, type, kindCfg.getOrNull(1)))
                     }
                 }
             }.onFailure {
-                kinds.add(ExploreKind("ERROR:${it.localizedMessage}", it.stackTraceToString()))
+                kinds.add(ExploreKind("ERROR:${it.localizedMessage}", url = it.stackTraceToString()))
                 it.printOnDebug()
             }
         }

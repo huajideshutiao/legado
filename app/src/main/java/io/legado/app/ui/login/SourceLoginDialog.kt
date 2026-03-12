@@ -14,8 +14,10 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
+import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.lib.dialogs.alert
@@ -86,13 +88,29 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                         it.editText.setText(loginInfo?.get(rowUi.name))
                     }
 
-                    RowUi.Type.button -> ItemFilletTextBinding.inflate(
+                    RowUi.Type.checkbox -> ItemCheckBoxBinding.inflate(
                         layoutInflater,
                         binding.root,
                         false
                     ).let {
                         binding.flexbox.addView(it.root)
                         rowUi.style().apply(it.root)
+                        it.root.id = index + 1000
+                        it.checkBox.text = rowUi.name
+                        it.checkBox.isChecked = loginInfo?.get(rowUi.name) == "true"
+                    }
+
+                    else -> ItemFilletTextBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        binding.flexbox.addView(it.root)
+                        if (rowUi.type == RowUi.Type.button) rowUi.style().apply(it.root)
+                        if (rowUi.type == RowUi.Type.title) FlexChildStyle(
+                            layout_flexBasisPercent = 1F,
+                            layout_flexGrow = 1F
+                        ).apply(it.root)
                         it.root.id = index + 1000
                         it.textView.text = rowUi.name
                         it.textView.setPadding(16.dpToPx())
@@ -149,7 +167,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     }
                 }.onFailure { e ->
                     ensureActive()
-                    AppLog.put("LoginUI Button ${rowUi.name} JavaScript error", e)
+                    AppLog.put("LoginUI Button ${rowUi.name} JavaScript error", e, true)
                 }
             }
         }
@@ -159,12 +177,19 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         val loginData = hashMapOf<String, String>()
         loginUi?.forEachIndexed { index, rowUi ->
             when (rowUi.type) {
-                "text", "password" -> {
+                RowUi.Type.text, RowUi.Type.password -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
                     ItemSourceEditBinding.bind(rowView).editText.text?.let {
                         loginData[rowUi.name] = it.toString()
                     }
                 }
+                RowUi.Type.checkbox -> {
+                    val rowView = binding.root.findViewById<View>(index + 1000)
+                    loginData[rowUi.name] =
+                        ItemCheckBoxBinding.bind(rowView).checkBox.isChecked.toString()
+                }
+
+                else -> {}
             }
         }
         return loginData
