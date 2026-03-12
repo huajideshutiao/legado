@@ -3,7 +3,10 @@ package io.legado.app.help.exoplayer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -37,8 +40,16 @@ object ExoPlayerHelper {
     }
 
     fun createMediaItem(url: String, headers: Map<String, String>): MediaItem {
+        val realUri = Uri.parse(url)
+        val contentType = Util.inferContentType(realUri)
         val formatUrl = url + SPLIT_TAG + GSON.toJson(headers, mapType)
-        return MediaItem.Builder().setUri(formatUrl).build()
+        val builder = MediaItem.Builder().setUri(formatUrl)
+        when (contentType) {
+            C.CONTENT_TYPE_HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            C.CONTENT_TYPE_DASH -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
+            C.CONTENT_TYPE_SS -> builder.setMimeType(MimeTypes.APPLICATION_SS)
+        }
+        return builder.build()
     }
 
     fun createHttpExoPlayer(context: Context): ExoPlayer {
@@ -70,7 +81,7 @@ object ExoPlayerHelper {
                 res = res.withUri(Uri.parse(url))
                 try {
                     val headers: Map<String, String> = GSON.fromJson(urls[1], mapType)
-                    okhttpDataFactory.setDefaultRequestProperties(headers)
+                    res.withRequestHeaders(headers)
                 } catch (_: Exception) {
                 }
             }
