@@ -37,44 +37,55 @@ object HtmlFormatter {
     }
 
     fun formatKeepImg(html: String, redirectUrl: String? = null, needSave: Boolean = true): String {
-        val content = Jsoup.parse(html, redirectUrl ?: "").body()
         val str = StringBuilder()
-        fun extractFromNode(node: Node) {
-            for (child in node.childNodes()) {
-                when (child) {
-                    is TextNode -> {
-                        val text = child.wholeText
-                        if (text.isNotEmpty()) str.apply {
-                            text.lines().forEach {
-                                val oo = it.trim()
-                                if (oo == "") return@forEach
-                                if (str.isNotEmpty()) append("\n")
-                                if (needSave) append("　　")
-                                append(oo)
+        val tmp = html.indexOf("<")
+        if (tmp == -1 || html.indexOf(">", tmp) == -1) {
+            html.lines().forEach {
+                val oo = it.trim()
+                if (oo == "") return@forEach
+                if (str.isNotEmpty()) str.append("\n")
+                if (needSave) str.append("　　")
+                str.append(oo)
+            }
+        } else {
+            val content = Jsoup.parse(html, redirectUrl ?: "").body()
+            fun extractFromNode(node: Node) {
+                for (child in node.childNodes()) {
+                    when (child) {
+                        is TextNode -> {
+                            val text = child.wholeText
+                            if (text.isNotEmpty()) str.apply {
+                                text.lines().forEach {
+                                    val oo = it.trim()
+                                    if (oo == "") return@forEach
+                                    if (str.isNotEmpty()) append("\n")
+                                    if (needSave) append("　　")
+                                    append(oo)
+                                }
                             }
                         }
-                    }
 
-                    is Element if child.tagName().equals("img", ignoreCase = true) -> {
-                        val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
-                        img.attr(
-                            "src",
-                            when {
-                                child.hasAttr("data-src") -> child.absUrl("data-src")
-                                child.hasAttr("data-original") -> child.absUrl("data-original")
-                                else -> child.absUrl("src")
-                            }
-                        )
-                        img.attr("style", child.attr("style"))
-                        img.attr("onclick", child.attr("onclick"))
-                        str.append(img.outerHtml())
-                    }
+                        is Element if child.tagName() == "img" -> {
+                            val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
+                            img.attr(
+                                "src",
+                                when {
+                                    child.hasAttr("data-src") -> child.absUrl("data-src")
+                                    child.hasAttr("data-original") -> child.absUrl("data-original")
+                                    else -> child.absUrl("src")
+                                }
+                            )
+                            img.attr("style", child.attr("style"))
+                            img.attr("onclick", child.attr("onclick"))
+                            str.append(img.outerHtml())
+                        }
 
-                    is Element -> extractFromNode(child)
+                        is Element -> extractFromNode(child)
+                    }
                 }
             }
+            extractFromNode(content)
         }
-        extractFromNode(content)
         return str.toString()
     }
 }

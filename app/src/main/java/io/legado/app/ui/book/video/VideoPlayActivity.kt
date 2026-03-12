@@ -8,6 +8,8 @@ import android.icu.text.SimpleDateFormat
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.GestureDetector
 import android.view.Menu
 import android.view.MenuItem
@@ -68,8 +70,7 @@ import kotlin.math.abs
 
 @SuppressLint("UnsafeOptInUsageError")
 class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(),
-    ChapterListAdapter.Callback {
+) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(), ChapterListAdapter.Callback {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
@@ -78,19 +79,6 @@ class VideoPlayActivity(
     private var originalSpeed = 1f
     private var position = 0L
     private var screenWidth = Resources.getSystem().displayMetrics.widthPixels
-    private val screenHeight = 350.dpToPx()
-
-    private enum class GestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
-
-    private var gestureMode = GestureMode.NONE
-    private var startX = 0f
-    private var startY = 0f
-    private val deadZoneSize by lazy { 15F.dpToPx() }
-    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
-    private var currentVolume = 0
-    private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
-    private var lastScrollTime = 0L
-    private val scrollThrottleInterval = 33L // 1000ms / 30 = 33ms
 
     private val sourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
@@ -124,9 +112,7 @@ class VideoPlayActivity(
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == Player.STATE_ENDED
-                        && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1
-                    ) {
+                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
                         openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                     }
                 }
@@ -147,14 +133,20 @@ class VideoPlayActivity(
         }
     }
 
+    private enum class GestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
+
     private inner class VideoGestureListener : GestureDetector.SimpleOnGestureListener() {
-        override fun onLongPress(e: MotionEvent) {
-            originalSpeed = player.playbackParameters.speed
-            player.playbackParameters =
-                PlaybackParameters(originalSpeed * 2f, player.playbackParameters.pitch)
-            binding.tvVideoSpeed.text = "${originalSpeed * 2f}X"
-            binding.tvVideoSpeed.visibility = View.VISIBLE
-        }
+        private val screenHeight = 350.dpToPx()
+        private var gestureMode = GestureMode.NONE
+        private var startX = 0f
+        private var startY = 0f
+        private val deadZoneSize by lazy { 15F.dpToPx() }
+        private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+        private var currentVolume = 0
+        private var currentBrightness = 0f
+        private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+        private var lastScrollTime = 0L
+        private val scrollThrottleInterval = 32L //ms
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
             if (player.isPlaying) player.pause() else player.play()
@@ -172,11 +164,18 @@ class VideoPlayActivity(
             return true
         }
 
+        override fun onLongPress(e: MotionEvent) {
+            originalSpeed = player.playbackParameters.speed
+            player.playbackParameters =
+                PlaybackParameters(originalSpeed * 2f, player.playbackParameters.pitch)
+            binding.tvVideoSpeed.text = String.format(
+                Locale.getDefault(), "%.1fX", originalSpeed * 2f
+            )
+            binding.tvVideoSpeed.visibility = View.VISIBLE
+        }
+
         override fun onScroll(
-            e1: MotionEvent?,
-            e2: MotionEvent,
-            distanceX: Float,
-            distanceY: Float
+            e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float
         ): Boolean {
             e1 ?: return false
             val currentTime = System.currentTimeMillis()
@@ -191,51 +190,76 @@ class VideoPlayActivity(
 
                     if (deltaX < deadZoneSize && deltaY < deadZoneSize) return false
 
-                    gestureMode =
-                        when {
-                            deltaX > deltaY -> GestureMode.PROGRESS
-                            e1.x < screenWidth / 2 -> GestureMode.BRIGHTNESS
-                            else -> {
-                                currentVolume =
-                                    audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                GestureMode.VOLUME
-                            }
+                    gestureMode = when {
+                        deltaX > deltaY -> GestureMode.PROGRESS
+                        e1.x < screenWidth / 2 -> {
+                            currentBrightness = if (window.attributes.screenBrightness <= 0f) 0f
+                            else window.attributes.screenBrightness
+                            GestureMode.BRIGHTNESS
                         }
-                    binding.tvVideoSpeed.visibility = View.VISIBLE
+
+                        else -> {
+                            currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            GestureMode.VOLUME
+                        }
+                    }
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        binding.tvVideoSpeed.visibility = View.VISIBLE
+                    }, 50)
                 }
 
                 GestureMode.PROGRESS -> {
                     position =
                         (player.currentPosition + (e2.x - startX) / screenWidth * 180000).toLong()
                             .coerceIn(0, player.duration)
-                    binding.tvVideoSpeed.text =
-                        progressTimeFormat.format(position) + "/" + progressTimeFormat.format(
-                            player.duration
-                        )
+                    binding.tvVideoSpeed.text = String.format(
+                        "%s/%s",
+                        progressTimeFormat.format(position),
+                        progressTimeFormat.format(player.duration)
+                    )
                 }
 
                 GestureMode.BRIGHTNESS -> {
-                    val deltaBrightness = (e2.y - startY) / screenHeight / 20f
+                    val deltaBrightness =
+                        (currentBrightness + (startY - e2.y) / screenHeight).coerceIn(0f, 1f)
                     window.attributes = window.attributes.apply {
-                        screenBrightness = (screenBrightness - deltaBrightness).coerceIn(0f, 1f)
+                        screenBrightness = deltaBrightness
                     }
-                    if (window.attributes.screenBrightness == 0f) startY = e2.y
-                    binding.tvVideoSpeed.text =
-                        "亮度: ${(window.attributes.screenBrightness * 100).toInt()}%"
+                    if (deltaBrightness == 0f) {
+                        startY = e2.y
+                        currentBrightness = 0f
+                    }
+                    if (deltaBrightness == 1f) {
+                        startY = e2.y
+                        currentBrightness = 1f
+                    }
+                    binding.tvVideoSpeed.text = String.format(
+                        Locale.getDefault(), "亮度: %d%%", (deltaBrightness * 100).toInt()
+                    )
                 }
 
                 GestureMode.VOLUME -> {
-                    val deltaVolume = ((e2.y - startY) / screenHeight * maxVolume).toInt()
-                    val newVolume = (currentVolume - deltaVolume).coerceIn(0, maxVolume)
-                    if (newVolume == 0)startY = e2.y
-                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
-                    binding.tvVideoSpeed.text = "音量: ${(newVolume * 100 / maxVolume)}%"
+                    val deltaVolume =
+                        (currentVolume + (startY - e2.y) / screenHeight * maxVolume).toInt()
+                            .coerceIn(0, maxVolume)
+                    if (deltaVolume == 0) {
+                        startY = e2.y
+                        currentVolume = 0
+                    }
+                    if (deltaVolume == maxVolume) {
+                        startY = e2.y
+                        currentVolume = maxVolume
+                    }
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, deltaVolume, 0)
+                    binding.tvVideoSpeed.text = String.format(
+                        Locale.getDefault(), "音量: %d%%", deltaVolume * 100 / maxVolume
+                    )
                 }
             }
             return true
         }
 
-        fun onUp(e: MotionEvent) {
+        fun onUp() {
             when (gestureMode) {
                 GestureMode.PROGRESS -> {
                     player.seekTo(position)
@@ -243,10 +267,9 @@ class VideoPlayActivity(
                 }
 
                 GestureMode.NONE -> {
-                    if (originalSpeed != player.playbackParameters.speed)
-                        player.playbackParameters = PlaybackParameters(
-                            originalSpeed,
-                            player.playbackParameters.pitch
+                    if (originalSpeed != player.playbackParameters.speed) player.playbackParameters =
+                        PlaybackParameters(
+                            originalSpeed, player.playbackParameters.pitch
                         )
                 }
 
@@ -286,10 +309,7 @@ class VideoPlayActivity(
         }
         binding.ivPlayer.findViewById<View>(R.id.tv_force_resolution)?.setOnClickListener {
             TrackSelectionDialogBuilder(
-                this,
-                getString(R.string.resolution),
-                player,
-                C.TRACK_TYPE_VIDEO
+                this, getString(R.string.resolution), player, C.TRACK_TYPE_VIDEO
             ).build().show()
         }
         binding.ivPlayer.setFullscreenButtonClickListener { isFullScreenRequested ->
@@ -304,14 +324,14 @@ class VideoPlayActivity(
         binding.ivPlayer.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             if (event.action == MotionEvent.ACTION_UP) {
-                gestureListener.onUp(event)
+                gestureListener.onUp()
             }
             true
         }
         onBackPressedDispatcher.addCallback(this) {
             when {
-                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->
-                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE -> requestedOrientation =
+                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
                 isFullScreen -> exitFullScreen()
                 else -> finish()
@@ -325,8 +345,7 @@ class VideoPlayActivity(
         if (analyzeUrl.url.startsWith("http")) {
             player.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
-                    analyzeUrl.url,
-                    analyzeUrl.headerMap
+                    analyzeUrl.url, analyzeUrl.headerMap
                 )
             )
         } else {
@@ -358,11 +377,8 @@ class VideoPlayActivity(
                 }
             }
             player.setMediaSource(
-                HlsMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(
-                        MediaItem.Builder()
-                            .setUri(fakeUrl)
-                            .setMimeType(MimeTypes.APPLICATION_M3U8)
+                HlsMediaSource.Factory(dataSourceFactory).createMediaSource(
+                        MediaItem.Builder().setUri(fakeUrl).setMimeType(MimeTypes.APPLICATION_M3U8)
                             .build()
                     )
             )
@@ -381,8 +397,7 @@ class VideoPlayActivity(
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.bookSource?.loginUrl.isNullOrBlank()
+        menu.findItem(R.id.menu_login)?.isVisible = !viewModel.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_shelf).apply {
             if (!viewModel.book.isNotShelf) {
                 setIcon(R.drawable.ic_star)
@@ -402,8 +417,7 @@ class VideoPlayActivity(
                 if (!viewModel.book.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
                         alert(
-                            titleResource = R.string.draw,
-                            messageResource = R.string.sure_del
+                            titleResource = R.string.draw, messageResource = R.string.sure_del
                         ) {
                             yesButton {
                                 viewModel.delBook {
@@ -466,6 +480,8 @@ class VideoPlayActivity(
                     exitFullScreen()
                 }
             }
+
+            else -> {}
         }
         screenWidth = Resources.getSystem().displayMetrics.widthPixels
         super.onConfigurationChanged(newConfig)
