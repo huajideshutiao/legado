@@ -10,6 +10,7 @@ import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
@@ -23,7 +24,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.activity
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.removeLastElement
 import io.legado.app.utils.showDialogFragment
@@ -63,7 +63,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 Coroutine.async(callBack.scope) {
                     item.exploreKinds()
                 }.onSuccess { kindList ->
-                    upKindList(flexbox, item.bookSourceUrl, kindList)
+                    upKindList(flexbox, item, kindList)
                 }.onFinally {
                     rotateLoading.gone()
                     if (scrollTo >= 0) {
@@ -80,34 +80,52 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun upKindList(flexbox: FlexboxLayout, sourceUrl: String, kinds: List<ExploreKind>) {
+    private fun upKindList(flexbox: FlexboxLayout, sourcePart: BookSourcePart, kinds: List<ExploreKind>) {
         if (kinds.isNotEmpty()) kotlin.runCatching {
             recyclerFlexbox(flexbox)
             flexbox.visible()
             kinds.forEach { kind ->
                 val tv = getFlexboxChild(flexbox)
                 flexbox.addView(tv)
-                if (kind.title.startsWith("TITLE:")) {
-                    tv.text = kind.title.substring(6)
-                    FlexChildStyle(
-                        layout_flexBasisPercent = 1F,
-                        layout_flexGrow = 1F
-                    ).apply(tv)
-                } else {
-                    tv.text = kind.title
-                    kind.style().apply(tv)
-                }
-                if (kind.url.isNullOrBlank()) {
-                    tv.setOnClickListener(null)
-                } else {
-                    tv.setOnClickListener {
-                        if (kind.title.startsWith("ERROR:")) {
-                            it.activity?.showDialogFragment(TextDialog("ERROR", kind.url))
-                        } else {
-                            callBack.openExplore(sourceUrl, kind.title, kind.url)
-                        }
+                var title = kind.title
+                when {
+                    kind.title.startsWith("BUTTON:") -> {
+                        title = kind.title.substring(7)
+                        kind.style().apply(tv)
+                    }
+
+                    kind.title.startsWith("TITLE:") -> {
+                        title = kind.title.substring(6)
+                        FlexChildStyle(
+                            layout_flexBasisPercent = 1F,
+                            layout_flexGrow = 1F
+                        ).apply(tv)
+                    }
+
+                    else -> {
+                        kind.style().apply(tv)
                     }
                 }
+                tv.text = title
+                tv.setOnClickListener {
+                    when {
+                        kind.url.isNullOrBlank() -> {}
+                        kind.title.startsWith("ERROR:") ->
+                            it.activity?.showDialogFragment(
+                                TextDialog("ERROR", kind.url)
+                            )
+
+                        kind.title.startsWith("BUTTON:") -> try {
+                            sourcePart.getBookSource()?.evalJS(kind.url)
+                        }catch (e: Exception) {
+                            AppLog.put("JS错误", e)
+                        }
+
+
+                        else -> callBack.openExplore(sourcePart.bookSourceUrl, title, kind.url)
+                    }
+                }
+
             }
         }
     }
@@ -170,6 +188,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 R.id.menu_login -> context.startActivity<SourceLoginActivity> {
                     GlobalVars.nowSource = source.getBookSource()
                 }
+
                 R.id.menu_refresh -> Coroutine.async(callBack.scope) {
                     source.clearExploreKindsCache()
                 }.onSuccess {
