@@ -23,6 +23,8 @@ import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.ui.association.JsActivity
+import io.legado.app.ui.association.JsActivity1
+import io.legado.app.ui.association.JsActivity2
 import io.legado.app.ui.association.OpenUrlConfirmActivity
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.ChineseUtils
@@ -1035,18 +1037,29 @@ interface JsExtensions : JsEncodeUtils {
 //    }
 
     /**
-     * 启动一个空白Activity，允许js操作
+     * 启动一个空白Activity，允许js操作，允许传入是否透明
+     * @param action js函数
+     * @param isTransparent 是否透明
      */
-    fun startJsActivity(action: Any?) {
+    fun startJsActivity(action: Any?, isTransparent: Boolean = true) {
         val cx = rhinoContext
         if (action !is Function || isMainThread || !cx.dangerousApi) return
         cx.ensureActive()
         val currentThread = Thread.currentThread()
-        appCtx.startActivity<JsActivity> {
-            putExtra("actionKey", IntentData.put(action))
-            putExtra("waitKey", IntentData.put {
-                LockSupport.unpark(currentThread)
-            })
+        if (isTransparent) {
+            appCtx.startActivity<JsActivity1> {
+                putExtra("actionKey", IntentData.put(action))
+                putExtra("waitKey", IntentData.put {
+                    LockSupport.unpark(currentThread)
+                })
+            }
+        } else {
+            appCtx.startActivity<JsActivity2> {
+                putExtra("actionKey", IntentData.put(action))
+                putExtra("waitKey", IntentData.put {
+                    LockSupport.unpark(currentThread)
+                })
+            }
         }
         LockSupport.park(currentThread)
     }

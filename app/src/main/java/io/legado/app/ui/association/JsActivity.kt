@@ -10,7 +10,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.Function
 
-class JsActivity : BaseActivity<ViewEmptyBinding>() {
+open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     override val binding by viewBinding(ViewEmptyBinding::inflate)
     private val cx by lazy {
         Context.enter() as RhinoContext
@@ -31,16 +31,31 @@ class JsActivity : BaseActivity<ViewEmptyBinding>() {
                 } catch (e: Exception) {
                     AppLog.put("JsActivity执行JS失败\n${e.localizedMessage}", e, true)
                 }
-            }
+            } ?: finish()
+        } else {
+            finish()
         }
-        finish()
     }
 
     override fun finish() {
         super.finish()
+        clear()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clear()
+    }
+
+    private fun clear() {
         val waitKey = intent.getStringExtra("waitKey")
         val action = IntentData.get<() -> Unit>(waitKey)
-        action?.invoke()
-        Context.exit()
+        action?.let {
+            it.invoke()
+            Context.exit()
+        }
     }
 }
+
+class JsActivity1 : JsActivity()
+class JsActivity2 : JsActivity()
