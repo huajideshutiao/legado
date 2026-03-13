@@ -141,6 +141,11 @@ cn.hutool.core.util.**{*;}
     *** sTestTrustManager;
 }
 
+# CoordinatorLayout
+-keep class androidx.coordinatorlayout.widget.CoordinatorLayout { *; }
+-keep class androidx.coordinatorlayout.widget.CoordinatorLayout$Behavior { *; }
+-keep class androidx.coordinatorlayout.widget.CoordinatorLayout$LayoutParams { *; }
+
 # Throwable
 -keepnames class * extends java.lang.Throwable
 -keepclassmembernames,allowobfuscation class * extends java.lang.Throwable{*;}

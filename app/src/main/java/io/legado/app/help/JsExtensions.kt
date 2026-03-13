@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import android.content.Intent
 import android.webkit.WebSettings
 import androidx.annotation.Keep
 import cn.hutool.core.codec.Base64
@@ -22,7 +23,6 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
-import io.legado.app.ui.association.JsActivity
 import io.legado.app.ui.association.JsActivity1
 import io.legado.app.ui.association.JsActivity2
 import io.legado.app.ui.association.OpenUrlConfirmActivity
@@ -187,6 +187,8 @@ interface JsExtensions : JsEncodeUtils {
         }
     }
 
+    fun webView(html: String?, url: String?, js: String?) = webView(html, url, js, 1000L)
+
     /**
      * 使用webView获取资源url
      */
@@ -213,6 +215,9 @@ interface JsExtensions : JsEncodeUtils {
         }
     }
 
+    fun webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String?) =
+        webViewGetSource(html, url, js, sourceRegex, 1000L)
+
     /**
      * 使用webView获取跳转url
      */
@@ -238,6 +243,9 @@ interface JsExtensions : JsEncodeUtils {
             ).getStrResponse().body
         }
     }
+
+    fun webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String?) =
+        webViewGetOverrideUrl(html, url, js, overrideUrlRegex, 1000L)
 
     /**
      * 使用内置浏览器打开链接，手动验证网站防爬
@@ -1008,34 +1016,6 @@ interface JsExtensions : JsEncodeUtils {
         }
     }
 
-//    /**
-//     * 启动一个空白Activity，允许js操作
-//     */
-//    fun startJsActivity(action: Any?) {
-//        if (action !is org.mozilla.javascript.Function) return
-//        val cx = rhinoContext
-//        cx.ensureActive()
-//        if (isMainThread || !cx.dangerousApi) return
-//        val currentThread = Thread.currentThread()
-//        val waitKey = "jsActivity_${System.currentTimeMillis()}"
-//        IntentData.put(waitKey, object : (JsActivity) -> Unit {
-//            override fun invoke(activity: JsActivity) {
-//                IntentData.put(waitKey + "_res", activity)
-//                LockSupport.unpark(currentThread)
-//            }
-//        })
-//        appCtx.startActivity<JsActivity> {
-//            putExtra("waitKey", waitKey)
-//        }
-//        LockSupport.parkNanos(this, 3_000_000_000L)
-//        val activity = IntentData.get<JsActivity>(waitKey + "_res")
-//        if (activity != null) {
-//            val scope = action.parentScope
-//            val jsThis = cx.wrapFactory.wrap(cx, scope, activity, JsActivity::class.java)
-//            action.call(cx, scope, scope, arrayOf(jsThis))
-//        }
-//    }
-
     /**
      * 启动一个空白Activity，允许js操作，允许传入是否透明
      * @param action js函数
@@ -1046,21 +1026,22 @@ interface JsExtensions : JsEncodeUtils {
         if (action !is Function || isMainThread || !cx.dangerousApi) return
         cx.ensureActive()
         val currentThread = Thread.currentThread()
-        if (isTransparent) {
-            appCtx.startActivity<JsActivity1> {
-                putExtra("actionKey", IntentData.put(action))
-                putExtra("waitKey", IntentData.put {
-                    LockSupport.unpark(currentThread)
-                })
-            }
-        } else {
-            appCtx.startActivity<JsActivity2> {
-                putExtra("actionKey", IntentData.put(action))
-                putExtra("waitKey", IntentData.put {
-                    LockSupport.unpark(currentThread)
-                })
-            }
+        var error: Throwable? = null
+        val intent = Intent(
+            appCtx,
+            if (isTransparent) JsActivity1::class.java else JsActivity2::class.java
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("actionKey", IntentData.put(action))
+            putExtra("waitKey", IntentData.put { e: Throwable? ->
+                error = e
+                LockSupport.unpark(currentThread)
+            })
         }
+        appCtx.startActivity(intent)
         LockSupport.park(currentThread)
+        error?.let { throw it }
     }
+
+    fun startJsActivity(action: Any?) = startJsActivity(action, true)
 }
