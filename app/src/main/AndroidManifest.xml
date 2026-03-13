@@ -337,8 +337,8 @@
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
             android:theme="@style/AppTheme.Transparent" />
         <!-- JS Activity -->
-        <activity android:name=".ui.association.JsActivity" 
-            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"/>
+        <activity android:name=".ui.association.JsActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
         <!-- 打开文件 -->
         <activity
             android:name=".ui.association.FileAssociationActivity"
