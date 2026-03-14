@@ -1021,10 +1021,13 @@ interface JsExtensions : JsEncodeUtils {
      * @param action js函数
      * @param isTransparent 是否透明
      */
-    fun startJsActivity(action: Any?, isTransparent: Boolean = true) {
+    fun startJsActivity(action: Function, isTransparent: Boolean = true) {
         val cx = rhinoContext
-        if (action !is Function || isMainThread || !cx.dangerousApi) return
+        if (isMainThread || !cx.dangerousApi) return
         cx.ensureActive()
+//        if (action.parentScope == ScriptableObject.getTopLevelScope(action)) {
+//            action.parentScope = ScriptRuntime.getTopCallScope(cx)
+//        }
         val currentThread = Thread.currentThread()
         var error: Throwable? = null
         val intent = Intent(
@@ -1043,5 +1046,5 @@ interface JsExtensions : JsEncodeUtils {
         error?.let { throw it }
     }
 
-    fun startJsActivity(action: Any?) = startJsActivity(action, true)
+    fun startJsActivity(action: Function) = startJsActivity(action, true)
 }

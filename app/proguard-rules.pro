@@ -141,8 +141,7 @@ cn.hutool.core.util.**{*;}
     *** sTestTrustManager;
 }
 
-# BottomSheetDialog
--keep class com.google.android.material.bottomsheet.BottomSheetDialog { *; }
+-keep class io.legado.app.ui.association.JsActivity{*;}
 
 # Throwable
 -keepnames class * extends java.lang.Throwable
