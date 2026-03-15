@@ -31,7 +31,16 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
 
     val dialog by lazy {
         BottomSheetDialog(this).apply {
-            setContentView(dialogView)
+            setContentView(
+                NestedScrollView(this@JsActivity).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                resources.displayMetrics.heightPixels
+            )
+            setPadding(0, 20.dpToPx(), 0, 0)
+            addView(dialogView)
+        }
+            )
             val bottomSheet =
                 findViewById<android.view.View>(com.google.android.material.R.id.design_bottom_sheet)
             dismissWithAnimation = true
@@ -49,22 +58,13 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     }
 
     val dialogView by lazy {
-        val tmp = LinearLayout(this).apply {
+        LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        NestedScrollView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                resources.displayMetrics.heightPixels
-            )
-            setPadding(0, 20.dpToPx(), 0, 0)
-            addView(tmp)
-        }
-        tmp
     }
 
     /**
