@@ -22,10 +22,6 @@
         android:title="@string/full_screen"
         app:showAsAction="never" />
     <item
-        android:id="@+id/menu_resolution"
-        android:title="@string/resolution"
-        app:showAsAction="never" />
-    <item
         android:id="@+id/menu_login"
         android:title="@string/login"
         app:showAsAction="never" />

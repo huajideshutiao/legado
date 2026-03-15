@@ -314,10 +314,8 @@ class VideoPlayActivity(
         }
         binding.ivPlayer.setFullscreenButtonClickListener { isFullScreenRequested ->
             requestedOrientation = if (isFullScreenRequested) {
-                isFullScreen = true
-                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             } else {
-                isFullScreen = false
                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
         }
@@ -330,8 +328,12 @@ class VideoPlayActivity(
         }
         onBackPressedDispatcher.addCallback(this) {
             when {
-                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE -> requestedOrientation =
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->{
+                    //传入横屏状态
+                    binding.ivPlayer.setFullscreenButtonState(false)
+                    requestedOrientation =
+                        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
 
                 isFullScreen -> exitFullScreen()
                 else -> finish()
@@ -378,9 +380,9 @@ class VideoPlayActivity(
             }
             player.setMediaSource(
                 HlsMediaSource.Factory(dataSourceFactory).createMediaSource(
-                        MediaItem.Builder().setUri(fakeUrl).setMimeType(MimeTypes.APPLICATION_M3U8)
-                            .build()
-                    )
+                    MediaItem.Builder().setUri(fakeUrl).setMimeType(MimeTypes.APPLICATION_M3U8)
+                        .build()
+                )
             )
         }
         player.apply {
@@ -412,7 +414,11 @@ class VideoPlayActivity(
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_refresh -> viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
+            R.id.menu_refresh -> {
+                player.pause()
+                viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
+            }
+
             R.id.menu_shelf -> {
                 if (!viewModel.book.isNotShelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
@@ -469,18 +475,8 @@ class VideoPlayActivity(
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         when (newConfig.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> {
-                isFullScreen = true
-                enterFullScreen()
-            }
-
-            Configuration.ORIENTATION_PORTRAIT -> {
-                if (isFullScreen) {
-                    isFullScreen = false
-                    exitFullScreen()
-                }
-            }
-
+            Configuration.ORIENTATION_LANDSCAPE -> enterFullScreen()
+            Configuration.ORIENTATION_PORTRAIT -> exitFullScreen()
             else -> {}
         }
         screenWidth = Resources.getSystem().displayMetrics.widthPixels
@@ -491,7 +487,6 @@ class VideoPlayActivity(
         isFullScreen = true
         toggleSystemBar(false)
         supportActionBar?.hide()
-        binding.titleBar.isVisible = false
         binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         binding.recyclerView.isVisible = false
     }
@@ -500,7 +495,6 @@ class VideoPlayActivity(
         isFullScreen = false
         toggleSystemBar(true)
         supportActionBar?.show()
-        binding.titleBar.isVisible = true
         binding.ivPlayer.layoutParams.height = 0
         viewModel.chapterList.value?.let { showChapterList(it) }
     }
