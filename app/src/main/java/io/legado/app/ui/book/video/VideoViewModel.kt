@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -113,13 +112,11 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     fun delBook(success: (() -> Unit)? = null) {
         execute {
             book.delete()
-            if (book.coverUrl.isNullOrBlank()) {
-                val future = Glide.with(context).downloadOnly()
-                    .apply(RequestOptions().onlyRetrieveFromCache(true)).load(book.coverUrl)
-                    .signature(ObjectKey("covers")).submit()
-                if (future.get().exists()) future.get().delete()
-                Glide.with(context).clear(future)
-            }
+            Glide.with(context).asFile()
+                .load(book.coverUrl)
+                .signature(ObjectKey("covers"))
+                .onlyRetrieveFromCache(true)
+                .submit().get()?.delete()
         }.onSuccess {
             success?.invoke()
         }

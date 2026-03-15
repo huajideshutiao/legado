@@ -432,6 +432,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             bookData.value?.let {
                 it.delete()
+                Glide.with(context).asFile()
+                    .load(it.coverUrl)
+                    .signature(ObjectKey("covers"))
+                    .onlyRetrieveFromCache(true)
+                    .submit().get()?.delete()
                 inBookshelf = false
                 if (it.isLocal) {
                     LocalBook.deleteBook(it, deleteOriginal)

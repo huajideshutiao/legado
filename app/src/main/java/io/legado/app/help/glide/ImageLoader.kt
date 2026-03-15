@@ -30,11 +30,8 @@ object ImageLoader {
         path: String?,
         inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
-        val type = if (inBookshelf) "covers" else "default"
-        return when {
-            path.isFilePath() -> requestManager.load(File(path))
-            else -> requestManager.load(path)
-        }.signature(ObjectKey(type))
+        return requestManager.load(if (path.isFilePath()) File(path) else path)
+            .let { if (inBookshelf) it.signature(ObjectKey("covers")) else it }
     }
 
     fun load(
