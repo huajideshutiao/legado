@@ -30,22 +30,12 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     private var error: Throwable? = null
 
     val dialog by lazy {
-        val displayHeight = resources.displayMetrics.heightPixels
         BottomSheetDialog(this).apply {
-            setContentView(
-                NestedScrollView(this@JsActivity).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        displayHeight
-                    )
-                    setPadding(0, 20.dpToPx(), 0, 0)
-                    addView(dialogView)
-                }
-            )
+            setContentView(dialogView)
             val bottomSheet =
                 findViewById<android.view.View>(com.google.android.material.R.id.design_bottom_sheet)
             dismissWithAnimation = true
-            behavior.peekHeight = (displayHeight * 0.6).toInt()
+            behavior.peekHeight = (resources.displayMetrics.heightPixels * 0.6).toInt()
             bottomSheet?.background = GradientDrawable().apply {
                 setColor(backgroundColor)
                 val radius = 20f.dpToPx()
@@ -59,13 +49,22 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     }
 
     val dialogView by lazy {
-        LinearLayout(this).apply {
+        val tmp = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
+        NestedScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                resources.displayMetrics.heightPixels
+            )
+            setPadding(0, 20.dpToPx(), 0, 0)
+            addView(tmp)
+        }
+        tmp
     }
 
     /**
@@ -84,7 +83,15 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
                     currentCx.coroutineContext = lifecycleScope.coroutineContext
                 }
             }
-            return fn.call(currentCx, fn.parentScope, fn.parentScope, args)
+            try {
+                return fn.call(currentCx, fn.parentScope, fn.parentScope, args)
+            }catch (e: Throwable) {
+                if (currentCx == cx) {
+                    error = e
+                    finish()
+                }
+                return e
+            }
         } finally {
             currentCx.recursiveCount--
             if (currentCx != cx) {
@@ -96,12 +103,17 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     /**
      * 设置返回按钮点击事件处理程序
      */
-    fun setBackEvent(target: OnBackPressedDispatcherOwner, func: Function) {
-        target.onBackPressedDispatcher.addCallback(target, object : OnBackPressedCallback(true) {
+    fun setBackEvent(target: OnBackPressedDispatcherOwner, func: Function):OnBackPressedCallback {
+        val tmp = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
-                runWithAuth(func, arrayOf(this))
+                runWithAuth(func)
             }
-        })
+            fun enable(isEnable: Boolean) {
+                isEnabled = isEnable
+            }
+        }
+        target.onBackPressedDispatcher.addCallback(target, tmp)
+        return tmp
     }
 
     /**
@@ -133,12 +145,8 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         val actionKey = intent.getStringExtra("actionKey")
         if (actionKey != null) {
             IntentData.get<Function>(actionKey)?.let { action ->
-                try {
-                    runWithAuth(action, arrayOf(this))
-                    return
-                } catch (e: Throwable) {
-                    error = e
-                }
+                runWithAuth(action, arrayOf(this))
+                return
             }
         }
         finish()
