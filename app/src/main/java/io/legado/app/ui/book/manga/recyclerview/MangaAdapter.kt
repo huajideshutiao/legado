@@ -22,9 +22,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter.Companion.TYPE_FOOTER_VIEW
 import io.legado.app.databinding.ItemBookMangaEdgeBinding
 import io.legado.app.databinding.ItemBookMangaPageBinding
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.progress.ProgressManager
-import io.legado.app.model.ReadManga
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.EpaperTransformation
 import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
@@ -140,7 +138,7 @@ class MangaAdapter(private val context: Context) :
         }
     }
 
-    class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
+    inner class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun onBind(item: ReaderLoading) {
             val message = item.mMessage
@@ -198,7 +196,9 @@ class MangaAdapter(private val context: Context) :
                 }
                 Glide.with(context).clear(vh.binding.image)
                 if (vh.binding.image.tag is String) {
-                    ProgressManager.removeListener(vh.binding.image.tag as String)
+                    val imageUrl = vh.binding.image.tag as String
+                    ProgressManager.removeListener(imageUrl)
+                    MangaVH.cancelPreload(imageUrl)
                 }
             }
         }
@@ -228,11 +228,7 @@ class MangaAdapter(private val context: Context) :
 
     override fun getPreloadRequestBuilder(item: Any): RequestBuilder<*>? {
         if (item is MangaPage) {
-            return ImageLoader.preloadManga(
-                context,
-                item.mImageUrl,
-                sourceOrigin = ReadManga.book?.origin,
-            )
+            MangaVH.preloadImage(item.mImageUrl)
         }
         return null
     }

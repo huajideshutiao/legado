@@ -13,9 +13,15 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.signature.ObjectKey
+import com.script.rhino.runScriptWithContext
+import io.legado.app.help.book.BookHelp.writeImage
+import io.legado.app.model.ReadManga
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.lifecycle
 import java.io.File
+import kotlin.coroutines.CoroutineContext
 
 //https://bumptech.github.io/glide/doc/generatedapi.html
 //Instead of GlideApp, use com.bumptech.Glide
@@ -56,7 +62,7 @@ object ImageLoader {
         return when {
             path.isFilePath() -> requestManager.load(File(path))
             else -> requestManager.load(path)
-        }.signature(ObjectKey("default"))
+        }
     }
 
     /**
@@ -104,4 +110,17 @@ object ImageLoader {
             .load(path)
     }
 
+    suspend fun loadManga(imageUrl: String, coroutineContext : CoroutineContext): ByteArray? {
+        val analyzeUrl = AnalyzeUrl(
+            imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
+        )
+        val bytes = analyzeUrl.getByteArrayAwait()
+        return runScriptWithContext {
+            ImageUtils.decode(
+                imageUrl, bytes, isCover = false, ReadManga.bookSource, ReadManga.book
+            )
+        }?.apply {
+            writeImage(ReadManga.book!!, imageUrl, this)
+        }
+    }
 }

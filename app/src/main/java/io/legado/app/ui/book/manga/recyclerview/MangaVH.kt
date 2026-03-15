@@ -22,18 +22,16 @@ import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.load.Transformation
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
-import com.script.rhino.runScriptWithContext
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelp.isImageExist
-import io.legado.app.help.book.BookHelp.writeImage
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.model.ReadManga
-import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,6 +44,40 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
     protected lateinit var mProgress: TextView
     protected lateinit var mFlProgress: FrameLayout
     protected var mRetry: Button? = null
+    private val minHeight = context.resources.displayMetrics.heightPixels * 2 / 3
+    private var fetchJob: Job? = null
+
+    companion object {
+        private val preloadJobs = mutableMapOf<String, Job>()
+
+        fun preloadImage(imageUrl: String) {
+            if (preloadJobs.containsKey(imageUrl)) return
+            if (ReadManga.book == null) return
+            if (isImageExist(ReadManga.book!!, imageUrl)) return
+
+            val job = CoroutineScope(IO).launch {
+                try {
+                    ImageLoader.loadManga(imageUrl, coroutineContext)
+                } catch (e: Exception) {
+                    e.printOnDebug()
+                } finally {
+                    preloadJobs.remove(imageUrl)
+                }
+            }
+            preloadJobs[imageUrl] = job
+            job.start()
+        }
+
+        fun cancelPreload(imageUrl: String) {
+            preloadJobs[imageUrl]?.cancel()
+            preloadJobs.remove(imageUrl)
+        }
+
+        fun cancelAllPreload() {
+            preloadJobs.values.forEach { it.cancel() }
+            preloadJobs.clear()
+        }
+    }
 
     fun initComponent(
         loading: ProgressBar,
@@ -68,6 +100,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
+        fetchJob?.cancel()
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
@@ -78,30 +111,22 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
             mProgress.text = "$percentage%"
         }
         mImage.tag = imageUrl
-        CoroutineScope(IO).launch {
+        fetchJob = CoroutineScope(IO).launch {
             var glide: RequestBuilder<Drawable>? = null
             try {
-                if (isImageExist(ReadManga.book!!, imageUrl)) {
-                    glide = Glide.with(context).load(BookHelp.getImage(ReadManga.book!!, imageUrl))
-                } else {
-                    val analyzeUrl = AnalyzeUrl(
-                        imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
-                    )
-                    val bytes = analyzeUrl.getByteArrayAwait()
-                    //某些图片被加密，需要进一步解密
-                    runScriptWithContext {
-                        ImageUtils.decode(
-                            imageUrl, bytes, isCover = false, ReadManga.bookSource, ReadManga.book
-                        )
-                    }?.let {
-                        writeImage(ReadManga.book!!, imageUrl, it)
-                        glide = Glide.with(context).load(it)
+                glide = Glide.with(context).load(
+                    if (isImageExist(ReadManga.book!!, imageUrl)) {
+                        BookHelp.getImage(ReadManga.book!!, imageUrl)
+                    } else {
+                        ImageLoader.loadManga(imageUrl, coroutineContext)
+
                     }
-                }
+                )
             } catch (e: Exception) {
                 e.printOnDebug()
             } finally {
                 withContext(Dispatchers.Main) {
+                    if (mImage.tag != imageUrl) return@withContext
                     if (glide == null) {
                         mFlProgress.isVisible = true
                         mLoading.isGone = true
@@ -125,13 +150,13 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                                 mImage.updateLayoutParams<FrameLayout.LayoutParams> {
                                     height = ViewGroup.LayoutParams.WRAP_CONTENT
                                 }
-                                //itemView.minimumHeight = minHeight
+                                itemView.minimumHeight = minHeight
                             } else {
                                 mImage.updateLayoutParams<FrameLayout.LayoutParams> {
                                     height = ViewGroup.LayoutParams.MATCH_PARENT
                                 }
+                                itemView.minimumHeight = 0
                             }
-                            itemView.minimumHeight = 0
                             mImage.scaleType = ImageView.ScaleType.FIT_XY
                         } else {
                             itemView.updateLayoutParams<ViewGroup.LayoutParams> {
@@ -145,18 +170,21 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                             mImage.scaleType = ImageView.ScaleType.FIT_CENTER
                         }
 
-                        glide!!.override(
+                        glide.override(
                             context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL
-                        ).diskCacheStrategy(DiskCacheStrategy.NONE).skipMemoryCache(true).let {
-                            if (transformation != null) {
-                                it.transform(transformation)
-                            } else {
-                                it
-                            }
-                        }.into(mImage)
+                        ).diskCacheStrategy(DiskCacheStrategy.NONE)
+//                            .skipMemoryCache(true)
+                            .let {
+                                if (transformation != null) {
+                                    it.transform(transformation)
+                                } else {
+                                    it
+                                }
+                            }.into(mImage)
                     }
                 }
             }
         }
+        fetchJob?.start()
     }
 }
