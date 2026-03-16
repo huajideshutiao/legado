@@ -142,6 +142,10 @@ cn.hutool.core.util.**{*;}
 }
 
 -keep class io.legado.app.ui.association.JsActivity{*;}
+-keepclassmembers class androidx.activity.OnBackPressedCallback {
+    public boolean isEnabled();
+    public void setEnabled(boolean);
+}
 
 # Throwable
 -keepnames class * extends java.lang.Throwable

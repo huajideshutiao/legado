@@ -33,13 +33,13 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         BottomSheetDialog(this).apply {
             setContentView(
                 NestedScrollView(this@JsActivity).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                resources.displayMetrics.heightPixels
-            )
-            setPadding(0, 20.dpToPx(), 0, 0)
-            addView(dialogView)
-        }
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        resources.displayMetrics.heightPixels
+                    )
+                    setPadding(0, 20.dpToPx(), 0, 0)
+                    addView(dialogView)
+                }
             )
             val bottomSheet =
                 findViewById<android.view.View>(com.google.android.material.R.id.design_bottom_sheet)
@@ -85,7 +85,7 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
             }
             try {
                 return fn.call(currentCx, fn.parentScope, fn.parentScope, args)
-            }catch (e: Throwable) {
+            } catch (e: Throwable) {
                 if (currentCx == cx) {
                     error = e
                     finish()
@@ -103,13 +103,10 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
     /**
      * 设置返回按钮点击事件处理程序
      */
-    fun setBackEvent(target: OnBackPressedDispatcherOwner, func: Function):OnBackPressedCallback {
+    fun setBackEvent(target: OnBackPressedDispatcherOwner, func: Function): OnBackPressedCallback {
         val tmp = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
                 runWithAuth(func)
-            }
-            fun enable(isEnable: Boolean) {
-                isEnabled = isEnable
             }
         }
         target.onBackPressedDispatcher.addCallback(target, tmp)
