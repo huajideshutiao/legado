@@ -1,14 +1,14 @@
 name: Update Cronet
 
 on:
-  schedule:
-  # 周一北京时间9点
-    - cron: 0 1 * * 1
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 添加推送权限
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -31,20 +31,12 @@ jobs:
           chmod +x gradlew
           ./gradlew app:downloadCronet
 
-      - name: Create Pull Request
+      - name: Commit and push changes
         if: ${{ env.cronet == 'ok' }}
-        uses: peter-evans/create-pull-request@v7
-        continue-on-error: true
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: ${{ env.PR_TITLE }}
-          commit-message: |
-            ${{ env.PR_TITLE }}
-            - ${{ env.PR_BODY }}
-          body: ${{ env.PR_BODY }}
-          branch: cronet
-          delete-branch: true
-          add-paths: |
+          commit_message: ${{ env.PR_TITLE }}
+          file_pattern: |
             *cronet*jar
             *cronet.json
             *updateLog.md
