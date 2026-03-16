@@ -1382,7 +1382,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onImageClick(src: String, onClick: String) {
         val book = ReadBook.book ?: return
-        val chapter = ReadBook.chapterList?.[ReadBook.durChapterIndex] ?: appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+        val chapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
         Coroutine.async(lifecycleScope) {
             val source =
                 ReadBook.bookSource ?: throw NoStackTraceException("no book source")
