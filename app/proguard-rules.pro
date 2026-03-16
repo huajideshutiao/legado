@@ -5,6 +5,11 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# 关闭混淆但保留压缩和优化
+-dontobfuscate
+# 确保优化启用，使 -assumenosideeffects 生效
+-optimizationpasses 5
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
@@ -20,11 +25,11 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 # 混合时不使用大小写混合，混合后的类名为小写
--dontusemixedcaseclassnames
+#-dontusemixedcaseclassnames
 
 # 这句话能够使我们的项目混淆后产生映射文件
 # 包含有类名->混淆后类名的映射关系
--verbose
+#-verbose
 
 # 保留Annotation不混淆
 -keepattributes *Annotation*,InnerClasses
@@ -34,7 +39,7 @@
 
 # 指定混淆是采用的算法，后面的参数是一个过滤器
 # 这个过滤器是谷歌推荐的算法，一般不做更改
--optimizations !code/simplification/cast,!field/*,!class/merging/*
+#-optimizations !code/simplification/cast,!field/*,!class/merging/*
 
 -flattenpackagehierarchy
 
