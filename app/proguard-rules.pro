@@ -141,10 +141,7 @@ cn.hutool.core.util.**{*;}
 -keep class io.legado.app.api.ReturnData{*;}
 
 # Cronet
--keepclassmembers class org.chromium.net.X509Util {
-    *** sDefaultTrustManager;
-    *** sTestTrustManager;
-}
+-dontwarn org.chromium.net.impl.HttpEngineNativeProvider
 
 -keep class io.legado.app.ui.association.JsActivity{*;}
 -keepclassmembers class androidx.activity.OnBackPressedCallback {

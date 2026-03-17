@@ -19,33 +19,61 @@ import org.chromium.net.UploadDataProvider
 import org.chromium.net.UrlRequest
 import org.chromium.net.X509Util
 import org.json.JSONObject
+import android.os.Build
 import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
 
-val cronetEngine: ExperimentalCronetEngine? by lazy {
-    CronetLoader.preDownload()
+private var cronetEngineCache: ExperimentalCronetEngine? = null
+private var cronetEngineInitialized = false
+
+val cronetEngine: ExperimentalCronetEngine?
+    get() {
+        if (cronetEngineInitialized) {
+            return cronetEngineCache
+        }
+        synchronized(appCtx) {
+            if (cronetEngineInitialized) {
+                return cronetEngineCache
+            }
+            cronetEngineInitialized = true
+            cronetEngineCache = createCronetEngine()
+            return cronetEngineCache
+        }
+    }
+
+private fun createCronetEngine(): ExperimentalCronetEngine? {
     disableCertificateVerify()
     val builder = ExperimentalCronetEngine.Builder(appCtx).apply {
-        if (CronetLoader.install()) {
-            setLibraryLoader(CronetLoader)//设置自定义so库加载
-        }
-        setStoragePath(appCtx.externalCache.absolutePath)//设置缓存路径
-        enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())//设置50M的磁盘缓存
-        enableQuic(true)//设置支持http/3
-        enableHttp2(true)  //设置支持http/2
+        setStoragePath(appCtx.externalCache.absolutePath)
+        enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
+        enableQuic(true)
+        enableHttp2(true)
         enablePublicKeyPinningBypassForLocalTrustAnchors(true)
-        enableBrotli(true)//Brotli压缩
+        enableBrotli(true)
         setExperimentalOptions(options)
     }
-    try {
-        val engine = builder.build()
-        DebugLog.d("Cronet Version:", engine.versionString)
-        return@lazy engine
-    } catch (e: Throwable) {
-        AppLog.put("初始化cronetEngine出错", e)
-        return@lazy null
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        try {
+            val engine = builder.build()
+            DebugLog.d("Cronet Version (System):", engine.versionString)
+            return engine
+        } catch (e: Throwable) {
+            DebugLog.d("Cronet", "System cronet not available: ${e.message}")
+        }
     }
+    CronetLoader.preDownload()
+    if (CronetLoader.install()) {
+        builder.setLibraryLoader(CronetLoader)
+        try {
+            val engine = builder.build()
+            DebugLog.d("Cronet Version (Downloaded):", engine.versionString)
+            return engine
+        } catch (e: Throwable) {
+            AppLog.put("初始化cronetEngine出错", e)
+        }
+    }
+    return null
 }
 
 val options by lazy {
