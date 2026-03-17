@@ -1,14 +1,13 @@
-@file:Keep
-@file:Suppress("DEPRECATION")
+@file:Keep @file:Suppress("DEPRECATION")
 
 package io.legado.app.lib.cronet
 
-import android.net.http.HttpEngine
 import androidx.annotation.Keep
 import io.legado.app.constant.AppLog
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.lib.cronet.CronetLoader.isHttpEngineAvailable
 import io.legado.app.utils.DebugLog
 import io.legado.app.utils.externalCache
 import okhttp3.Headers
@@ -18,10 +17,8 @@ import org.chromium.net.CronetEngine.Builder.HTTP_CACHE_DISK
 import org.chromium.net.ExperimentalCronetEngine
 import org.chromium.net.UploadDataProvider
 import org.chromium.net.UrlRequest
-import org.chromium.net.X509Util
+import org.chromium.net.impl.HttpEngineNativeProvider
 import org.json.JSONObject
-import android.os.Build
-import io.legado.app.lib.cronet.CronetLoader.isHttpEngineAvailable
 import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
@@ -45,29 +42,30 @@ val cronetEngine: ExperimentalCronetEngine?
     }
 
 private fun createCronetEngine(): ExperimentalCronetEngine? {
-    disableCertificateVerify()
-    val builder = if(isHttpEngineAvailable()){
-        HttpEngine.Builder(appCtx) as ExperimentalCronetEngine.Builder
-    }else{
+    runCatching {
+        val x509UtilClass = Class.forName("org.chromium.net.impl.X509Util")
+        val sDefaultTrustManager = x509UtilClass.getDeclaredField("sDefaultTrustManager")
+        sDefaultTrustManager.isAccessible = true
+        sDefaultTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
+        val sTestTrustManager = x509UtilClass.getDeclaredField("sTestTrustManager")
+        sTestTrustManager.isAccessible = true
+        sTestTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
+    }.onFailure {
+        DebugLog.d("Cronet", "Failed to disable cert verify: ${it.message}")
+    }
+    val builder = if (isHttpEngineAvailable()) {
+        HttpEngineNativeProvider(appCtx).createBuilder() as ExperimentalCronetEngine.Builder
+    } else {
         ExperimentalCronetEngine.Builder(appCtx)
     }.apply {
-        setStoragePath(appCtx.externalCache.absolutePath)
-        enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
-        enableQuic(true)
-        enableHttp2(true)
-        enablePublicKeyPinningBypassForLocalTrustAnchors(true)
-        enableBrotli(true)
-        setExperimentalOptions(options)
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        try {
-            val engine = builder.build()
-            DebugLog.d("Cronet Version (System):", engine.versionString)
-            return engine
-        } catch (e: Throwable) {
-            DebugLog.d("Cronet", "System cronet not available: ${e.message}")
+            setStoragePath(appCtx.externalCache.absolutePath)
+            enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
+            enableQuic(true)
+            enableHttp2(true)
+            enablePublicKeyPinningBypassForLocalTrustAnchors(true)
+            enableBrotli(true)
+            setExperimentalOptions(options)
         }
-    }
     if (CronetLoader.install()) {
         builder.setLibraryLoader(CronetLoader)
         try {
@@ -96,10 +94,7 @@ val options by lazy {
     dnsSvcb.put("enable_insecure", true)
     dnsSvcb.put("use_alpn", true)
     options.put("UseDnsHttpsSvcb", dnsSvcb)
-
     options.put("AsyncDNS", JSONObject("{'enable':true}"))
-
-
     options.toString()
 }
 
@@ -108,9 +103,7 @@ fun buildRequest(request: Request, callback: UrlRequest.Callback): UrlRequest? {
     val headers: Headers = request.headers
     val requestBody = request.body
     return cronetEngine?.newUrlRequestBuilder(
-        url,
-        callback,
-        okHttpClient.dispatcher.executorService
+        url, callback, okHttpClient.dispatcher.executorService
     )?.apply {
         setHttpMethod(request.method)//设置
         allowDirectExecutor()
@@ -137,18 +130,5 @@ fun buildRequest(request: Request, callback: UrlRequest.Callback): UrlRequest? {
         }
 
     }?.build()
-
 }
 
-private fun disableCertificateVerify() {
-    runCatching {
-        val sDefaultTrustManager = X509Util::class.java.getDeclaredField("sDefaultTrustManager")
-        sDefaultTrustManager.isAccessible = true
-        sDefaultTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
-    }
-    runCatching {
-        val sTestTrustManager = X509Util::class.java.getDeclaredField("sTestTrustManager")
-        sTestTrustManager.isAccessible = true
-        sTestTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
-    }
-}

@@ -155,13 +155,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     packaging {
-        resources.excludes.add('META-INF/DEPENDENCIES')
-        resources.excludes.add('META-INF/LICENSE')
-        resources.excludes.add('META-INF/LICENSE.txt')
-        resources.excludes.add('META-INF/NOTICE')
-        resources.excludes.add('META-INF/NOTICE.txt')
-        resources.excludes.add('META-INF/*.kotlin_module')
-        resources.excludes.add('META-INF/INDEX.LIST')
+        resources.excludes.add('META-INF/*')
     }
 
     sourceSets {
@@ -191,7 +185,6 @@ dependencies {
     //Kotlin反射
     //noinspection GradleDependency,DifferentStdlibGradleVersion
     //implementation(libs.kotlin.reflect)
-
 
     //协程
     //def coroutines_version = '1.7.3'
@@ -260,13 +253,16 @@ dependencies {
 
     //网络
     implementation(libs.okhttp)
-    implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
+    //implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
+    implementation(libs.cronet.api)
+    implementation(libs.httpengine.native.provider)
     implementation(libs.protobuf.javalite)
 
     //Glide
     implementation(libs.glide.glide)
     implementation(libs.glide.okhttp)
     ksp(libs.glide.ksp)
+    implementation libs.glide.recyclerview
 
     //Svg
     implementation(libs.androidsvg)
@@ -303,16 +299,11 @@ dependencies {
     //noinspection GradleDependency,GradlePackageUpdate
     implementation(libs.hutool.crypto)
 
-    //firebase, 崩溃统计和性能统计
-    //implementation platform(libs.firebase.bom)
-    //implementation libs.firebase.analytics
-    //implementation libs.firebase.perf
-
-    implementation libs.glide.recyclerview
-
     //LeakCanary, 内存泄露检测
     //debugImplementation('com.squareup.leakcanary:leakcanary-android:2.7')
 
-    //com.github.AmrDeveloper:CodeView代码编辑已集成到应用内
+    //com.github.AmrDeveloper:CodeView
+    //implementation(libs.codeview)
+    // 代码编辑已集成到应用内
     //epubLib集成到应用内
 }

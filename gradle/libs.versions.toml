@@ -1,12 +1,14 @@
 [versions]
 
-kotlin = "2.3.10"
+codeview = "1.0.0"
+cronet = "143.7445.0"
+kotlin = "2.3.20"
 ksp = "2.3.4"
 agp = "8.13.2"
 appcompat = "1.7.1"
 colorpicker = "1.1.0"
 constraintlayout = "2.2.1"
-core = "1.17.0"
+core = "1.18.0"
 flexbox = "3.0.0"
 fragment = "1.8.9"
 documentfile = "1.1.0"
@@ -14,14 +16,13 @@ documentfile = "1.1.0"
 libarchive = "1.1.6"
 glide = "5.0.5"
 gson = "2.13.2"
-jsonPath = "2.10.0"
+jsonPath = "3.0.0"
 jsoupxpath = "2.5.3"
 coroutines = "1.10.2"
 liveeventbus = "1.8.14"
 markwon = "4.6.2"
 material = "1.13.0"
 media = "1.7.1"
-media3Ui = "1.9.2"
 nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
 preference = "1.2.1"
@@ -32,28 +33,20 @@ desugar = "2.1.5"
 
 #kotlinxSerialization = "1.8.0"
 swiperefreshlayout = "1.2.0"
-collection = "1.5.0"
+collection = "1.6.0"
 
-zxingLite = "3.4.0"
+zxingLite = "3.4.1"
 
-#不要更新版本
-#noinspection NewerVersionAvailable
-hutool = "5.8.22"
+hutool = "5.8.44"
 
 #noinspection NewerVersionAvailable
 protobufJavalite = "4.26.1"
 
-# issue #3811，不要更新版本，新版引入了一个破坏性变更（详见https://github.com/jhy/jsoup/pull/2017）
-# 若要升级请确保相关代码不会受此变更影响（如AnalyzeByJSoup.kt、JsoupXpath库等）
 jsoup = "1.22.1"
 
-# 新版本使用了 Android 6 以下缺少的 Arrays.setAll 方法，导致进入阅读界面会崩溃
 commonsText = "1.15.0"
-
-# 新版本使用了 Android 8 以下无法编译的 VarHandle.compareAndExchange 方法
 rhino = "1.9.1"
-
-media3 = "1.9.2"
+media3 = "1.9.3"
 
 #noinspection GradleDependency
 webkit = "1.14.0"
@@ -80,17 +73,20 @@ androidx-annotation = { group = "androidx.annotation", name = "annotation", vers
 #androidx-annotation-experimental = { group = "androidx.annotation", name = "annotation-experimental", version = "1.3.1" }
 
 androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
-androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3Ui" }
-androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3Ui" }
+androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 
 
+codeview = { module = "com.github.AmrDeveloper:CodeView", version.ref = "codeview" }
 core-core = { module = "androidx.core:core", version.ref = "core" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 
-androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version = "3.6.1" }
+androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version = "3.7.0" }
 
+cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
+cronet-fallback = { module = "org.chromium.net:cronet-fallback", version.ref = "cronet" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-perf = { module = "com.google.firebase:firebase-perf" }
@@ -102,6 +98,7 @@ fragment-testing = { module = "androidx.fragment:fragment-testing", version.ref 
 
 androidx-junit = { module = "androidx.test.ext:junit", version = "1.3.0" }
 
+httpengine-native-provider = { module = "org.chromium.net:httpengine-native-provider", version.ref = "cronet" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 
 libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }
