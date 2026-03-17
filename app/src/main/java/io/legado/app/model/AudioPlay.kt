@@ -104,8 +104,13 @@ object AudioPlay : CoroutineScope by MainScope() {
             upDurChapter()
         } else {
             durCoverUrl?.let { callback!!.upCover(it) }
-            if (durLrcData == null) getLrcData(bookSource!!, book, durChapter!!)
-            else callback!!.upLrc(durLrcData!!)
+            if (durLrcData == null) {
+                getLrcData(bookSource!!, book, durChapter!!).onSuccess {
+                    context.startService<AudioPlayService> {
+                        action = IntentAction.lrc
+                    }
+                }
+            } else callback!!.upLrc(durLrcData!!)
         }
 
     }
@@ -193,7 +198,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 analyzeRule.setChapter(chapter)
                 durLrcContent = analyzeRule.evalJS(lrcRule) as? NativeArray
             }
-            if (durLrcContent != null)for (i in durLrcContent.indices) {
+            if (durLrcContent != null) for (i in durLrcContent.indices) {
                 (durLrcContent[i] as String).replace("00-1", "000")
                     .lineSequence().forEach { line ->
                         val line = line.trim()
@@ -233,9 +238,9 @@ object AudioPlay : CoroutineScope by MainScope() {
         }.onSuccess {
             durLrcData = it
             callback!!.upLrc(it)
-            context.startService<AudioPlayService> {
-                action = IntentAction.lrc
-            }
+//            context.startService<AudioPlayService> {
+//                action = IntentAction.lrc
+//            }
 
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
@@ -523,7 +528,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     private fun isPlayToEnd(): Boolean {
         return durChapterIndex + 1 == simulatedChapterSize
-            && durChapterPos == durAudioSize
+                && durChapterPos == durAudioSize
     }
 
     fun register(context: Context) {

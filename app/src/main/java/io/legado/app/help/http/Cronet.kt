@@ -10,8 +10,8 @@ object Cronet {
         CronetLoader
     }
 
-    fun preDownload() {
-        loader?.preDownload()
+    fun preDownload(onComplete: ((Boolean) -> Unit)?) {
+        loader?.preDownload(onComplete)
     }
 
     val interceptor: Interceptor? by lazy {
@@ -22,7 +22,7 @@ object Cronet {
 
         fun install(): Boolean
 
-        fun preDownload()
+        fun preDownload(onComplete: ((Boolean) -> Unit)?)
 
     }
 

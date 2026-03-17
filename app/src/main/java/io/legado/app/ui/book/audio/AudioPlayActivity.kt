@@ -79,6 +79,8 @@ class AudioPlayActivity :
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 
+    private var needCheckPosition = true
+
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
             if (it.first != AudioPlay.book?.durChapterIndex
@@ -356,6 +358,18 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_PROGRESS) {
             if (!adjustProgress) binding.playerProgress.progress = it
+            if (needCheckPosition) {
+                AudioPlay.durLrcData?.let { lrc ->
+                    needCheckPosition = false
+                    var position = 0
+                    for (i in lrc.indices) {
+                        if (lrc[i].first <= it + 60) {
+                            position = i
+                        } else break
+                    }
+                    binding.ivLrc.layoutManager?.scrollToPosition(position)
+                }
+            }
             binding.tvDurTime.text = it.toDurationTime()
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
@@ -394,7 +408,8 @@ class AudioPlayActivity :
         runOnUiThread {
             // 使用同一个 Glide 实例加载图片，利用缓存机制避免重复下载
             val glide = Glide.with(this)
-            val loadRequest = BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+            val loadRequest =
+                BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
 
             // 先加载封面
             loadRequest.placeholder(binding.ivCover.drawable).into(binding.ivCover)

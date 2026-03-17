@@ -155,7 +155,7 @@ class AudioPlayService : BaseService(),
                 }
 
                 IntentAction.lrc -> {
-                    upPlayProgressForLrc(durLrcData)
+                    upPlayProgressForLrc()
                 }
 
                 IntentAction.playNew -> {
@@ -242,7 +242,6 @@ class AudioPlayService : BaseService(),
             exoPlayer.playWhenReady = true
             exoPlayer.seekTo(position.toLong())
             exoPlayer.prepare()
-            upPlayProgressForLrc(durLrcData)
         }.onError {
             AppLog.put("播放出错\n${it.localizedMessage}", it)
             toastOnUi("$url ${it.localizedMessage}")
@@ -295,7 +294,7 @@ class AudioPlayService : BaseService(),
                 exoPlayer.play()
             }
             upPlayProgress()
-            upPlayProgressForLrc(durLrcData)
+            upPlayProgressForLrc()
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
             AudioPlay.status = Status.PLAY
             postEvent(EventBus.AUDIO_STATE, Status.PLAY)
@@ -312,7 +311,7 @@ class AudioPlayService : BaseService(),
     private fun adjustProgress(position: Int) {
         this.position = position
         exoPlayer.seekTo(position.toLong())
-        upPlayProgressForLrc(durLrcData)
+        upPlayProgressForLrc()
     }
 
     /**
@@ -345,7 +344,6 @@ class AudioPlayService : BaseService(),
             }
 
             Player.STATE_READY -> {
-                // 准备好
                 AudioPlay.upLoading(false)
                 if (exoPlayer.playWhenReady) {
                     AudioPlay.status = Status.PLAY
@@ -357,6 +355,7 @@ class AudioPlayService : BaseService(),
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaMetadata()
                 upPlayProgress()
+                upPlayProgressForLrc()
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
@@ -454,9 +453,9 @@ class AudioPlayService : BaseService(),
         }
     }
 
-    private fun upPlayProgressForLrc(lrc: List<Pair<Int, String>>?) {
+    private fun upPlayProgressForLrc() {
         upPlayProgressForLrcJob?.cancel()
-        if (lrc == null) return
+        val lrc = durLrcData ?: return
         upPlayProgressForLrcJob = lifecycleScope.launch {
             var position: Int = -1
             for (i in lrc.indices) {

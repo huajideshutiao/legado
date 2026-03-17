@@ -3,6 +3,7 @@ package io.legado.app.help.config
 import android.content.SharedPreferences
 import android.os.Build
 import io.legado.app.BuildConfig
+import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -23,7 +24,7 @@ import splitties.init.appCtx
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
-    val isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
+    var isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
     var useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
     var userAgent: String = getPrefUserAgent()
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
@@ -93,6 +94,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
 
             PreferKey.recordLog -> recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
+
+            PreferKey.cronet -> {
+                isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
+                if (isCronet) {
+                    io.legado.app.help.http.Cronet.preDownload { success ->
+                        if (success) {
+                            io.legado.app.help.http.recreateOkHttpClient()
+                            appCtx.toastOnUi(R.string.cronet_enabled)
+                        } else {
+                            appCtx.toastOnUi(R.string.cronet_download_failed)
+                        }
+                    }
+                }
+            }
 
         }
     }

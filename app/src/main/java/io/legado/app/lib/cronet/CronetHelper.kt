@@ -3,6 +3,7 @@
 
 package io.legado.app.lib.cronet
 
+import android.net.http.HttpEngine
 import androidx.annotation.Keep
 import io.legado.app.constant.AppLog
 import io.legado.app.help.http.CookieManager.cookieJarHeader
@@ -20,6 +21,7 @@ import org.chromium.net.UrlRequest
 import org.chromium.net.X509Util
 import org.json.JSONObject
 import android.os.Build
+import io.legado.app.lib.cronet.CronetLoader.isHttpEngineAvailable
 import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
@@ -44,7 +46,11 @@ val cronetEngine: ExperimentalCronetEngine?
 
 private fun createCronetEngine(): ExperimentalCronetEngine? {
     disableCertificateVerify()
-    val builder = ExperimentalCronetEngine.Builder(appCtx).apply {
+    val builder = if(isHttpEngineAvailable()){
+        HttpEngine.Builder(appCtx) as ExperimentalCronetEngine.Builder
+    }else{
+        ExperimentalCronetEngine.Builder(appCtx)
+    }.apply {
         setStoragePath(appCtx.externalCache.absolutePath)
         enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
         enableQuic(true)
@@ -62,7 +68,6 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
             DebugLog.d("Cronet", "System cronet not available: ${e.message}")
         }
     }
-    CronetLoader.preDownload()
     if (CronetLoader.install()) {
         builder.setLibraryLoader(CronetLoader)
         try {
