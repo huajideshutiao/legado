@@ -405,7 +405,7 @@ interface JsExtensions : JsEncodeUtils {
         val response = rateLimiter.withLimitBlocking {
             rhinoContext.ensureActive()
             Jsoup.connect(urlStr)
-                .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory)
+                .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
                 .followRedirects(false)
                 .headers(requestHeaders)
@@ -426,7 +426,7 @@ interface JsExtensions : JsEncodeUtils {
         val response = rateLimiter.withLimitBlocking {
             rhinoContext.ensureActive()
             Jsoup.connect(urlStr)
-                .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory)
+                .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
                 .followRedirects(false)
                 .headers(requestHeaders)
@@ -447,7 +447,7 @@ interface JsExtensions : JsEncodeUtils {
         val response = rateLimiter.withLimitBlocking {
             rhinoContext.ensureActive()
             Jsoup.connect(urlStr)
-                .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory)
+                .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
                 .followRedirects(false)
                 .requestBody(body)

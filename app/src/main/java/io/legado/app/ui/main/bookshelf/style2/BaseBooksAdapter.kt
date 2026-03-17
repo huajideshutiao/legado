@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf.style2
 
 import android.content.Context
+import android.os.Bundle
 import android.view.LayoutInflater
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.AsyncListDiffer
@@ -109,7 +110,9 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         for (i in 0 until itemCount) {
             getItem(i).let {
                 if (it is Book && it.bookUrl == bookUrl) {
-                    notifyItemChanged(i, bundleOf(Pair("refresh", null)))
+                    notifyItemChanged(i, Bundle().apply {
+                        putString("refresh", null)
+                    })
                     return
                 }
             }

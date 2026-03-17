@@ -18,7 +18,6 @@ import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.UrlUtil
@@ -324,7 +323,7 @@ object BookHelp {
 
     fun getChapterFiles(book: Book): HashSet<String> {
         val fileNames = hashSetOf<String>()
-        if (book.isLocalTxt) {
+        if (book.isLocalTxt || book.isVideo || book.isAudio) {
             return fileNames
         }
         FileUtils.createFolderIfNotExist(

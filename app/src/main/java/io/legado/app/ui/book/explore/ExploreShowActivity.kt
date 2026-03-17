@@ -4,8 +4,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.viewModels
-import androidx.core.content.res.ResourcesCompat
-import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -18,13 +16,11 @@ import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -64,7 +60,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             loadMoreView.error(it)
         }
         viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
+            adapter.notifyItemRangeChanged(0, adapter.itemCount, Bundle().apply {
+                putString(it, null)
+            })
         }
     }
 
@@ -76,16 +74,18 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_switch_layout -> {
-                when(adapter){
+                when (adapter) {
                     is ExploreShowAdapter -> {
                         adapter = BigExploreShowAdapter(this, this)
                         item.setIcon(R.drawable.ic_layout_grid)
                     }
+
                     is BigExploreShowAdapter -> {
                         binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
                         adapter = GridExploreShowAdapter(this, this)
                         item.setIcon(R.drawable.ic_layout_list)
                     }
+
                     is GridExploreShowAdapter -> {
                         binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
                         adapter = ExploreShowAdapter(this, this)

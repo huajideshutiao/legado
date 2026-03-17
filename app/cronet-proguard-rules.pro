@@ -10,6 +10,9 @@
 # Chromium code. They MUST be scoped appropriately to avoid side effects on app
 # code that we do not own.
 
+-dontwarn org.chromium.net.impl.JavaCronetProvider
+-dontwarn org.chromium.net.impl.NativeCronetProvider
+
 # Keep all CREATOR fields within Parcelable that are kept.
 -keepclassmembers class !cr_allowunused,org.chromium.** implements android.os.Parcelable {
   public static *** CREATOR;

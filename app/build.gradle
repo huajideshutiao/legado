@@ -121,16 +121,17 @@ android {
 
     android.applicationVariants.configureEach { variant ->
         variant.outputs.configureEach { output ->
-            def abi = output.getFilter(com.android.build.OutputFile.ABI)
+            def abi = output.getFilter("ABI")
             // 简写架构名称
             def abiShortMap = [
                     "arm64-v8a"  : "arm64",
                     "armeabi-v7a": "armv7",
                     "x86_64"     : "x64",
                     "x86"        : "x86",
-                    "null"       : "all"
+                    "all"       : "all"
             ]
-            outputFileName = "${name}_${abiShortMap.get(abi)}_${defaultConfig.versionName}.apk"
+            def abiName = abiShortMap.get(abi ?: "all")
+            outputFileName = "${name}_${abiName}_${defaultConfig.versionName}.apk"
         }
     }
 

@@ -7,7 +7,6 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
@@ -272,7 +271,9 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
                 rbRegexName.setOnUserCheckedChangeListener { isChecked ->
                     if (isChecked) {
                         selectedName = getItem(holder.layoutPosition)?.name
-                        updateItems(0, itemCount - 1, bundleOf("upSelect" to null))
+                        updateItems(0, itemCount - 1, Bundle().apply {
+                            putString("upSelect", null)
+                        })
                     }
                 }
                 swtEnabled.setOnUserCheckedChangeListener { isChecked ->

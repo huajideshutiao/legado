@@ -31,8 +31,7 @@ object SSLHelper {
      * 这是一种有很大安全漏洞的办法
      */
     val unsafeTrustManager: X509TrustManager =
-        @SuppressLint("CustomX509TrustManager")
-        object : X509TrustManager {
+        @SuppressLint("CustomX509TrustManager") object : X509TrustManager {
             @SuppressLint("TrustAllX509TrustManager")
             @Throws(CertificateException::class)
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
@@ -45,7 +44,9 @@ object SSLHelper {
                 //do nothing，接受任意客户端证书
             }
 
-            fun checkServerTrusted(chain: Array<X509Certificate>, authType: String, host: String): List<X509Certificate> {
+            fun checkServerTrusted(
+                chain: Array<X509Certificate>, authType: String, host: String
+            ): List<X509Certificate> {
                 return chain.toList()
             }
 
@@ -75,6 +76,12 @@ object SSLHelper {
      */
     val unsafeHostnameVerifier: HostnameVerifier = HostnameVerifier { _, _ -> true }
 
+    val unsafeSslContext: SSLContext by lazy {
+        SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf(unsafeTrustManager), SecureRandom())
+        }
+    }
+
     class SSLParams {
         lateinit var sSLSocketFactory: SSLSocketFactory
         lateinit var trustManager: X509TrustManager
@@ -102,9 +109,7 @@ object SSLHelper {
      * certificates -> 用含有服务端公钥的证书校验服务端证书
      */
     fun getSslSocketFactory(
-        bksFile: InputStream,
-        password: String,
-        vararg certificates: InputStream
+        bksFile: InputStream, password: String, vararg certificates: InputStream
     ): SSLParams? {
         return getSslSocketFactoryBase(null, bksFile, password, *certificates)
     }
@@ -115,9 +120,7 @@ object SSLHelper {
      * X509TrustManager -> 如果需要自己校验，那么可以自己实现相关校验，如果不需要自己校验，那么传null即可
      */
     fun getSslSocketFactory(
-        bksFile: InputStream,
-        password: String,
-        trustManager: X509TrustManager
+        bksFile: InputStream, password: String, trustManager: X509TrustManager
     ): SSLParams? {
         return getSslSocketFactoryBase(trustManager, bksFile, password)
     }

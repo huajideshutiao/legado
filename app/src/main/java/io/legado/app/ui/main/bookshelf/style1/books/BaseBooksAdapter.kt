@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.content.Context
+import android.os.Bundle
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DiffUtil
 import androidx.viewbinding.ViewBinding
@@ -18,7 +19,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
 
             override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
                 return oldItem.name == newItem.name
-                        && oldItem.author == newItem.author
+                    && oldItem.author == newItem.author
             }
 
             override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {
@@ -77,14 +78,22 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
     fun notification(bookUrl: String) {
         getItems().forEachIndexed { i, it ->
             if (it.bookUrl == bookUrl) {
-                notifyItemChanged(i, bundleOf(Pair("refresh", null), Pair("lastUpdateTime", null)))
+                notifyItemChanged(
+                    i,
+                    Bundle().apply {
+                        putString("refresh", null)
+                        putString("lastUpdateTime", null)
+                    }
+                )
                 return
             }
         }
     }
 
     fun upLastUpdateTime() {
-        notifyItemRangeChanged(0, itemCount, bundleOf(Pair("lastUpdateTime", null)))
+        notifyItemRangeChanged(0, itemCount, Bundle().apply {
+            putString("lastUpdateTime", null)
+        })
     }
 
     interface CallBack {

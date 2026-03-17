@@ -10,7 +10,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
-import androidx.core.os.bundleOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -610,7 +609,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             adapter.notifyItemRangeChanged(
                 0,
                 adapter.itemCount,
-                bundleOf(Pair("checkSourceMessage", null))
+                Bundle().apply {
+                    putString("checkSourceMessage", null)
+                }
             )
             groups.forEach { group ->
                 if (group.contains("失效") && searchView.query.isEmpty()) {
@@ -630,13 +631,17 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         adapter.notifyItemRangeChanged(
                             0,
                             adapter.itemCount,
-                            bundleOf(Pair("checkSourceMessage", null))
+                            Bundle().apply {
+                                putString("checkSourceMessage", null)
+                            }
                         )
                     } else {
                         adapter.notifyItemRangeChanged(
                             firstItem,
                             lastItem + 1,
-                            bundleOf(Pair("checkSourceMessage", null))
+                            Bundle().apply {
+                                putString("checkSourceMessage", null)
+                            }
                         )
                     }
                     if (!Debug.isChecking) {

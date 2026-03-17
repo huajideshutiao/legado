@@ -37,7 +37,9 @@ collection = "1.6.0"
 
 zxingLite = "3.4.1"
 
-hutool = "5.8.44"
+#不要更新版本，新版本用了org.bouncycastle.**
+#noinspection NewerVersionAvailable
+hutool = "5.8.22"
 
 #noinspection NewerVersionAvailable
 protobufJavalite = "4.26.1"

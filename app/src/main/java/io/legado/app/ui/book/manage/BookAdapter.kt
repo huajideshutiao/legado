@@ -2,10 +2,10 @@ package io.legado.app.ui.book.manage
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
@@ -197,7 +197,9 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                 selectedBooks.add(it)
             }
         }
-        notifyItemRangeChanged(minPosition, itemCount, bundleOf(Pair("selected", null)))
+        notifyItemRangeChanged(minPosition, itemCount, Bundle().apply {
+            putString("selected", null)
+        })
         callBack.upSelectCount()
     }
 
@@ -264,7 +266,9 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                     } else {
                         selectedBooks.remove(it)
                     }
-                    notifyItemChanged(position, bundleOf(Pair("selected", null)))
+                    notifyItemChanged(position, Bundle().apply {
+                        putString("selected", null)
+                    })
                     callBack.upSelectCount()
                     return true
                 }

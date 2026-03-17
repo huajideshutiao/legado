@@ -161,7 +161,7 @@ abstract class AbsCallBack(
         }
         try {
             responseCallback?.onResponse(mCall, response)
-        } catch (e: IOException) {
+        } catch (_: IOException) {
             // Pass?
         }
     }
@@ -287,7 +287,7 @@ abstract class AbsCallBack(
                             continue
                         }
                         add(key, value)
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         DebugLog.w(javaClass.name, "Invalid HTTP header/value: $key$value")
                         // Ignore that header
                     }
