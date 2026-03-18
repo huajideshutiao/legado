@@ -1023,7 +1023,7 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun startJsActivity(action: Function, isTransparent: Boolean = true) {
         val cx = rhinoContext
-        if (isMainThread || !cx.dangerousApi) return
+        if (isMainThread) return
         cx.ensureActive()
 //        if (action.parentScope == ScriptableObject.getTopLevelScope(action)) {
 //            action.parentScope = ScriptRuntime.getTopCallScope(cx)

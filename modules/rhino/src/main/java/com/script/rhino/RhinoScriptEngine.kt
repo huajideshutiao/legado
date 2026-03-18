@@ -119,6 +119,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
             throw ScriptException(var14)
         } finally {
             cx.coroutineContext = previousCoroutineContext
+            cx.dangerousApi = false
             cx.allowScriptRun = false
             cx.recursiveCount--
             Context.exit()

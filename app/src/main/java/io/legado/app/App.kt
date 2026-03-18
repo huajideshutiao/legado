@@ -13,6 +13,7 @@ import com.github.liuyueyi.quick.transfer.constants.TransType
 import com.jeremyliao.liveeventbus.LiveEventBus
 import com.jeremyliao.liveeventbus.logger.DefaultLogger
 import com.script.rhino.ReadOnlyJavaObject
+import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.RhinoWrapFactory
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
@@ -215,7 +216,9 @@ class App : Application() {
         )
     }
 
+    @Suppress("UnusedExpression")
     private fun initRhino() {
+        RhinoScriptEngine
         RhinoWrapFactory.register(BookSource::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(RssSource::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(HttpTTS::class.java, NativeBaseSource.factory)

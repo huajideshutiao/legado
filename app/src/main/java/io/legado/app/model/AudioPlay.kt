@@ -106,6 +106,8 @@ object AudioPlay : CoroutineScope by MainScope() {
             durCoverUrl?.let { callback!!.upCover(it) }
             if (durLrcData == null) {
                 getLrcData(bookSource!!, book, durChapter!!).onSuccess {
+                    durLrcData = it
+                    callback!!.upLrc(it)
                     context.startService<AudioPlayService> {
                         action = IntentAction.lrc
                     }

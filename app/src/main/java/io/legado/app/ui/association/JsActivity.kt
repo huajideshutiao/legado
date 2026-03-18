@@ -75,7 +75,7 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         val currentCx = if (isMainThread) cx else Context.enter() as RhinoContext
         try {
             currentCx.allowScriptRun = true
-            currentCx.dangerousApi = true
+//            currentCx.dangerousApi = true
             currentCx.recursiveCount++
             currentCx.checkRecursive()
             if (currentCx != cx) {
@@ -142,7 +142,10 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         val actionKey = intent.getStringExtra("actionKey")
         if (actionKey != null) {
             IntentData.get<Function>(actionKey)?.let { action ->
-                runWithAuth(action, arrayOf(this))
+                cx.dangerousApi = true
+                val jsThis = cx.wrapFactory.wrap(cx, action.parentScope, this, JsActivity::class.java)
+                cx.dangerousApi = false
+                runWithAuth(action, arrayOf(jsThis))
                 return
             }
         }
@@ -164,7 +167,7 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         val action = IntentData.get<(Throwable?) -> Unit>(waitKey)
         action?.let {
             cx.allowScriptRun = false
-            cx.dangerousApi = false
+//            cx.dangerousApi = false
             Context.exit()
             it.invoke(error)
         }

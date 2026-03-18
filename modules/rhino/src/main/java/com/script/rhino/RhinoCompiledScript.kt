@@ -61,9 +61,8 @@ internal class RhinoCompiledScript(
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
-        if (scope is ScriptBindings) {
-            cx.dangerousApi = scope.dangerousApi == true
-        }
+        if (scope is ScriptBindings) cx.dangerousApi = scope.dangerousApi
+
         cx.allowScriptRun = true
         cx.recursiveCount++
         val result: Any?
@@ -83,6 +82,7 @@ internal class RhinoCompiledScript(
             throw se
         } finally {
             cx.coroutineContext = previousCoroutineContext
+            cx.dangerousApi = false
             cx.allowScriptRun = false
             cx.recursiveCount--
             Context.exit()
