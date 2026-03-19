@@ -245,7 +245,8 @@ class AnalyzeUrl(
         val urlMatcher = paramPattern.matcher(ruleUrl)
         val urlNoOption =
             if (urlMatcher.find()) ruleUrl.substring(0, urlMatcher.start()) else ruleUrl
-        url = NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
+        url = if (urlNoOption.startsWith("data:")) urlNoOption
+        else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let {
             baseUrl = it
         }

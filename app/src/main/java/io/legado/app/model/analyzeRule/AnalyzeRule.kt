@@ -323,7 +323,8 @@ class AnalyzeRule(
             return if (str.isBlank()) {
                 baseUrl ?: ""
             } else {
-                NetworkUtils.getAbsoluteURL(redirectUrl, str)
+                if (str.startsWith("data:")) str
+                else NetworkUtils.getAbsoluteURL(redirectUrl, str)
             }
         }
         return str

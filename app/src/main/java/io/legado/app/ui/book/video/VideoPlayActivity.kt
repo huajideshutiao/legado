@@ -118,7 +118,7 @@ class VideoPlayActivity(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    if (error is ExoPlaybackException) {
+                    if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
                         val msg = when (error.sourceException) {
                             is UnrecognizedInputFormatException -> "不是视频链接"
                             is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"

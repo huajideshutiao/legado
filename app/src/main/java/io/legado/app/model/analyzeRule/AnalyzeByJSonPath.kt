@@ -135,8 +135,12 @@ class AnalyzeByJSonPath(json: Any) {
             ctx.let {
                 try {
                     return it.read<ArrayList<Any>>(rules[0])
-                } catch (e: Exception) {
-                    e.printOnDebug()
+                } catch (_: Exception) {
+                    try {
+                        return arrayListOf(it.read<Any>(rules[0]))
+                    } catch (e: Exception) {
+                        e.printOnDebug()
+                    }
                 }
             }
         } else {
