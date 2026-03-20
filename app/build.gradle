@@ -254,7 +254,7 @@ dependencies {
 
     //网络
     implementation(libs.okhttp)
-    //implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
+    implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
     //implementation(libs.cronet.api)
     implementation(libs.httpengine.native.provider){
         exclude group: 'org.chromium.net'
