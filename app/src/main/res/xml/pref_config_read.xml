@@ -183,12 +183,12 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="expandTextMenu"
-        android:title="@string/expand_text_menu"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
+<!--    <io.legado.app.lib.prefs.SwitchPreference-->
+<!--        android:defaultValue="false"-->
+<!--        android:key="expandTextMenu"-->
+<!--        android:title="@string/expand_text_menu"-->
+<!--        app:iconSpaceReserved="false"-->
+<!--        app:isBottomBackground="true" />-->
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
