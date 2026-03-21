@@ -134,13 +134,11 @@ class AnalyzeByJSonPath(json: Any) {
         if (rules.size == 1) {
             ctx.let {
                 try {
-                    return it.read<ArrayList<Any>>(rules[0])
-                } catch (_: Exception) {
-                    try {
-                        return arrayListOf(it.read<Any>(rules[0]))
-                    } catch (e: Exception) {
-                        e.printOnDebug()
-                    }
+                    val tmp = it.read<Any>(rules[0])
+                    return if (tmp is ArrayList<*>) tmp as ArrayList<Any>
+                    else arrayListOf(tmp)
+                } catch (e: Exception) {
+                    e.printOnDebug()
                 }
             }
         } else {

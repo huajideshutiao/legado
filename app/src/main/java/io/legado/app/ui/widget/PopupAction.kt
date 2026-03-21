@@ -1,69 +1,68 @@
 package io.legado.app.ui.widget
 
-import android.content.Context
-import android.view.ViewGroup
-import android.widget.PopupWindow
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.databinding.ItemTextBinding
-import io.legado.app.databinding.PopupActionBinding
+import android.graphics.Rect
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import io.legado.app.lib.dialogs.SelectItem
-import splitties.systemservices.layoutInflater
 
-class PopupAction(private val context: Context) :
-    PopupWindow(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT) {
+class PopupAction() {
 
-    val binding = PopupActionBinding.inflate(context.layoutInflater)
-    val adapter by lazy {
-        Adapter(context).apply {
-            setHasStableIds(true)
-        }
-    }
     var onActionClick: ((action: String) -> Unit)? = null
+    private var actionMode: ActionMode? = null
+    private val contentRect = Rect()
+    private var items = emptyList<SelectItem<String>>()
 
-    init {
-        contentView = binding.root
+    private val actionModeCallback = object : ActionMode.Callback2() {
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            items.forEachIndexed { index, item ->
+                menu.add(Menu.NONE, index, index, item.title)
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            }
+            return true
+        }
 
-        isTouchable = true
-        isOutsideTouchable = false
-        isFocusable = true
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            return true
+        }
 
-        binding.recyclerView.adapter = adapter
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            val action = items.getOrNull(item.itemId)?.value
+            if (action != null) {
+                onActionClick?.invoke(action)
+            }
+            mode.finish()
+            return true
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) {
+            actionMode = null
+        }
+
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            outRect.set(contentRect)
+        }
     }
 
     fun setItems(items: List<SelectItem<String>>) {
-        adapter.setItems(items)
+        this.items = items
     }
 
-    inner class Adapter(context: Context) :
-        RecyclerAdapter<SelectItem<String>, ItemTextBinding>(context) {
+    fun show(view: View, x: Int, y: Int) {
+        val size = 20
+        contentRect.set(x - size, y - size, x + size, y + size)
 
-        override fun getItemId(position: Int): Long {
-            return position.toLong()
-        }
-
-        override fun getViewBinding(parent: ViewGroup): ItemTextBinding {
-            return ItemTextBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemTextBinding,
-            item: SelectItem<String>,
-            payloads: MutableList<Any>
-        ) {
-            with(binding) {
-                textView.text = item.title
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemTextBinding) {
-            holder.itemView.setOnClickListener {
-                getItem(holder.layoutPosition)?.let { item ->
-                    onActionClick?.invoke(item.value)
-                }
-            }
+        if (actionMode == null) {
+            actionMode =
+                view.startActionMode(actionModeCallback, ActionMode.TYPE_FLOATING)
+        } else {
+            actionMode?.invalidateContentRect()
         }
     }
 
+    fun dismiss() {
+        actionMode?.finish()
+        actionMode = null
+    }
 }

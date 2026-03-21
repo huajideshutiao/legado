@@ -3,10 +3,8 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
-import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
-import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.Menu
@@ -116,7 +114,6 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
-import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.postEvent
@@ -135,6 +132,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.net.toUri
 
 /**
  * 阅读界面
@@ -218,7 +216,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         TextActionMenu(this, this)
     }
     private val popupAction: PopupAction by lazy {
-        PopupAction(this)
+        PopupAction()
     }
     override val isInitFinish: Boolean get() = viewModel.isInitFinish
     override val isScroll: Boolean get() = binding.readView.isScroll
@@ -821,15 +819,10 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示文本操作菜单
      */
     override fun showTextActionMenu() {
-        val navigationBarHeight =
-            if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
-                binding.navigationBar.height else 0
         textActionMenu.show(
-            binding.textMenuPosition,
-            binding.root.height + navigationBarHeight,
+            binding.readView,
             binding.textMenuPosition.x.toInt(),
             binding.textMenuPosition.y.toInt(),
-            binding.cursorLeft.y.toInt() + binding.cursorLeft.height,
             binding.cursorRight.x.toInt(),
             binding.cursorRight.y.toInt() + binding.cursorRight.height
         )
@@ -1404,7 +1397,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 SelectItem(getString(R.string.show), "show"),
                 SelectItem(getString(R.string.refresh), "refresh"),
                 SelectItem(getString(R.string.action_save), "save"),
-                SelectItem(getString(R.string.menu), "menu"),
+                //SelectItem(getString(R.string.menu), "menu"),
                 SelectItem(getString(R.string.select_folder), "selectFolder")
             )
         )
@@ -1419,22 +1412,16 @@ class ReadBookActivity : BaseReadBookActivity(),
                             value = src
                         }
                     } else {
-                        viewModel.saveImage(src, Uri.parse(path))
+                        viewModel.saveImage(src, path.toUri())
                     }
                 }
 
-                "menu" -> showActionMenu()
+//                "menu" -> showActionMenu()
                 "selectFolder" -> selectImageDir.launch()
             }
             popupAction.dismiss()
         }
-        val navigationBarHeight =
-            if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
-                binding.navigationBar.height else 0
-        popupAction.showAtLocation(
-            binding.readView, Gravity.BOTTOM or Gravity.LEFT, x.toInt(),
-            binding.root.height + navigationBarHeight - y.toInt()
-        )
+        popupAction.show(binding.readView, x.toInt(), y.toInt())
     }
 
     /**

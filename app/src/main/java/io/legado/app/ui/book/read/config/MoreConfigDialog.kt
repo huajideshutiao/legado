@@ -142,9 +142,9 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                     postEvent(PreferKey.showBrightnessView, "")
                 }
 
-                PreferKey.expandTextMenu -> {
-                    (activity as? ReadBookActivity)?.textActionMenu?.upMenu()
-                }
+//                PreferKey.expandTextMenu -> {
+//                    (activity as? ReadBookActivity)?.textActionMenu?.upMenu()
+//                }
 
                 PreferKey.doublePageHorizontal -> {
                     ChapterProvider.upLayout()
