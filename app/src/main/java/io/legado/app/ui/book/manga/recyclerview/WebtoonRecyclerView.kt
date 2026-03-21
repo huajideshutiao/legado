@@ -254,10 +254,12 @@ class WebtoonRecyclerView @JvmOverloads constructor(
             }
         }
 
-        override fun onLongTapConfirmed(ev: MotionEvent) {
+        override fun onLongTapConfirmed(ev: MotionEvent):Boolean {
             if (longTapListener?.invoke(ev) == true) {
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                return true
             }
+            return false
         }
     }
 

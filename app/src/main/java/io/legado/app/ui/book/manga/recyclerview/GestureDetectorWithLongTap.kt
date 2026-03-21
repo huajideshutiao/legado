@@ -24,9 +24,21 @@ open class GestureDetectorWithLongTap(
     private var lastDownEvent: MotionEvent? = null
 
 
-    private val longTapFn = Runnable { listener.onLongTapConfirmed(lastDownEvent!!) }
+    private var longTapConsumed = false
+
+    private val longTapFn = Runnable { 
+        if (lastDownEvent != null && listener.onLongTapConfirmed(lastDownEvent!!)) {
+            longTapConsumed = true
+        }
+    }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        if (longTapConsumed) {
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                longTapConsumed = false
+            }
+            return true
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastDownEvent?.recycle()
@@ -58,7 +70,8 @@ open class GestureDetectorWithLongTap(
     }
 
     open class Listener : SimpleOnGestureListener() {
-        open fun onLongTapConfirmed(ev: MotionEvent) {
+        open fun onLongTapConfirmed(ev: MotionEvent): Boolean {
+            return false
         }
     }
 }

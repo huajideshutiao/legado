@@ -77,6 +77,10 @@ import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.text.DecimalFormat
 import kotlin.math.ceil
+import androidx.core.net.toUri
+import io.legado.app.constant.AppConst.imagePathKey
+import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.utils.ACache
 
 class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewModel>(),
     ReadManga.Callback, ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
@@ -144,6 +148,15 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
                 ReadManga.loadOrUpContent()
             }
         }
+
+    private var imageSrc: String? = null
+    private val saveImage = registerForActivityResult(io.legado.app.ui.file.HandleFileContract()) {
+        it.uri?.let { uri ->
+            ACache.get().put(imagePathKey, uri.toString())
+            viewModel.saveImage(imageSrc, uri)
+        }
+    }
+
     override val binding by viewBinding(ActivityMangaBinding::inflate)
     override val viewModel by viewModels<ReadMangaViewModel>()
     private val loadingViewVisible get() = binding.flLoading.isVisible
@@ -205,6 +218,16 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             setDisableClickScroll(AppConfig.disableClickScroll)
             setDisableMangaScale(AppConfig.disableMangaScale)
             setRecyclerViewPreloader(AppConfig.mangaPreDownloadNum)
+            longTapListener = {
+                val centerPosition = findCenterViewPosition()
+                val item = mAdapter.getItem(centerPosition)
+                if (item is MangaPage) {
+                    saveImage(item.mImageUrl)
+                    true
+                } else {
+                    false
+                }
+            }
             setPreScrollListener { _, _, _, position ->
                 if (mAdapter.isNotEmpty()) {
                     val item = mAdapter.getItem(position)
@@ -848,5 +871,27 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
 
     override fun updateEepaper(value: Int) {
         mAdapter.updateThreshold(value)
+    }
+
+    private fun saveImage(url: String) {
+        this.imageSrc = url
+        val path = ACache.get().getAsString(imagePathKey)
+        if (path.isNullOrEmpty()) {
+            selectSaveFolder(url)
+        } else {
+            viewModel.saveImage(url, path.toUri())
+        }
+    }
+
+    private fun selectSaveFolder(url: String) {
+        this.imageSrc = url
+        val default = arrayListOf<SelectItem<Int>>()
+        val path = ACache.get().getAsString(imagePathKey)
+        if (!path.isNullOrEmpty()) {
+            default.add(SelectItem(path, -1))
+        }
+        saveImage.launch {
+            otherActions = default
+        }
     }
 }

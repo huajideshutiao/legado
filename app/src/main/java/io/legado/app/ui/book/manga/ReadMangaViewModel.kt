@@ -2,6 +2,8 @@ package io.legado.app.ui.book.manga
 
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -23,6 +25,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadManga
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.utils.DocumentUtils
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -34,6 +39,10 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
+import splitties.init.appCtx
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 
 class ReadMangaViewModel(application: Application) : BaseViewModel(application) {
 
@@ -216,6 +225,37 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
                     BookHelp.delContent(book, chapter)
                     openChapter(ReadManga.durChapterIndex, ReadManga.durChapterPos)
                 }
+        }
+    }
+
+    /**
+     * 保存图片
+     */
+    fun saveImage(src: String?, uri: Uri) {
+        src ?: return
+        val book = ReadManga.book ?: return
+        execute {
+            val image = BookHelp.getImage(book, src)
+            FileInputStream(image).use { input ->
+                if (uri.isContentScheme()) {
+                    DocumentFile.fromTreeUri(context, uri)?.let { doc ->
+                        val imageDoc = DocumentUtils.createFileIfNotExist(doc, image.name)!!
+                        context.contentResolver.openOutputStream(imageDoc.uri)!!.use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } else {
+                    val dir = File(uri.path ?: uri.toString())
+                    val file = FileUtils.createFileIfNotExist(dir, image.name)
+                    FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            appCtx.toastOnUi("已保存图片")
+        }.onError {
+            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+            context.toastOnUi("保存图片出错\n${it.localizedMessage}")
         }
     }
 }
