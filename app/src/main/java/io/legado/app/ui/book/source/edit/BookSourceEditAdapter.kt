@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
@@ -29,6 +30,10 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
         val binding = ItemSourceEditBinding
             .inflate(LayoutInflater.from(parent.context), parent, false)
+        binding.editText.setEnableLineNumber(true)
+        binding.editText.setLineNumberTextColor(parent.context.secondaryTextColor)
+        binding.editText.setHorizontallyScrolling(false)
+        binding.editText.setLineNumberTextSize(binding.editText.textSize * 0.6f)
         binding.editText.addLegadoPattern()
         binding.editText.addJsonPattern()
         binding.editText.addJsPattern()
@@ -70,6 +75,10 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                     editText.removeTextChangedListener(it)
                 }
             }
+            val tmp = editEntity.value?.contains("\n") ?: false
+            if (editText.isLineNumberEnabled != tmp) {
+                editText.setEnableLineNumber(tmp)
+            }
             editText.setText(editEntity.value)
             textInputLayout.hint = editEntity.hint
             val textWatcher = object : TextWatcher {
@@ -88,6 +97,10 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
 
                 override fun afterTextChanged(s: Editable?) {
                     editEntity.value = (s?.toString())
+                    val tmp = s.toString().contains("\n")
+                    if (editText.isLineNumberEnabled != tmp) {
+                        editText.setEnableLineNumber(tmp)
+                    }
                 }
             }
             editText.addTextChangedListener(textWatcher)

@@ -30,6 +30,20 @@ fun CodeView.addJsPattern() {
     addSyntaxPattern(jsPattern, appCtx.color(R.color.md_light_blue_600))
 }
 
+fun com.amrdeveloper.codeview.CodeView.addLegadoPattern() {
+    addSyntaxPattern(legadoPattern, appCtx.color(R.color.md_orange_900))
+}
+
+fun com.amrdeveloper.codeview.CodeView.addJsonPattern() {
+    addSyntaxPattern(jsonPattern, appCtx.color(R.color.md_blue_800))
+}
+
+fun com.amrdeveloper.codeview.CodeView.addJsPattern() {
+    addSyntaxPattern(wrapPattern, appCtx.color(R.color.md_blue_grey_500))
+    addSyntaxPattern(operationPattern, appCtx.color(R.color.md_orange_900))
+    addSyntaxPattern(jsPattern, appCtx.color(R.color.md_light_blue_600))
+}
+
 fun Context.arrayAdapter(keywords: Array<String>): ArrayAdapter<String> {
     return ArrayAdapter(this, R.layout.item_1line_text_and_del, R.id.text_view, keywords)
 }
