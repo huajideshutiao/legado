@@ -78,6 +78,9 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
             val tmp = editEntity.value?.contains("\n") ?: false
             if (editText.isLineNumberEnabled != tmp) {
                 editText.setEnableLineNumber(tmp)
+                if (!tmp) {
+                    editText.setPadding(editText.paddingRight, editText.paddingTop, editText.paddingRight, editText.paddingBottom)
+                }
             }
             editText.setText(editEntity.value)
             textInputLayout.hint = editEntity.hint
@@ -100,6 +103,9 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                     val tmp = s.toString().contains("\n")
                     if (editText.isLineNumberEnabled != tmp) {
                         editText.setEnableLineNumber(tmp)
+                        if (!tmp) {
+                            editText.setPadding(editText.paddingRight, editText.paddingTop, editText.paddingRight, editText.paddingBottom)
+                        }
                     }
                 }
             }

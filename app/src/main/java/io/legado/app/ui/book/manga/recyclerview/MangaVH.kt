@@ -114,14 +114,14 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         fetchJob = CoroutineScope(IO).launch {
             var glide: RequestBuilder<Drawable>? = null
             try {
-                glide = Glide.with(context).load(
+                glide =
                     if (isImageExist(ReadManga.book!!, imageUrl)) {
-                        BookHelp.getImage(ReadManga.book!!, imageUrl)
+                        Glide.with(context).load(BookHelp.getImage(ReadManga.book!!, imageUrl))
                     } else {
-                        ImageLoader.loadManga(imageUrl, coroutineContext)
-
+                        ImageLoader.loadManga(imageUrl, coroutineContext)?.let {
+                            Glide.with(context).load(it)
+                        }
                     }
-                )
             } catch (e: Exception) {
                 e.printOnDebug()
             } finally {
