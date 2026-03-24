@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
@@ -63,9 +62,14 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             GlobalVars.nowBook?.let {
 
                 inBookshelf = !it.isNotShelf
-                if(inBookshelf&&(it.tocUrl == ""||it.totalChapterNum == 0)) {
-                    upBook(appDb.bookDao.getBook(it.bookUrl)?:appDb.bookDao.getBook(it.name, it.author)!!)
-                }else upBook(it)
+                if (inBookshelf && (it.tocUrl == "" || it.totalChapterNum == 0)) {
+                    upBook(
+                        appDb.bookDao.getBook(it.bookUrl) ?: appDb.bookDao.getBook(
+                            it.name,
+                            it.author
+                        )!!
+                    )
+                } else upBook(it)
                 return@execute
             }
             throw NoStackTraceException("未找到书籍")
@@ -166,29 +170,29 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             Coroutine.async(scope) {
                 getBookInfoAwait(bookSource, book, canReName)
             }.onSuccess(IO) {
-                    val dbBook = appDb.bookDao.getBook(book.name, book.author)
-                    if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
-                        /**
-                         * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
-                         * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
-                         * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
-                         */
-                        dbBook.updateTo(it)
-                        inBookshelf = true
-                    }
-                    bookData.postValue(it)
-                    if (inBookshelf) {
-                        it.save()
-                    }
-                    if (it.isWebFile) {
-                        loadWebFile(it)
-                    } else {
-                        loadChapter(it, runPreUpdateJs)
-                    }
-                }.onError {
-                    AppLog.put("获取书籍信息失败\n${it.localizedMessage}", it)
-                    context.toastOnUi(R.string.error_get_book_info)
+                val dbBook = appDb.bookDao.getBook(book.name, book.author)
+                if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
+                    /**
+                     * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
+                     * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
+                     * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
+                     */
+                    dbBook.updateTo(it)
+                    inBookshelf = true
                 }
+                bookData.postValue(it)
+                if (inBookshelf) {
+                    it.save()
+                }
+                if (it.isWebFile) {
+                    loadWebFile(it)
+                } else {
+                    loadChapter(it, runPreUpdateJs)
+                }
+            }.onError {
+                AppLog.put("获取书籍信息失败\n${it.localizedMessage}", it)
+                context.toastOnUi(R.string.error_get_book_info)
+            }
         }
     }
 
@@ -221,26 +225,26 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             Coroutine.async(scope) {
                 getChapterListAwait(bookSource, book, runPreUpdateJs).getOrThrow()
             }.onSuccess(IO) {
-                    if (inBookshelf) {
-                        appDb.bookDao.replace(oldBook, book)
-                        /**
-                         * runPreUpdateJs 有可能会修改 book 的 bookUrl
-                         */
-                        if (oldBook.bookUrl != book.bookUrl) {
-                            BookHelp.updateCacheFolder(oldBook, book)
-                        }
-                        appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                        GlobalVars.nowChapterList = it
-                        if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
-                        ReadBook.onChapterListUpdated(book)
+                if (inBookshelf) {
+                    appDb.bookDao.replace(oldBook, book)
+                    /**
+                     * runPreUpdateJs 有可能会修改 book 的 bookUrl
+                     */
+                    if (oldBook.bookUrl != book.bookUrl) {
+                        BookHelp.updateCacheFolder(oldBook, book)
                     }
-                    bookData.postValue(book)
-                    chapterListData.postValue(it)
-                }.onError {
-                    chapterListData.postValue(emptyList())
-                    AppLog.put("获取目录失败\n${it.localizedMessage}", it)
-                    context.toastOnUi(R.string.error_get_chapter_list)
+                    appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+                    GlobalVars.nowChapterList = it
+                    if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
+                    ReadBook.onChapterListUpdated(book)
                 }
+                bookData.postValue(book)
+                chapterListData.postValue(it)
+            }.onError {
+                chapterListData.postValue(emptyList())
+                AppLog.put("获取目录失败\n${it.localizedMessage}", it)
+                context.toastOnUi(R.string.error_get_chapter_list)
+            }
         }
     }
 
@@ -432,11 +436,13 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             bookData.value?.let {
                 it.delete()
-                Glide.with(context).asFile()
-                    .load(it.coverUrl)
-                    .signature(ObjectKey("covers"))
-                    .onlyRetrieveFromCache(true)
-                    .submit().get()?.delete()
+                try {
+                    Glide.with(context).asFile()
+                        .load(it.coverUrl)
+                        .signature(ObjectKey("covers"))
+                        .onlyRetrieveFromCache(true)
+                        .submit().get()?.delete()
+                } catch (_: Exception) { }
                 inBookshelf = false
                 if (it.isLocal) {
                     LocalBook.deleteBook(it, deleteOriginal)

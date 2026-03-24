@@ -112,11 +112,13 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     fun delBook(success: (() -> Unit)? = null) {
         execute {
             book.delete()
-            Glide.with(context).asFile()
-                .load(book.coverUrl)
-                .signature(ObjectKey("covers"))
-                .onlyRetrieveFromCache(true)
-                .submit().get()?.delete()
+            try {
+                Glide.with(context).asFile()
+                    .load(book.coverUrl)
+                    .signature(ObjectKey("covers"))
+                    .onlyRetrieveFromCache(true)
+                    .submit().get()?.delete()
+            } catch (_: Exception) {}
         }.onSuccess {
             success?.invoke()
         }

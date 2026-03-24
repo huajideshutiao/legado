@@ -1,6 +1,5 @@
 [versions]
 
-codeview = "1.0.0"
 cronet = "143.7445.0"
 kotlin = "2.3.20"
 ksp = "2.3.4"
@@ -81,7 +80,6 @@ appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 
 
-codeview = { module = "com.github.AmrDeveloper:CodeView", version.ref = "codeview" }
 core-core = { module = "androidx.core:core", version.ref = "core" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 

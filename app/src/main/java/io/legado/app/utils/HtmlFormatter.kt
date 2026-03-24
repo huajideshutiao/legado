@@ -75,8 +75,8 @@ object HtmlFormatter {
                                     else -> child.absUrl("src")
                                 }
                             )
-                            img.attr("style", child.attr("style"))
-                            img.attr("onclick", child.attr("onclick"))
+                            child.attribute("style")?.let { img.attr("style", it.value) }
+                            child.attribute("onclick")?.let { img.attr("onclick", it.value) }
                             str.append(img.outerHtml())
                         }
 

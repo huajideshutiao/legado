@@ -29,6 +29,7 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
         val binding = ItemSourceEditBinding
             .inflate(LayoutInflater.from(parent.context), parent, false)
+        binding.editText.isLineNumberEnabled = true
         binding.editText.addLegadoPattern()
         binding.editText.addJsonPattern()
         binding.editText.addJsPattern()

@@ -2,6 +2,7 @@ package io.legado.app.ui.widget.code
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
@@ -18,6 +19,7 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
 import androidx.annotation.ColorInt
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.text.ScrollMultiAutoCompleteTextView
 import java.util.SortedMap
 import java.util.TreeMap
@@ -43,6 +45,32 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private val mSyntaxPatternMap: MutableMap<Pattern, Int> = HashMap()
     private var mIndentCharacterList = mutableListOf('{', '+', '-', '*', '/', '=')
 
+    var isLineNumberEnabled = false
+        set(value) {
+            field = value
+            updateLineNumberPadding()
+            postInvalidate()
+        }
+    var mLineNumberTextColor = context.secondaryTextColor
+        set(value) {
+            field = value
+            mLineDividerPaint.color = value
+            mLineNumberPaint.color = value
+            postInvalidate()
+        }
+    var mLineNumberTextSize = textSize * 0.6f
+        set(value) {
+            field = value
+            updateLineNumberPadding()
+            postInvalidate()
+        }
+    private val mLineNumberPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val mLineDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var mLineNumberPadding = 0
+    private var defaultPaddingLeft: Int? = null
+
+    private val enterPos = mutableListOf<Int>()
+
     private val mUpdateRunnable = Runnable {
         val source = text
         highlightWithoutChange(source)
@@ -52,20 +80,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         private var start = 0
         private var count = 0
         override fun beforeTextChanged(
-            charSequence: CharSequence,
-            start: Int,
-            before: Int,
-            count: Int
+            charSequence: CharSequence, start: Int, before: Int, count: Int
         ) {
             this.start = start
             this.count = count
         }
 
         override fun onTextChanged(
-            charSequence: CharSequence,
-            start: Int,
-            before: Int,
-            count: Int
+            charSequence: CharSequence, start: Int, before: Int, count: Int
         ) {
             if (!modified) return
             if (highlightWhileTextChanging) {
@@ -94,6 +116,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             mAutoCompleteTokenizer = KeywordTokenizer()
         }
         setTokenizer(mAutoCompleteTokenizer)
+
+        mLineNumberPaint.textAlign = Paint.Align.RIGHT
+        mLineNumberPaint.textSize = mLineNumberTextSize
+        mLineNumberPaint.color = mLineNumberTextColor
+        mLineDividerPaint.color = mLineNumberTextColor
+        mLineDividerPaint.style = Paint.Style.STROKE
+        mLineDividerPaint.strokeWidth = 1f * displayDensity
+        mLineDividerPaint.pathEffect =
+            DashPathEffect(floatArrayOf(5f * displayDensity, 5f * displayDensity), 0f)
         filters = arrayOf(
             InputFilter { source, start, end, dest, dStart, dEnd ->
                 if (modified && end - start == 1 && start < source.length && dStart < dest.length) {
@@ -103,9 +134,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
                 }
                 source
-            }
-        )
+            })
         addTextChangedListener(mEditorTextWatcher)
+    }
+
+    override fun onTextChanged(
+        text: CharSequence, start: Int, lengthBefore: Int, lengthAfter: Int
+    ) {
+        super.onTextChanged(text, start, lengthBefore, lengthAfter)
+        getEnterPos(text)
+        updateLineNumberPadding()
     }
 
     override fun showDropDown() {
@@ -124,10 +162,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun autoIndent(
-        source: CharSequence,
-        dest: Spanned,
-        dStart: Int,
-        dEnd: Int
+        source: CharSequence, dest: Spanned, dStart: Int, dEnd: Int
     ): CharSequence {
         var indent = ""
         var iStart = dStart - 1
@@ -198,25 +233,23 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun createForegroundColorSpan(
-        editable: Editable,
-        matcher: Matcher,
-        @ColorInt color: Int
+        editable: Editable, matcher: Matcher, @ColorInt color: Int
     ) {
         editable.setSpan(
             ForegroundColorSpan(color),
-            matcher.start(), matcher.end(),
+            matcher.start(),
+            matcher.end(),
             Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
     }
 
     private fun createBackgroundColorSpan(
-        editable: Editable,
-        matcher: Matcher,
-        @ColorInt color: Int
+        editable: Editable, matcher: Matcher, @ColorInt color: Int
     ) {
         editable.setSpan(
             BackgroundColorSpan(color),
-            matcher.start(), matcher.end(),
+            matcher.start(),
+            matcher.end(),
             Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
     }
@@ -288,9 +321,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val stop = startIndex + count
         while (s.indexOf("\t", startIndex).also { startIndex = it } > -1 && startIndex < stop) {
             editable.setSpan(
-                TabWidthSpan(),
-                startIndex,
-                startIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                TabWidthSpan(), startIndex, startIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             ++startIndex
         }
@@ -349,9 +380,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun getTextWithoutTrailingSpace(): String {
-        return PATTERN_TRAILING_WHITE_SPACE
-            .matcher(text)
-            .replaceAll("")
+        return PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
     }
 
     fun setAutoCompleteTokenizer(tokenizer: Tokenizer?) {
@@ -386,13 +415,64 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         highlightWhileTextChanging = updateWhileTextChanging
     }
 
+    private fun updateLineNumberPadding() {
+        if (defaultPaddingLeft == null) defaultPaddingLeft = paddingLeft
+        mLineNumberPadding = if (isLineNumberEnabled && enterPos.isNotEmpty()) {
+            (mLineNumberPaint.measureText((enterPos.size + 1).toString()) + 16f * displayDensity).toInt()
+        } else {
+            defaultPaddingLeft!!
+        }
+        if (mLineNumberPadding != paddingLeft) setPadding(
+            mLineNumberPadding,
+            paddingTop,
+            paddingRight,
+            paddingBottom
+        )
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (isLineNumberEnabled && enterPos.isNotEmpty()) {
+            val firstLine = layout.getLineForOffset(scrollY)
+            val lastLine = layout.getLineForOffset(scrollY + height)
+            var lineStartOffset: Int
+            var prevLineNumber = -1
+            for (i in firstLine..lastLine) {
+                lineStartOffset = layout.getLineStart(i)
+                if (lineStartOffset == 0 || text[lineStartOffset - 1] == '\n') {
+                    var lineNumber = 0
+                    for (k in enterPos) if (lineStartOffset > k) lineNumber++ else break
+                    if (lineNumber != prevLineNumber) {
+                        val x = paddingLeft - 11f * displayDensity
+                        val y = layout.getLineBaseline(i).toFloat() + paddingTop
+                        canvas.drawText((lineNumber + 1).toString(), x, y, mLineNumberPaint)
+                        prevLineNumber = lineNumber
+                    }
+                }
+            }
+            val lineX = paddingLeft - 6f * displayDensity
+            canvas.drawLine(
+                lineX,
+                (scrollY + paddingTop).toFloat(),
+                lineX,
+                (scrollY + height - paddingBottom).toFloat(),
+                mLineDividerPaint
+            )
+        }
+    }
+
+    private fun getEnterPos(text: CharSequence) {
+        enterPos.clear()
+        for (i in text.indices) {
+            if (text[i] == '\n') {
+                enterPos.add(i)
+            }
+        }
+    }
+
     private inner class TabWidthSpan : ReplacementSpan() {
         override fun getSize(
-            paint: Paint,
-            text: CharSequence,
-            start: Int,
-            end: Int,
-            fm: FontMetricsInt?
+            paint: Paint, text: CharSequence, start: Int, end: Int, fm: FontMetricsInt?
         ): Int {
             return tabWidth
         }
