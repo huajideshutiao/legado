@@ -7,7 +7,6 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
-import com.amrdeveloper.codeview.CodeView
 import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
@@ -36,6 +35,7 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
+import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -93,12 +93,13 @@ class BookSourceEditActivity :
         }
     }
 
-    private val softKeyboardTool by lazy {
-        KeyboardToolPop(this, lifecycleScope, binding.root, this)
-    }
+    private var lastActiveCodeView: CodeView? = null
+
+    override var useRegex = false
+    override var matchCase = false
+    override var matchWholeWord = false
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        softKeyboardTool.attachToWindow(window)
         initView()
         viewModel.initData(intent) {
             upSourceView(viewModel.bookSource)
@@ -186,6 +187,17 @@ class BookSourceEditActivity :
         })
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this)
+        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
+        adapter.onSearchReplaceAction = { text ->
+            binding.keyboardTool.showFindReplace(text)
+            getActiveCodeView()?.find(text, useRegex, matchCase, matchWholeWord, true)
+        }
+        adapter.onCodeViewFocus = { codeView ->
+            if (lastActiveCodeView != codeView) {
+                lastActiveCodeView?.clearSearch()
+            }
+            lastActiveCodeView = codeView
+        }
         binding.recyclerView.adapter = adapter
         binding.tabLayout.setBackgroundColor(backgroundColor)
         binding.tabLayout.setSelectedTabIndicatorColor(accentColor)
@@ -204,9 +216,9 @@ class BookSourceEditActivity :
         })
         binding.recyclerView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val navigationBarHeight = windowInsets.navigationBarHeight
-            val imeHeight = windowInsets.imeHeight
-            view.bottomPadding = if (imeHeight == 0) navigationBarHeight else 0
-            softKeyboardTool.initialPadding = imeHeight
+            view.bottomPadding = navigationBarHeight
+            binding.keyboardTool.bottomPadding = navigationBarHeight
+            binding.keyboardTool.initialPadding = windowInsets.imeHeight
             windowInsets
         }
     }
@@ -224,11 +236,6 @@ class BookSourceEditActivity :
         } else {
             super.finish()
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        softKeyboardTool.dismiss()
     }
 
     private fun setEditEntities(tabPosition: Int?) {
@@ -373,21 +380,6 @@ class BookSourceEditActivity :
             add(EditEntity("lrcRule", cr.lrcRule, R.string.rule_lrc_rule))
             add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
         }
-        // 段评
-//        val rr = bs.getReviewRule()
-//        reviewEntities.clear()
-//        reviewEntities.apply {
-//            add(EditEntity("reviewUrl", rr.reviewUrl, R.string.rule_review_url))
-//            add(EditEntity("avatarRule", rr.avatarRule, R.string.rule_avatar))
-//            add(EditEntity("contentRule", rr.contentRule, R.string.rule_review_content))
-//            add(EditEntity("postTimeRule", rr.postTimeRule, R.string.rule_post_time))
-//            add(EditEntity("reviewQuoteUrl", rr.reviewQuoteUrl, R.string.rule_review_quote))
-//            add(EditEntity("voteUpUrl", rr.voteUpUrl, R.string.review_vote_up))
-//            add(EditEntity("voteDownUrl", rr.voteDownUrl, R.string.review_vote_down))
-//            add(EditEntity("postReviewUrl", rr.postReviewUrl, R.string.post_review_url))
-//            add(EditEntity("postQuoteUrl", rr.postQuoteUrl, R.string.post_quote_url))
-//            add(EditEntity("deleteUrl", rr.deleteUrl, R.string.delete_review_url))
-//        }
         binding.tabLayout.selectTab(binding.tabLayout.getTabAt(0))
         setEditEntities(0)
     }
@@ -447,9 +439,6 @@ class BookSourceEditActivity :
                 "intro" -> searchRule.intro =
                     viewModel.ruleComplete(it.value, searchRule.bookList)
 
-//                "updateTime" -> searchRule.updateTime =
-//                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
                 "wordCount" -> searchRule.wordCount =
                     viewModel.ruleComplete(it.value, searchRule.bookList)
 
@@ -480,9 +469,6 @@ class BookSourceEditActivity :
                 "intro" -> exploreRule.intro =
                     viewModel.ruleComplete(it.value, exploreRule.bookList)
 
-//                "updateTime" -> exploreRule.updateTime =
-//                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
                 "wordCount" -> exploreRule.wordCount =
                     viewModel.ruleComplete(it.value, exploreRule.bookList)
 
@@ -509,9 +495,6 @@ class BookSourceEditActivity :
 
                 "intro" -> bookInfoRule.intro =
                     viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-//                "updateTime" -> bookInfoRule.updateTime =
-//                    viewModel.ruleComplete(it.value, bookInfoRule.init)
 
                 "wordCount" -> bookInfoRule.wordCount =
                     viewModel.ruleComplete(it.value, bookInfoRule.init)
@@ -568,34 +551,11 @@ class BookSourceEditActivity :
                 "musicCover" -> contentRule.musicCover = it.value
             }
         }
-//        reviewEntities.forEach {
-//            when (it.key) {
-//                "reviewUrl" -> reviewRule.reviewUrl = it.value
-//                "avatarRule" -> reviewRule.avatarRule =
-//                    viewModel.ruleComplete(it.value, reviewRule.reviewUrl, 3)
-//
-//                "contentRule" -> reviewRule.contentRule =
-//                    viewModel.ruleComplete(it.value, reviewRule.reviewUrl)
-//
-//                "postTimeRule" -> reviewRule.postTimeRule =
-//                    viewModel.ruleComplete(it.value, reviewRule.reviewUrl)
-//
-//                "reviewQuoteUrl" -> reviewRule.reviewQuoteUrl =
-//                    viewModel.ruleComplete(it.value, reviewRule.reviewUrl, 2)
-//
-//                "voteUpUrl" -> reviewRule.voteUpUrl = it.value
-//                "voteDownUrl" -> reviewRule.voteDownUrl = it.value
-//                "postReviewUrl" -> reviewRule.postReviewUrl = it.value
-//                "postQuoteUrl" -> reviewRule.postQuoteUrl = it.value
-//                "deleteUrl" -> reviewRule.deleteUrl = it.value
-//            }
-//        }
         source.ruleSearch = searchRule
         source.ruleExplore = exploreRule
         source.ruleBookInfo = bookInfoRule
         source.ruleToc = tocRule
         source.ruleContent = contentRule
-//        source.ruleReview = reviewRule
         return source
     }
 
@@ -618,9 +578,8 @@ class BookSourceEditActivity :
             SelectItem("正则教程", "regexHelp"),
         )
         val view = window.decorView.findFocus()
-        if (view is EditText || view is CodeView) {
+        if (view is EditText) {
             when (view.getTag(R.id.tag)) {
-
                 "bookSourceGroup" -> {
                     helpActions.add(
                         SelectItem("插入分组", "addGroup")
@@ -635,6 +594,14 @@ class BookSourceEditActivity :
             }
         }
         return helpActions
+    }
+
+    override fun getActiveCodeView(): CodeView? {
+        val view = window.decorView.findFocus()
+        if (view is CodeView) {
+            lastActiveCodeView = view
+        }
+        return lastActiveCodeView
     }
 
     override fun onHelpActionSelect(action: String) {
@@ -653,22 +620,19 @@ class BookSourceEditActivity :
     override fun sendText(text: String) {
         if (text.isBlank()) return
         val view = window.decorView.findFocus()
-        if (view is EditText || view is CodeView) {
+        if (view is EditText) {
             val start = view.selectionStart
             val end = view.selectionEnd
-            val edit = view.editableText ?: (view as? CodeView)?.editableText//获取EditText的文字
-            if (edit != null) {
-                if (start < 0 || start >= edit.length) {
-                    edit.append(text)
-                } else if (start > end) {
-                    edit.replace(end, start, text)
-                } else {
-                    edit.replace(start, end, text)//光标所在位置插入文字
-                }
+            val edit = view.editableText//获取EditText的文字
+            if (start < 0 || start >= edit.length) {
+                edit.append(text)
+            } else if (start > end) {
+                edit.replace(end, start, text)
+            } else {
+                edit.replace(start, end, text)//光标所在位置插入文字
             }
         }
     }
-
 
     private fun setSourceVariable() {
         viewModel.save(getSource()) { source ->

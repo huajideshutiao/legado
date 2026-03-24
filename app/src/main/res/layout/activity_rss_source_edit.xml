@@ -66,9 +66,16 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:clipToPadding="false"
         app:layoutManager="io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager"
         tools:listitem="@layout/item_source_edit" />
+
+    <io.legado.app.ui.widget.keyboard.KeyboardToolPop
+        android:id="@+id/keyboard_tool"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
 
 </LinearLayout>

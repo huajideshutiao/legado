@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
@@ -18,6 +19,9 @@ import io.legado.app.ui.widget.text.EditEntity
 class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
 
     val editEntityMaxLine = AppConfig.sourceEditMaxLine
+
+    var onSearchReplaceAction: ((String) -> Unit)? = null
+    var onCodeViewFocus: ((CodeView) -> Unit)? = null
 
     var editEntities: ArrayList<EditEntity> = ArrayList()
         @SuppressLint("NotifyDataSetChanged")
@@ -33,6 +37,14 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         binding.editText.addLegadoPattern()
         binding.editText.addJsonPattern()
         binding.editText.addJsPattern()
+        binding.editText.setOnSearchReplaceAction {
+            onSearchReplaceAction?.invoke(it)
+        }
+        binding.editText.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                onCodeViewFocus?.invoke(v as CodeView)
+            }
+        }
         return MyViewHolder(binding)
     }
 

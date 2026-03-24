@@ -13,6 +13,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.ActivityReplaceEditBinding
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
@@ -50,12 +51,8 @@ class ReplaceEditActivity :
     override val binding by viewBinding(ActivityReplaceEditBinding::inflate)
     override val viewModel by viewModels<ReplaceEditViewModel>()
 
-    private val softKeyboardTool by lazy {
-        KeyboardToolPop(this, lifecycleScope, binding.root, this)
-    }
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        softKeyboardTool.attachToWindow(window)
+        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
         initView()
         viewModel.initData(intent) {
             upReplaceView(it)
@@ -84,7 +81,6 @@ class ReplaceEditActivity :
 
     override fun onDestroy() {
         super.onDestroy()
-        softKeyboardTool.dismiss()
     }
 
     private fun initView() {
@@ -92,7 +88,7 @@ class ReplaceEditActivity :
             showHelp("regexHelp")
         }
         binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
-            softKeyboardTool.initialPadding = windowInsets.imeHeight
+            binding.keyboardTool.initialPadding = windowInsets.imeHeight
             windowInsets
         }
     }
@@ -150,10 +146,13 @@ class ReplaceEditActivity :
             } else if (start > end) {
                 edit.replace(end, start, text)
             } else {
-                //光标所在位置插入文字
                 edit.replace(start, end, text)
             }
         }
     }
+    override var useRegex: Boolean = false
+    override var matchCase: Boolean = false
+    override var matchWholeWord: Boolean = false
+    override fun getActiveCodeView(): CodeView? = null
 
 }

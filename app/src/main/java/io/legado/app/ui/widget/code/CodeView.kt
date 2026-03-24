@@ -2,6 +2,7 @@ package io.legado.app.ui.widget.code
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Paint.FontMetricsInt
@@ -18,6 +19,9 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
+import android.view.ActionMode
+import android.view.KeyEvent
+import android.view.Menu
 import androidx.annotation.ColorInt
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.text.ScrollMultiAutoCompleteTextView
@@ -26,6 +30,7 @@ import java.util.TreeMap
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
+import androidx.core.graphics.toColorInt
 
 @Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
@@ -43,7 +48,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private val displayDensity = resources.displayMetrics.density
     private val mErrorHashSet: SortedMap<Int, Int> = TreeMap()
     private val mSyntaxPatternMap: MutableMap<Pattern, Int> = HashMap()
-    private var mIndentCharacterList = mutableListOf('{', '+', '-', '*', '/', '=')
+    private var mIndentCharacterList = mutableSetOf('{', '+', '-', '*', '/', '=')
+    private var mClosePairMap = mapOf('{' to '}', '(' to ')', '[' to ']')
 
     var isLineNumberEnabled = false
         set(value) {
@@ -71,9 +77,26 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private val enterPos = mutableListOf<Int>()
 
+    // 查找替换相关
+    private var searchKeyword: String = ""
+    private var useRegex: Boolean = false
+    private var matchCase: Boolean = false
+    private var matchWholeWord: Boolean = false
+    private var matchRanges = mutableListOf<Pair<Int, Int>>()
+    private var currentMatchIndex = -1
+    private var onSearchReplaceAction: ((String) -> Unit)? = null
+
+    // 查找替换背景色
+    private val searchHighlightColor = "#80FFFF00".toColorInt() // 半透明黄
+    private val currentMatchColor = "#800080FF".toColorInt() // 半透明蓝
+
+    private var isHighlighting = false
+
     private val mUpdateRunnable = Runnable {
         val source = text
-        highlightWithoutChange(source)
+        if (source is Editable) {
+            highlightWithoutChange(source)
+        }
     }
 
     private val mEditorTextWatcher: TextWatcher = object : TextWatcher {
@@ -89,9 +112,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         override fun onTextChanged(
             charSequence: CharSequence, start: Int, before: Int, count: Int
         ) {
-            if (!modified) return
+            if (!modified || isHighlighting) return
             if (highlightWhileTextChanging) {
                 if (mSyntaxPatternMap.isNotEmpty()) {
+                    cancelHighlighterRender()
                     convertTabs(editableText, start, count)
                     mUpdateHandler.postDelayed(mUpdateRunnable, mUpdateDelayTime.toLong())
                 }
@@ -100,6 +124,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         override fun afterTextChanged(editable: Editable) {
+            if (isHighlighting) return
             if (!highlightWhileTextChanging) {
                 if (!modified) return
                 cancelHighlighterRender()
@@ -107,6 +132,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     convertTabs(editableText, start, count)
                     mUpdateHandler.postDelayed(mUpdateRunnable, mUpdateDelayTime.toLong())
                 }
+            }
+            if (isLineNumberEnabled) {
+                getEnterPos(editable)
+                updateLineNumberPadding()
             }
         }
     }
@@ -138,12 +167,31 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         addTextChangedListener(mEditorTextWatcher)
     }
 
-    override fun onTextChanged(
-        text: CharSequence, start: Int, lengthBefore: Int, lengthAfter: Int
-    ) {
-        super.onTextChanged(text, start, lengthBefore, lengthAfter)
-        getEnterPos(text)
-        updateLineNumberPadding()
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DEL && event?.action == KeyEvent.ACTION_DOWN) {
+            val start = selectionStart
+            val end = selectionEnd
+            if (start == end && start > 0) {
+                val text = editableText
+                var tmp = start
+                for (i in start - 1 downTo 0) {
+                    when (text[i]) {
+                        '\n' -> {
+                            tmp--
+                            break
+                        }
+
+                        ' ' -> tmp--
+                        else -> break
+                    }
+                }
+                if (tmp != start) {
+                    text.delete(tmp, start)
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun showDropDown() {
@@ -164,46 +212,41 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private fun autoIndent(
         source: CharSequence, dest: Spanned, dStart: Int, dEnd: Int
     ): CharSequence {
-        var indent = ""
         var iStart = dStart - 1
-        var dataBefore = false
-        var pt = 0
+        var lastNonSpaceChar: Char? = null
         while (iStart > -1) {
             val c = dest[iStart]
             if (c == '\n') break
-            if (c != ' ' && c != '\t') {
-                if (!dataBefore) {
-                    if (mIndentCharacterList.contains(c)) --pt
-                    dataBefore = true
-                }
-                if (c == '(') {
-                    --pt
-                } else if (c == ')') {
-                    ++pt
-                }
+            if (lastNonSpaceChar == null && !c.isWhitespace()) {
+                lastNonSpaceChar = c
             }
             --iStart
         }
-        if (iStart > -1) {
-            val charAtCursor = dest[dStart]
-            var iEnd: Int = ++iStart
-            while (iEnd < dEnd) {
-                val c = dest[iEnd]
-                if (charAtCursor != '\n' && c == '/' && iEnd + 1 < dEnd && dest[iEnd] == c) {
-                    iEnd += 2
-                    break
+        val lineStart = iStart + 1
+        var indentEnd = lineStart
+        while (indentEnd < dStart) {
+            val c = dest[indentEnd]
+            if (c != ' ' && c != '\t') break
+            indentEnd++
+        }
+        val indentStr = dest.subSequence(lineStart, indentEnd)
+        val indent = StringBuilder(source).append(indentStr)
+        // 如果上一行以特定字符结尾
+        lastNonSpaceChar?.let { char ->
+            if (mIndentCharacterList.contains(char)) {
+                indent.append("  ")
+                // 如果后面跟着的是匹配的闭合符号，则多加一个换行并缩进
+                mClosePairMap[char]?.let { closeChar ->
+                    if (dEnd < dest.length && dest[dEnd] == closeChar) {
+                        indent.append("\n").append(indentStr)
+                        post {
+                            setSelection(dStart + indent.length - indentStr.length - 1)
+                        }
+                    }
                 }
-                if (c != ' ' && c != '\t') {
-                    break
-                }
-                ++iEnd
             }
-            indent += dest.subSequence(iStart, iEnd)
         }
-        if (pt < 0) {
-            indent += "\t"
-        }
-        return source.toString() + indent
+        return indent.toString()
     }
 
     private fun highlightSyntax(editable: Editable) {
@@ -254,15 +297,38 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         )
     }
 
+    private fun highlightSearch(editable: Editable) {
+        if (searchKeyword.isEmpty() || matchRanges.isEmpty()) return
+
+        for (i in matchRanges.indices) {
+            val range = matchRanges[i]
+            val color = if (i == currentMatchIndex) currentMatchColor else searchHighlightColor
+            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
+                editable.setSpan(
+                    BackgroundColorSpan(color),
+                    range.first,
+                    range.second,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+    }
+
     private fun highlight(editable: Editable): Editable {
         // if (editable.isEmpty() || editable.length > 1024) return editable
         if (editable.length !in 1..1024) {
+            try {
+                clearSpans(editable)
+                highlightSearch(editable)
+            } catch (e: Exception) {
+            }
             return editable
         }
         try {
             clearSpans(editable)
             highlightErrorLines(editable)
             highlightSyntax(editable)
+            highlightSearch(editable)
         } catch (e: IllegalStateException) {
             e.printStackTrace()
         }
@@ -270,9 +336,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun highlightWithoutChange(editable: Editable) {
+        if (isHighlighting) return
+        isHighlighting = true
         modified = false
         highlight(editable)
         modified = true
+        isHighlighting = false
     }
 
     fun setTextHighlighted(text: CharSequence?) {
@@ -291,22 +360,11 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun clearSpans(editable: Editable) {
-        val length = editable.length
-        val foregroundSpans = editable.getSpans(
-            0, length, ForegroundColorSpan::class.java
-        )
-        run {
-            var i = foregroundSpans.size
-            while (i-- > 0) {
-                editable.removeSpan(foregroundSpans[i])
-            }
+        editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach {
+            editable.removeSpan(it)
         }
-        val backgroundSpans = editable.getSpans(
-            0, length, BackgroundColorSpan::class.java
-        )
-        var i = backgroundSpans.size
-        while (i-- > 0) {
-            editable.removeSpan(backgroundSpans[i])
+        editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach {
+            editable.removeSpan(it)
         }
     }
 
@@ -328,12 +386,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun setSyntaxPatternsMap(syntaxPatterns: Map<Pattern, Int>?) {
-        if (mSyntaxPatternMap.isNotEmpty()) mSyntaxPatternMap.clear()
-        mSyntaxPatternMap.putAll(syntaxPatterns!!)
+        mSyntaxPatternMap.clear()
+        syntaxPatterns?.let {
+            mSyntaxPatternMap.putAll(it)
+        }
     }
 
-    fun addSyntaxPattern(pattern: Pattern, @ColorInt Color: Int) {
-        mSyntaxPatternMap[pattern] = Color
+    fun addSyntaxPattern(pattern: Pattern, @ColorInt color: Int) {
+        mSyntaxPatternMap[pattern] = color
     }
 
     fun removeSyntaxPattern(pattern: Pattern) {
@@ -348,15 +408,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         mSyntaxPatternMap.clear()
     }
 
-    fun setAutoIndentCharacterList(characterList: MutableList<Char>) {
-        mIndentCharacterList = characterList
+    fun setAutoIndentCharacterList(characterList: Set<Char>) {
+        mIndentCharacterList = characterList.toMutableSet()
     }
 
     fun clearAutoIndentCharacterList() {
         mIndentCharacterList.clear()
     }
 
-    fun getAutoIndentCharacterList(): List<Char> {
+    fun getAutoIndentCharacterList(): Set<Char> {
         return mIndentCharacterList
     }
 
@@ -411,6 +471,196 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         return mUpdateDelayTime
     }
 
+    fun setOnSearchReplaceAction(action: (String) -> Unit) {
+        onSearchReplaceAction = action
+    }
+
+    override fun startActionMode(callback: ActionMode.Callback?): ActionMode? {
+        return if (callback == null) super.startActionMode(callback)
+        else super.startActionMode(wrapCallback(callback))
+    }
+
+    override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
+        return if (callback == null) super.startActionMode(callback, type)
+        else super.startActionMode(wrapCallback(callback), type)
+    }
+
+    private fun wrapCallback(callback: ActionMode.Callback): ActionMode.Callback {
+        return object : ActionMode.Callback by callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.add(Menu.NONE, android.R.id.custom, 1, "查找替换")
+                    .setOnMenuItemClickListener {
+                        val start = selectionStart
+                        val end = selectionEnd
+                        val fullText = text.toString()
+                        var selectedText = ""
+                        if (start in 0..<end && end <= fullText.length) {
+                            selectedText = fullText.substring(start, end)
+                        }
+                        onSearchReplaceAction?.invoke(selectedText)
+                        mode.finish()
+                        true
+                    }
+                return callback.onCreateActionMode(mode, menu)
+            }
+        }
+    }
+
+    fun find(
+        keyword: String,
+        regex: Boolean,
+        matchCase: Boolean,
+        matchWholeWord: Boolean,
+        forward: Boolean = true,
+        force: Boolean = false
+    ) {
+        val textStr = text.toString()
+        if (keyword.isEmpty() || textStr.isEmpty()) {
+            clearSearch()
+            return
+        }
+
+        val needRecompute = force ||
+            this.searchKeyword != keyword ||
+            this.useRegex != regex ||
+            this.matchCase != matchCase ||
+            this.matchWholeWord != matchWholeWord ||
+            matchRanges.isEmpty()
+
+        this.searchKeyword = keyword
+        this.useRegex = regex
+        this.matchCase = matchCase
+        this.matchWholeWord = matchWholeWord
+
+        if (needRecompute) {
+            matchRanges.clear()
+            currentMatchIndex = -1
+            try {
+                val flags = if (matchCase) 0 else Pattern.CASE_INSENSITIVE
+                var patternStr = keyword
+                if (!regex) {
+                    patternStr = Pattern.quote(keyword)
+                }
+                if (matchWholeWord) {
+                    patternStr = "\\b$patternStr\\b"
+                }
+                val pattern = Pattern.compile(patternStr, flags)
+                val matcher = pattern.matcher(textStr)
+                while (matcher.find()) {
+                    matchRanges.add(Pair(matcher.start(), matcher.end()))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        if (matchRanges.isEmpty()) {
+            reHighlightSearch()
+            return
+        }
+
+        // 确定当前应该选中的索引
+        if (needRecompute) {
+            val cursorPos = selectionStart
+            if (forward) {
+                currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
+                if (currentMatchIndex == -1) currentMatchIndex = 0
+            } else {
+                currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
+                if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
+            }
+        } else {
+            if (forward) {
+                currentMatchIndex = (currentMatchIndex + 1) % matchRanges.size
+            } else {
+                currentMatchIndex = (currentMatchIndex - 1 + matchRanges.size) % matchRanges.size
+            }
+        }
+
+        focusCurrentMatch()
+        reHighlightSearch()
+    }
+
+    private fun focusCurrentMatch() {
+        if (currentMatchIndex in matchRanges.indices) {
+            val range = matchRanges[currentMatchIndex]
+            setSelection(range.first, range.second)
+            bringPointIntoView(range.first)
+        }
+    }
+
+    fun replace(
+        keyword: String,
+        regex: Boolean,
+        matchCase: Boolean,
+        matchWholeWord: Boolean,
+        replaceText: String
+    ) {
+        val needFind = currentMatchIndex !in matchRanges.indices ||
+                this.searchKeyword != keyword ||
+                this.useRegex != regex ||
+                this.matchCase != matchCase ||
+                this.matchWholeWord != matchWholeWord
+
+        if (needFind) {
+            find(keyword, regex, matchCase, matchWholeWord, true)
+        }
+
+        if (currentMatchIndex in matchRanges.indices) {
+            val range = matchRanges[currentMatchIndex]
+            val editable = editableText
+            if (range.first >= 0 && range.second <= editable.length) {
+                // 执行替换（replaceText 为空时即为删除）
+                editable.replace(range.first, range.second, replaceText)
+                // 替换后文本发生变化，所有后续匹配的 Offset 均已失效，必须强制重新搜索
+                find(searchKeyword, useRegex, matchCase, matchWholeWord, forward = true, force = true)
+            }
+        }
+    }
+
+    fun replaceAll(
+        keyword: String,
+        regex: Boolean,
+        matchCase: Boolean,
+        matchWholeWord: Boolean,
+        replaceText: String
+    ) {
+        val needFind = matchRanges.isEmpty() ||
+                this.searchKeyword != keyword ||
+                this.useRegex != regex ||
+                this.matchCase != matchCase ||
+                this.matchWholeWord != matchWholeWord
+
+        if (needFind) {
+            find(keyword, regex, matchCase, matchWholeWord, true)
+        }
+
+        if (matchRanges.isEmpty()) return
+        val editable = editableText
+        // 从后往前替换，避免索引失效
+        for (i in matchRanges.indices.reversed()) {
+            val range = matchRanges[i]
+            if (range.first >= 0 && range.second <= editable.length) {
+                editable.replace(range.first, range.second, replaceText)
+            }
+        }
+        clearSearch()
+    }
+
+    fun clearSearch() {
+        searchKeyword = ""
+        matchRanges.clear()
+        currentMatchIndex = -1
+        reHighlightSearch()
+    }
+
+    private fun reHighlightSearch() {
+        mUpdateHandler.removeCallbacks(mUpdateRunnable)
+        mUpdateHandler.post(mUpdateRunnable)
+    }
+
+    // ----------------------
+
     fun setHighlightWhileTextChanging(updateWhileTextChanging: Boolean) {
         highlightWhileTextChanging = updateWhileTextChanging
     }
@@ -423,10 +673,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             defaultPaddingLeft!!
         }
         if (mLineNumberPadding != paddingLeft) setPadding(
-            mLineNumberPadding,
-            paddingTop,
-            paddingRight,
-            paddingBottom
+            mLineNumberPadding, paddingTop, paddingRight, paddingBottom
         )
     }
 
@@ -440,8 +687,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             for (i in firstLine..lastLine) {
                 lineStartOffset = layout.getLineStart(i)
                 if (lineStartOffset == 0 || text[lineStartOffset - 1] == '\n') {
-                    var lineNumber = 0
-                    for (k in enterPos) if (lineStartOffset > k) lineNumber++ else break
+                    var lineNumber = enterPos.binarySearch(lineStartOffset)
+                    if (lineNumber < 0) lineNumber = -lineNumber - 1
                     if (lineNumber != prevLineNumber) {
                         val x = paddingLeft - 11f * displayDensity
                         val y = layout.getLineBaseline(i).toFloat() + paddingTop
@@ -493,6 +740,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     companion object {
         private val PATTERN_LINE = Pattern.compile("(^.+$)+", Pattern.MULTILINE)
-        private val PATTERN_TRAILING_WHITE_SPACE = Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
+        private val PATTERN_TRAILING_WHITE_SPACE =
+            Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
     }
 }

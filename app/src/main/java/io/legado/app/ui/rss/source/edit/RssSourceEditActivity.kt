@@ -23,24 +23,12 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
+import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.text.EditEntity
-import io.legado.app.utils.GSON
-import io.legado.app.utils.imeHeight
-import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.isTrue
-import io.legado.app.utils.launch
-import io.legado.app.utils.navigationBarHeight
-import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
-import io.legado.app.utils.share
-import io.legado.app.utils.shareWithQr
-import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.showHelp
-import io.legado.app.utils.startActivity
+import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,9 +42,6 @@ class RssSourceEditActivity :
 
     override val binding by viewBinding(ActivityRssSourceEditBinding::inflate)
     override val viewModel by viewModels<RssSourceEditViewModel>()
-    private val softKeyboardTool by lazy {
-        KeyboardToolPop(this, lifecycleScope, binding.root, this)
-    }
     private val adapter by lazy { RssSourceEditAdapter() }
     private val sourceEntities: ArrayList<EditEntity> = ArrayList()
     private val listEntities: ArrayList<EditEntity> = ArrayList()
@@ -79,7 +64,7 @@ class RssSourceEditActivity :
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        softKeyboardTool.attachToWindow(window)
+        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
         initView()
         viewModel.initData(intent) {
             upSourceView(viewModel.rssSource)
@@ -110,7 +95,6 @@ class RssSourceEditActivity :
 
     override fun onDestroy() {
         super.onDestroy()
-        softKeyboardTool.dismiss()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -191,7 +175,7 @@ class RssSourceEditActivity :
             val navigationBarHeight = windowInsets.navigationBarHeight
             val imeHeight = windowInsets.imeHeight
             view.bottomPadding = if (imeHeight == 0) navigationBarHeight else 0
-            softKeyboardTool.initialPadding = imeHeight
+            binding.keyboardTool.initialPadding = imeHeight
             windowInsets
         }
     }
@@ -402,5 +386,10 @@ class RssSourceEditActivity :
             }
         }
     }
+
+    override var useRegex: Boolean = false
+    override var matchCase: Boolean = false
+    override var matchWholeWord: Boolean = false
+    override fun getActiveCodeView(): CodeView? = null
 
 }

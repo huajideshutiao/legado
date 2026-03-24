@@ -45,6 +45,8 @@ import splitties.systemservices.inputMethodManager
 import splitties.views.bottomPadding
 import splitties.views.topPadding
 import java.lang.reflect.Field
+import androidx.core.view.isVisible
+import androidx.core.graphics.createBitmap
 
 
 private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {
@@ -65,13 +67,11 @@ fun View.hideSoftInput() = run {
 
 fun EditText.showSoftInput() = run {
     requestFocus()
-    inputMethodManager.showSoftInput(this, InputMethodManager.RESULT_SHOWN)
+    inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
 }
 
 fun View.disableAutoFill() = run {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        this.importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-    }
+    this.importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
 }
 
 fun View.applyTint(
@@ -148,7 +148,7 @@ fun View.visible() {
 fun View.visible(visible: Boolean) {
     if (visible && visibility != VISIBLE) {
         visibility = VISIBLE
-    } else if (!visible && visibility == VISIBLE) {
+    } else if (!visible && isVisible) {
         visibility = INVISIBLE
     }
 }
@@ -160,14 +160,13 @@ fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
             bitmap
         } else {
             bitmap?.recycle()
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            createBitmap(width, height)
         }
         val c = canvas ?: Canvas()
         c.setBitmap(screenshot)
-        c.save()
-        c.translate(-scrollX.toFloat(), -scrollY.toFloat())
-        this.draw(c)
-        c.restore()
+        c.withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
+            draw(this)
+        }
         c.setBitmap(null)
         screenshot.prepareToDraw()
         screenshot
@@ -304,8 +303,7 @@ fun View.canScroll(direction: Int): Boolean {
     return canScrollVertically(direction) || canScrollHorizontally(direction)
 }
 
-private val requestLayoutBroken = Build.VERSION.SDK_INT <= Build.VERSION_CODES.M
-        || Build.VERSION.SDK_INT in Build.VERSION_CODES.O..Build.VERSION_CODES.Q
+private val requestLayoutBroken = Build.VERSION.SDK_INT in Build.VERSION_CODES.O..Build.VERSION_CODES.Q
 
 fun View.setOnApplyWindowInsetsListenerCompat(listener: (View, WindowInsetsCompat) -> WindowInsetsCompat) {
     ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
