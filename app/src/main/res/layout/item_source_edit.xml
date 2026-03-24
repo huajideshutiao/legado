@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:paddingTop="3dp">
 
-    <io.legado.app.ui.widget.code.CodeView
+    <com.amrdeveloper.codeview.CodeView
         android:id="@+id/editText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

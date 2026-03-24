@@ -7,6 +7,7 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import com.amrdeveloper.codeview.CodeView
 import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
@@ -617,8 +618,9 @@ class BookSourceEditActivity :
             SelectItem("正则教程", "regexHelp"),
         )
         val view = window.decorView.findFocus()
-        if (view is EditText) {
+        if (view is EditText || view is CodeView) {
             when (view.getTag(R.id.tag)) {
+
                 "bookSourceGroup" -> {
                     helpActions.add(
                         SelectItem("插入分组", "addGroup")
@@ -651,19 +653,22 @@ class BookSourceEditActivity :
     override fun sendText(text: String) {
         if (text.isBlank()) return
         val view = window.decorView.findFocus()
-        if (view is EditText) {
+        if (view is EditText || view is CodeView) {
             val start = view.selectionStart
             val end = view.selectionEnd
-            val edit = view.editableText//获取EditText的文字
-            if (start < 0 || start >= edit.length) {
-                edit.append(text)
-            } else if (start > end) {
-                edit.replace(end, start, text)
-            } else {
-                edit.replace(start, end, text)//光标所在位置插入文字
+            val edit = view.editableText ?: (view as? CodeView)?.editableText//获取EditText的文字
+            if (edit != null) {
+                if (start < 0 || start >= edit.length) {
+                    edit.append(text)
+                } else if (start > end) {
+                    edit.replace(end, start, text)
+                } else {
+                    edit.replace(start, end, text)//光标所在位置插入文字
+                }
             }
         }
     }
+
 
     private fun setSourceVariable() {
         viewModel.save(getSource()) { source ->

@@ -306,7 +306,7 @@ dependencies {
     //debugImplementation('com.squareup.leakcanary:leakcanary-android:2.7')
 
     //com.github.AmrDeveloper:CodeView
-    //implementation(libs.codeview)
+    implementation(libs.codeview)
     // 代码编辑已集成到应用内
     //epubLib集成到应用内
 }
