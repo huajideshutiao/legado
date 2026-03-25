@@ -64,7 +64,6 @@ class RssSourceEditActivity :
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
         initView()
         viewModel.initData(intent) {
             upSourceView(viewModel.rssSource)
@@ -387,9 +386,6 @@ class RssSourceEditActivity :
         }
     }
 
-    override var useRegex: Boolean = false
-    override var matchCase: Boolean = false
-    override var matchWholeWord: Boolean = false
     override fun getActiveCodeView(): CodeView? = null
 
 }

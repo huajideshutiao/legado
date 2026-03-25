@@ -37,9 +37,7 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         binding.editText.addLegadoPattern()
         binding.editText.addJsonPattern()
         binding.editText.addJsPattern()
-        binding.editText.setOnSearchReplaceAction {
-            onSearchReplaceAction?.invoke(it)
-        }
+        binding.editText.onSearchReplaceAction = onSearchReplaceAction
         binding.editText.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 onCodeViewFocus?.invoke(v as CodeView)

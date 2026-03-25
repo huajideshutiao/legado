@@ -7,33 +7,56 @@
     android:background="@color/background_card"
     android:orientation="vertical">
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tv_find"
+    <LinearLayout
+        android:id="@+id/ll_find"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="45dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:layout_width="match_parent"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:hint="@string/search" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:text="@string/search"
+            android:textColor="@color/primaryText" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tv_replace"
+        <EditText
+            android:id="@+id/tv_find"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:singleLine="true" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/ll_replace"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="45dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:layout_width="match_parent"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:hint="@string/replace" />
+            android:text="@string/replace"
+            android:textColor="@color/primaryText" />
 
-    </com.google.android.material.textfield.TextInputLayout>
+        <EditText
+            android:id="@+id/tv_replace"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:singleLine="true" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/ll_actions"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="35dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingRight="6dp">
@@ -46,8 +69,7 @@
             android:background="?selectableItemBackground"
             android:gravity="center"
             android:text="@string/skip_previous"
-            android:textColor="@color/primaryText"
-            android:textSize="16sp" />
+            android:textColor="@color/primaryText" />
 
         <TextView
             android:id="@+id/tv_next"
@@ -57,8 +79,7 @@
             android:background="?selectableItemBackground"
             android:gravity="center"
             android:text="@string/skip_next"
-            android:textColor="@color/primaryText"
-            android:textSize="16sp" />
+            android:textColor="@color/primaryText" />
 
         <TextView
             android:id="@+id/tv_do_replace"
@@ -68,8 +89,7 @@
             android:background="?selectableItemBackground"
             android:gravity="center"
             android:text="@string/replace"
-            android:textColor="@color/primaryText"
-            android:textSize="16sp" />
+            android:textColor="@color/primaryText" />
 
         <TextView
             android:id="@+id/tv_replace_all"
@@ -79,8 +99,7 @@
             android:background="?selectableItemBackground"
             android:gravity="center"
             android:text="@string/all"
-            android:textColor="@color/primaryText"
-            android:textSize="16sp" />
+            android:textColor="@color/primaryText" />
 
         <ImageView
             android:id="@+id/iv_more"

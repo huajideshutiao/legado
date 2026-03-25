@@ -2,7 +2,6 @@ package io.legado.app.ui.widget.code
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Paint.FontMetricsInt
@@ -22,7 +21,10 @@ import android.util.AttributeSet
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import androidx.annotation.ColorInt
+import androidx.core.graphics.toColorInt
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.text.ScrollMultiAutoCompleteTextView
 import java.util.SortedMap
@@ -30,15 +32,13 @@ import java.util.TreeMap
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
-import androidx.core.graphics.toColorInt
 
-@Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     ScrollMultiAutoCompleteTextView(context, attrs) {
 
     private var tabWidth = 0
     private var tabWidthInCharacters = 0
-    private var mUpdateDelayTime = 500
+    var updateDelayTime = 500
     private var modified = true
     private var highlightWhileTextChanging = true
     private var hasErrors = false
@@ -84,7 +84,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var matchWholeWord: Boolean = false
     private var matchRanges = mutableListOf<Pair<Int, Int>>()
     private var currentMatchIndex = -1
-    private var onSearchReplaceAction: ((String) -> Unit)? = null
+    var onSearchReplaceAction: ((String) -> Unit)? = null
 
     // 查找替换背景色
     private val searchHighlightColor = "#80FFFF00".toColorInt() // 半透明黄
@@ -117,7 +117,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 if (mSyntaxPatternMap.isNotEmpty()) {
                     cancelHighlighterRender()
                     convertTabs(editableText, start, count)
-                    mUpdateHandler.postDelayed(mUpdateRunnable, mUpdateDelayTime.toLong())
+                    mUpdateHandler.postDelayed(mUpdateRunnable, updateDelayTime.toLong())
                 }
             }
             if (mRemoveErrorsWhenTextChanged) removeAllErrorLines()
@@ -130,12 +130,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 cancelHighlighterRender()
                 if (mSyntaxPatternMap.isNotEmpty()) {
                     convertTabs(editableText, start, count)
-                    mUpdateHandler.postDelayed(mUpdateRunnable, mUpdateDelayTime.toLong())
+                    mUpdateHandler.postDelayed(mUpdateRunnable, updateDelayTime.toLong())
                 }
             }
             if (isLineNumberEnabled) {
                 getEnterPos(editable)
                 updateLineNumberPadding()
+            }
+            if (searchKeyword.isNotEmpty()) {
+                recomputeSearchMatches()
             }
         }
     }
@@ -192,6 +195,37 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    @Suppress("UselessCallOnNotNull")
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        if (currentMatchIndex >= 0 && !searchKeyword.isNullOrBlank()) {
+            val range = matchRanges.getOrNull(currentMatchIndex)
+            if (range != null && (selStart != range.first || selEnd != range.second)) {
+                clearCurrentMatchHighlight()
+            }
+        }
+    }
+
+    private fun clearCurrentMatchHighlight() {
+        if (currentMatchIndex < 0) return
+        val range = matchRanges.getOrNull(currentMatchIndex) ?: return
+        val editable = editableText
+        if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
+            val spans =
+                editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
+            for (span in spans) {
+                editable.removeSpan(span)
+            }
+            editable.setSpan(
+                BackgroundColorSpan(searchHighlightColor),
+                range.first,
+                range.second,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        currentMatchIndex = -1
     }
 
     override fun showDropDown() {
@@ -463,89 +497,109 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         return hasErrors
     }
 
-    fun setUpdateDelayTime(time: Int) {
-        mUpdateDelayTime = time
-    }
-
-    fun getUpdateDelayTime(): Int {
-        return mUpdateDelayTime
-    }
-
-    fun setOnSearchReplaceAction(action: (String) -> Unit) {
-        onSearchReplaceAction = action
-    }
-
     override fun startActionMode(callback: ActionMode.Callback?): ActionMode? {
-        return if (callback == null) super.startActionMode(callback)
-        else super.startActionMode(wrapCallback(callback))
+        return super.startActionMode(wrapCallback(callback))
     }
 
     override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
-        return if (callback == null) super.startActionMode(callback, type)
-        else super.startActionMode(wrapCallback(callback), type)
+        return super.startActionMode(wrapCallback(callback), type)
     }
 
-    private fun wrapCallback(callback: ActionMode.Callback): ActionMode.Callback {
-        return object : ActionMode.Callback by callback {
+    private fun wrapCallback(callback: ActionMode.Callback?): ActionMode.Callback? {
+        callback ?: return null
+        return object : ActionMode.Callback2() {
+            override fun onActionItemClicked(
+                mode: ActionMode?, item: MenuItem?
+            ): Boolean = callback.onActionItemClicked(mode, item)
+
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.add(Menu.NONE, android.R.id.custom, 1, "查找替换")
-                    .setOnMenuItemClickListener {
-                        val start = selectionStart
-                        val end = selectionEnd
-                        val fullText = text.toString()
-                        var selectedText = ""
-                        if (start in 0..<end && end <= fullText.length) {
-                            selectedText = fullText.substring(start, end)
-                        }
-                        onSearchReplaceAction?.invoke(selectedText)
-                        mode.finish()
-                        true
+                menu.add(Menu.NONE, android.R.id.custom, 1, "查找替换").setOnMenuItemClickListener {
+                    val start = selectionStart
+                    val end = selectionEnd
+                    val fullText = text.toString()
+                    var selectedText = ""
+                    if (start in 0..<end && end <= fullText.length) {
+                        selectedText = fullText.substring(start, end)
                     }
+                    clearFocus()
+                    onSearchReplaceAction?.invoke(selectedText)
+                    true
+                }
                 return callback.onCreateActionMode(mode, menu)
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode?) = callback.onDestroyActionMode(mode)
+
+            override fun onPrepareActionMode(
+                mode: ActionMode?, menu: Menu?
+            ): Boolean = callback.onPrepareActionMode(mode, menu)
+
+            override fun onGetContentRect(mode: ActionMode?, view: View?, outRect: Rect?) {
+                if (callback is ActionMode.Callback2) {
+                    callback.onGetContentRect(mode, view, outRect)
+                } else super.onGetContentRect(mode, view, outRect)
             }
         }
     }
 
+    /**
+     * 在文本中查找指定关键词，支持正则表达式、大小写匹配、全词匹配等功能
+     *
+     * @param keyword 要查找的关键词
+     * @param regex 是否使用正则表达式匹配
+     * @param matchCase 是否区分大小写
+     * @param matchWholeWord 是否匹配整个单词
+     * @param forward 是否向前查找（true为向前，false为向后）
+     * @param force 是否强制重新计算匹配结果
+     * @param scrollToMatch 是否滚动到匹配位置
+     */
     fun find(
         keyword: String,
         regex: Boolean,
         matchCase: Boolean,
         matchWholeWord: Boolean,
-        forward: Boolean = true,
-        force: Boolean = false
+        forward: Boolean = false,
+        force: Boolean = false,
+        scrollToMatch: Boolean = false
     ) {
+        // 获取文本内容
         val textStr = text.toString()
+        // 如果关键词或文本为空，清除搜索结果并返回
         if (keyword.isEmpty() || textStr.isEmpty()) {
             clearSearch()
             return
         }
 
-        val needRecompute = force ||
-            this.searchKeyword != keyword ||
-            this.useRegex != regex ||
-            this.matchCase != matchCase ||
-            this.matchWholeWord != matchWholeWord ||
-            matchRanges.isEmpty()
+        // 判断是否需要重新计算匹配结果
+        val needRecompute =
+            force || this.searchKeyword != keyword || this.useRegex != regex || this.matchCase != matchCase || this.matchWholeWord != matchWholeWord || matchRanges.isEmpty()
 
+        // 更新搜索参数
         this.searchKeyword = keyword
         this.useRegex = regex
         this.matchCase = matchCase
         this.matchWholeWord = matchWholeWord
 
+        // 如果需要重新计算匹配结果
         if (needRecompute) {
             matchRanges.clear()
             currentMatchIndex = -1
             try {
+                // 设置匹配标志
                 val flags = if (matchCase) 0 else Pattern.CASE_INSENSITIVE
                 var patternStr = keyword
+                // 如果不是正则表达式，转义特殊字符
                 if (!regex) {
                     patternStr = Pattern.quote(keyword)
                 }
+                // 如果需要全词匹配，添加边界匹配
                 if (matchWholeWord) {
                     patternStr = "\\b$patternStr\\b"
                 }
+                // 编译正则表达式模式
                 val pattern = Pattern.compile(patternStr, flags)
                 val matcher = pattern.matcher(textStr)
+                // 查找所有匹配项
                 while (matcher.find()) {
                     matchRanges.add(Pair(matcher.start(), matcher.end()))
                 }
@@ -554,6 +608,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
 
+        // 如果没有匹配结果，重新高亮并返回
         if (matchRanges.isEmpty()) {
             reHighlightSearch()
             return
@@ -561,31 +616,118 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         // 确定当前应该选中的索引
         if (needRecompute) {
-            val cursorPos = selectionStart
-            if (forward) {
-                currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
-                if (currentMatchIndex == -1) currentMatchIndex = 0
-            } else {
-                currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
-                if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
+            if (scrollToMatch) {
+                // 获取当前光标位置
+                val cursorPos = selectionStart
+                // 根据查找方向确定当前匹配索引
+                if (forward) {
+                    currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
+                    if (currentMatchIndex == -1) currentMatchIndex = 0
+                } else {
+                    currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
+                    if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
+                }
+                // 聚焦当前匹配项
+                focusCurrentMatch()
             }
+            // 重新高亮搜索结果
+            reHighlightSearch()
         } else {
-            if (forward) {
-                currentMatchIndex = (currentMatchIndex + 1) % matchRanges.size
+            // 如果不需要重新计算，直接更新当前匹配索引
+            val prevIndex = currentMatchIndex
+            if (currentMatchIndex == -1) {
+                // 如果没有当前匹配索引，根据光标位置确定
+                val cursorPos = selectionStart
+                if (forward) {
+                    currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
+                    if (currentMatchIndex == -1) currentMatchIndex = 0
+                } else {
+                    currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
+                    if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
+                }
             } else {
-                currentMatchIndex = (currentMatchIndex - 1 + matchRanges.size) % matchRanges.size
+                // 如果有当前匹配索引，根据查找方向更新索引
+                currentMatchIndex = if (forward) {
+                    (currentMatchIndex + 1) % matchRanges.size
+                } else {
+                    (currentMatchIndex - 1 + matchRanges.size) % matchRanges.size
+                }
+            }
+            // 聚焦当前匹配项
+            focusCurrentMatch()
+            // 更新匹配高亮
+            if (prevIndex >= 0) {
+                updateMatchHighlight(prevIndex, currentMatchIndex)
+            } else {
+                updateSingleMatchHighlight(currentMatchIndex)
+            }
+        }
+    }
+
+    private fun updateSingleMatchHighlight(newIndex: Int) {
+        val editable = editableText
+        val newRange = matchRanges.getOrNull(newIndex) ?: return
+        if (newRange.first >= 0 && newRange.second <= editable.length && newRange.first < newRange.second) {
+            val spans =
+                editable.getSpans(newRange.first, newRange.second, BackgroundColorSpan::class.java)
+            for (span in spans) {
+                editable.removeSpan(span)
+            }
+            editable.setSpan(
+                BackgroundColorSpan(currentMatchColor),
+                newRange.first,
+                newRange.second,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
+    private fun updateMatchHighlight(prevIndex: Int, newIndex: Int) {
+        val editable = editableText
+        val prevRange = matchRanges.getOrNull(prevIndex)
+        val newRange = matchRanges.getOrNull(newIndex)
+
+        prevRange?.let { range ->
+            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
+                val spans =
+                    editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
+                for (span in spans) {
+                    editable.removeSpan(span)
+                }
+                editable.setSpan(
+                    BackgroundColorSpan(searchHighlightColor),
+                    range.first,
+                    range.second,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
             }
         }
 
-        focusCurrentMatch()
-        reHighlightSearch()
+        newRange?.let { range ->
+            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
+                val spans =
+                    editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
+                for (span in spans) {
+                    editable.removeSpan(span)
+                }
+                editable.setSpan(
+                    BackgroundColorSpan(currentMatchColor),
+                    range.first,
+                    range.second,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
     }
 
     private fun focusCurrentMatch() {
         if (currentMatchIndex in matchRanges.indices) {
             val range = matchRanges[currentMatchIndex]
             setSelection(range.first, range.second)
-            bringPointIntoView(range.first)
+            post {
+                requestFocus()
+                bringPointIntoView(range.first)
+            }
         }
     }
 
@@ -596,11 +738,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         matchWholeWord: Boolean,
         replaceText: String
     ) {
-        val needFind = currentMatchIndex !in matchRanges.indices ||
-                this.searchKeyword != keyword ||
-                this.useRegex != regex ||
-                this.matchCase != matchCase ||
-                this.matchWholeWord != matchWholeWord
+        val needFind =
+            currentMatchIndex !in matchRanges.indices || this.searchKeyword != keyword || this.useRegex != regex || this.matchCase != matchCase || this.matchWholeWord != matchWholeWord
 
         if (needFind) {
             find(keyword, regex, matchCase, matchWholeWord, true)
@@ -613,7 +752,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 // 执行替换（replaceText 为空时即为删除）
                 editable.replace(range.first, range.second, replaceText)
                 // 替换后文本发生变化，所有后续匹配的 Offset 均已失效，必须强制重新搜索
-                find(searchKeyword, useRegex, matchCase, matchWholeWord, forward = true, force = true)
+                find(
+                    searchKeyword, useRegex, matchCase, matchWholeWord, force = true
+                )
             }
         }
     }
@@ -625,11 +766,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         matchWholeWord: Boolean,
         replaceText: String
     ) {
-        val needFind = matchRanges.isEmpty() ||
-                this.searchKeyword != keyword ||
-                this.useRegex != regex ||
-                this.matchCase != matchCase ||
-                this.matchWholeWord != matchWholeWord
+        val needFind =
+            matchRanges.isEmpty() || this.searchKeyword != keyword || this.useRegex != regex || this.matchCase != matchCase || this.matchWholeWord != matchWholeWord
 
         if (needFind) {
             find(keyword, regex, matchCase, matchWholeWord, true)
@@ -651,6 +789,31 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         searchKeyword = ""
         matchRanges.clear()
         currentMatchIndex = -1
+        reHighlightSearch()
+    }
+
+    private fun recomputeSearchMatches() {
+        if (searchKeyword.isEmpty()) return
+        val textStr = text.toString()
+        matchRanges.clear()
+        currentMatchIndex = -1
+        try {
+            val flags = if (matchCase) 0 else Pattern.CASE_INSENSITIVE
+            var patternStr = searchKeyword
+            if (!useRegex) {
+                patternStr = Pattern.quote(searchKeyword)
+            }
+            if (matchWholeWord) {
+                patternStr = "\\b$patternStr\\b"
+            }
+            val pattern = Pattern.compile(patternStr, flags)
+            val matcher = pattern.matcher(textStr)
+            while (matcher.find()) {
+                matchRanges.add(Pair(matcher.start(), matcher.end()))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         reHighlightSearch()
     }
 
@@ -740,7 +903,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     companion object {
         private val PATTERN_LINE = Pattern.compile("(^.+$)+", Pattern.MULTILINE)
-        private val PATTERN_TRAILING_WHITE_SPACE =
-            Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
+        private val PATTERN_TRAILING_WHITE_SPACE = Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
     }
 }

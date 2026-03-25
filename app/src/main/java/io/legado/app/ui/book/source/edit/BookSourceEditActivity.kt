@@ -95,10 +95,6 @@ class BookSourceEditActivity :
 
     private var lastActiveCodeView: CodeView? = null
 
-    override var useRegex = false
-    override var matchCase = false
-    override var matchWholeWord = false
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
         viewModel.initData(intent) {
@@ -187,11 +183,7 @@ class BookSourceEditActivity :
         })
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this)
-        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
-        adapter.onSearchReplaceAction = { text ->
-            binding.keyboardTool.showFindReplace(text)
-            getActiveCodeView()?.find(text, useRegex, matchCase, matchWholeWord, true)
-        }
+        adapter.onSearchReplaceAction = { binding.keyboardTool.showFindReplace(it) }
         adapter.onCodeViewFocus = { codeView ->
             if (lastActiveCodeView != codeView) {
                 lastActiveCodeView?.clearSearch()

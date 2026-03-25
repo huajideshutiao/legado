@@ -7,7 +7,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
-import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.ReplaceRule
@@ -52,7 +51,6 @@ class ReplaceEditActivity :
     override val viewModel by viewModels<ReplaceEditViewModel>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.keyboardTool.setInterface(lifecycleScope, binding.root, this)
         initView()
         viewModel.initData(intent) {
             upReplaceView(it)
@@ -150,9 +148,6 @@ class ReplaceEditActivity :
             }
         }
     }
-    override var useRegex: Boolean = false
-    override var matchCase: Boolean = false
-    override var matchWholeWord: Boolean = false
     override fun getActiveCodeView(): CodeView? = null
 
 }

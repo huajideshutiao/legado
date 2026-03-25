@@ -10,6 +10,8 @@ import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -21,10 +23,10 @@ import io.legado.app.databinding.PopupKeyboardToolBinding
 import io.legado.app.databinding.ViewFindReplaceBinding
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.utils.Debounce
 import io.legado.app.utils.activity
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.windowSize
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -44,10 +46,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     ViewTreeObserver.OnGlobalLayoutListener {
 
     private val helpChar = "❓"
-
-    private lateinit var scope: CoroutineScope
-    private lateinit var rootView: View
-    private lateinit var callBack: CallBack
+    private val callBack = activity as CallBack
 
     private val binding = PopupKeyboardToolBinding.inflate(LayoutInflater.from(context), this, true)
     private val findReplaceBinding = ViewFindReplaceBinding.bind(binding.layoutFindReplace.root)
@@ -56,23 +55,20 @@ class KeyboardToolPop @JvmOverloads constructor(
     var initialPadding = 0
     var isAutoPadding = true
     private var dismissRunnable: Runnable? = null
+    private var findKeyword: String = ""
+    private var useRegex: Boolean = false
+    private var matchCase: Boolean = false
+    private var matchWholeWord: Boolean = false
+    private val findDebounce = Debounce(wait = 200L) {
+        callBack.getActiveCodeView()?.find(findKeyword, useRegex, matchCase, matchWholeWord)
+    }
 
     init {
+        upAdapterData()
+        rootView.viewTreeObserver.addOnGlobalLayoutListener(this)
         initRecyclerView()
         isVisible = false
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-    }
-
-    fun setInterface(
-        scope: CoroutineScope,
-        rootView: View,
-        callBack: CallBack
-    ) {
-        this.scope = scope
-        this.rootView = rootView
-        this.callBack = callBack
-        upAdapterData()
-        rootView.viewTreeObserver.addOnGlobalLayoutListener(this)
     }
 
     override fun onGlobalLayout() {
@@ -106,12 +102,21 @@ class KeyboardToolPop @JvmOverloads constructor(
                         rootView.setPadding(0, 0, 0, 0)
                     }
                 }
+                if (binding.layoutFindReplace.root.isVisible) {
+                    binding.layoutFindReplace.root.visibility = GONE
+                }
                 dismissRunnable = Runnable {
                     if (!mIsSoftKeyBoardShowing) {
                         isVisible = false
+                        findKeyword = ""
+                        findReplaceBinding.tvFind.text?.clear()
+                        findReplaceBinding.tvReplace.text?.clear()
+                        useRegex = false
+                        matchCase = false
+                        matchWholeWord = false
                     }
                 }
-                binding.root.postDelayed(dismissRunnable, 200)
+                binding.root.post(dismissRunnable)
             }
         }
     }
@@ -134,114 +139,77 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     private fun initFindReplace() {
+        val findView = callBack.getActiveCodeView()
         findReplaceBinding.apply {
-            tvNext.setOnClickListener {
-                if (::callBack.isInitialized) {
-                    callBack.getActiveCodeView()?.find(
-                        tvFind.editText?.text.toString(),
-                        callBack.useRegex,
-                        callBack.matchCase,
-                        callBack.matchWholeWord,
-                        true
-                    )
-                }
-            }
-            tvPrev.setOnClickListener {
-                if (::callBack.isInitialized) {
-                    callBack.getActiveCodeView()?.find(
-                        tvFind.editText?.text.toString(),
-                        callBack.useRegex,
-                        callBack.matchCase,
-                        callBack.matchWholeWord,
-                        false
-                    )
-                }
-            }
+            val performFind: (View) -> Unit =
+                { findView?.find(tvFind.text.toString(), useRegex, matchCase, matchWholeWord) }
+            tvNext.setOnClickListener(performFind)
+            tvPrev.setOnClickListener(performFind)
             tvDoReplace.setOnClickListener {
-                if (::callBack.isInitialized) {
-                    callBack.getActiveCodeView()?.replace(
-                        tvFind.editText?.text.toString(),
-                        callBack.useRegex,
-                        callBack.matchCase,
-                        callBack.matchWholeWord,
-                        tvReplace.editText?.text.toString()
-                    )
-                }
+                findView?.replace(
+                    tvFind.text.toString(),
+                    useRegex,
+                    matchCase,
+                    matchWholeWord,
+                    tvReplace.text.toString()
+                )
             }
             tvReplaceAll.setOnClickListener {
-                if (::callBack.isInitialized) {
-                    callBack.getActiveCodeView()?.replaceAll(
-                        tvFind.editText?.text.toString(),
-                        callBack.useRegex,
-                        callBack.matchCase,
-                        callBack.matchWholeWord,
-                        tvReplace.editText?.text.toString()
-                    )
-                }
+                findView?.replaceAll(
+                    tvFind.text.toString(),
+                    useRegex,
+                    matchCase,
+                    matchWholeWord,
+                    tvReplace.text.toString()
+                )
             }
             ivMore.setOnClickListener { view ->
-                if (::callBack.isInitialized) {
-                    val popup = PopupMenu(activity ?: context, view)
-                    val regexItem = popup.menu.add("正则表达式").apply { isCheckable = true; isChecked = callBack.useRegex }
-                    val wordItem = popup.menu.add("全词匹配").apply { isCheckable = true; isChecked = callBack.matchWholeWord }
-                    val caseItem = popup.menu.add("区分大小写").apply { isCheckable = true; isChecked = callBack.matchCase }
-                    popup.menu.add("关闭")
-
-            popup.setOnMenuItemClickListener { item ->
-                when (item) {
-                    regexItem -> {
-                        callBack.useRegex = !callBack.useRegex
+                PopupMenu(context, view).apply {
+                    val regexItem = menu.add("正则表达式").apply { isChecked = useRegex }
+                    val wordItem = menu.add("全词匹配").apply { isChecked = matchWholeWord }
+                    val caseItem = menu.add("区分大小写").apply { isChecked = matchCase }
+                    menu.add("关闭")
+                    setOnMenuItemClickListener { item ->
+                        when (item) {
+                            regexItem -> useRegex = !useRegex
+                            wordItem -> matchWholeWord = !matchWholeWord
+                            caseItem -> matchCase = !matchCase
+                            else -> binding.layoutFindReplace.root.visibility = GONE
+                        }
                         true
                     }
-                    wordItem -> {
-                        callBack.matchWholeWord = !callBack.matchWholeWord
-                        true
-                    }
-                    caseItem -> {
-                        callBack.matchCase = !callBack.matchCase
-                        true
-                    }
-                    else -> {
-                        binding.layoutFindReplace.root.visibility = GONE
-                        true
-                    }
+                    show()
                 }
             }
-                    popup.show()
-                }
+            tvFind.doAfterTextChanged {
+                findKeyword = it.toString()
+                findDebounce()
             }
         }
     }
 
     private fun toggleFindReplace() {
-        if (binding.layoutFindReplace.root.isVisible) {
-            binding.layoutFindReplace.root.visibility = GONE
-        } else {
-            binding.layoutFindReplace.root.visibility = VISIBLE
+        val tmp = !binding.layoutFindReplace.root.isVisible
+        binding.layoutFindReplace.root.isVisible = tmp
+        if (tmp) {
             binding.layoutFindReplace.root.post {
+                callBack.getActiveCodeView()?.clearFocus()
                 findReplaceBinding.tvFind.requestFocus()
-                if (::callBack.isInitialized) {
-                    callBack.getActiveCodeView()?.clearFocus()
-                }
             }
         }
     }
 
     fun showFindReplace(keyword: String) {
         binding.layoutFindReplace.root.visibility = VISIBLE
-        findReplaceBinding.tvFind.editText?.setText(keyword)
-        binding.layoutFindReplace.root.post {
-            findReplaceBinding.tvFind.requestFocus()
-            if (::callBack.isInitialized) {
-                callBack.getActiveCodeView()?.clearFocus()
-            }
-        }
+        findKeyword = keyword
+        findReplaceBinding.tvFind.requestFocus()
+        findReplaceBinding.tvFind.setText(keyword)
+        findReplaceBinding.tvFind.setSelection(keyword.length)
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
     fun upAdapterData() {
-        if (!::scope.isInitialized) return
-        scope.launch {
+        activity?.lifecycleScope?.launch {
             appDb.keyboardAssistsDao.flowByType(0).catch {
                 AppLog.put("键盘帮助组件获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
@@ -251,22 +219,17 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     private fun helpAlert() {
-        if (!::callBack.isInitialized) return
-        val alertContext = activity ?: context
-        val items = arrayListOf(
-            SelectItem(alertContext.getString(R.string.assists_key_config), "keyConfig")
-        )
-        items.addAll(callBack.helpActions())
-        alertContext.selector(alertContext.getString(R.string.help), items) { _, selectItem, _ ->
+        val ctx = activity ?: context ?: return
+        val items = buildList {
+            add(SelectItem(ctx.getString(R.string.assists_key_config), "keyConfig"))
+            addAll(callBack.helpActions())
+        }
+        ctx.selector(ctx.getString(R.string.help), items) { _, selectItem, _ ->
             when (selectItem.value) {
-                "keyConfig" -> config()
+                "keyConfig" -> activity?.showDialogFragment<KeyboardAssistsConfig>()
                 else -> callBack.onHelpActionSelect(selectItem.value)
             }
         }
-    }
-
-    private fun config() {
-        activity?.showDialogFragment<KeyboardAssistsConfig>()
     }
 
     inner class Adapter(context: Context) :
@@ -290,10 +253,8 @@ class KeyboardToolPop @JvmOverloads constructor(
         override fun registerListener(holder: ItemViewHolder, binding: ItemFilletTextBinding) {
             holder.itemView.apply {
                 setOnClickListener {
-                    if (::callBack.isInitialized) {
-                        getItemByLayoutPosition(holder.layoutPosition)?.let {
-                            callBack.sendText(it.value)
-                        }
+                    getItemByLayoutPosition(holder.layoutPosition)?.let {
+                        callBack.sendText(it.value)
                     }
                 }
             }
@@ -301,19 +262,10 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     interface CallBack {
-
         fun helpActions(): List<SelectItem<String>> = arrayListOf()
-
         fun onHelpActionSelect(action: String)
-
         fun sendText(text: String)
-
-        var useRegex: Boolean
-        var matchCase: Boolean
-        var matchWholeWord: Boolean
-
         fun getActiveCodeView(): io.legado.app.ui.widget.code.CodeView?
-
     }
 
 }
