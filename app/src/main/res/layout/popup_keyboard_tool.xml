@@ -6,6 +6,12 @@
     android:background="@color/background_card"
     android:orientation="vertical">
 
+    <!-- 顶部淡色线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/background_menu" />
+
     <include
         android:id="@+id/layout_find_replace"
         layout="@layout/view_find_replace"

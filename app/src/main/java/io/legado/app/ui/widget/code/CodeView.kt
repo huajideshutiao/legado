@@ -33,6 +33,7 @@ import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
 
+@Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     ScrollMultiAutoCompleteTextView(context, attrs) {
 
@@ -549,7 +550,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
      * @param regex 是否使用正则表达式匹配
      * @param matchCase 是否区分大小写
      * @param matchWholeWord 是否匹配整个单词
-     * @param forward 是否向前查找（true为向前，false为向后）
+     * @param forward 是否向下查找（true为向下，false为向上）
      * @param force 是否强制重新计算匹配结果
      * @param scrollToMatch 是否滚动到匹配位置
      */
@@ -753,7 +754,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 editable.replace(range.first, range.second, replaceText)
                 // 替换后文本发生变化，所有后续匹配的 Offset 均已失效，必须强制重新搜索
                 find(
-                    searchKeyword, useRegex, matchCase, matchWholeWord, force = true
+                    searchKeyword, useRegex, matchCase, matchWholeWord, true, true,true
                 )
             }
         }

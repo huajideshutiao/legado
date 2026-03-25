@@ -183,6 +183,7 @@ class BookSourceEditActivity :
         })
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this)
+        binding.keyboardTool.setInterface(binding.root, this)
         adapter.onSearchReplaceAction = { binding.keyboardTool.showFindReplace(it) }
         adapter.onCodeViewFocus = { codeView ->
             if (lastActiveCodeView != codeView) {

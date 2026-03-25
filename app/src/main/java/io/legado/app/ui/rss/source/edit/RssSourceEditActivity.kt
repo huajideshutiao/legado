@@ -64,6 +64,7 @@ class RssSourceEditActivity :
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.keyboardTool.setInterface(binding.root, this)
         initView()
         viewModel.initData(intent) {
             upSourceView(viewModel.rssSource)

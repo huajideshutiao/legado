@@ -51,6 +51,7 @@ class ReplaceEditActivity :
     override val viewModel by viewModels<ReplaceEditViewModel>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.keyboardTool.setInterface(binding.root, this)
         initView()
         viewModel.initData(intent) {
             upReplaceView(it)

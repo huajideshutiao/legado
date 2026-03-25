@@ -46,7 +46,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     ViewTreeObserver.OnGlobalLayoutListener {
 
     private val helpChar = "❓"
-    private val callBack = activity as CallBack
+    private lateinit var callBack: CallBack
 
     private val binding = PopupKeyboardToolBinding.inflate(LayoutInflater.from(context), this, true)
     private val findReplaceBinding = ViewFindReplaceBinding.bind(binding.layoutFindReplace.root)
@@ -64,11 +64,18 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     init {
-        upAdapterData()
-        rootView.viewTreeObserver.addOnGlobalLayoutListener(this)
         initRecyclerView()
         isVisible = false
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+    }
+
+    fun setInterface(
+        rootView: View,
+        callBack: CallBack
+    ) {
+        this.callBack = callBack
+        upAdapterData()
+        rootView.viewTreeObserver.addOnGlobalLayoutListener(this)
     }
 
     override fun onGlobalLayout() {
@@ -139,14 +146,29 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     private fun initFindReplace() {
-        val findView = callBack.getActiveCodeView()
         findReplaceBinding.apply {
-            val performFind: (View) -> Unit =
-                { findView?.find(tvFind.text.toString(), useRegex, matchCase, matchWholeWord) }
-            tvNext.setOnClickListener(performFind)
-            tvPrev.setOnClickListener(performFind)
+            tvNext.setOnClickListener {
+                (if (!::callBack.isInitialized) null
+                else callBack.getActiveCodeView())?.find(
+                    tvFind.text.toString(),
+                    useRegex,
+                    matchCase,
+                    matchWholeWord,
+                    true
+                )
+            }
+            tvPrev.setOnClickListener {
+                (if (!::callBack.isInitialized) null
+                else callBack.getActiveCodeView())?.find(
+                    tvFind.text.toString(),
+                    useRegex,
+                    matchCase,
+                    matchWholeWord
+                )
+            }
             tvDoReplace.setOnClickListener {
-                findView?.replace(
+                (if (!::callBack.isInitialized) null
+                else callBack.getActiveCodeView())?.replace(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
@@ -155,7 +177,8 @@ class KeyboardToolPop @JvmOverloads constructor(
                 )
             }
             tvReplaceAll.setOnClickListener {
-                findView?.replaceAll(
+                (if (!::callBack.isInitialized) null
+                else callBack.getActiveCodeView())?.replaceAll(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
