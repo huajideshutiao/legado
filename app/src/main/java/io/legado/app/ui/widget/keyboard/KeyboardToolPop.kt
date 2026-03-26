@@ -109,21 +109,21 @@ class KeyboardToolPop @JvmOverloads constructor(
                         rootView.setPadding(0, 0, 0, 0)
                     }
                 }
-                if (binding.layoutFindReplace.root.isVisible) {
-                    binding.layoutFindReplace.root.visibility = GONE
-                }
-                dismissRunnable = Runnable {
-                    if (!mIsSoftKeyBoardShowing) {
-                        isVisible = false
-                        findKeyword = ""
-                        findReplaceBinding.tvFind.text?.clear()
-                        findReplaceBinding.tvReplace.text?.clear()
-                        useRegex = false
-                        matchCase = false
-                        matchWholeWord = false
+                // 如果搜索面板显示，则跳过隐藏搜索面板和底栏的逻辑
+                if (!binding.layoutFindReplace.root.isVisible) {
+                    dismissRunnable = Runnable {
+                        if (!mIsSoftKeyBoardShowing) {
+                            isVisible = false
+                            findKeyword = ""
+                            findReplaceBinding.tvFind.text?.clear()
+                            findReplaceBinding.tvReplace.text?.clear()
+                            useRegex = false
+                            matchCase = false
+                            matchWholeWord = false
+                        }
                     }
+                    binding.root.post(dismissRunnable)
                 }
-                binding.root.post(dismissRunnable)
             }
         }
     }
@@ -148,8 +148,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     private fun initFindReplace() {
         findReplaceBinding.apply {
             tvNext.setOnClickListener {
-                (if (!::callBack.isInitialized) null
-                else callBack.getActiveCodeView())?.find(
+                callBack.getActiveCodeView()?.find(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
@@ -158,8 +157,7 @@ class KeyboardToolPop @JvmOverloads constructor(
                 )
             }
             tvPrev.setOnClickListener {
-                (if (!::callBack.isInitialized) null
-                else callBack.getActiveCodeView())?.find(
+                callBack.getActiveCodeView()?.find(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
@@ -167,8 +165,7 @@ class KeyboardToolPop @JvmOverloads constructor(
                 )
             }
             tvDoReplace.setOnClickListener {
-                (if (!::callBack.isInitialized) null
-                else callBack.getActiveCodeView())?.replace(
+                callBack.getActiveCodeView()?.replace(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
@@ -177,8 +174,7 @@ class KeyboardToolPop @JvmOverloads constructor(
                 )
             }
             tvReplaceAll.setOnClickListener {
-                (if (!::callBack.isInitialized) null
-                else callBack.getActiveCodeView())?.replaceAll(
+                callBack.getActiveCodeView()?.replaceAll(
                     tvFind.text.toString(),
                     useRegex,
                     matchCase,
@@ -188,17 +184,35 @@ class KeyboardToolPop @JvmOverloads constructor(
             }
             ivMore.setOnClickListener { view ->
                 PopupMenu(context, view).apply {
-                    val regexItem = menu.add("正则表达式").apply { isChecked = useRegex }
-                    val wordItem = menu.add("全词匹配").apply { isChecked = matchWholeWord }
-                    val caseItem = menu.add("区分大小写").apply { isChecked = matchCase }
+                    val regexItem = menu.add("正则表达式").apply {
+                        isCheckable = true
+                        isChecked = useRegex
+                    }
+                    val wordItem = menu.add("全词匹配").apply {
+                        isCheckable = true
+                        isChecked = matchWholeWord
+                    }
+                    val caseItem = menu.add("区分大小写").apply {
+                        isCheckable = true
+                        isChecked = matchCase
+                    }
                     menu.add("关闭")
                     setOnMenuItemClickListener { item ->
                         when (item) {
                             regexItem -> useRegex = !useRegex
                             wordItem -> matchWholeWord = !matchWholeWord
                             caseItem -> matchCase = !matchCase
-                            else -> binding.layoutFindReplace.root.visibility = GONE
+                            else -> {
+                                binding.layoutFindReplace.root.visibility = GONE
+                                return@setOnMenuItemClickListener true
+                            }
                         }
+                        callBack.getActiveCodeView()?.find(
+                            tvFind.text.toString(),
+                            useRegex,
+                            matchCase,
+                            matchWholeWord
+                        )
                         true
                     }
                     show()
