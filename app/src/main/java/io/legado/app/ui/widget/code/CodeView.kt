@@ -30,6 +30,7 @@ import java.util.TreeMap
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
+import android.text.Layout
 
 @Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
@@ -145,6 +146,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     init {
+        breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+        hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         if (autoCompleteTokenizer == null) {
             autoCompleteTokenizer = KeywordTokenizer()
         }
