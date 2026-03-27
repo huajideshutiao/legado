@@ -8,6 +8,7 @@ import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
 import android.text.Editable
 import android.text.InputFilter
+import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -21,6 +22,7 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.ColorInt
 import androidx.core.graphics.toColorInt
 import io.legado.app.lib.theme.accentColor
@@ -30,7 +32,6 @@ import java.util.TreeMap
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
-import android.text.Layout
 
 @Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
@@ -47,6 +48,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var lastChangeCount = 0
 
     var autoCompleteTokenizer: Tokenizer? = null
+    private var mAutoCompleteAdapter: AutoCompleteAdapter? = null
     private val displayDensity = resources.displayMetrics.density
     private val mErrorHashSet = TreeMap<Int, Int>()
     private val mSyntaxPatternMap = mutableMapOf<Pattern, Int>()
@@ -146,12 +148,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     init {
-        breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+//        breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
         hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         if (autoCompleteTokenizer == null) {
             autoCompleteTokenizer = KeywordTokenizer()
         }
         setTokenizer(autoCompleteTokenizer)
+        threshold = 1
+        dropDownWidth = 400
+        setAutoCompletions(DEFAULT_COMPLETIONS)
 
         mLineNumberPaint.textAlign = Paint.Align.RIGHT
         mLineNumberPaint.textSize = mLineNumberTextSize
@@ -171,8 +176,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                         }
                         source.replace(Regex.fromLiteral("#in"), "")
                     }
-                    end - start == 1 && source[start] == '\n' ->
-                        autoIndent(source, dest, dStart, dEnd)
+
+                    end - start == 1 && source[start] == '\n' -> autoIndent(
+                        source,
+                        dest,
+                        dStart,
+                        dEnd
+                    )
+
                     else -> source
                 }
             })
@@ -203,12 +214,88 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 }
             }
         }
+        if (keyCode == KeyEvent.KEYCODE_ENTER && event?.action == KeyEvent.ACTION_DOWN) {
+            if (isPopupShowing && mAutoCompleteAdapter != null) {
+                performCompletion()
+                return true
+            }
+        }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun performFiltering(text: CharSequence, keyCode: Int) {
+        if (mAutoCompleteAdapter != null && autoCompleteTokenizer != null) {
+            val end = if (text.isNotEmpty()) minOf(selectionStart, text.length) else 0
+            val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
+            val constraint = if (tokenStart <= end && text.isNotEmpty()) {
+                text.subSequence(tokenStart, end)
+            } else {
+                ""
+            }
+            mAutoCompleteAdapter?.filter?.filter(constraint)
+        } else {
+            super.performFiltering(text, keyCode)
+        }
+    }
+
+    override fun replaceText(text: CharSequence) {
+        val adapter = mAutoCompleteAdapter
+        if (adapter == null) {
+            super.replaceText(text)
+            return
+        }
+
+        val originalInput = adapter.getOriginalInput()
+        val displayText = text.toString()
+
+        if (displayText != originalInput) {
+            val editable = editableText
+            val tokenStart = autoCompleteTokenizer?.findTokenStart(editable, selectionStart) ?: 0
+            val tokenEnd = selectionEnd
+
+            val prefixBeforeDot = if (originalInput.contains(".")) {
+                originalInput.take(originalInput.lastIndexOf(".") + 1)
+            } else {
+                ""
+            }
+            val displayTextSuffix = if (displayText.contains(".")) {
+                displayText.substring(displayText.lastIndexOf(".") + 1)
+            } else {
+                displayText
+            }
+            val insertText = prefixBeforeDot + displayTextSuffix
+
+            editable.replace(tokenStart, tokenEnd, insertText)
+
+            val newCursorPos = tokenStart + insertText.length
+            if (displayTextSuffix.endsWith("()")) {
+                setSelection(newCursorPos - 1)
+            } else {
+                setSelection(newCursorPos)
+            }
+        } else {
+            super.replaceText(text)
+        }
+    }
+
+    override fun enoughToFilter(): Boolean {
+        return mAutoCompleteAdapter != null || super.enoughToFilter()
     }
 
     @Suppress("UselessCallOnNotNull")
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
+        if (mAutoCompleteAdapter != null && autoCompleteTokenizer != null) {
+            val text = editableText ?: return
+            val end = if (text.isNotEmpty()) minOf(selStart, text.length) else 0
+            val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
+            val constraint = if (tokenStart <= end && text.isNotEmpty()) {
+                text.subSequence(tokenStart, end)
+            } else {
+                ""
+            }
+            mAutoCompleteAdapter?.filter?.filter(constraint)
+        }
         if (currentMatchIndex >= 0 && !searchKeyword.isNullOrBlank()) {
             val range = matchRanges.getOrNull(currentMatchIndex)
             if (range != null && (selStart != range.first || selEnd != range.second)) {
@@ -233,18 +320,69 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         currentMatchIndex = -1
     }
 
+    private var cursorAnchor: View? = null
+
     override fun showDropDown() {
-        val screenPoint = IntArray(2)
-        getLocationOnScreen(screenPoint)
-        val displayFrame = Rect()
-        getWindowVisibleDisplayFrame(displayFrame)
+        if (adapter == null) {
+            super.showDropDown()
+            return
+        }
+
         val position = selectionStart
-        val layout = layout
+        val layout = layout ?: return super.showDropDown()
         val line = layout.getLineForOffset(position)
-        val verticalDistanceInDp = (750 + 140 * line) / displayDensity
-        dropDownVerticalOffset = verticalDistanceInDp.toInt()
-        val horizontalDistanceInDp = layout.getPrimaryHorizontal(position) / displayDensity
-        dropDownHorizontalOffset = horizontalDistanceInDp.toInt()
+
+        // 1. 获取光标所在行的顶部和底部 Y 坐标，以及 X 坐标
+        val lineTop = layout.getLineTop(line)
+        val lineBottom = layout.getLineBottom(line)
+        val lineHeight = lineBottom - lineTop
+        val targetX = layout.getPrimaryHorizontal(position).toInt() + paddingLeft - scrollX
+
+        // 2. 获取当前 View 的父布局
+        val parentGroup = parent as? ViewGroup
+
+        if (parentGroup != null) {
+            // 3. 动态初始化“幽灵锚点” View
+            if (cursorAnchor == null) {
+                cursorAnchor = View(context).apply {
+                    id = View.generateViewId()
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                }
+                parentGroup.addView(cursorAnchor)
+
+                // 将 AutoCompleteTextView 的下拉锚点指向这个透明 View
+                this.dropDownAnchor = cursorAnchor!!.id
+            }
+
+            // 4. 让锚点不仅跟随光标，还要拥有与当前行一样的高度
+            // 这样不仅向下展开时贴合底部，向上翻转时也能贴合顶部，不会遮挡你正在输入的文字！
+            // 定义你想要的垂直间距 (建议在实战中把 12f 换算成 dp 转 px)
+            val yMargin = 10
+
+            // 4. 让锚点不仅跟随光标，还要在上下各“膨胀”出一段间距
+            cursorAnchor?.let { anchor ->
+                anchor.layoutParams = anchor.layoutParams?.apply {
+                    width = 1
+                    // 高度 = 原本的行高 + 上间距 + 下间距
+                    height = lineHeight + (yMargin * 2)
+                } ?: ViewGroup.LayoutParams(1, lineHeight + (yMargin * 2))
+
+                anchor.x = this.x + targetX
+                // Y 坐标往上提一个间距的距离，给上方留出空间
+                anchor.y = this.y + lineTop + paddingTop - scrollY - yMargin
+            }
+
+            // 5. 既然锚点已经在正确的位置了，原生的偏移量必须全部清零
+            dropDownVerticalOffset = 0
+            dropDownHorizontalOffset = 0
+
+        } else {
+            // 极端兜底情况：如果父布局不是 ViewGroup，退回之前的计算方式
+            val targetY = lineBottom + paddingTop - scrollY
+            dropDownVerticalOffset = targetY - height
+            dropDownHorizontalOffset = targetX
+        }
+
         super.showDropDown()
     }
 
@@ -807,13 +945,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         if (currentMatchIndex in matchRanges.indices) {
             val range = matchRanges[currentMatchIndex]
-            val editable = editableText
-            if (range.first >= 0 && range.second <= editable.length) {
-                editable.replace(range.first, range.second, replaceText)
-                find(
-                    searchKeyword, useRegex, matchCase, matchWholeWord, true, true
-                )
-            }
+            editableText.replace(range.first, range.second, replaceText)
+            find(searchKeyword, useRegex, matchCase, matchWholeWord, true, true)
         }
     }
 
@@ -824,16 +957,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         matchWholeWord: Boolean,
         replaceText: String
     ) {
-        val needFind =
-            matchRanges.isEmpty() || this.searchKeyword != keyword || this.useRegex != regex || this.matchCase != matchCase || this.matchWholeWord != matchWholeWord
-
-        if (needFind) {
-            find(keyword, regex, matchCase, matchWholeWord, forward = true, scrollToMatch = false)
-        }
-
         if (matchRanges.isEmpty()) return
-
-        val editable = editableText
         var savedCursorPos = selectionStart
 
         modified = false // 暂时禁用 TextWatcher 中的增量计算逻辑
@@ -841,18 +965,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         // 倒序替换，避免坐标错位
         for (i in matchRanges.indices.reversed()) {
             val range = matchRanges[i]
-            if (range.first >= 0 && range.second <= editable.length) {
-                editable.replace(range.first, range.second, replaceText)
-                if (savedCursorPos != -1 && savedCursorPos > range.first) {
-                    val diff = (range.second - range.first) - replaceText.length
-                    savedCursorPos -= if (savedCursorPos >= range.second) diff else (savedCursorPos - range.first)
-                }
+            editableText.replace(range.first, range.second, replaceText)
+            if (savedCursorPos != -1 && savedCursorPos > range.first) {
+                val diff = (range.second - range.first) - replaceText.length
+                savedCursorPos -= if (savedCursorPos >= range.second) diff else (savedCursorPos - range.first)
             }
         }
 
         modified = true
         // 替换完成后手动触发一次状态更新
-        getEnterPos(editable)
+        getEnterPos(editableText)
         updateLineNumberPadding()
         setSelection(savedCursorPos)
         clearSearch()
@@ -1051,8 +1173,179 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
     }
 
+    fun setAutoCompletions(completions: Map<String, List<String>>) {
+        if (mAutoCompleteAdapter == null) {
+            mAutoCompleteAdapter = AutoCompleteAdapter(context, completions)
+            if (autoCompleteTokenizer == null || autoCompleteTokenizer is KeywordTokenizer) {
+                autoCompleteTokenizer = DotTokenizer()
+                setTokenizer(autoCompleteTokenizer)
+            }
+            setAdapter(mAutoCompleteAdapter)
+        } else {
+            mAutoCompleteAdapter?.setCompletions(completions)
+        }
+    }
+
+    fun getAutoCompleteAdapter(): AutoCompleteAdapter? = mAutoCompleteAdapter
+
     companion object {
         private val PATTERN_LINE = Pattern.compile("(^.+$)+", Pattern.MULTILINE)
         private val PATTERN_TRAILING_WHITE_SPACE = Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
+        val DEFAULT_COMPLETIONS = mapOf(
+            "java" to listOf(
+                // Network
+                "ajax()",
+                "ajaxAll()",
+                "connect()",
+                "get()",
+                "post()",
+                "head()",
+                // WebView
+                "webView()",
+                // Browser
+                "startBrowser()",
+                "startBrowserAwait()",
+                // URL
+                "openUrl()",
+                // Activity
+                "startJsActivity()",
+                // User-Agent
+                "getWebViewUA()",
+                // Verification
+                "getVerificationCode()",
+                // Cookie
+                "getCookie()",
+                // Import
+                // Cache
+                "cacheFile()",
+                // Encoding
+                "encodeURI()",
+                "base64Decode()",
+                "base64DecodeToByteArray()",
+                "base64Encode()",
+                "hexDecodeToByteArray()",
+                "hexDecodeToString()",
+                // Crypto
+                "createSymmetricCrypto()",
+                "createAsymmetricCrypto()",
+                "createSign()",
+                "digestHex()",
+                "digestBase64Str()",
+                "md5Encode()",
+                "md5Encode16()",
+                "HMacHex()",
+                "HMacBase64()",
+                // ByteArray
+                "strToBytes()",
+                "bytesToStr()",
+                // ID
+                "randomUUID()",
+                "androidId()",
+                // Chinese
+                "t2s()",
+                "s2t()",
+                // Time
+                "timeFormatUTC()",
+                "timeFormat()",
+                // HTML
+                "htmlFormat()",
+                // Toast
+                "toast()",
+                "longToast()",
+                // Debug
+                "log()",
+                "logType()",
+                // AnalyzRule
+                "getString()",
+                "getStringList()",
+                "getElement()",
+                "getElements()",
+                "setContent()",
+                "reGetBook()",
+                "refreshTocUrl()",
+                "put()",
+                // RssJsExtensions
+                "searchBook()",
+                "addBook()",
+                // AnalyzeUrl ()
+                "initUrl()",
+                "getHeaderMap()",
+                "getStrResponse()",
+                "getResponse()"
+            ),
+            "source" to listOf(
+                "getKey()",
+                "setVariable()",
+                "getVariable()",
+                "getLoginHeader()",
+                "getLoginHeaderMap()",
+                "putLoginHeader()",
+                "removeLoginHeader()",
+                "getLoginInfo()",
+                "getLoginInfoMap()",
+                "removeLoginInfo()"
+            ),
+            "book" to listOf(
+                "bookUrl",
+                "tocUrl",
+                "origin",
+                "originName",
+                "name",
+                "author",
+                "kind",
+                "customTag",
+                "coverUrl",
+                "customCoverUrl",
+                "intro",
+                "customIntro",
+                "charset",
+                "type",
+                "group",
+                "latestChapterTitle",
+                "latestChapterTime",
+                "lastCheckTime",
+                "lastCheckCount",
+                "totalChapterNum",
+                "durChapterTitle",
+                "durChapterIndex",
+                "durChapterPos",
+                "durChapterTime",
+                "canUpdate",
+                "order",
+                "originOrder",
+                "variable"
+            ),
+            "chapter" to listOf(
+                "url",
+                "title",
+                "baseUrl",
+                "bookUrl",
+                "index",
+                "resourceUrl",
+                "tag",
+                "start",
+                "end",
+                "variable"
+            ),
+            "cookie" to listOf(
+                "getCookie()", "getKey()", "setCookie()", "replaceCookie()", "removeCookie()"
+            ),
+            "cache" to listOf(
+                "put()",
+                "get()",
+                "delete()",
+                "putFile()",
+                "getFile()",
+                "deleteFile()",
+                "putMemory()",
+                "getFromMemory()",
+                "deleteMemory()"
+            ),
+            "result" to listOf(),
+            "baseUrl" to listOf(),
+            "title" to listOf(),
+            "src" to listOf(),
+            "nextChapterUrl" to listOf()
+        )
     }
 }

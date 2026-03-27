@@ -114,7 +114,6 @@ class KeyboardToolPop @JvmOverloads constructor(
                     dismissRunnable = Runnable {
                         if (!mIsSoftKeyBoardShowing) {
                             isVisible = false
-                            findKeyword = ""
                             findReplaceBinding.tvFind.text?.clear()
                             findReplaceBinding.tvReplace.text?.clear()
                             useRegex = false
@@ -229,6 +228,7 @@ class KeyboardToolPop @JvmOverloads constructor(
         val tmp = !binding.layoutFindReplace.root.isVisible
         binding.layoutFindReplace.root.isVisible = tmp
         if (tmp) {
+            if (!findReplaceBinding.tvFind.text.isNullOrEmpty()) findReplaceBinding.tvFind.setText("")
             binding.layoutFindReplace.root.post {
                 callBack.getActiveCodeView()?.clearFocus()
                 findReplaceBinding.tvFind.requestFocus()
