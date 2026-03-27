@@ -12,21 +12,168 @@ import io.legado.app.R
 
 class AutoCompleteAdapter(
     context: Context,
-    completions: Map<String, List<String>> = emptyMap()
+    completions: Map<String, List<String>> = mapOf(
+        "" to listOf("java.log()"),
+        "java." to listOf(
+            // Network
+            "ajax()",
+            "ajaxAll()",
+            "connect()",
+            "get()",
+            "post()",
+            "head()",
+            // WebView
+            "webView()",
+            // Browser
+            "startBrowser()",
+            "startBrowserAwait()",
+            // URL
+            "openUrl()",
+            // Activity
+            "startJsActivity()",
+            // User-Agent
+            "getWebViewUA()",
+            // Verification
+            "getVerificationCode()",
+            // Cookie
+            "getCookie()",
+            // Cache
+            "cacheFile()",
+            // Encoding
+            "encodeURI()",
+            "base64Decode()",
+            "base64DecodeToByteArray()",
+            "base64Encode()",
+            "hexDecodeToByteArray()",
+            "hexDecodeToString()",
+            // Crypto
+            "createSymmetricCrypto()",
+            "createAsymmetricCrypto()",
+            "createSign()",
+            "digestHex()",
+            "digestBase64Str()",
+            "md5Encode()",
+            "md5Encode16()",
+            "HMacHex()",
+            "HMacBase64()",
+            // ByteArray
+            "strToBytes()",
+            "bytesToStr()",
+            // ID
+            "randomUUID()",
+            "androidId()",
+            // Chinese
+            "t2s()",
+            "s2t()",
+            // Time
+            "timeFormatUTC()",
+            "timeFormat()",
+            // HTML
+            "htmlFormat()",
+            // Debug
+            "log()",
+            "logType()",
+            // Toast
+            "toast()",
+            "longToast()",
+            // AnalyzRule
+            "getString()",
+            "getStringList()",
+            "getElement()",
+            "getElements()",
+            "setContent()",
+            "reGetBook()",
+            "refreshTocUrl()",
+            "put()",
+            // AnalyzeUrl ()
+            "initUrl()",
+            "getHeaderMap()",
+            "getStrResponse()",
+            "getResponse()"
+        ),
+        "source." to listOf(
+            "getKey()",
+            "setVariable()",
+            "getVariable()",
+            "getLoginHeader()",
+            "getLoginHeaderMap()",
+            "putLoginHeader()",
+            "removeLoginHeader()",
+            "getLoginInfo()",
+            "getLoginInfoMap()",
+            "removeLoginInfo()"
+        ),
+        "book." to listOf(
+            "bookUrl",
+            "tocUrl",
+            "origin",
+            "originName",
+            "name",
+            "author",
+            "kind",
+            "customTag",
+            "coverUrl",
+            "customCoverUrl",
+            "intro",
+            "customIntro",
+            "charset",
+            "type",
+            "group",
+            "latestChapterTitle",
+            "latestChapterTime",
+            "lastCheckTime",
+            "lastCheckCount",
+            "totalChapterNum",
+            "durChapterTitle",
+            "durChapterIndex",
+            "durChapterPos",
+            "durChapterTime",
+            "canUpdate",
+            "order",
+            "originOrder",
+            "variable"
+        ),
+        "chapter." to listOf(
+            "url",
+            "title",
+            "baseUrl",
+            "bookUrl",
+            "index",
+            "resourceUrl",
+            "tag",
+            "start",
+            "end",
+            "variable"
+        ),
+        "cookie." to listOf(
+            "getCookie()", "getKey()", "setCookie()", "replaceCookie()", "removeCookie()"
+        ),
+        "cache." to listOf(
+            "put()",
+            "get()",
+            "delete()",
+            "putFile()",
+            "getFile()",
+            "deleteFile()",
+            "putMemory()",
+            "getFromMemory()",
+            "deleteMemory()"
+        ),
+        "result" to listOf(),
+        "baseUrl" to listOf(),
+        "title" to listOf(),
+        "src" to listOf(),
+        "nextChapterUrl" to listOf()
+    )
 ) : BaseAdapter(), Filterable {
 
     private val inflater = LayoutInflater.from(context)
-    private var completions: Map<String, List<String>> = emptyMap()
+    var completions: Map<String, List<String>> = emptyMap()
     private var filteredResults: List<String> = emptyList()
     private var originalInput: String = ""
     private val filter = CompletionFilter()
-    var appendParentheses: Boolean = true
 
     init {
-        this.completions = completions
-    }
-
-    fun setCompletions(completions: Map<String, List<String>>) {
         this.completions = completions
     }
 
@@ -37,10 +184,23 @@ class AutoCompleteAdapter(
     override fun getItemId(position: Int): Long = position.toLong()
 
     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-        val view = convertView ?: inflater.inflate(R.layout.item_1line_text_and_del, parent, false)
-        val textView = view.findViewById<TextView>(R.id.text_view)
-        textView.text = filteredResults[position]
+        val view: View
+        val viewHolder: ViewHolder
+        if (convertView == null) {
+            view = inflater.inflate(R.layout.item_1line_text_and_del, parent, false)
+            viewHolder = ViewHolder()
+            viewHolder.textView = view.findViewById(R.id.text_view)
+            view.tag = viewHolder
+        } else {
+            view = convertView
+            viewHolder = view.tag as ViewHolder
+        }
+        viewHolder.textView?.text = filteredResults[position]
         return view
+    }
+
+    private class ViewHolder {
+        var textView: TextView? = null
     }
 
     override fun getFilter(): Filter = filter
@@ -65,18 +225,20 @@ class AutoCompleteAdapter(
                 return results
             }
 
+            val addedItems = HashSet<String>()
+
             if (input.contains(".")) {
                 val dotIndex = input.lastIndexOf(".")
-                val prefix = input.substring(0, dotIndex)
+                val prefix = input.take(dotIndex + 1)
                 val suffix = input.substring(dotIndex + 1)
 
                 if (suffix.isNotEmpty()) {
-                    completions[prefix]?.let { subCompletions ->
-                        for (item in subCompletions) {
+                    val subCompletions = completions[prefix] ?: completions[input.take(dotIndex)]
+                    subCompletions?.let {
+                        for (item in it) {
                             val score = fuzzyMatchScore(suffix, item)
                             if (score > 0) {
-                                val existing = scoredMatches.indexOfFirst { it.first == item }
-                                if (existing < 0) {
+                                if (addedItems.add(item)) {
                                     scoredMatches.add(Pair(item, score))
                                 }
                             }
@@ -84,13 +246,11 @@ class AutoCompleteAdapter(
                     }
                 }
             } else {
-                for ((key, _) in completions) {
-                    val score = fuzzyMatchScore(input, key)
-                    if (score > 0) {
-                        val existing = scoredMatches.indexOfFirst { it.first == key }
-                        if (existing < 0) {
-                            scoredMatches.add(Pair(key, score))
-                        }
+                val items = completions.keys + (completions[""] ?: emptyList())
+                for (item in items) {
+                    val score = fuzzyMatchScore(input, item)
+                    if (score > 0 && addedItems.add(item)) {
+                        scoredMatches.add(Pair(item, score))
                     }
                 }
             }
@@ -117,28 +277,26 @@ class AutoCompleteAdapter(
             if (pattern.isEmpty()) return 0
             if (pattern.length > target.length) return 0
 
-            val patternLower = pattern.lowercase()
-            val targetLower = target.lowercase()
-
-            if (targetLower.startsWith(patternLower)) {
+            if (target.startsWith(pattern, ignoreCase = true)) {
                 return when {
-                    targetLower == patternLower -> 100
-                    target.length == pattern.length + 2 && targetLower.endsWith("()") -> 95
+                    target.equals(pattern, ignoreCase = true) -> 100
+                    target.length == pattern.length + 2 && target.endsWith("()") -> 95
                     else -> 90
                 }
             }
 
-            if (targetLower.contains(patternLower)) {
+            if (target.contains(pattern, ignoreCase = true)) {
                 return 70
             }
 
             var patternIndex = 0
-            for (char in targetLower) {
-                if (patternIndex < patternLower.length && char == patternLower[patternIndex]) {
+            val patternLength = pattern.length
+            for (i in target.indices) {
+                if (patternIndex < patternLength && target[i].equals(pattern[patternIndex], ignoreCase = true)) {
                     patternIndex++
                 }
             }
-            return if (patternIndex == patternLower.length) 50 else 0
+            return if (patternIndex == patternLength) 50 else 0
         }
     }
 }

@@ -10,11 +10,11 @@ import splitties.resources.color
 import java.util.regex.Pattern
 
 val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@js:|@Json:|@css:|@@|@XPath:")
-val jsonPattern: Pattern = Pattern.compile("\"[A-Za-z0-9]*?\"\\:|\"|\\{|\\}|\\[|\\]")
+val jsonPattern: Pattern = Pattern.compile("\"[A-Za-z0-9]*?\":|\"|\\{|\\}|\\[|]")
 val wrapPattern: Pattern = Pattern.compile("\\\\n")
 val operationPattern: Pattern =
-    Pattern.compile(":|==|>|<|!=|>=|<=|->|=|%|-|-=|%=|\\+|\\-|\\-=|\\+=|\\^|\\&|\\|::|\\?|\\*")
-val jsPattern: Pattern = Pattern.compile("var")
+    Pattern.compile(":|=|>|<|!=|%|\\+|-|\\^|&|\\||\\?|\\*")
+val jsPattern: Pattern = Pattern.compile("var |let |const |if|else|for|while|do|switch|case|break|continue|return |new |this|true|false|null|undefined| in |typeof|try|catch|finally|throw |function |class ")
 
 fun CodeView.addLegadoPattern() {
     addSyntaxPattern(legadoPattern, appCtx.color(R.color.md_orange_900))

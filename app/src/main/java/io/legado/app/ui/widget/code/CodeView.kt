@@ -2,10 +2,13 @@ package io.legado.app.ui.widget.code
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
+import android.graphics.text.LineBreakConfig
+import android.os.Build
 import android.text.Editable
 import android.text.InputFilter
 import android.text.Layout
@@ -17,6 +20,7 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
+import android.util.SparseArray
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
@@ -29,7 +33,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.text.ScrollMultiAutoCompleteTextView
 import java.util.TreeMap
-import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
 
@@ -48,12 +51,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var lastChangeCount = 0
 
     var autoCompleteTokenizer: Tokenizer? = null
-    private var mAutoCompleteAdapter: AutoCompleteAdapter? = null
+    var autoCompleteAdapter: AutoCompleteAdapter? = null
     private val displayDensity = resources.displayMetrics.density
     private val mErrorHashSet = TreeMap<Int, Int>()
     private val mSyntaxPatternMap = mutableMapOf<Pattern, Int>()
     private var mIndentCharacterList = mutableSetOf('{', '(', '[', '+', '-', '*', '/', '=')
-    private var mClosePairMap = mapOf('{' to '}', '(' to ')', '[' to ']')
+    private var mClosePairMap = mutableSetOf('}', ')', ']')
 
     var isLineNumberEnabled = false
         set(value) {
@@ -78,7 +81,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private val mLineDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var mLineNumberPadding = 0
     private var defaultPaddingLeft: Int? = null
-    private val lineNumberCache = android.util.SparseArray<String>()
+    private val lineNumberCache = SparseArray<String>()
 
     private var enterPos = IntArray(100)
     private var enterPosSize = 0
@@ -98,6 +101,30 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private val currentMatchColor = context.accentColor
 
     private var isHighlighting = false
+
+    private fun Editable.setHighlightSpanSafe(range: Pair<Int, Int>, color: Int) {
+        getSpans(range.first, range.second, BackgroundColorSpan::class.java).forEach {
+            removeSpan(it)
+        }
+        setSpan(
+            BackgroundColorSpan(color),
+            range.first,
+            range.second,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // 移除幽灵锚点，防止内存/视图泄漏
+        cursorAnchor?.let { anchor ->
+            anchor.post {
+                (anchor.parent as? ViewGroup)?.removeView(anchor)
+            }
+        }
+        cursorAnchor = null
+    }
 
     private val mEditorTextWatcher: TextWatcher = object : TextWatcher {
         private var start = 0
@@ -148,16 +175,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     init {
-//        breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
-        hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
-        if (autoCompleteTokenizer == null) {
-            autoCompleteTokenizer = KeywordTokenizer()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            lineBreakStyle = LineBreakConfig.LINE_BREAK_STYLE_NO_BREAK
         }
+        hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+        autoCompleteTokenizer = KeywordTokenizer()
         setTokenizer(autoCompleteTokenizer)
+        autoCompleteAdapter = AutoCompleteAdapter(context)
+        setAdapter(autoCompleteAdapter)
         threshold = 1
-        dropDownWidth = 400
-        setAutoCompletions(DEFAULT_COMPLETIONS)
-
+        dropDownWidth = 150 * displayDensity.toInt()
         mLineNumberPaint.textAlign = Paint.Align.RIGHT
         mLineNumberPaint.textSize = mLineNumberTextSize
         mLineNumberPaint.color = mLineNumberTextColor
@@ -178,10 +205,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
 
                     end - start == 1 && source[start] == '\n' -> autoIndent(
-                        source,
-                        dest,
-                        dStart,
-                        dEnd
+                        source, dest, dStart, dEnd
                     )
 
                     else -> source
@@ -215,8 +239,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
         if (keyCode == KeyEvent.KEYCODE_ENTER && event?.action == KeyEvent.ACTION_DOWN) {
-            if (isPopupShowing && mAutoCompleteAdapter != null) {
-                performCompletion()
+            if (isPopupShowing && listSelection == -1) {
+                replaceText(convertSelectionToString(adapter?.getItem(0)))
+                dismissDropDown()
                 return true
             }
         }
@@ -224,7 +249,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     override fun performFiltering(text: CharSequence, keyCode: Int) {
-        if (mAutoCompleteAdapter != null && autoCompleteTokenizer != null) {
+        if (autoCompleteAdapter != null && autoCompleteTokenizer != null) {
             val end = if (text.isNotEmpty()) minOf(selectionStart, text.length) else 0
             val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
             val constraint = if (tokenStart <= end && text.isNotEmpty()) {
@@ -232,14 +257,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             } else {
                 ""
             }
-            mAutoCompleteAdapter?.filter?.filter(constraint)
+            autoCompleteAdapter?.filter?.filter(constraint)
         } else {
             super.performFiltering(text, keyCode)
         }
     }
 
     override fun replaceText(text: CharSequence) {
-        val adapter = mAutoCompleteAdapter
+        val adapter = autoCompleteAdapter
         if (adapter == null) {
             super.replaceText(text)
             return
@@ -258,17 +283,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             } else {
                 ""
             }
-            val displayTextSuffix = if (displayText.contains(".")) {
-                displayText.substring(displayText.lastIndexOf(".") + 1)
-            } else {
-                displayText
-            }
-            val insertText = prefixBeforeDot + displayTextSuffix
+            val insertText = prefixBeforeDot + displayText
 
             editable.replace(tokenStart, tokenEnd, insertText)
 
             val newCursorPos = tokenStart + insertText.length
-            if (displayTextSuffix.endsWith("()")) {
+            if (displayText.endsWith("()")) {
                 setSelection(newCursorPos - 1)
             } else {
                 setSelection(newCursorPos)
@@ -279,13 +299,13 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     override fun enoughToFilter(): Boolean {
-        return mAutoCompleteAdapter != null || super.enoughToFilter()
+        return autoCompleteAdapter != null || super.enoughToFilter()
     }
 
     @Suppress("UselessCallOnNotNull")
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
-        if (mAutoCompleteAdapter != null && autoCompleteTokenizer != null) {
+        if (autoCompleteAdapter != null && autoCompleteTokenizer != null) {
             val text = editableText ?: return
             val end = if (text.isNotEmpty()) minOf(selStart, text.length) else 0
             val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
@@ -294,7 +314,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             } else {
                 ""
             }
-            mAutoCompleteAdapter?.filter?.filter(constraint)
+            autoCompleteAdapter?.filter?.filter(constraint)
         }
         if (currentMatchIndex >= 0 && !searchKeyword.isNullOrBlank()) {
             val range = matchRanges.getOrNull(currentMatchIndex)
@@ -305,17 +325,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun clearCurrentMatchHighlight() {
-        val range = matchRanges.getOrNull(currentMatchIndex) ?: return
-        val editable = editableText
-        if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
-            editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
-                .forEach { editable.removeSpan(it) }
-            editable.setSpan(
-                BackgroundColorSpan(searchHighlightColor),
-                range.first,
-                range.second,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+        matchRanges.getOrNull(currentMatchIndex)?.let {
+            editableText.setHighlightSpanSafe(it, searchHighlightColor)
         }
         currentMatchIndex = -1
     }
@@ -345,8 +356,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             // 3. 动态初始化“幽灵锚点” View
             if (cursorAnchor == null) {
                 cursorAnchor = View(context).apply {
-                    id = View.generateViewId()
-                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    id = generateViewId()
+                    setBackgroundColor(Color.TRANSPARENT)
                 }
                 parentGroup.addView(cursorAnchor)
 
@@ -357,7 +368,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             // 4. 让锚点不仅跟随光标，还要拥有与当前行一样的高度
             // 这样不仅向下展开时贴合底部，向上翻转时也能贴合顶部，不会遮挡你正在输入的文字！
             // 定义你想要的垂直间距 (建议在实战中把 12f 换算成 dp 转 px)
-            val yMargin = 10
+            val yMargin = 5 * displayDensity.toInt()
 
             // 4. 让锚点不仅跟随光标，还要在上下各“膨胀”出一段间距
             cursorAnchor?.let { anchor ->
@@ -371,18 +382,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 // Y 坐标往上提一个间距的距离，给上方留出空间
                 anchor.y = this.y + lineTop + paddingTop - scrollY - yMargin
             }
-
-            // 5. 既然锚点已经在正确的位置了，原生的偏移量必须全部清零
-            dropDownVerticalOffset = 0
-            dropDownHorizontalOffset = 0
-
-        } else {
-            // 极端兜底情况：如果父布局不是 ViewGroup，退回之前的计算方式
-            val targetY = lineBottom + paddingTop - scrollY
-            dropDownVerticalOffset = targetY - height
-            dropDownHorizontalOffset = targetX
         }
-
         super.showDropDown()
     }
 
@@ -391,39 +391,45 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     ): CharSequence {
         var iStart = dStart - 1
         var lastNonSpaceChar: Char? = null
-        while (iStart > -1) {
+        val nextChar = dest[dEnd]
+        while (iStart >= 0) {
             val c = dest[iStart]
             if (c == '\n') break
             if (lastNonSpaceChar == null && !c.isWhitespace()) {
                 lastNonSpaceChar = c
             }
-            --iStart
+            iStart--
         }
         val lineStart = iStart + 1
         var indentEnd = lineStart
-        while (indentEnd < dStart) {
-            if (dest[indentEnd] != ' ') break
+        while (indentEnd < dStart && dest[indentEnd] == ' ') {
             indentEnd++
         }
         val indentStr = dest.subSequence(lineStart, indentEnd)
-        val indent = StringBuilder(source).append(indentStr)
-        // 如果上一行以特定字符结尾
-        lastNonSpaceChar?.let { char ->
-            if (mIndentCharacterList.contains(char)) {
-                indent.append("    ")
-            }
-            // 如果后面跟着的是匹配的闭合符号，则多加一个换行并缩进
-            mClosePairMap[char]?.let { closeChar ->
-                if (dEnd < dest.length && dest[dEnd] == closeChar) {
-                    indent.append("\n").append(indentStr)
-                    post {
-                        setSelection(
-                            dStart + indent.length - indentStr.length - 1
-                        )
-                    }
+        val indent = StringBuilder(source)
+        var cursorOffset: Int
+
+        when (lastNonSpaceChar) {
+            in mIndentCharacterList -> {
+                indent.append(indentStr).append("    ")
+                cursorOffset = indent.length
+                if (nextChar in mClosePairMap) {
+                    indent.append('\n').append(indentStr)
                 }
             }
+
+            nextChar if nextChar in mClosePairMap -> {
+                indent.append(indentStr.dropLast(4))
+                cursorOffset = indent.length
+            }
+
+            else -> {
+                indent.append(indentStr)
+                cursorOffset = indent.length
+            }
         }
+
+        post { setSelection(dStart + cursorOffset) }
         return indent.toString()
     }
 
@@ -433,7 +439,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val color = mSyntaxPatternMap[pattern]!!
             val m = pattern.matcher(editable)
             while (m.find()) {
-                createForegroundColorSpan(editable, m, color)
+                editable.setSpan(
+                    ForegroundColorSpan(color),
+                    m.start(),
+                    m.end(),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
             }
         }
     }
@@ -446,58 +457,43 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         while (matcher.find()) {
             if (mErrorHashSet.containsKey(lineNumber)) {
                 val color = mErrorHashSet[lineNumber]!!
-                createBackgroundColorSpan(editable, matcher, color)
+                editable.setSpan(
+                    BackgroundColorSpan(color),
+                    matcher.start(),
+                    matcher.end(),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
             }
             lineNumber += 1
             if (lineNumber > maxErrorLineValue) break
         }
     }
 
-    private fun createForegroundColorSpan(
-        editable: Editable, matcher: Matcher, @ColorInt color: Int
-    ) {
-        editable.setSpan(
-            ForegroundColorSpan(color),
-            matcher.start(),
-            matcher.end(),
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-    }
-
-    private fun createBackgroundColorSpan(
-        editable: Editable, matcher: Matcher, @ColorInt color: Int
-    ) {
-        editable.setSpan(
-            BackgroundColorSpan(color),
-            matcher.start(),
-            matcher.end(),
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-    }
-
     private fun highlightSearch(editable: Editable) {
         if (searchKeyword.isEmpty() || matchRanges.isEmpty()) return
 
-        for (i in matchRanges.indices) {
-            val range = matchRanges[i]
+        matchRanges.forEachIndexed { i, range ->
             val color = if (i == currentMatchIndex) currentMatchColor else searchHighlightColor
-            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
-                editable.setSpan(
-                    BackgroundColorSpan(color),
-                    range.first,
-                    range.second,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
+            editable.setHighlightSpanSafe(range, color)
         }
     }
 
     private fun highlightIncremental(start: Int, count: Int) {
         if (isHighlighting || mSyntaxPatternMap.isEmpty()) return
         isHighlighting = true
+        var lineStart = start
+        while (lineStart > 0 && editableText[lineStart - 1] != '\n') {
+            lineStart--
+        }
+        var lineEnd = start + count
+        while (lineEnd < editableText.length && editableText[lineEnd] != '\n') {
+            lineEnd++
+        }
+        editableText.getSpans(lineStart, lineEnd, ForegroundColorSpan::class.java)
+            .forEach { editableText.removeSpan(it) }
         for ((pattern, color) in mSyntaxPatternMap) {
             val m = pattern.matcher(editableText)
-            m.region(start, start + count)
+            m.region(lineStart, lineEnd)
             while (m.find()) {
                 editableText.setSpan(
                     ForegroundColorSpan(color),
@@ -580,12 +576,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 if (range.first >= searchStart && range.second <= searchEnd) {
                     val color =
                         if (i == currentMatchIndex) currentMatchColor else searchHighlightColor
-                    editable.setSpan(
-                        BackgroundColorSpan(color),
-                        range.first,
-                        range.second,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
+                    editable.setHighlightSpanSafe(range, color)
                 }
             }
         } catch (e: Exception) {
@@ -609,7 +600,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     fun setTabWidth(characters: Int) {
         if (tabWidthInCharacters == characters) return
         tabWidthInCharacters = characters
-        tabWidth = paint.measureText(" ").roundToInt()
+        tabWidth = (paint.measureText(" ") * characters).roundToInt()
     }
 
     private fun clearSpans(editable: Editable) {
@@ -648,25 +639,17 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         mSyntaxPatternMap.remove(pattern)
     }
 
-    fun getSyntaxPatternsSize(): Int {
-        return mSyntaxPatternMap.size
-    }
+    fun getSyntaxPatternsSize() = mSyntaxPatternMap.size
 
-    fun resetSyntaxPatternList() {
-        mSyntaxPatternMap.clear()
-    }
+    fun resetSyntaxPatternList() = mSyntaxPatternMap.clear()
 
     fun setAutoIndentCharacterList(characterList: Set<Char>) {
         mIndentCharacterList = characterList.toMutableSet()
     }
 
-    fun clearAutoIndentCharacterList() {
-        mIndentCharacterList.clear()
-    }
+    fun clearAutoIndentCharacterList() = mIndentCharacterList.clear()
 
-    fun getAutoIndentCharacterList(): Set<Char> {
-        return mIndentCharacterList
-    }
+    fun getAutoIndentCharacterList() = mIndentCharacterList
 
     fun addErrorLine(lineNum: Int, color: Int) {
         mErrorHashSet[lineNum] = color
@@ -683,25 +666,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         hasErrors = false
     }
 
-    fun getErrorsSize(): Int {
-        return mErrorHashSet.size
-    }
+    fun getErrorsSize() = mErrorHashSet.size
 
-    fun getTextWithoutTrailingSpace(): String {
-        return PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
-    }
+    fun getTextWithoutTrailingSpace() = PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
 
-    fun reHighlightSyntax() {
-        highlightSyntax(editableText)
-    }
+    fun reHighlightSyntax() = highlightSyntax(editableText)
 
-    fun reHighlightErrors() {
-        highlightErrorLines(editableText)
-    }
+    fun reHighlightErrors() = highlightErrorLines(editableText)
 
-    fun isHasError(): Boolean {
-        return hasErrors
-    }
+    fun isHasError() = hasErrors
 
     override fun startActionMode(callback: ActionMode.Callback?): ActionMode? {
         return super.startActionMode(wrapCallback(callback))
@@ -719,18 +692,13 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             ): Boolean = callback.onActionItemClicked(mode, item)
 
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.add(Menu.NONE, android.R.id.custom, 1, "查找替换").setOnMenuItemClickListener {
-                    val start = selectionStart
-                    val end = selectionEnd
-                    val fullText = text.toString()
-                    var selectedText = ""
-                    if (start in 0..<end && end <= fullText.length) {
-                        selectedText = fullText.substring(start, end)
+                menu.add(Menu.NONE, android.R.id.custom, 1, "查找替换")
+                    .setOnMenuItemClickListener {
+                        val selectedText = text.substring(selectionStart, selectionEnd)
+                        clearFocus()
+                        onSearchReplaceAction?.invoke(selectedText)
+                        true
                     }
-                    clearFocus()
-                    onSearchReplaceAction?.invoke(selectedText)
-                    true
-                }
                 return callback.onCreateActionMode(mode, menu)
             }
 
@@ -796,32 +764,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         this.matchWholeWord = matchWholeWord
 
         // 如果关键词 or 文本为空，清除搜索结果并返回
-        if (keyword.isEmpty() || text.isEmpty()) {
+        if (keyword.isEmpty()) {
             clearSearch()
             return
         }
 
         // 如果需要重新计算匹配结果
-        if (needRecompute) {
-            matchRanges.clear()
-            currentMatchIndex = -1
-            try {
-                val pattern = getSearchPattern() ?: return
-                val matcher = pattern.matcher(text)
-                // 查找所有匹配项
-                while (matcher.find()) {
-                    matchRanges.add(Pair(matcher.start(), matcher.end()))
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        if (needRecompute) reHighlightSearch()
 
         // 如果没有匹配结果，重新高亮并返回
-        if (matchRanges.isEmpty()) {
-            reHighlightSearch()
-            return
-        }
+        if (matchRanges.isEmpty()) return
 
         // 确定当前应该选中的索引
         if (needRecompute) {
@@ -874,46 +826,17 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun updateSingleMatchHighlight(newIndex: Int) {
-        val editable = editableText
-        val newRange = matchRanges.getOrNull(newIndex) ?: return
-        if (newRange.first >= 0 && newRange.second <= editable.length && newRange.first < newRange.second) {
-            editable.getSpans(newRange.first, newRange.second, BackgroundColorSpan::class.java)
-                .forEach { editable.removeSpan(it) }
-            editable.setSpan(
-                BackgroundColorSpan(currentMatchColor),
-                newRange.first,
-                newRange.second,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+        matchRanges.getOrNull(newIndex)?.let {
+            editableText.setHighlightSpanSafe(it, currentMatchColor)
         }
     }
 
     private fun updateMatchHighlight(prevIndex: Int, newIndex: Int) {
-        val editable = editableText
-        matchRanges.getOrNull(prevIndex)?.let { range ->
-            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
-                editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
-                    .forEach { editable.removeSpan(it) }
-                editable.setSpan(
-                    BackgroundColorSpan(searchHighlightColor),
-                    range.first,
-                    range.second,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
+        matchRanges.getOrNull(prevIndex)?.let {
+            editableText.setHighlightSpanSafe(it, searchHighlightColor)
         }
-
-        matchRanges.getOrNull(newIndex)?.let { range ->
-            if (range.first >= 0 && range.second <= editable.length && range.first < range.second) {
-                editable.getSpans(range.first, range.second, BackgroundColorSpan::class.java)
-                    .forEach { editable.removeSpan(it) }
-                editable.setSpan(
-                    BackgroundColorSpan(currentMatchColor),
-                    range.first,
-                    range.second,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
+        matchRanges.getOrNull(newIndex)?.let {
+            editableText.setHighlightSpanSafe(it, currentMatchColor)
         }
     }
 
@@ -951,10 +874,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun replaceAll(
-        keyword: String,
-        regex: Boolean,
-        matchCase: Boolean,
-        matchWholeWord: Boolean,
         replaceText: String
     ) {
         if (matchRanges.isEmpty()) return
@@ -977,42 +896,31 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         getEnterPos(editableText)
         updateLineNumberPadding()
         setSelection(savedCursorPos)
-        clearSearch()
-        recomputeSearchMatches()
+        reHighlightSearch()
     }
 
     fun clearSearch() {
-        val editable = editableText
-        editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { span ->
-            if (span.backgroundColor == searchHighlightColor || span.backgroundColor == currentMatchColor) {
-                editable.removeSpan(span)
+        editableText.getSpans(0, editableText.length, BackgroundColorSpan::class.java)
+            .forEach { span ->
+                if (span.backgroundColor == searchHighlightColor || span.backgroundColor == currentMatchColor) {
+                    editableText.removeSpan(span)
+                }
             }
-        }
-        searchKeyword = ""
         matchRanges.clear()
         currentMatchIndex = -1
     }
 
-    private fun recomputeSearchMatches() {
-        val editable = editableText
-        // 清理旧高亮
-        editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { span ->
-            if (span.backgroundColor == searchHighlightColor || span.backgroundColor == currentMatchColor) {
-                editable.removeSpan(span)
-            }
-        }
-
-        matchRanges.clear()
-        currentMatchIndex = -1
+    private fun reHighlightSearch() {
+        clearSearch()
         if (searchKeyword.isEmpty()) return
 
         try {
             val pattern = getSearchPattern() ?: return
-            val matcher = pattern.matcher(editable)
+            val matcher = pattern.matcher(editableText)
             while (matcher.find()) {
                 val range = Pair(matcher.start(), matcher.end())
                 matchRanges.add(range)
-                editable.setSpan(
+                editableText.setSpan(
                     BackgroundColorSpan(searchHighlightColor),
                     range.first,
                     range.second,
@@ -1022,10 +930,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    private fun reHighlightSearch() {
-        recomputeSearchMatches()
     }
 
     private fun updateLineNumberPadding() {
@@ -1055,11 +959,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
             val firstLineStartOffset = layout.getLineStart(firstLine)
             var currentLineIndex =
-                java.util.Arrays.binarySearch(enterPos, 0, enterPosSize, firstLineStartOffset).let {
+                enterPos.binarySearch(firstLineStartOffset, 0, enterPosSize).let {
                     if (it < 0) -it - 1 else it
                 }
 
             var prevLineNumber = -1
+            val x = paddingLeft - 11f * displayDensity
+            val yOffset = paddingTop.toFloat()
+
             for (i in firstLine..lastLine) {
                 lineStartOffset = layout.getLineStart(i)
                 if (lineStartOffset == 0 || text[lineStartOffset - 1] == '\n') {
@@ -1068,8 +975,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
                     val lineNumber = currentLineIndex
                     if (lineNumber != prevLineNumber) {
-                        val x = paddingLeft - 11f * displayDensity
-                        val y = layout.getLineBaseline(i).toFloat() + paddingTop
+                        val y = layout.getLineBaseline(i).toFloat() + yOffset
                         val displayLineNumber = lineNumber + 1
                         var lineStr = lineNumberCache.get(displayLineNumber)
                         if (lineStr == null) {
@@ -1111,9 +1017,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private fun updateEnterPosIncremental(text: CharSequence, start: Int, before: Int, count: Int) {
         val offset = count - before
         if (before > 0) {
-            var first = java.util.Arrays.binarySearch(enterPos, 0, enterPosSize, start)
+            var first = enterPos.binarySearch(start, 0, enterPosSize)
             if (first < 0) first = -first - 1
-            var last = java.util.Arrays.binarySearch(enterPos, 0, enterPosSize, start + before - 1)
+            var last = enterPos.binarySearch(start + before - 1, 0, enterPosSize)
             if (last < 0) last = -last - 2
             if (last >= first) {
                 val numToRemove = last - first + 1
@@ -1137,7 +1043,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
         if (newEnters.isNotEmpty()) {
-            var index = java.util.Arrays.binarySearch(enterPos, 0, enterPosSize, start)
+            var index = enterPos.binarySearch(start, 0, enterPosSize)
             if (index < 0) index = -index - 1
 
             val numNew = newEnters.size
@@ -1174,178 +1080,20 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun setAutoCompletions(completions: Map<String, List<String>>) {
-        if (mAutoCompleteAdapter == null) {
-            mAutoCompleteAdapter = AutoCompleteAdapter(context, completions)
-            if (autoCompleteTokenizer == null || autoCompleteTokenizer is KeywordTokenizer) {
-                autoCompleteTokenizer = DotTokenizer()
+        if (autoCompleteAdapter == null) {
+            autoCompleteAdapter = AutoCompleteAdapter(context, completions)
+            if (autoCompleteTokenizer == null) {
+                autoCompleteTokenizer = KeywordTokenizer()
                 setTokenizer(autoCompleteTokenizer)
             }
-            setAdapter(mAutoCompleteAdapter)
+            setAdapter(autoCompleteAdapter)
         } else {
-            mAutoCompleteAdapter?.setCompletions(completions)
+            autoCompleteAdapter!!.completions = completions
         }
     }
-
-    fun getAutoCompleteAdapter(): AutoCompleteAdapter? = mAutoCompleteAdapter
 
     companion object {
         private val PATTERN_LINE = Pattern.compile("(^.+$)+", Pattern.MULTILINE)
         private val PATTERN_TRAILING_WHITE_SPACE = Pattern.compile("[\\t ]+$", Pattern.MULTILINE)
-        val DEFAULT_COMPLETIONS = mapOf(
-            "java" to listOf(
-                // Network
-                "ajax()",
-                "ajaxAll()",
-                "connect()",
-                "get()",
-                "post()",
-                "head()",
-                // WebView
-                "webView()",
-                // Browser
-                "startBrowser()",
-                "startBrowserAwait()",
-                // URL
-                "openUrl()",
-                // Activity
-                "startJsActivity()",
-                // User-Agent
-                "getWebViewUA()",
-                // Verification
-                "getVerificationCode()",
-                // Cookie
-                "getCookie()",
-                // Import
-                // Cache
-                "cacheFile()",
-                // Encoding
-                "encodeURI()",
-                "base64Decode()",
-                "base64DecodeToByteArray()",
-                "base64Encode()",
-                "hexDecodeToByteArray()",
-                "hexDecodeToString()",
-                // Crypto
-                "createSymmetricCrypto()",
-                "createAsymmetricCrypto()",
-                "createSign()",
-                "digestHex()",
-                "digestBase64Str()",
-                "md5Encode()",
-                "md5Encode16()",
-                "HMacHex()",
-                "HMacBase64()",
-                // ByteArray
-                "strToBytes()",
-                "bytesToStr()",
-                // ID
-                "randomUUID()",
-                "androidId()",
-                // Chinese
-                "t2s()",
-                "s2t()",
-                // Time
-                "timeFormatUTC()",
-                "timeFormat()",
-                // HTML
-                "htmlFormat()",
-                // Toast
-                "toast()",
-                "longToast()",
-                // Debug
-                "log()",
-                "logType()",
-                // AnalyzRule
-                "getString()",
-                "getStringList()",
-                "getElement()",
-                "getElements()",
-                "setContent()",
-                "reGetBook()",
-                "refreshTocUrl()",
-                "put()",
-                // RssJsExtensions
-                "searchBook()",
-                "addBook()",
-                // AnalyzeUrl ()
-                "initUrl()",
-                "getHeaderMap()",
-                "getStrResponse()",
-                "getResponse()"
-            ),
-            "source" to listOf(
-                "getKey()",
-                "setVariable()",
-                "getVariable()",
-                "getLoginHeader()",
-                "getLoginHeaderMap()",
-                "putLoginHeader()",
-                "removeLoginHeader()",
-                "getLoginInfo()",
-                "getLoginInfoMap()",
-                "removeLoginInfo()"
-            ),
-            "book" to listOf(
-                "bookUrl",
-                "tocUrl",
-                "origin",
-                "originName",
-                "name",
-                "author",
-                "kind",
-                "customTag",
-                "coverUrl",
-                "customCoverUrl",
-                "intro",
-                "customIntro",
-                "charset",
-                "type",
-                "group",
-                "latestChapterTitle",
-                "latestChapterTime",
-                "lastCheckTime",
-                "lastCheckCount",
-                "totalChapterNum",
-                "durChapterTitle",
-                "durChapterIndex",
-                "durChapterPos",
-                "durChapterTime",
-                "canUpdate",
-                "order",
-                "originOrder",
-                "variable"
-            ),
-            "chapter" to listOf(
-                "url",
-                "title",
-                "baseUrl",
-                "bookUrl",
-                "index",
-                "resourceUrl",
-                "tag",
-                "start",
-                "end",
-                "variable"
-            ),
-            "cookie" to listOf(
-                "getCookie()", "getKey()", "setCookie()", "replaceCookie()", "removeCookie()"
-            ),
-            "cache" to listOf(
-                "put()",
-                "get()",
-                "delete()",
-                "putFile()",
-                "getFile()",
-                "deleteFile()",
-                "putMemory()",
-                "getFromMemory()",
-                "deleteMemory()"
-            ),
-            "result" to listOf(),
-            "baseUrl" to listOf(),
-            "title" to listOf(),
-            "src" to listOf(),
-            "nextChapterUrl" to listOf()
-        )
     }
 }

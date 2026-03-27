@@ -3,7 +3,6 @@ package io.legado.app.ui.book.manga.recyclerview
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -18,7 +17,6 @@ import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.bumptech.glide.Glide
-import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.load.Transformation
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
@@ -45,7 +43,6 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
     protected lateinit var mFlProgress: FrameLayout
     protected var mRetry: Button? = null
     private val minHeight = context.resources.displayMetrics.heightPixels * 2 / 3
-    private var fetchJob: Job? = null
 
     companion object {
         private val preloadJobs = mutableMapOf<String, Job>()
@@ -74,8 +71,9 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         }
 
         fun cancelAllPreload() {
-            preloadJobs.values.forEach { it.cancel() }
+            val jobs = preloadJobs.values.toList()
             preloadJobs.clear()
+            jobs.forEach { it.cancel() }
         }
     }
 
@@ -100,7 +98,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
-        fetchJob?.cancel()
+        preloadJobs[imageUrl]?.cancel()
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
@@ -111,80 +109,59 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
             mProgress.text = "$percentage%"
         }
         mImage.tag = imageUrl
-        fetchJob = CoroutineScope(IO).launch {
-            var glide: RequestBuilder<Drawable>? = null
-            try {
-                glide =
-                    if (isImageExist(ReadManga.book!!, imageUrl)) {
-                        Glide.with(context).load(BookHelp.getImage(ReadManga.book!!, imageUrl))
-                    } else {
-                        ImageLoader.loadManga(imageUrl, coroutineContext)?.let {
-                            Glide.with(context).load(it)
-                        }
+        preloadJobs[imageUrl] = CoroutineScope(IO).launch {
+            val glide = try {
+                if (isImageExist(ReadManga.book!!, imageUrl)) {
+                    Glide.with(context).load(BookHelp.getImage(ReadManga.book!!, imageUrl))
+                } else {
+                    ImageLoader.loadManga(imageUrl, coroutineContext)?.let {
+                        Glide.with(context).load(it)
                     }
+                }
             } catch (e: Exception) {
                 e.printOnDebug()
-            } finally {
-                withContext(Dispatchers.Main) {
-                    if (mImage.tag != imageUrl) return@withContext
-                    if (glide == null) {
-                        mFlProgress.isVisible = true
-                        mLoading.isGone = true
-                        mRetry?.isVisible = true
-                        mProgress.isGone = true
-                        itemView.updateLayoutParams<ViewGroup.LayoutParams> {
-                            height = ViewGroup.LayoutParams.MATCH_PARENT
-                        }
+                null
+            }
 
-                    } else {
+            preloadJobs.remove(imageUrl)
 
-                        mFlProgress.isGone = true
-                        if (!isHorizontal) {
-                            itemView.updateLayoutParams<ViewGroup.LayoutParams> {
-                                height = ViewGroup.LayoutParams.WRAP_CONTENT
-                            }
-                            mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                                gravity = Gravity.NO_GRAVITY
-                            }
-                            if (isLastImage) {
-                                mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                                    height = ViewGroup.LayoutParams.WRAP_CONTENT
-                                }
-                                itemView.minimumHeight = minHeight
-                            } else {
-                                mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                                    height = ViewGroup.LayoutParams.MATCH_PARENT
-                                }
-                                itemView.minimumHeight = 0
-                            }
-                            mImage.scaleType = ImageView.ScaleType.FIT_XY
-                        } else {
-                            itemView.updateLayoutParams<ViewGroup.LayoutParams> {
-                                height = ViewGroup.LayoutParams.MATCH_PARENT
-                            }
-                            itemView.minimumHeight = 0
-                            mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                                height = ViewGroup.LayoutParams.MATCH_PARENT
-                                gravity = Gravity.CENTER
-                            }
-                            mImage.scaleType = ImageView.ScaleType.FIT_CENTER
-                        }
-
-                        glide.override(
-                            context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL
-                        ).diskCacheStrategy(DiskCacheStrategy.NONE)
-//                            .skipMemoryCache(true)
-                            .let {
-                                if (transformation != null) {
-                                    it.transform(transformation)
-                                } else {
-                                    it
-                                }
-                            }.into(mImage)
+            withContext(Dispatchers.Main) {
+                if (mImage.tag != imageUrl) return@withContext
+                if (glide == null) {
+                    mFlProgress.isVisible = true
+                    mLoading.isGone = true
+                    mRetry?.isVisible = true
+                    mProgress.isGone = true
+                    itemView.updateLayoutParams<ViewGroup.LayoutParams> {
+                        height = ViewGroup.LayoutParams.MATCH_PARENT
                     }
+                } else {
+                    mFlProgress.isGone = true
+                    if (isHorizontal) {
+                        itemView.updateLayoutParams<ViewGroup.LayoutParams> { height = ViewGroup.LayoutParams.MATCH_PARENT }
+                        itemView.minimumHeight = 0
+                        mImage.updateLayoutParams<FrameLayout.LayoutParams> {
+                            height = ViewGroup.LayoutParams.MATCH_PARENT
+                            gravity = Gravity.CENTER
+                        }
+                        mImage.scaleType = ImageView.ScaleType.FIT_CENTER
+                    } else {
+                        itemView.updateLayoutParams<ViewGroup.LayoutParams> { height = ViewGroup.LayoutParams.WRAP_CONTENT }
+                        itemView.minimumHeight = if (isLastImage) minHeight else 0
+                        mImage.updateLayoutParams<FrameLayout.LayoutParams> {
+                            gravity = Gravity.NO_GRAVITY
+                            height = if (isLastImage) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+                        }
+                        mImage.scaleType = ImageView.ScaleType.FIT_XY
+                    }
+
+                    glide.override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
+                        .diskCacheStrategy(DiskCacheStrategy.NONE)
+                        .apply { transformation?.let { transform(it) } }
+                        .into(mImage)
                 }
             }
         }
-        fetchJob?.start()
+        preloadJobs[imageUrl]?.start()
     }
 }

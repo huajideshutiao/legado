@@ -174,10 +174,6 @@ class KeyboardToolPop @JvmOverloads constructor(
             }
             tvReplaceAll.setOnClickListener {
                 callBack.getActiveCodeView()?.replaceAll(
-                    tvFind.text.toString(),
-                    useRegex,
-                    matchCase,
-                    matchWholeWord,
                     tvReplace.text.toString()
                 )
             }
