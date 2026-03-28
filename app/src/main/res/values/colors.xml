@@ -50,7 +50,7 @@
     <color name="darker_gray">#aaaaaaaa</color>
 
     <!-- 分格线背景色 -->
-    <color name="bg_divider_line">#8fe0e0e0</color>
+    <color name="bg_divider_line">@color/background_menu</color>
     <!--statusBarBackground-->
     <color name="status_bar_bag">#19000000</color>
     <color name="navigation_bar_bag">#f4f4f4</color>

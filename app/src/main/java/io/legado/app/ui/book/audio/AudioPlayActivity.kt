@@ -133,7 +133,6 @@ class AudioPlayActivity :
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
             R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
-            R.id.menu_copy_chapter_url -> sendToClip(AudioPlay.durChapter?.url ?: "")
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 GlobalVars.nowSource = it
                 sourceEditResult.launch {}

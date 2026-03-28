@@ -38,7 +38,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:entries="@array/book_type"
-                android:theme="@style/Spinner"
                 tools:ignore="TouchTargetSizeCheck" />
 
             <io.legado.app.lib.theme.view.ThemeCheckBox
@@ -86,8 +85,13 @@
         android:layout_width="match_parent"
         android:layout_height="36dp"
         android:background="@color/background"
-        android:elevation="3dp"
         tools:ignore="SpeakableTextPresentCheck" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/bg_divider_line" />
+
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"

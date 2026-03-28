@@ -20,7 +20,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.PopupKeyboardToolBinding
-import io.legado.app.databinding.ViewFindReplaceBinding
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.Debounce
@@ -49,7 +48,6 @@ class KeyboardToolPop @JvmOverloads constructor(
     private lateinit var callBack: CallBack
 
     private val binding = PopupKeyboardToolBinding.inflate(LayoutInflater.from(context), this, true)
-    private val findReplaceBinding = ViewFindReplaceBinding.bind(binding.layoutFindReplace.root)
     private val adapter = Adapter(context)
     private var mIsSoftKeyBoardShowing = false
     var initialPadding = 0
@@ -110,12 +108,12 @@ class KeyboardToolPop @JvmOverloads constructor(
                     }
                 }
                 // 如果搜索面板显示，则跳过隐藏搜索面板和底栏的逻辑
-                if (!binding.layoutFindReplace.root.isVisible) {
+                if (!binding.llFindReplace.isVisible) {
                     dismissRunnable = Runnable {
                         if (!mIsSoftKeyBoardShowing) {
                             isVisible = false
-                            findReplaceBinding.tvFind.text?.clear()
-                            findReplaceBinding.tvReplace.text?.clear()
+                            binding.tvFind.text?.clear()
+                            binding.tvReplace.text?.clear()
                             useRegex = false
                             matchCase = false
                             matchWholeWord = false
@@ -145,7 +143,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     private fun initFindReplace() {
-        findReplaceBinding.apply {
+        binding.apply {
             tvNext.setOnClickListener {
                 callBack.getActiveCodeView()?.find(
                     tvFind.text.toString(),
@@ -198,7 +196,7 @@ class KeyboardToolPop @JvmOverloads constructor(
                             wordItem -> matchWholeWord = !matchWholeWord
                             caseItem -> matchCase = !matchCase
                             else -> {
-                                binding.layoutFindReplace.root.visibility = GONE
+                                binding.llFindReplace.visibility = GONE
                                 return@setOnMenuItemClickListener true
                             }
                         }
@@ -221,23 +219,23 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     private fun toggleFindReplace() {
-        val tmp = !binding.layoutFindReplace.root.isVisible
-        binding.layoutFindReplace.root.isVisible = tmp
+        val tmp = !binding.llFindReplace.isVisible
+        binding.llFindReplace.isVisible = tmp
         if (tmp) {
-            if (!findReplaceBinding.tvFind.text.isNullOrEmpty()) findReplaceBinding.tvFind.setText("")
-            binding.layoutFindReplace.root.post {
+            if (!binding.tvFind.text.isNullOrEmpty()) binding.tvFind.setText("")
+            binding.llFindReplace.post {
                 callBack.getActiveCodeView()?.clearFocus()
-                findReplaceBinding.tvFind.requestFocus()
+                binding.tvFind.requestFocus()
             }
         }
     }
 
     fun showFindReplace(keyword: String) {
-        binding.layoutFindReplace.root.visibility = VISIBLE
+        binding.llFindReplace.visibility = VISIBLE
         findKeyword = keyword
-        findReplaceBinding.tvFind.requestFocus()
-        findReplaceBinding.tvFind.setText(keyword)
-        findReplaceBinding.tvFind.setSelection(keyword.length)
+        binding.tvFind.requestFocus()
+        binding.tvFind.setText(keyword)
+        binding.tvFind.setSelection(keyword.length)
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
