@@ -41,12 +41,10 @@ import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
@@ -99,7 +97,6 @@ class VideoPlayActivity(
                     val item = binding.titleBar.menu.findItem(R.id.menu_shelf)
                     item.setIcon(R.drawable.ic_star)
                     item.setTitle(R.string.in_favorites)
-                    viewModel.book.removeType(BookType.notShelf)
                 }
             }
         }

@@ -223,11 +223,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 var tmp = start
                 for (i in start - 1 downTo 0) {
                     when (text[i]) {
-                        '\n' -> {
-                            tmp--
-                            break
-                        }
-
                         ' ' -> tmp--
                         else -> break
                     }
@@ -391,7 +386,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     ): CharSequence {
         var iStart = dStart - 1
         var lastNonSpaceChar: Char? = null
-        val nextChar = dest[dEnd]
+
+        // 1. 寻找上一行的起点与最后一个非空字符
         while (iStart >= 0) {
             val c = dest[iStart]
             if (c == '\n') break
@@ -400,31 +396,33 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
             iStart--
         }
+
         val lineStart = iStart + 1
         var indentEnd = lineStart
+
+        // 2. 计算基础缩进
         while (indentEnd < dStart && dest[indentEnd] == ' ') {
             indentEnd++
         }
+
         val indentStr = dest.subSequence(lineStart, indentEnd)
-        val indent = StringBuilder(source)
-        var cursorOffset: Int
+        val indent = StringBuilder(source).append(indentStr)
+        var cursorOffset = indent.length
 
-        when (lastNonSpaceChar) {
-            in mIndentCharacterList -> {
-                indent.append(indentStr).append("    ")
-                cursorOffset = indent.length
-                if (nextChar in mClosePairMap) {
-                    indent.append('\n').append(indentStr)
-                }
+        // 3. 分支预测与处理
+        if (lastNonSpaceChar in mIndentCharacterList) {
+            indent.append("    ")
+            cursorOffset = indent.length
+            val nextChar = dest.getOrNull(dEnd)
+            if (nextChar != null && nextChar in mClosePairMap) {
+                indent.append('\n').append(indentStr)
             }
-
-            nextChar if nextChar in mClosePairMap -> {
-                indent.append(indentStr.dropLast(4))
-                cursorOffset = indent.length
-            }
-
-            else -> {
-                indent.append(indentStr)
+        } else {
+            val nextChar = dest.getOrNull(dEnd)
+            // 修复 Kotlin 语法中 guards 的兼容性，确保逻辑正确
+            if (lastNonSpaceChar == nextChar && nextChar != null && nextChar in mClosePairMap) {
+                // 预测：如果是闭合括号，减少缩进
+                indent.setLength(indent.length - 4) // 替代 dropLast(4)，性能更好
                 cursorOffset = indent.length
             }
         }
@@ -432,6 +430,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         post { setSelection(dStart + cursorOffset) }
         return indent.toString()
     }
+
 
     private fun highlightSyntax(editable: Editable) {
         if (mSyntaxPatternMap.isEmpty()) return

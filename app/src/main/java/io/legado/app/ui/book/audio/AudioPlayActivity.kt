@@ -309,7 +309,6 @@ class AudioPlayActivity :
             alert(title = getString(R.string.add_to_bookshelf)) {
                 setMessage(getString(R.string.check_add_bookshelf, book.name))
                 okButton {
-                    AudioPlay.book?.removeType(BookType.notShelf)
                     AudioPlay.book?.save()
                     AudioPlay.inBookshelf = true
                     appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray())

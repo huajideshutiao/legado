@@ -12,163 +12,11 @@ import io.legado.app.R
 
 class AutoCompleteAdapter(
     context: Context,
-    completions: Map<String, List<String>> = mapOf(
-        "" to listOf("java.log()"),
-        "java." to listOf(
-            // Network
-            "ajax()",
-            "ajaxAll()",
-            "connect()",
-            "get()",
-            "post()",
-            "head()",
-            // WebView
-            "webView()",
-            // Browser
-            "startBrowser()",
-            "startBrowserAwait()",
-            // URL
-            "openUrl()",
-            // Activity
-            "startJsActivity()",
-            // User-Agent
-            "getWebViewUA()",
-            // Verification
-            "getVerificationCode()",
-            // Cookie
-            "getCookie()",
-            // Cache
-            "cacheFile()",
-            // Encoding
-            "encodeURI()",
-            "base64Decode()",
-            "base64DecodeToByteArray()",
-            "base64Encode()",
-            "hexDecodeToByteArray()",
-            "hexDecodeToString()",
-            // Crypto
-            "createSymmetricCrypto()",
-            "createAsymmetricCrypto()",
-            "createSign()",
-            "digestHex()",
-            "digestBase64Str()",
-            "md5Encode()",
-            "md5Encode16()",
-            "HMacHex()",
-            "HMacBase64()",
-            // ByteArray
-            "strToBytes()",
-            "bytesToStr()",
-            // ID
-            "randomUUID()",
-            "androidId()",
-            // Chinese
-            "t2s()",
-            "s2t()",
-            // Time
-            "timeFormatUTC()",
-            "timeFormat()",
-            // HTML
-            "htmlFormat()",
-            // Debug
-            "log()",
-            "logType()",
-            // Toast
-            "toast()",
-            "longToast()",
-            // AnalyzRule
-            "getString()",
-            "getStringList()",
-            "getElement()",
-            "getElements()",
-            "setContent()",
-            "reGetBook()",
-            "refreshTocUrl()",
-            "put()",
-            // AnalyzeUrl ()
-            "initUrl()",
-            "getHeaderMap()",
-            "getStrResponse()",
-            "getResponse()"
-        ),
-        "source." to listOf(
-            "getKey()",
-            "setVariable()",
-            "getVariable()",
-            "getLoginHeader()",
-            "getLoginHeaderMap()",
-            "putLoginHeader()",
-            "removeLoginHeader()",
-            "getLoginInfo()",
-            "getLoginInfoMap()",
-            "removeLoginInfo()"
-        ),
-        "book." to listOf(
-            "bookUrl",
-            "tocUrl",
-            "origin",
-            "originName",
-            "name",
-            "author",
-            "kind",
-            "customTag",
-            "coverUrl",
-            "customCoverUrl",
-            "intro",
-            "customIntro",
-            "charset",
-            "type",
-            "group",
-            "latestChapterTitle",
-            "latestChapterTime",
-            "lastCheckTime",
-            "lastCheckCount",
-            "totalChapterNum",
-            "durChapterTitle",
-            "durChapterIndex",
-            "durChapterPos",
-            "durChapterTime",
-            "canUpdate",
-            "order",
-            "originOrder",
-            "variable"
-        ),
-        "chapter." to listOf(
-            "url",
-            "title",
-            "baseUrl",
-            "bookUrl",
-            "index",
-            "resourceUrl",
-            "tag",
-            "start",
-            "end",
-            "variable"
-        ),
-        "cookie." to listOf(
-            "getCookie()", "getKey()", "setCookie()", "replaceCookie()", "removeCookie()"
-        ),
-        "cache." to listOf(
-            "put()",
-            "get()",
-            "delete()",
-            "putFile()",
-            "getFile()",
-            "deleteFile()",
-            "putMemory()",
-            "getFromMemory()",
-            "deleteMemory()"
-        ),
-        "result" to listOf(),
-        "baseUrl" to listOf(),
-        "title" to listOf(),
-        "src" to listOf(),
-        "nextChapterUrl" to listOf()
-    )
+    completions: Map<String, List<String>?> = defaultCompletions
 ) : BaseAdapter(), Filterable {
 
     private val inflater = LayoutInflater.from(context)
-    var completions: Map<String, List<String>> = emptyMap()
+    var completions: Map<String, List<String>?> = emptyMap()
     private var filteredResults: List<String> = emptyList()
     private var originalInput: String = ""
     private val filter = CompletionFilter()
@@ -195,7 +43,8 @@ class AutoCompleteAdapter(
             view = convertView
             viewHolder = view.tag as ViewHolder
         }
-        viewHolder.textView?.text = filteredResults[position]
+        val text = filteredResults[position]
+        viewHolder.textView?.text = if (text.endsWith(".")) text.dropLast(1) else text
         return view
     }
 
@@ -216,7 +65,6 @@ class AutoCompleteAdapter(
             val results = FilterResults()
             originalInput = constraint?.toString() ?: ""
 
-            val scoredMatches = mutableListOf<Pair<String, Int>>()
             val input = originalInput
 
             if (input.isEmpty()) {
@@ -225,7 +73,8 @@ class AutoCompleteAdapter(
                 return results
             }
 
-            val addedItems = HashSet<String>()
+            val scoredMatches = ArrayList<Pair<String, Int>>(32)
+            val addedItems = HashSet<String>(32)
 
             if (input.contains(".")) {
                 val dotIndex = input.lastIndexOf(".")
@@ -233,9 +82,12 @@ class AutoCompleteAdapter(
                 val suffix = input.substring(dotIndex + 1)
 
                 if (suffix.isNotEmpty()) {
-                    val subCompletions = completions[prefix] ?: completions[input.take(dotIndex)]
+                    val subCompletions = completions[prefix]
+                        ?: completions[input.take(dotIndex)]
+                        ?: completions["*."]
                     subCompletions?.let {
                         for (item in it) {
+                            if (item == suffix) continue
                             val score = fuzzyMatchScore(suffix, item)
                             if (score > 0) {
                                 if (addedItems.add(item)) {
@@ -248,6 +100,7 @@ class AutoCompleteAdapter(
             } else {
                 val items = completions.keys + (completions[""] ?: emptyList())
                 for (item in items) {
+                    if (item == input) continue
                     val score = fuzzyMatchScore(input, item)
                     if (score > 0 && addedItems.add(item)) {
                         scoredMatches.add(Pair(item, score))
@@ -273,14 +126,68 @@ class AutoCompleteAdapter(
     }
 
     companion object {
+        val defaultCompletions: Map<String, List<String>?> = mapOf(
+            "*." to listOf(
+                "length","slice()","split()","replace()","substring()","indexOf()","includes()","map()","forEach()","join()","push()","toString()","match()"
+            ),
+//            "" to listOf(""),
+            "java." to listOf(
+                // Network
+                "ajax()","ajaxAll()","get()","post()",
+                // Browser
+                "startBrowser()","startBrowserAwait()",
+                "openUrl()", "startJsActivity()",
+                // User-Agent
+                "getWebViewUA()", "getVerificationCode()",
+                // Cookie
+                "getCookie()",
+                // Cache
+                "cacheFile()",
+                // Encoding
+                "encodeURI()","base64Decode()","base64DecodeToByteArray()","base64Encode()","hexDecodeToByteArray()","hexDecodeToString()",
+                // Crypto
+                "createSymmetricCrypto()","createAsymmetricCrypto()","createSign()","digestHex()","digestBase64Str()","md5Encode()","md5Encode16()","HMacHex()","HMacBase64()",
+                // ByteArray
+                "strToBytes()","bytesToStr()",
+                // Chinese
+                "t2s()","s2t()",
+                // Time
+                "timeFormatUTC()","timeFormat()",
+                "log()","logType()","toast()","longToast()",
+                // AnalyzRule
+                "getString()","getStringList()","getElement()","getElements()","setContent()","refreshTocUrl()","put()",
+                // AnalyzeUrl ()
+                "initUrl()","getHeaderMap()","getStrResponse()","getResponse()"
+            ),
+            "source." to listOf(
+                "getKey()","variable","loginHeader","getLoginHeaderMap()","putLoginHeader()","removeLoginHeader()","loginInfo","loginInfoMap","removeLoginInfo()"
+            ),
+            "book." to listOf(
+                "bookUrl","tocUrl","origin","originName","name","author","kind","coverUrl","intro","type","group","latestChapterTitle","latestChapterTime","lastCheckTime","lastCheckCount","totalChapterNum","durChapterTitle","durChapterIndex","durChapterPos","durChapterTime","canUpdate","order","originOrder","variable","save()","delete()"
+            ),
+            "chapter." to listOf(
+                "url","title","baseUrl","bookUrl","index","resourceUrl","tag","start","end","variable"
+            ),
+            "cookie." to listOf(
+                "getCookie()", "getKey()", "setCookie()", "replaceCookie()", "removeCookie()"
+            ),
+            "cache." to listOf(
+                "put()","get()","delete()","putFile()","getFile()","deleteFile()","putMemory()","getFromMemory()","deleteMemory()"
+            ),
+            "result" to null,
+            "baseUrl" to null,
+            "src" to null,
+        )
+
         fun fuzzyMatchScore(pattern: String, target: String): Int {
             if (pattern.isEmpty()) return 0
-            if (pattern.length > target.length) return 0
+            val patternLength = pattern.length
+            if (patternLength > target.length) return 0
 
             if (target.startsWith(pattern, ignoreCase = true)) {
                 return when {
                     target.equals(pattern, ignoreCase = true) -> 100
-                    target.length == pattern.length + 2 && target.endsWith("()") -> 95
+                    target.length == patternLength + 2 && target.endsWith("()") -> 95
                     else -> 90
                 }
             }
@@ -290,7 +197,6 @@ class AutoCompleteAdapter(
             }
 
             var patternIndex = 0
-            val patternLength = pattern.length
             for (i in target.indices) {
                 if (patternIndex < patternLength && target[i].equals(pattern[patternIndex], ignoreCase = true)) {
                     patternIndex++

@@ -7,7 +7,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -15,7 +14,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -98,7 +96,6 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun addToBookshelf(success: (() -> Unit)?) {
         execute {
-            book.removeType(BookType.notShelf)
             if (book.order == 0) book.order = appDb.bookDao.minOrder - 1
             book.save()
             chapterList.value?.let {
