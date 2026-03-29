@@ -49,7 +49,7 @@ abstract class BaseDialogFragment(
                 it.attributes = attr
                 it.decorView.setBackgroundKeepPadding(R.color.transparent)
             }
-            // 修改gravity的时机一般在子类的onStart方法中, 因此需要在onStart之后执行.
+            // 修改 gravity 的时机一般在子类的 onStart 方法中，因此需要在 onStart 之后执行.
             lifecycle.addObserver(LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_START) {
                     when (dialog?.window?.attributes?.gravity) {
@@ -64,6 +64,11 @@ abstract class BaseDialogFragment(
                 }
             })
         }
+        dialog?.window?.let {
+            val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
+            it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,7 +84,8 @@ abstract class BaseDialogFragment(
         if (adaptationSoftKeyboard) {
             view.findViewById<View>(R.id.vw_bg)?.setOnClickListener(null)
             view.setOnClickListener { dismiss() }
-        } else if (!AppConfig.isEInkMode) {
+        }
+        if (!AppConfig.isEInkMode) {
             view.setBackgroundColor(ThemeStore.backgroundColor())
         }
         onFragmentCreated(view, savedInstanceState)

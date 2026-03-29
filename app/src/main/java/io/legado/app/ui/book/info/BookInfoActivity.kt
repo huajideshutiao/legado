@@ -73,6 +73,7 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -209,15 +210,9 @@ class BookInfoActivity :
                 }
             }
 
-            R.id.menu_share_it -> {
-                viewModel.getBook()?.let {
-                    sendToClip("[${GSON.toJson(it)}]")
-                }
-            }
+            R.id.menu_share_it -> share("[${GSON.toJson(book)}]")
 
-            R.id.menu_refresh -> {
-                refreshBook()
-            }
+            R.id.menu_refresh -> refreshBook()
 
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it

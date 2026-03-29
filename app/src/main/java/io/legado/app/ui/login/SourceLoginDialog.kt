@@ -50,10 +50,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     private val book by lazy { GlobalVars.nowBook }
     private val chapter by lazy { GlobalVars.nowChapter }
 
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
+//    override fun onStart() {
+//        super.onStart()
+//        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+//    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = viewModel.source ?: return
@@ -132,15 +132,15 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     login(source, loginData)
                 }
 
-                R.id.menu_show_login_header -> alert {
-                    setTitle(R.string.login_header)
-                    source.getLoginHeader()?.let { loginHeader ->
+                R.id.menu_show_login_header -> source.getLoginHeader()?.let { loginHeader ->
+                    alert {
+                        setTitle(R.string.login_header)
                         setMessage(loginHeader)
                         positiveButton(R.string.copy_text) {
                             appCtx.sendToClip(loginHeader)
                         }
                     }
-                }
+                } ?: toastOnUi("没有请求头！")
 
                 R.id.menu_del_login_header -> source.removeLoginHeader()
                 R.id.menu_log -> showDialogFragment<AppLogDialog>()

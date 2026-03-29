@@ -25,7 +25,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.flow.conflate
@@ -49,10 +48,10 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
     private val callBack get() = (activity as? CallBack)
     private var groupId: Long = 0
 
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, 0.9f)
-    }
+//    override fun onStart() {
+//        super.onStart()
+//        setLayout(0.9f, 0.9f)
+//    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
