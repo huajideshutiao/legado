@@ -1,19 +1,15 @@
 package io.legado.app.ui.login
 
-import android.content.DialogInterface
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
-import android.view.ViewGroup
 import androidx.core.view.setPadding
-import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
-import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
@@ -30,7 +26,6 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -46,17 +41,12 @@ import splitties.views.onClick
 class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
-    private val viewModel by activityViewModels<SourceLoginViewModel>()
+    private val source by lazy { GlobalVars.nowSource }
     private val book by lazy { GlobalVars.nowBook }
     private val chapter by lazy { GlobalVars.nowChapter }
 
-//    override fun onStart() {
-//        super.onStart()
-//        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-//    }
-
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val source = viewModel.source ?: return
+        val source = source ?: return
         binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.title = getString(R.string.login_source, source.getTag())
         val loginInfo = source.getLoginInfoMap()
@@ -149,12 +139,15 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         }
     }
 
-    private fun handleButtonClick(source: BaseSource, rowUi: RowUi, loginUi: List<RowUi>) {
+    private fun handleButtonClick(
+        source: io.legado.app.data.entities.BaseSource,
+        rowUi: RowUi,
+        loginUi: List<RowUi>
+    ) {
         lifecycleScope.launch(IO) {
             if (rowUi.action.isAbsUrl()) {
                 context?.openUrl(rowUi.action!!)
             } else if (rowUi.action != null) {
-                // JavaScript
                 val buttonFunctionJS = rowUi.action!!
                 val loginJS = source.getLoginJs() ?: return@launch
                 kotlin.runCatching {
@@ -195,7 +188,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         return loginData
     }
 
-    private fun login(source: BaseSource, loginData: HashMap<String, String>) {
+    private fun login(
+        source: io.legado.app.data.entities.BaseSource,
+        loginData: HashMap<String, String>
+    ) {
         lifecycleScope.launch(IO) {
             if (loginData.isEmpty()) {
                 source.removeLoginInfo()
@@ -218,11 +214,6 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                 }
             }
         }
-    }
-
-    override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
-        activity?.finish()
     }
 
 }

@@ -7,25 +7,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.PopupMenu
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnLayout
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ItemBookSourceBinding
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.model.Debug
-import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
 import java.util.Collections
 
@@ -186,9 +184,8 @@ class BookSourceAdapter(
             when (menuItem.itemId) {
                 R.id.menu_top -> callBack.toTop(source)
                 R.id.menu_bottom -> callBack.toBottom(source)
-                R.id.menu_login -> context.startActivity<SourceLoginActivity> {
-                    GlobalVars.nowSource = source.getBookSource()
-                }
+                R.id.menu_login -> source.getBookSource()
+                    ?.showLoginDialog(context as AppCompatActivity)
 
                 R.id.menu_search -> callBack.searchBook(source)
                 R.id.menu_debug_source -> callBack.debug(source)

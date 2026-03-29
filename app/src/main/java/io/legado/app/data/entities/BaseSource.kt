@@ -1,11 +1,13 @@
 package io.legado.app.data.entities
 
+import androidx.appcompat.app.AppCompatActivity
 import cn.hutool.crypto.symmetric.AES
 import com.script.ScriptBindings
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
@@ -13,12 +15,15 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
+import io.legado.app.ui.login.SourceLoginDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.has
 import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
 import org.intellij.lang.annotations.Language
 
 /**
@@ -261,5 +266,14 @@ interface BaseSource : JsExtensions {
             }
         }
         return RhinoScriptEngine.eval(jsStr, scope)
+    }
+
+    fun showLoginDialog(activity: AppCompatActivity) {
+        GlobalVars.nowSource = this
+        if (loginUi.isNullOrEmpty()) {
+            activity.startActivity<io.legado.app.ui.login.SourceLoginActivity>()
+        } else {
+            activity.showDialogFragment<SourceLoginDialog>()
+        }
     }
 }

@@ -274,8 +274,7 @@
         <activity
             android:name=".ui.login.SourceLoginActivity"
             android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true"
-            android:theme="@style/AppTheme.Transparent" /> <!-- 阅读记录 -->
+            android:hardwareAccelerated="true" /> <!-- 阅读记录 -->
         <activity
             android:name=".ui.about.ReadRecordActivity"
             android:configChanges="orientation|screenSize"

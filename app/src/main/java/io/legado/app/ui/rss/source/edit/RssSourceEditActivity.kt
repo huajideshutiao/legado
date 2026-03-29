@@ -10,7 +10,6 @@ import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssSourceEditBinding
 import io.legado.app.help.config.LocalConfig
@@ -20,7 +19,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
 import io.legado.app.ui.widget.code.CodeView
@@ -28,7 +26,20 @@ import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.text.EditEntity
-import io.legado.app.utils.*
+import io.legado.app.utils.GSON
+import io.legado.app.utils.imeHeight
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.isTrue
+import io.legado.app.utils.launch
+import io.legado.app.utils.navigationBarHeight
+import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
+import io.legado.app.utils.share
+import io.legado.app.utils.shareWithQr
+import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showHelp
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,8 +133,7 @@ class RssSourceEditActivity :
             }
 
             R.id.menu_login -> viewModel.save(getRssSource()) {
-                GlobalVars.nowSource = it
-                startActivity<SourceLoginActivity>{}
+                it.showLoginDialog(this)
             }
 
             R.id.menu_set_source_variable -> setSourceVariable()

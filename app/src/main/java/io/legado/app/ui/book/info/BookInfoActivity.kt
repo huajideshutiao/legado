@@ -58,7 +58,6 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -215,9 +214,8 @@ class BookInfoActivity :
             R.id.menu_refresh -> refreshBook()
 
             R.id.menu_login -> viewModel.bookSource?.let {
-                GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.bookData.value
-                startActivity<SourceLoginActivity> {}
+                it.showLoginDialog(this)
             }
 
             R.id.menu_top -> viewModel.topBook()

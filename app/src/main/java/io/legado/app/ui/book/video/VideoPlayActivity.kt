@@ -54,12 +54,10 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.ChapterListAdapter
-import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
@@ -452,11 +450,10 @@ class VideoPlayActivity(
             }
 
             R.id.menu_login -> viewModel.bookSource?.let {
-                GlobalVars.nowSource = it
                 GlobalVars.nowBook = viewModel.book
                 GlobalVars.nowChapter =
                     viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)
-                startActivity<SourceLoginActivity> {}
+                it.showLoginDialog(this)
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }

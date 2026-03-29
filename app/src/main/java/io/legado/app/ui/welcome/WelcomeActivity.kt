@@ -36,7 +36,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         if (intent.flags and Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT != 0) {
             finish()
         } else {
-            binding.root.postDelayed(600) { startMainActivity() }
+            binding.root.postDelayed(300) { startMainActivity() }
         }
     }
 

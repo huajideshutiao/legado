@@ -31,7 +31,6 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssReadBinding
 import io.legado.app.help.config.AppConfig
@@ -43,7 +42,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.Download
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
@@ -175,10 +173,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             }
 
             R.id.menu_aloud -> readAloud()
-            R.id.menu_login -> {
-                GlobalVars.nowSource = viewModel.rssSource
-                startActivity<SourceLoginActivity>{}
-            }
+            R.id.menu_login -> viewModel.rssSource?.showLoginDialog(this)
 
             R.id.menu_browser_open -> binding.webView.url?.let {
                 openUrl(it)
