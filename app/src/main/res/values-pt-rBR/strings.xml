@@ -976,8 +976,6 @@
     <string name="welcome_style_summary">启动界面图片和是否显示文字等</string>
     <string name="show_welcome_text">显示文字</string>
     <string name="welcome_text">阅读|享受美好时光</string>
-    <string name="custom_welcome">自定义欢迎页</string>
-    <string name="custom_welcome_summary">是否使用自定义欢迎页</string>
     <string name="show_icon">显示图标</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="cache_export">缓存/导出</string>

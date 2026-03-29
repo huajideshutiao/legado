@@ -970,8 +970,6 @@
     <string name="welcome_style_summary">啟動介面圖片和是否顯示文字等</string>
     <string name="show_welcome_text">顯示文字</string>
     <string name="welcome_text">閱讀|享受美好時光</string>
-    <string name="custom_welcome">自訂歡迎頁</string>
-    <string name="custom_welcome_summary">是否使用自訂歡迎頁</string>
     <string name="show_icon">顯示圖示</string>
     <string name="show_default_book_icon">顯示預設書籍圖示</string>
     <string name="cache_export">快取/匯出</string>

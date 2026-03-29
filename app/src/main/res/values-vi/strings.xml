@@ -971,8 +971,6 @@
     <string name="welcome_style_summary">Hình ảnh giao diện khởi động và có hiển thị văn bản hay không, v.v.</string>
     <string name="show_welcome_text">Hiển thị văn bản</string>
     <string name="welcome_text">Đọc|Tận hưởng thời gian tuyệt vời</string>
-    <string name="custom_welcome">Tùy chỉnh trang chào mừng</string>
-    <string name="custom_welcome_summary">Có sử dụng trang chào mừng tùy chỉnh hay không</string>
     <string name="show_icon">Hiển thị biểu tượng</string>
     <string name="show_default_book_icon">Hiển thị biểu tượng sách mặc định</string>
     <string name="cache_export">Bộ đệm/Xuất</string>
