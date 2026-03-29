@@ -745,17 +745,5 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefString(PreferKey.welcomeImageDark, value)
         }
 
-    var welcomeShowTextDark
-        get() = appCtx.getPrefBoolean(PreferKey.welcomeShowTextDark, true)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.welcomeShowTextDark, value)
-        }
-
-    var welcomeShowIconDark
-        get() = appCtx.getPrefBoolean(PreferKey.welcomeShowIconDark, true)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.welcomeShowIconDark, value)
-        }
-
 }
 

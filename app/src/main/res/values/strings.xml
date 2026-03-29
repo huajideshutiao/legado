@@ -982,8 +982,8 @@
     <string name="welcome_style_summary">Startup screen image and whether to display text, etc.</string>
     <string name="show_welcome_text">Display text</string>
     <string name="welcome_text">阅读|享受美好时光</string>
-    <string name="custom_welcome">Customize the welcome page</string>
-    <string name="custom_welcome_summary">Whether to use a customized welcome page</string>
+    <string name="enable_welcome">Enable welcome page</string>
+    <string name="enable_welcome_summary">Whether to show welcome page on startup</string>
     <string name="show_icon">Show icon</string>
     <string name="show_default_book_icon">Show default book icon</string>
     <string name="cache_export">Cache / Export</string>

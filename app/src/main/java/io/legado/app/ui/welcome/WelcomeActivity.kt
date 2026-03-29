@@ -30,12 +30,14 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
     override val binding by viewBinding(ActivityWelcomeBinding::inflate)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.ivBook.setColorFilter(accentColor)
-        binding.vwTitleLine.setBackgroundColor(accentColor)
         // 避免从桌面启动程序后，会重新实例化入口类的activity
         if (intent.flags and Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT != 0) {
             finish()
+        } else if (!getPrefBoolean(PreferKey.enableWelcome, true)) {
+            startMainActivity()
         } else {
+            binding.ivBook.setColorFilter(accentColor)
+            binding.vwTitleLine.setBackgroundColor(accentColor)
             binding.root.postDelayed(300) { startMainActivity() }
         }
     }
@@ -47,31 +49,19 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
     }
 
     override fun upBackgroundImage() {
-        if (getPrefBoolean(PreferKey.customWelcome)) {
-            kotlin.runCatching {
-                when (ThemeConfig.getTheme()) {
-                    Theme.Dark -> getPrefString(PreferKey.welcomeImageDark)?.let { path ->
-                        val size = windowManager.windowSize
-                        BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels).let {
-                            binding.tvLegado.visible(AppConfig.welcomeShowTextDark)
-                            binding.ivBook.visible(AppConfig.welcomeShowIconDark)
-                            binding.tvGzh.visible(AppConfig.welcomeShowTextDark)
-                            window.decorView.background = BitmapDrawable(resources, it)
-                            return
-                        }
-                    }
-
-                    else -> getPrefString(PreferKey.welcomeImage)?.let { path ->
-                        val size = windowManager.windowSize
-                        BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels).let {
-                            binding.tvLegado.visible(AppConfig.welcomeShowText)
-                            binding.ivBook.visible(AppConfig.welcomeShowIcon)
-                            binding.tvGzh.visible(AppConfig.welcomeShowText)
-                            window.decorView.background = BitmapDrawable(resources, it)
-                            return
-                        }
-                    }
-                }
+        kotlin.runCatching {
+            binding.tvLegado.visible(AppConfig.welcomeShowText)
+            binding.ivBook.visible(AppConfig.welcomeShowIcon)
+            binding.tvGzh.visible(AppConfig.welcomeShowText)
+            val path = when (ThemeConfig.getTheme()) {
+                Theme.Dark -> getPrefString(PreferKey.welcomeImageDark)
+                else -> getPrefString(PreferKey.welcomeImage)
+            } ?: return
+            val size = windowManager.windowSize
+            // 只传入宽度，保持图片原始宽高比
+            BitmapUtils.decodeBitmap(path, size.widthPixels).let {
+                window.decorView.background = BitmapDrawable(resources, it)
+                return
             }
         }
         super.upBackgroundImage()

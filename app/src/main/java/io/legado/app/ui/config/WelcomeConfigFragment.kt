@@ -1,32 +1,37 @@
 package io.legado.app.ui.config
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.util.DisplayMetrics
 import android.view.View
+import android.view.WindowManager
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.model.BookCover
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.inputStream
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
 import io.legado.app.utils.removePref
+import io.legado.app.utils.resizeAndRecycle
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.FileOutputStream
+import java.util.Date
 
 class WelcomeConfigFragment : PreferenceFragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
@@ -44,22 +49,8 @@ class WelcomeConfigFragment : PreferenceFragment(),
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_welcome)
-        val welcomeImage = AppConfig.welcomeImage
-        val welcomeImageDark = AppConfig.welcomeImageDark
-        upPreferenceSummary(PreferKey.welcomeImage, welcomeImage)
-        upPreferenceSummary(PreferKey.welcomeImageDark, welcomeImageDark)
-        findPreference<SwitchPreference>(PreferKey.welcomeShowText)?.let {
-            it.isEnabled = !welcomeImage.isNullOrEmpty()
-        }
-        findPreference<SwitchPreference>(PreferKey.welcomeShowIcon)?.let {
-            it.isEnabled = !welcomeImage.isNullOrEmpty()
-        }
-        findPreference<SwitchPreference>(PreferKey.welcomeShowTextDark)?.let {
-            it.isEnabled = !welcomeImageDark.isNullOrEmpty()
-        }
-        findPreference<SwitchPreference>(PreferKey.welcomeShowIconDark)?.let {
-            it.isEnabled = !welcomeImageDark.isNullOrEmpty()
-        }
+        upPreferenceSummary(PreferKey.welcomeImage, AppConfig.welcomeImage)
+        upPreferenceSummary(PreferKey.welcomeImageDark, AppConfig.welcomeImageDark)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -80,99 +71,35 @@ class WelcomeConfigFragment : PreferenceFragment(),
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         sharedPreferences ?: return
-        when (key) {
-            PreferKey.welcomeImage -> {
-                val welcomeImage = getPrefString(key)
-                upPreferenceSummary(key, welcomeImage)
-                findPreference<SwitchPreference>(PreferKey.welcomeShowText)?.let {
-                    it.isEnabled = !welcomeImage.isNullOrEmpty()
-                }
-                findPreference<SwitchPreference>(PreferKey.welcomeShowIcon)?.let {
-                    it.isEnabled = !welcomeImage.isNullOrEmpty()
-                }
-            }
-
-            PreferKey.welcomeImageDark -> {
-                val welcomeImageDark = getPrefString(key)
-                upPreferenceSummary(key, welcomeImageDark)
-                findPreference<SwitchPreference>(PreferKey.welcomeShowTextDark)?.let {
-                    it.isEnabled = !welcomeImageDark.isNullOrEmpty()
-                }
-                findPreference<SwitchPreference>(PreferKey.welcomeShowIconDark)?.let {
-                    it.isEnabled = !welcomeImageDark.isNullOrEmpty()
-                }
-            }
-        }
+        key ?: return
+        if (key == PreferKey.welcomeImage || key == PreferKey.welcomeImageDark)
+            upPreferenceSummary(key, getPrefString(key))
     }
 
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            PreferKey.welcomeImage ->
-                if (getPrefString(preference.key).isNullOrEmpty()) {
-                    selectImage.launch {
-                        requestCode = requestWelcomeImage
-                        mode = HandleFileContract.IMAGE
-                    }
-                } else {
-                    context?.selector(
-                        items = arrayListOf(
-                            getString(R.string.delete),
-                            getString(R.string.select_image)
-                        )
-                    ) { _, i ->
-                        if (i == 0) {
-                            removePref(preference.key)
-                            AppConfig.welcomeShowText = true
-                            AppConfig.welcomeShowIcon = true
-                            findPreference<SwitchPreference>(PreferKey.welcomeShowText)?.let {
-                                it.isChecked = true
-                            }
-                            findPreference<SwitchPreference>(PreferKey.welcomeShowIcon)?.let {
-                                it.isChecked = true
-                            }
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestWelcomeImage
-                                mode = HandleFileContract.IMAGE
-                            }
-                        }
-                    }
-                }
-
-            PreferKey.welcomeImageDark ->
-                if (getPrefString(preference.key).isNullOrEmpty()) {
-                    selectImage.launch {
-                        requestCode = requestWelcomeImageDark
-                        mode = HandleFileContract.IMAGE
-                    }
-                } else {
-                    context?.selector(
-                        items = arrayListOf(
-                            getString(R.string.delete),
-                            getString(R.string.select_image)
-                        )
-                    ) { _, i ->
-                        if (i == 0) {
-                            removePref(preference.key)
-                            AppConfig.welcomeShowTextDark = true
-                            AppConfig.welcomeShowIconDark = true
-                            findPreference<SwitchPreference>(PreferKey.welcomeShowTextDark)?.let {
-                                it.isChecked = true
-                            }
-                            findPreference<SwitchPreference>(PreferKey.welcomeShowIconDark)?.let {
-                                it.isChecked = true
-                            }
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestWelcomeImageDark
-                                mode = HandleFileContract.IMAGE
-                            }
-                        }
-                    }
-                }
+        val key = preference.key
+        val tmp = {
+            selectImage.launch {
+                requestCode =
+                    if (preference.key == PreferKey.welcomeImageDark) requestWelcomeImageDark
+                    else requestWelcomeImage
+                mode = HandleFileContract.IMAGE
+            }
+        }
+        if (preference.key != PreferKey.welcomeImageDark && preference.key != PreferKey.welcomeImage)
+            return super.onPreferenceTreeClick(preference)
+        if (getPrefString(key).isNullOrEmpty()) tmp()
+        else {
+            context?.selector(
+                items = arrayListOf(getString(R.string.delete), getString(R.string.select_image))
+            ) { _, i ->
+                if (i == 0) {
+                    removePref(key)
+                    val file = File(FileUtils.getPath(appCtx.externalFiles, key))
+                    if (file.exists()) file.delete()
+                } else tmp()
+            }
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -192,22 +119,56 @@ class WelcomeConfigFragment : PreferenceFragment(),
     }
 
     private fun setCoverFromUri(preferenceKey: String, uri: Uri) {
-        readUri(uri) { fileDoc, inputStream ->
-            kotlin.runCatching {
-                var file = requireContext().externalFiles
-                val suffix = fileDoc.name.substringAfterLast(".")
-                val fileName = uri.inputStream(requireContext()).getOrThrow().use {
-                    MD5Utils.md5Encode(it) + ".$suffix"
+        readUri(uri) { _, inputStream ->
+            runCatching {
+                val windowManager =
+                    requireContext().getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val displayMetrics = DisplayMetrics()
+                windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+                val screenWidth: Int = displayMetrics.widthPixels
+                val screenHeight: Int = displayMetrics.heightPixels
+
+                // 使用BitmapFactory.Options来优化图片解码，避免加载整个图片
+                val op = BitmapFactory.Options()
+                op.inJustDecodeBounds = true
+                BitmapFactory.decodeStream(inputStream, null, op)
+
+                val originalWidth = op.outWidth
+                val originalHeight = op.outHeight
+                val originalRatio = originalWidth.toFloat() / originalHeight
+                val screenRatio = screenWidth.toFloat() / screenHeight
+                val cropW: Int
+                val cropH: Int
+                if (originalRatio > screenRatio) {
+                    cropH = originalHeight
+                    cropW = (originalHeight * screenRatio).toInt()
+                } else {
+                    cropW = originalWidth
+                    cropH = (originalWidth / screenRatio).toInt()
                 }
-                file = FileUtils.createFileIfNotExist(file, "covers", fileName)
-                FileOutputStream(file).use {
-                    inputStream.copyTo(it)
+
+                // 重新打开流来解码图片
+                readUri(uri) { _, newInputStream ->
+                    op.inJustDecodeBounds = false
+                    val originalBitmap = BitmapFactory.decodeStream(newInputStream, null, op)
+                        ?: throw IllegalArgumentException("Failed to decode image from Uri")
+                    val croppedBitmap = Bitmap.createBitmap(originalBitmap, 0, 0, cropW, cropH)
+                    val scaledBitmap = croppedBitmap.resizeAndRecycle(screenWidth, screenHeight)
+                    ByteArrayOutputStream().use { webpData ->
+                        scaledBitmap.compress(Bitmap.CompressFormat.WEBP, 80, webpData)
+                        val finalBytes = webpData.toByteArray()
+                        val fileName = Date().time.toString() + ".webp"
+                        val file = FileUtils.createFileIfNotExist(
+                            requireContext().externalFiles, "covers", fileName
+                        )
+                        FileOutputStream(file).use {
+                            it.write(finalBytes)
+                        }
+                        putPrefString(preferenceKey, file.absolutePath)
+                    }
+                    scaledBitmap.recycle()
                 }
-                putPrefString(preferenceKey, file.absolutePath)
-            }.onFailure {
-                appCtx.toastOnUi(it.localizedMessage)
-            }
+            }.onFailure { appCtx.toastOnUi(it.localizedMessage) }
         }
     }
-
 }

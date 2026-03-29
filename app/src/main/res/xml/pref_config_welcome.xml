@@ -3,10 +3,28 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="customWelcome"
-        android:summary="@string/custom_welcome_summary"
-        android:title="@string/custom_welcome"
+        android:defaultValue="true"
+        android:key="enableWelcome"
+        android:summary="@string/enable_welcome_summary"
+        android:title="@string/enable_welcome"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="welcomeShowText"
+        android:summary="@string/welcome_text"
+        android:title="@string/show_welcome_text"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="welcomeShowIcon"
+        android:summary="@string/show_default_book_icon"
+        android:title="@string/show_icon"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
@@ -26,24 +44,6 @@
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="welcomeShowText"
-            android:summary="@string/welcome_text"
-            android:title="@string/show_welcome_text"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="welcomeShowIcon"
-            android:summary="@string/show_default_book_icon"
-            android:title="@string/show_icon"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
-            app:iconSpaceReserved="false" />
-
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
@@ -57,24 +57,6 @@
         <io.legado.app.lib.prefs.Preference
             android:key="welcomeImagePathDark"
             android:title="@string/background_image"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="welcomeShowTextDark"
-            android:summary="@string/welcome_text"
-            android:title="@string/show_welcome_text"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="welcomeShowIconDark"
-            android:summary="@string/show_default_book_icon"
-            android:title="@string/show_icon"
             app:allowDividerAbove="false"
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
