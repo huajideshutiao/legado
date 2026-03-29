@@ -57,8 +57,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
-import androidx.core.view.get
 
 /**
  * 主界面
@@ -128,7 +126,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             notifyAppCrash()
             //备份同步
             backupSync()
-            //自动更新书籍
+        }
+        lifecycleScope.launch {
             val isAutoRefreshedBook = savedInstanceState?.getBoolean("isAutoRefreshedBook") ?: false
             if (AppConfig.autoRefreshBook && !isAutoRefreshedBook) {
                 binding.viewPagerMain.postDelayed(1000) {
@@ -180,7 +179,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun initView() = binding.run {
         viewPagerMain.setEdgeEffectColor(primaryColor)
-        viewPagerMain.offscreenPageLimit = 3
+        viewPagerMain.offscreenPageLimit = 1
         viewPagerMain.adapter = adapter
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
         bottomNavigationView.elevation = elevation

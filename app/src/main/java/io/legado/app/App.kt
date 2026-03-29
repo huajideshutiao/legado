@@ -86,6 +86,8 @@ class App : Application() {
             DefaultData.upVersion()
             AppFreezeMonitor.init(this@App)
             DispatchersMonitor.init()
+        }
+        Coroutine.async {
             if (AppConfig.isCronet) {
                 Cronet.preDownload(null)
             }
@@ -94,7 +96,8 @@ class App : Application() {
             initRhino()
             //初始化封面
             BookCover.toString()
-            //清除过期数据
+        }
+        Coroutine.async {
             appDb.cacheDao.clearDeadline(System.currentTimeMillis())
             if (getPrefBoolean(PreferKey.autoClearExpired, true)) {
                 val clearTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
@@ -105,7 +108,8 @@ class App : Application() {
             Backup.clearCache()
             ReadBookConfig.clearBgAndCache()
             ThemeConfig.clearBg()
-            //初始化简繁转换引擎
+        }
+        Coroutine.async {
             when (AppConfig.chineseConverterType) {
                 1 -> {
                     ChineseUtils.fixT2sDict()

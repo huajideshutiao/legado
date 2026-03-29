@@ -60,9 +60,9 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         setMaxRecycledViews(0, 100)
     }
 
-    init {
-        deleteNotShelfBook()
-    }
+//    init {
+//        deleteNotShelfBook()
+//    }
 
     override fun onCleared() {
         super.onCleared()
