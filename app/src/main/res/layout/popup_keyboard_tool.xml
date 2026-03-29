@@ -3,20 +3,18 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/background_card"
     android:orientation="vertical">
 
     <!-- 顶部淡色线 -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="2dp"
+        android:layout_height="1dp"
         android:background="@color/bg_divider_line" />
 
     <LinearLayout
         android:id="@+id/ll_find_replace"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_card"
         android:orientation="vertical"
         android:visibility="gone">
 
@@ -134,7 +132,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:orientation="horizontal"
-        android:padding="5dp"
+        android:padding="4dp"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
 </LinearLayout>

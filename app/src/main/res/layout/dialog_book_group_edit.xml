@@ -21,8 +21,7 @@
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/background_menu">
+        android:layout_height="wrap_content">
 
         <io.legado.app.ui.widget.image.CoverImageView
             android:id="@+id/iv_cover"
@@ -76,17 +75,16 @@
             app:layout_constraintBottom_toBottomOf="@id/tv_sort"
             app:layout_constraintLeft_toRightOf="@+id/tv_sort"
             app:layout_constraintTop_toTopOf="@id/tv_sort"
-            android:theme="@style/Spinner"
             tools:ignore="RtlHardcoded" />
 
         <io.legado.app.lib.theme.view.ThemeCheckBox
             android:id="@+id/cb_enable_refresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/allow_drop_down_refresh"
             android:checked="true"
-            app:layout_constraintTop_toBottomOf="@+id/tv_sort"
-            app:layout_constraintLeft_toLeftOf="@id/tv_sort" />
+            android:text="@string/allow_drop_down_refresh"
+            app:layout_constraintLeft_toLeftOf="@id/tv_sort"
+            app:layout_constraintTop_toBottomOf="@+id/tv_sort" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

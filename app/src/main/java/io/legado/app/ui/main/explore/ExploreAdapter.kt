@@ -99,8 +99,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 tv.text = kind.title
                 if (kind.type == RowUi.Type.title) {
                     FlexChildStyle(
-                        layout_flexBasisPercent = 1F,
-                        layout_flexGrow = 1F
+                        layout_flexBasisPercent = 1F
                     ).apply(tv)
                 } else kind.style().apply(tv)
                 tv.setOnClickListener {

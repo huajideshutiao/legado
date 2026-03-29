@@ -22,6 +22,7 @@ import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.PopupKeyboardToolBinding
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.activity
 import io.legado.app.utils.showDialogFragment
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import splitties.systemservices.layoutInflater
 import splitties.systemservices.windowManager
+import splitties.views.backgroundColor
 import kotlin.math.abs
 
 /**
@@ -64,6 +66,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     init {
         initRecyclerView()
         isVisible = false
+        backgroundColor = ThemeStore.bottomBackground(context)
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     }
 

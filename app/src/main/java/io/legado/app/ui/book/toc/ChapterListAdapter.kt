@@ -136,7 +136,7 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                 tvChapterName.text = getDisplayTitle(item)
                 if (item.isVolume) {
                     //卷名，如第一卷 突出显示
-                    tvChapterItem.setBackgroundColor(context.getCompatColor(R.color.btn_bg_press))
+                    tvChapterItem.setBackgroundColor(context.getCompatColor(R.color.btn_bg))
                 } else {
                     //普通章节 保持不变
                     tvChapterItem.background =

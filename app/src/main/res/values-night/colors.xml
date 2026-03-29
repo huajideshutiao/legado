@@ -20,9 +20,8 @@
 
     <color name="bg_divider_line">@color/background_menu</color>
 
-    <color name="btn_bg_press">#634D4D4D</color>
-    <color name="btn_bg_press_2">#63686868</color>
-    <color name="btn_bg_press_tp">#63C7C7C7</color>
+    <color name="btn_bg">#14e0e0e0</color>
+    <color name="btn_bg_press_2">#20ffffff</color>
 
     <color name="darker_gray">#66666666</color>
 
@@ -31,7 +30,7 @@
 
     <color name="primaryText">#ffffffff</color>
     <color name="secondaryText">#b3ffffff</color>
-    <color name="tv_text_summary">#B3B3B3</color>
+    <color name="tv_text_summary">#99ffffff</color>
     <color name="menu_color_default">#b7b7b7</color>
 
 
