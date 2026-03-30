@@ -43,6 +43,7 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
     fun shrinkDatabase() {
         execute {
             appDb.openHelper.writableDatabase.execSQL("VACUUM")
+            appDb.bookDao.deleteNotShelfBook()
         }.onSuccess {
             context.toastOnUi(R.string.success)
         }

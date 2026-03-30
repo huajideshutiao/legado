@@ -348,12 +348,12 @@ data class Book(
     }
 
     fun save() {
+        removeType(BookType.notShelf)
         if (appDb.bookDao.has(bookUrl)) {
             appDb.bookDao.update(this)
         } else {
             appDb.bookDao.insert(this)
         }
-        removeType(BookType.notShelf)
     }
 
     fun delete() {
