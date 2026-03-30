@@ -88,7 +88,8 @@ class AudioPlayService : BaseService(),
             or PlaybackStateCompat.ACTION_PLAY_PAUSE
             or PlaybackStateCompat.ACTION_SEEK_TO
             or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-            or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+            or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            or PlaybackStateCompat.ACTION_STOP)
 
         private const val APP_ACTION_STOP = "Stop"
         private const val APP_ACTION_TIMER = "Timer"
@@ -504,26 +505,26 @@ class AudioPlayService : BaseService(),
      */
     @SuppressLint("UnspecifiedImmutableFlag")
     private fun initMediaSession() {
-        mediaSessionCompat = MediaSessionCompat(this, "readAloud")
+        mediaSessionCompat = MediaSessionCompat(this, "AudioPlayService")
         mediaSessionCompat?.setCallback(object : MediaSessionCompat.Callback() {
             override fun onSeekTo(pos: Long) {
                 position = pos.toInt()
                 exoPlayer.seekTo(pos)
             }
 
-            override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
-                return MediaButtonReceiver.handleIntent(this@AudioPlayService, mediaButtonEvent)
-            }
-
             override fun onPlay() = resume()
 
             override fun onPause() = pause()
+
             override fun onSkipToNext() = AudioPlay.next()
 
             override fun onSkipToPrevious() = AudioPlay.prev()
-            override fun onCustomAction(action: String?, extras: Bundle?) {
-                action ?: return
 
+            override fun onStop() {
+                stopSelf()
+            }
+
+            override fun onCustomAction(action: String?, actionExtras: Bundle?) {
                 when (action) {
                     APP_ACTION_STOP -> stopSelf()
                     APP_ACTION_TIMER -> addTimer()

@@ -101,6 +101,22 @@ object ReadAloud {
         }
     }
 
+    fun prevChapter(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.prev
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun nextChapter(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.next
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
     fun upTtsSpeechRate(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, aloudClass)

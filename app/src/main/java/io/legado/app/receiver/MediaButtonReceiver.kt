@@ -48,22 +48,37 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     LogUtils.d(TAG, "Receive mediaButton event, keycode:$keycode")
                     when (keycode) {
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                            if (context.getPrefBoolean("mediaButtonPerNext", false)) {
-                                ReadBook.moveToPrevChapter(true)
-                            }else if(AudioPlayService.isRun){
-                                AudioPlay.prev()
-                            }  else {
-                                ReadAloud.prevParagraph(context)
+                            when {
+                                AudioPlayService.isRun -> AudioPlay.prev()
+                                BaseReadAloudService.isRun -> {
+                                    if (context.getPrefBoolean("mediaButtonPerNext", false)) {
+                                        ReadAloud.prevChapter(context)
+                                    } else {
+                                        ReadAloud.prevParagraph(context)
+                                    }
+                                }
+                                else -> readAloud(context)
                             }
                         }
 
                         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                            if (context.getPrefBoolean("mediaButtonPerNext", false)) {
-                                ReadBook.moveToNextChapter(true)
-                            }else if(AudioPlayService.isRun){
-                                    AudioPlay.next()
-                            } else {
-                                ReadAloud.nextParagraph(context)
+                            when {
+                                AudioPlayService.isRun -> AudioPlay.next()
+                                BaseReadAloudService.isRun -> {
+                                    if (context.getPrefBoolean("mediaButtonPerNext", false)) {
+                                        ReadAloud.nextChapter(context)
+                                    } else {
+                                        ReadAloud.nextParagraph(context)
+                                    }
+                                }
+                                else -> readAloud(context)
+                            }
+                        }
+
+                        KeyEvent.KEYCODE_MEDIA_STOP -> {
+                            when {
+                                AudioPlayService.isRun -> AudioPlay.stop()
+                                BaseReadAloudService.isRun -> ReadAloud.stop(context)
                             }
                         }
 

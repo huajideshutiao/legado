@@ -469,55 +469,39 @@ abstract class BaseReadAloudService : BaseService(),
      */
     @SuppressLint("UnspecifiedImmutableFlag")
     private fun initMediaSession() {
-        if (getPrefBoolean("systemMediaControlCompatibilityChange")) {
-            mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    resumeReadAloud()
-                }
+        mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
+            override fun onPlay() {
+                resumeReadAloud()
+            }
 
-                override fun onPause() {
-                    pauseReadAloud()
-                }
+            override fun onPause() {
+                pauseReadAloud()
+            }
 
-                override fun onSkipToNext() {
-                    if (getPrefBoolean("mediaButtonPerNext", false)) {
-                        nextChapter()
-                    } else {
-                        nextP()
-                    }
+            override fun onSkipToNext() {
+                if (getPrefBoolean("mediaButtonPerNext", false)) {
+                    nextChapter()
+                } else {
+                    nextP()
                 }
+            }
 
-                override fun onSkipToPrevious() {
-                    if (getPrefBoolean("mediaButtonPerNext", false)) {
-                        prevChapter()
-                    } else {
-                        prevP()
-                    }
+            override fun onSkipToPrevious() {
+                if (getPrefBoolean("mediaButtonPerNext", false)) {
+                    prevChapter()
+                } else {
+                    prevP()
                 }
+            }
 
-                override fun onStop() {
-                    stopSelf()
-                }
+            override fun onStop() {
+                stopSelf()
+            }
 
-                override fun onCustomAction(action: String, extras: Bundle?) {
-                    if (action == "ACTION_ADD_TIMER") addTimer()
-                }
-
-                override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
-                    return MediaButtonReceiver.handleIntent(
-                        this@BaseReadAloudService, mediaButtonEvent
-                    )
-                }
-            })
-        } else {
-            mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
-                override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
-                    return MediaButtonReceiver.handleIntent(
-                        this@BaseReadAloudService, mediaButtonEvent
-                    )
-                }
-            })
-        }
+            override fun onCustomAction(action: String, extras: Bundle?) {
+                if (action == "ACTION_ADD_TIMER") addTimer()
+            }
+        })
         mediaSessionCompat.setMediaButtonReceiver(
             broadcastPendingIntent<MediaButtonReceiver>(Intent.ACTION_MEDIA_BUTTON)
         )
