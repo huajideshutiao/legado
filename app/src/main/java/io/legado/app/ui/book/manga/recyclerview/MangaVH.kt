@@ -44,36 +44,53 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
     protected var mRetry: Button? = null
     private val minHeight = context.resources.displayMetrics.heightPixels * 2 / 3
 
+    data class PreloadJob(
+        val job: Job,
+        var result: Any? = null,
+        var error: Exception? = null,
+        var isCompleted: Boolean = false
+    )
+
     companion object {
-        private val preloadJobs = mutableMapOf<String, Job>()
+        private val preloadJobs = mutableMapOf<String, PreloadJob>()
 
         fun preloadImage(imageUrl: String) {
             if (preloadJobs.containsKey(imageUrl)) return
-            if (ReadManga.book == null) return
-            if (isImageExist(ReadManga.book!!, imageUrl)) return
+            val book = ReadManga.book ?: return
+            if (isImageExist(book, imageUrl)) return
 
-            val job = CoroutineScope(IO).launch {
+            val preloadJob = PreloadJob(Job())
+            preloadJobs[imageUrl] = preloadJob
+
+            preloadJob.job.invokeOnCompletion {
+                preloadJobs.remove(imageUrl)
+            }
+
+            CoroutineScope(IO).launch(preloadJob.job) {
                 try {
-                    ImageLoader.loadManga(imageUrl, coroutineContext)
+                    preloadJob.result = ImageLoader.loadManga(imageUrl, coroutineContext)
                 } catch (e: Exception) {
+                    preloadJob.error = e
                     e.printOnDebug()
                 } finally {
-                    preloadJobs.remove(imageUrl)
+                    preloadJob.isCompleted = true
                 }
             }
-            preloadJobs[imageUrl] = job
-            job.start()
         }
 
         fun cancelPreload(imageUrl: String) {
-            preloadJobs[imageUrl]?.cancel()
-            preloadJobs.remove(imageUrl)
+            preloadJobs.remove(imageUrl)?.job?.cancel()
         }
 
         fun cancelAllPreload() {
-            val jobs = preloadJobs.values.toList()
+            preloadJobs.values.forEach { it.job.cancel() }
             preloadJobs.clear()
-            jobs.forEach { it.cancel() }
+        }
+
+        fun getPreloadJob(imageUrl: String): PreloadJob? = preloadJobs[imageUrl]
+
+        fun removePreloadJob(imageUrl: String) {
+            preloadJobs.remove(imageUrl)
         }
     }
 
@@ -98,7 +115,6 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
-        preloadJobs[imageUrl]?.cancel()
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
@@ -109,59 +125,109 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
             mProgress.text = "$percentage%"
         }
         mImage.tag = imageUrl
-        preloadJobs[imageUrl] = CoroutineScope(IO).launch {
-            val glide = try {
-                if (isImageExist(ReadManga.book!!, imageUrl)) {
-                    Glide.with(context).load(BookHelp.getImage(ReadManga.book!!, imageUrl))
+
+        val existingPreloadJob = getPreloadJob(imageUrl)
+        if (existingPreloadJob != null && existingPreloadJob.job.isActive) {
+            CoroutineScope(IO).launch {
+                existingPreloadJob.job.join()
+                withContext(Dispatchers.Main) {
+                    if (mImage.tag != imageUrl) return@withContext
+                    displayImageResult(
+                        imageUrl,
+                        existingPreloadJob.result,
+                        existingPreloadJob.error,
+                        isHorizontal,
+                        isLastImage,
+                        transformation
+                    )
+                }
+            }
+            return
+        }
+
+        removePreloadJob(imageUrl)
+
+        val newJob = CoroutineScope(IO).launch {
+            var glide: Any? = null
+            var error: Exception? = null
+            try {
+                val book = ReadManga.book
+                if (book != null && isImageExist(book, imageUrl)) {
+                    glide = Glide.with(context).load(BookHelp.getImage(book, imageUrl))
                 } else {
                     ImageLoader.loadManga(imageUrl, coroutineContext)?.let {
-                        Glide.with(context).load(it)
+                        glide = Glide.with(context).load(it)
                     }
                 }
             } catch (e: Exception) {
                 e.printOnDebug()
-                null
+                error = e
             }
 
-            preloadJobs.remove(imageUrl)
-
             withContext(Dispatchers.Main) {
-                if (mImage.tag != imageUrl) return@withContext
-                if (glide == null) {
-                    mFlProgress.isVisible = true
-                    mLoading.isGone = true
-                    mRetry?.isVisible = true
-                    mProgress.isGone = true
-                    itemView.updateLayoutParams<ViewGroup.LayoutParams> {
-                        height = ViewGroup.LayoutParams.MATCH_PARENT
-                    }
-                } else {
-                    mFlProgress.isGone = true
-                    if (isHorizontal) {
-                        itemView.updateLayoutParams<ViewGroup.LayoutParams> { height = ViewGroup.LayoutParams.MATCH_PARENT }
-                        itemView.minimumHeight = 0
-                        mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                            height = ViewGroup.LayoutParams.MATCH_PARENT
-                            gravity = Gravity.CENTER
-                        }
-                        mImage.scaleType = ImageView.ScaleType.FIT_CENTER
-                    } else {
-                        itemView.updateLayoutParams<ViewGroup.LayoutParams> { height = ViewGroup.LayoutParams.WRAP_CONTENT }
-                        itemView.minimumHeight = if (isLastImage) minHeight else 0
-                        mImage.updateLayoutParams<FrameLayout.LayoutParams> {
-                            gravity = Gravity.NO_GRAVITY
-                            height = if (isLastImage) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
-                        }
-                        mImage.scaleType = ImageView.ScaleType.FIT_XY
-                    }
-
-                    glide.override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
-                        .diskCacheStrategy(DiskCacheStrategy.NONE)
-                        .apply { transformation?.let { transform(it) } }
-                        .into(mImage)
+                if (mImage.tag == imageUrl) {
+                    displayImageResult(
+                        imageUrl,
+                        glide,
+                        error,
+                        isHorizontal,
+                        isLastImage,
+                        transformation
+                    )
                 }
             }
         }
-        preloadJobs[imageUrl]?.start()
+        preloadJobs[imageUrl] = PreloadJob(newJob, isCompleted = true)
+    }
+
+    private fun displayImageResult(
+        imageUrl: String,
+        glide: Any?,
+        error: Exception?,
+        isHorizontal: Boolean,
+        isLastImage: Boolean,
+        transformation: Transformation<Bitmap>?
+    ) {
+        if (glide == null) {
+            mFlProgress.isVisible = true
+            mLoading.isGone = true
+            mRetry?.isVisible = true
+            mProgress.isGone = true
+            itemView.updateLayoutParams<ViewGroup.LayoutParams> {
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+        } else {
+            mFlProgress.isGone = true
+            if (isHorizontal) {
+                itemView.updateLayoutParams<ViewGroup.LayoutParams> {
+                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                }
+                itemView.minimumHeight = 0
+                mImage.updateLayoutParams<FrameLayout.LayoutParams> {
+                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                    gravity = Gravity.CENTER
+                }
+                mImage.scaleType = ImageView.ScaleType.FIT_CENTER
+            } else {
+                itemView.updateLayoutParams<ViewGroup.LayoutParams> {
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                }
+                itemView.minimumHeight = if (isLastImage) minHeight else 0
+                mImage.updateLayoutParams<FrameLayout.LayoutParams> {
+                    gravity = Gravity.NO_GRAVITY
+                    height =
+                        if (isLastImage) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+                }
+                mImage.scaleType = ImageView.ScaleType.FIT_XY
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            (glide as com.bumptech.glide.RequestBuilder<Bitmap>)
+                .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .apply { transformation?.let { transform(it) } }
+                .into(mImage)
+        }
+        removePreloadJob(imageUrl)
     }
 }
