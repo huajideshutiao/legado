@@ -9,12 +9,16 @@ import splitties.init.appCtx
 import splitties.resources.color
 import java.util.regex.Pattern
 
-val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@js:|@Json:|@css:|@@|@XPath:")
-val jsonPattern: Pattern = Pattern.compile("\"[A-Za-z0-9]*?\":|\"|\\{|\\}|\\[|]")
+val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@@|@(js|Json|css|XPath):")
+
+// 推荐用法（Kotlin 原生字符串）：
+val jsonPattern: Pattern =
+    Pattern.compile("""(?<!\\)(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|`[^`\\]*(?:\\.[^`\\]*)*`)|[\[\]{}]""")
 val wrapPattern: Pattern = Pattern.compile("\\\\n")
 val operationPattern: Pattern =
-    Pattern.compile(":|=|>|<|!=|%|\\+|-|\\^|&|\\||\\?|\\*")
-val jsPattern: Pattern = Pattern.compile("var |let |const |if|else|for|while|do|switch|case|break|continue|return |new |this|true|false|null|undefined| in |typeof|try|catch|finally|throw |function |class ")
+    Pattern.compile("!=|[:=><%+\\-^&|?*]")
+val jsPattern: Pattern =
+    Pattern.compile("\\b(var|let|const|if|else|for|while|do|switch|case|break|continue|return|new|this|true|false|null|undefined|in|typeof|try|catch|finally|throw|function|class)\\b")
 
 fun CodeView.addLegadoPattern() {
     addSyntaxPattern(legadoPattern, appCtx.color(R.color.md_orange_900))

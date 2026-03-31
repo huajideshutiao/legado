@@ -35,8 +35,8 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
             .inflate(LayoutInflater.from(parent.context), parent, false)
         binding.editText.isLineNumberEnabled = true
         binding.editText.addLegadoPattern()
-        binding.editText.addJsonPattern()
         binding.editText.addJsPattern()
+        binding.editText.addJsonPattern()
         binding.editText.onSearchReplaceAction = onSearchReplaceAction
         binding.editText.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
