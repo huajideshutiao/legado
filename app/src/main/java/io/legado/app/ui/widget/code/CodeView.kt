@@ -142,7 +142,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         removeCallbacks(updateVisibleSpansRunnable)
-        postDelayed(updateVisibleSpansRunnable, 50)
+        post(updateVisibleSpansRunnable)
     }
 
     private val highlightRunnable = Runnable {
@@ -579,49 +579,68 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         val editable = editableText ?: return
 
+        var opCount = 0
+        var hasMore = false
+
         // 1. 增量更新：移除已经不在渲染区域内的旧 Span
-        // 这种做法比使用 HashSet 效率更高，完全避免了临时对象分配
         val iterator = activeSyntaxSpans.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val span = entry.key
             if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
+                if (opCount >= 20) {
+                    hasMore = true
+                    break
+                }
                 editable.removeSpan(entry.value)
                 iterator.remove()
+                opCount++
             }
         }
 
-        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
-        var low = 0
-        var high = allSyntaxSpans.size - 1
-        var startIndex = 0
-        while (low <= high) {
-            val mid = (low + high) / 2
-            if (allSyntaxSpans[mid].end <= renderStartOffset) {
-                low = mid + 1
-                startIndex = low
-            } else {
-                high = mid - 1
+        if (!hasMore) {
+            // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
+            var low = 0
+            var high = allSyntaxSpans.size - 1
+            var startIndex = 0
+            while (low <= high) {
+                val mid = (low + high) / 2
+                if (allSyntaxSpans[mid].end <= renderStartOffset) {
+                    low = mid + 1
+                    startIndex = low
+                } else {
+                    high = mid - 1
+                }
             }
-        }
 
-        // 3. 增量更新：遍历并添加新进入视野的 Span
-        for (i in startIndex until allSyntaxSpans.size) {
-            val span = allSyntaxSpans[i]
-            if (span.start >= renderEndOffset) break
-            
-            if (!activeSyntaxSpans.containsKey(span)) {
-                val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
-                val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
-                if (s < e) {
-                    val newSpan = SyntaxForegroundColorSpan(span.color)
-                    editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    activeSyntaxSpans[span] = newSpan
+            // 3. 增量更新：遍历并添加新进入视野的 Span
+            for (i in startIndex until allSyntaxSpans.size) {
+                val span = allSyntaxSpans[i]
+                if (span.start >= renderEndOffset) break
+
+                if (!activeSyntaxSpans.containsKey(span)) {
+                    if (opCount >= 20) {
+                        hasMore = true
+                        break
+                    }
+                    val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
+                    val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
+                    if (s < e) {
+                        val newSpan = SyntaxForegroundColorSpan(span.color)
+                        editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        activeSyntaxSpans[span] = newSpan
+                        opCount++
+                    }
                 }
             }
         }
 
-        currentHighlightRange = Pair(renderStartOffset, renderEndOffset)
+        if (hasMore) {
+            removeCallbacks(updateVisibleSpansRunnable)
+            post(updateVisibleSpansRunnable)
+        } else {
+            currentHighlightRange = Pair(renderStartOffset, renderEndOffset)
+        }
     }
 
     private fun highlightErrorLines(editable: Editable) {
