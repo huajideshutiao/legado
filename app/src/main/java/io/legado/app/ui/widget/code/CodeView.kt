@@ -65,9 +65,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     var isLineNumberEnabled = false
         set(value) {
-            field = value
-            updateLineNumberPadding()
-            postInvalidate()
+            if (field != value) {
+                field = value
+                if (value && enterPosSize == 0 && !editableText.isNullOrEmpty()) {
+                    getEnterPos(editableText)
+                }
+                updateLineNumberPadding()
+                postInvalidate()
+            }
         }
     var mLineNumberTextColor = context.secondaryTextColor
         set(value) {
@@ -108,11 +113,36 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var isHighlighting = false
     private var highlightJob: Job? = null
     private val allSyntaxSpans = ArrayList<SyntaxSpan>()
-    private val activeSyntaxSpans = mutableListOf<SyntaxForegroundColorSpan>()
+    private val activeSyntaxSpans = mutableMapOf<SyntaxSpan, SyntaxForegroundColorSpan>()
     private var currentHighlightRange = Pair(-1, -1)
     private val visibleRect = Rect()
-    private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
+
+    private val updateVisibleSpansRunnable = Runnable {
         updateVisibleSpans()
+    }
+
+    private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
+        if (!getLocalVisibleRect(visibleRect)) {
+            removeCallbacks(updateVisibleSpansRunnable)
+            return@OnScrollChangedListener
+        }
+
+        val layout = layout ?: return@OnScrollChangedListener
+        val firstLine = layout.getLineForVertical(visibleRect.top)
+        val lastLine = layout.getLineForVertical(visibleRect.bottom)
+
+        val startLine = kotlin.math.max(0, firstLine - 5)
+        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 5)
+
+        val startOffset = layout.getLineStart(startLine)
+        val endOffset = layout.getLineEnd(endLine)
+
+        if (startOffset >= currentHighlightRange.first && endOffset <= currentHighlightRange.second) {
+            return@OnScrollChangedListener
+        }
+
+        removeCallbacks(updateVisibleSpansRunnable)
+        postDelayed(updateVisibleSpansRunnable, 50)
     }
 
     private val highlightRunnable = Runnable {
@@ -143,6 +173,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         super.onDetachedFromWindow()
         viewTreeObserver.removeOnScrollChangedListener(scrollChangedListener)
         removeCallbacks(highlightRunnable)
+        removeCallbacks(updateVisibleSpansRunnable)
         // 移除幽灵锚点，防止内存/视图泄漏
         cursorAnchor?.let { anchor ->
             anchor.post {
@@ -495,6 +526,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
                 }
                 // 性能优化：按起始位置排序并合并/过滤包含关系的 Span
+                // 此时 result 按 start 升序，start 相同按 end 降序
                 result.sortWith(compareBy({ it.start }, { -it.end }))
                 val filtered = mutableListOf<SyntaxSpan>()
                 var lastMaxEnd = -1
@@ -503,13 +535,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                         filtered.add(span)
                         lastMaxEnd = span.end
                     } else if (span.end > lastMaxEnd) {
-                        // 允许部分重叠，但如果被完全包含则跳过 (简化逻辑：只要起始点在已知范围外或终点延伸更远)
-                        // 根据用户要求简化：起始较早且终止大于另一个起始。
-                        // 实际上对于着色，我们希望减少 Span 数量。
+                        // 允许部分重叠，但如果被完全包含则跳过
                         filtered.add(span)
                         lastMaxEnd = span.end
                     }
                 }
+                // filtered 列表现在具有以下性质：
+                // 1. start 严格非降序 (甚至严格升序，因为包含了 start 相同的情况被过滤了)
+                // 2. end 严格升序 (因为 lastMaxEnd 每次都在变大)
                 filtered
             }
 
@@ -546,17 +579,44 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         val editable = editableText ?: return
 
-        activeSyntaxSpans.forEach { editable.removeSpan(it) }
-        activeSyntaxSpans.clear()
+        // 1. 增量更新：移除已经不在渲染区域内的旧 Span
+        // 这种做法比使用 HashSet 效率更高，完全避免了临时对象分配
+        val iterator = activeSyntaxSpans.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val span = entry.key
+            if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
+                editable.removeSpan(entry.value)
+                iterator.remove()
+            }
+        }
 
-        for (span in allSyntaxSpans) {
-            if (span.start < renderEndOffset && span.end > renderStartOffset) {
+        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
+        var low = 0
+        var high = allSyntaxSpans.size - 1
+        var startIndex = 0
+        while (low <= high) {
+            val mid = (low + high) / 2
+            if (allSyntaxSpans[mid].end <= renderStartOffset) {
+                low = mid + 1
+                startIndex = low
+            } else {
+                high = mid - 1
+            }
+        }
+
+        // 3. 增量更新：遍历并添加新进入视野的 Span
+        for (i in startIndex until allSyntaxSpans.size) {
+            val span = allSyntaxSpans[i]
+            if (span.start >= renderEndOffset) break
+            
+            if (!activeSyntaxSpans.containsKey(span)) {
                 val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
                 val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
                 if (s < e) {
                     val newSpan = SyntaxForegroundColorSpan(span.color)
                     editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    activeSyntaxSpans.add(newSpan)
+                    activeSyntaxSpans[span] = newSpan
                 }
             }
         }
@@ -671,13 +731,37 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
     }
 
+    private fun isTextEqual(a: CharSequence?, b: CharSequence?): Boolean {
+        if (a === b) return true
+        if (a == null || b == null) return false
+        val len = a.length
+        if (len != b.length) return false
+
+        if (a is String && b is String) return a == b
+
+        val chunkSize = 2048
+        val tempA = CharArray(chunkSize)
+        val tempB = CharArray(chunkSize)
+        var start = 0
+        while (start < len) {
+            val end = kotlin.math.min(start + chunkSize, len)
+            android.text.TextUtils.getChars(a, start, end, tempA, 0)
+            android.text.TextUtils.getChars(b, start, end, tempB, 0)
+            for (i in 0 until (end - start)) {
+                if (tempA[i] != tempB[i]) return false
+            }
+            start = end
+        }
+        return true
+    }
+
     fun setTextHighlighted(text: CharSequence?) {
         if (text.isNullOrEmpty()) {
             setText("")
             return
         }
-        if (this.text?.toString() == text.toString()) return
-        
+        if (isTextEqual(this.text, text)) return
+
         removeAllErrorLines()
         modified = false
         setText(text)
@@ -687,6 +771,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         currentHighlightRange = Pair(-1, -1)
 
         val editable = editableText
+        if (isLineNumberEnabled) {
+            getEnterPos(editable)
+            updateLineNumberPadding()
+        }
         clearSpans(editable)
         highlightErrorLines(editable)
         highlightSearch(editable)
@@ -700,7 +788,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun clearSpans(editable: Editable) {
-        activeSyntaxSpans.forEach { editable.removeSpan(it) }
+        activeSyntaxSpans.values.forEach { editable.removeSpan(it) }
         activeSyntaxSpans.clear()
         editable.getSpans(0, editable.length, ForegroundColorSpan::class.java)
             .forEach(editable::removeSpan)
@@ -1103,10 +1191,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private fun getEnterPos(text: CharSequence) {
         enterPosSize = 0
-        for (i in text.indices) {
-            if (text[i] == '\n') {
-                addEnterPos(i)
-            }
+        // 使用 TextUtils.indexOf 代替逐字 charAt 遍历
+        // 这样可以避免在大文本上调用 toString() 产生的内存分配，也能利用 TextUtils 内部 getChars 的分块读取优化
+        var index = android.text.TextUtils.indexOf(text, '\n', 0)
+        while (index >= 0) {
+            addEnterPos(index)
+            index = android.text.TextUtils.indexOf(text, '\n', index + 1)
         }
     }
 
@@ -1140,10 +1230,11 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         val newEnters = mutableListOf<Int>()
-        for (i in start until start + count) {
-            if (i < text.length && text[i] == '\n') {
-                newEnters.add(i)
-            }
+        // 增量查找新插入文本中的换行符位置
+        var idx = android.text.TextUtils.indexOf(text, '\n', start, start + count)
+        while (idx >= 0) {
+            newEnters.add(idx)
+            idx = android.text.TextUtils.indexOf(text, '\n', idx + 1, start + count)
         }
         if (newEnters.isNotEmpty()) {
             var index = enterPos.binarySearch(start, 0, enterPosSize)
