@@ -379,6 +379,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     @Suppress("UselessCallOnNotNull")
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
+        //这里别动，父类初始化会调用它，此时searchKeyword为null
         if (currentMatchIndex >= 0 && !searchKeyword.isNullOrBlank()) {
             val range = matchRanges.getOrNull(currentMatchIndex)
             if (range != null && (selStart != range.first || selEnd != range.second)) {
@@ -434,16 +435,13 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val yMargin = 5 * displayDensity.toInt()
 
             // 4. 让锚点不仅跟随光标，还要在上下各“膨胀”出一段间距
-            cursorAnchor?.let { anchor ->
-                anchor.layoutParams = anchor.layoutParams?.apply {
+            cursorAnchor?.apply {
+                layoutParams = (layoutParams ?: ViewGroup.LayoutParams(1, 0)).apply {
                     width = 1
-                    // 高度 = 原本的行高 + 上间距 + 下间距
                     height = lineHeight + (yMargin * 2)
-                } ?: ViewGroup.LayoutParams(1, lineHeight + (yMargin * 2))
-
-                anchor.x = this.x + targetX
-                // Y 坐标往上提一个间距的距离，给上方留出空间
-                anchor.y = this.y + lineTop + paddingTop - scrollY - yMargin
+                }
+                x = this@CodeView.x + targetX
+                y = this@CodeView.y + lineTop + paddingTop - scrollY - yMargin
             }
         }
         super.showDropDown()
@@ -452,23 +450,17 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private fun autoIndent(
         source: CharSequence, dest: Spanned, dStart: Int, dEnd: Int
     ): CharSequence {
-        var iStart = dStart - 1
+        val lastNewLine = dest.lastIndexOf('\n', dStart - 1)
+        val lineStart = lastNewLine + 1
         var lastNonSpaceChar: Char? = null
-
-        // 1. 寻找上一行的起点与最后一个非空字符
-        while (iStart >= 0) {
-            val c = dest[iStart]
-            if (c == '\n') break
-            if (lastNonSpaceChar == null && !c.isWhitespace()) {
-                lastNonSpaceChar = c
+        for (i in dStart - 1 downTo lineStart) {
+            if (!dest[i].isWhitespace()) {
+                lastNonSpaceChar = dest[i]
+                break
             }
-            iStart--
         }
 
-        val lineStart = iStart + 1
         var indentEnd = lineStart
-
-        // 2. 计算基础缩进
         while (indentEnd < dStart && dest[indentEnd] == ' ') {
             indentEnd++
         }
@@ -477,7 +469,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val indent = StringBuilder(source).append(indentStr)
         var cursorOffset = indent.length
 
-        // 3. 分支预测与处理
         if (lastNonSpaceChar in mIndentCharacterList) {
             indent.append("    ")
             cursorOffset = indent.length
@@ -487,10 +478,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         } else {
             val nextChar = dest.getOrNull(dEnd)
-            // 修复 Kotlin 语法中 guards 的兼容性，确保逻辑正确
             if (lastNonSpaceChar == nextChar && nextChar != null && nextChar in mClosePairMap) {
-                // 预测：如果是闭合括号，减少缩进
-                indent.setLength(indent.length - 4) // 替代 dropLast(4)，性能更好
+                indent.setLength(maxOf(0, indent.length - 4))
                 cursorOffset = indent.length
             }
         }
@@ -516,24 +505,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                         result.add(SyntaxSpan(m.start(), m.end(), color))
                     }
                 }
-                // 性能优化：按起始位置排序并合并/过滤包含关系的 Span
-                // 此时 result 按 start 升序，start 相同按 end 降序
+                // 按起始位置升序排列，相同起始位置时按长度降序排列
                 result.sortWith(compareBy({ it.start }, { -it.end }))
                 val filtered = mutableListOf<SyntaxSpan>()
                 var lastMaxEnd = -1
                 for (span in result) {
-                    if (span.start >= lastMaxEnd) {
-                        filtered.add(span)
-                        lastMaxEnd = span.end
-                    } else if (span.end > lastMaxEnd) {
-                        // 允许部分重叠，但如果被完全包含则跳过
+                    if (span.end > lastMaxEnd) {
                         filtered.add(span)
                         lastMaxEnd = span.end
                     }
                 }
-                // filtered 列表现在具有以下性质：
-                // 1. start 严格非降序 (甚至严格升序，因为包含了 start 相同的情况被过滤了)
-                // 2. end 严格升序 (因为 lastMaxEnd 每次都在变大)
                 filtered
             }
 
@@ -563,8 +544,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             return
         }
 
-        val renderStartLine = kotlin.math.max(0, firstLine - 20)
-        val renderEndLine = kotlin.math.min(layout.lineCount - 1, lastLine + 20)
+        val renderStartLine = kotlin.math.max(0, firstLine - 10)
+        val renderEndLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
         val renderStartOffset = layout.getLineStart(renderStartLine)
         val renderEndOffset = layout.getLineEnd(renderEndLine)
 
@@ -949,71 +930,42 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         forward: Boolean = false,
         scrollToMatch: Boolean = false
     ) {
-        // 判断是否需要重新计算匹配结果
-        val needRecompute =
-            this.searchKeyword != keyword || this.useRegex != regex || this.matchCase != matchCase || this.matchWholeWord != matchWholeWord || matchRanges.isEmpty()
+        val needRecompute = this.searchKeyword != keyword || this.useRegex != regex ||
+            this.matchCase != matchCase || this.matchWholeWord != matchWholeWord || matchRanges.isEmpty()
 
-        // 更新搜索参数
         this.searchKeyword = keyword
         this.useRegex = regex
         this.matchCase = matchCase
         this.matchWholeWord = matchWholeWord
 
-        // 如果关键词 or 文本为空，清除搜索结果并返回
         if (keyword.isEmpty()) {
             clearSearch()
             return
         }
 
-        // 如果需要重新计算匹配结果
         if (needRecompute) reHighlightSearch()
-
-        // 如果没有匹配结果，重新高亮并返回
         if (matchRanges.isEmpty()) return
 
-        // 确定当前应该选中的索引
-        if (needRecompute) {
-            if (scrollToMatch) {
-                // 获取当前光标位置
-                val cursorPos = selectionStart
-                // 根据查找方向确定当前匹配索引
-                if (forward) {
-                    currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
-                    if (currentMatchIndex == -1) currentMatchIndex = 0
-                } else {
-                    currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
-                    if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
-                }
-                // 聚焦当前匹配项
-                focusCurrentMatch()
-            }
-            // 重新高亮搜索结果
-            reHighlightSearch()
-        } else {
-            // 如果不需要重新计算，直接更新当前匹配索引
-            val prevIndex = currentMatchIndex
-            if (currentMatchIndex == -1) {
-                // 如果没有当前匹配索引，根据光标位置确定
-                val cursorPos = selectionStart
-                if (forward) {
-                    currentMatchIndex = matchRanges.indexOfFirst { it.first >= cursorPos }
-                    if (currentMatchIndex == -1) currentMatchIndex = 0
-                } else {
-                    currentMatchIndex = matchRanges.indexOfLast { it.second <= cursorPos }
-                    if (currentMatchIndex == -1) currentMatchIndex = matchRanges.size - 1
-                }
+        val prevIndex = currentMatchIndex
+        if (needRecompute || currentMatchIndex == -1) {
+            val cursorPos = selectionStart
+            currentMatchIndex = if (forward) {
+                matchRanges.indexOfFirst { it.first >= cursorPos }.let { if (it == -1) 0 else it }
             } else {
-                // 如果有当前匹配索引，根据查找方向更新索引
-                currentMatchIndex = if (forward) {
-                    (currentMatchIndex + 1) % matchRanges.size
-                } else {
-                    (currentMatchIndex - 1 + matchRanges.size) % matchRanges.size
-                }
+                matchRanges.indexOfLast { it.second <= cursorPos }
+                    .let { if (it == -1) matchRanges.size - 1 else it }
             }
-            // 聚焦当前匹配项
+        } else {
+            currentMatchIndex = if (forward) {
+                (currentMatchIndex + 1) % matchRanges.size
+            } else {
+                (currentMatchIndex - 1 + matchRanges.size) % matchRanges.size
+            }
+        }
+
+        if (scrollToMatch || !needRecompute) {
             focusCurrentMatch()
-            // 更新匹配高亮
-            if (prevIndex >= 0) {
+            if (prevIndex >= 0 && prevIndex < matchRanges.size) {
                 updateMatchHighlight(prevIndex, currentMatchIndex)
             } else {
                 updateSingleMatchHighlight(currentMatchIndex)
@@ -1231,32 +1183,35 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
 
+        var firstIdx = enterPos.binarySearch(start, 0, enterPosSize)
+        if (firstIdx < 0) firstIdx = -firstIdx - 1
+
         if (offset != 0) {
-            for (i in 0 until enterPosSize) {
-                if (enterPos[i] >= start) {
-                    enterPos[i] += offset
-                }
+            for (i in firstIdx until enterPosSize) {
+                enterPos[i] += offset
             }
         }
 
         val newEnters = mutableListOf<Int>()
-        // 增量查找新插入文本中的换行符位置
         var idx = android.text.TextUtils.indexOf(text, '\n', start, start + count)
         while (idx >= 0) {
             newEnters.add(idx)
             idx = android.text.TextUtils.indexOf(text, '\n', idx + 1, start + count)
         }
         if (newEnters.isNotEmpty()) {
-            var index = enterPos.binarySearch(start, 0, enterPosSize)
-            if (index < 0) index = -index - 1
-
             val numNew = newEnters.size
             if (enterPosSize + numNew > enterPos.size) {
                 enterPos = enterPos.copyOf((enterPosSize + numNew) * 2)
             }
-            System.arraycopy(enterPos, index, enterPos, index + numNew, enterPosSize - index)
+            System.arraycopy(
+                enterPos,
+                firstIdx,
+                enterPos,
+                firstIdx + numNew,
+                enterPosSize - firstIdx
+            )
             for (i in newEnters.indices) {
-                enterPos[index + i] = newEnters[i]
+                enterPos[firstIdx + i] = newEnters[i]
             }
             enterPosSize += numNew
         }
