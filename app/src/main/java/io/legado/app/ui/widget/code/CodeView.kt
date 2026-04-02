@@ -190,17 +190,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 }
             }
 
-            if (highlightWhileTextChanging) {
-                handleTextChangeHighlight(start, before, count)
-            }
             if (removeErrorsWhenTextChanged) removeAllErrorLines()
         }
 
         override fun afterTextChanged(editable: Editable) {
             if (!modified) return
-            if (!highlightWhileTextChanging) {
-                handleTextChangeHighlight(start, before, count)
-            }
+            handleTextChangeHighlight(start, before, count)
             if (isLineNumberEnabled) {
                 updateLineNumberPadding()
             }
