@@ -151,7 +151,7 @@ class AutoCompleteAdapter(
     }
 
     companion object {
-        private val wordPattern = java.util.regex.Pattern.compile("[a-zA-Z_]\\w*")
+        private val wordPattern = java.util.regex.Pattern.compile("\\b[a-zA-Z_]\\w*\\b")
 
         val defaultCompletions: Map<String, List<String>?> = mapOf(
             "*." to listOf(
