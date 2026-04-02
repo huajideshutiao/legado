@@ -750,7 +750,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
     }
 
-    private fun isTextEqual(a: CharSequence?, b: CharSequence?): Boolean {
+    fun isTextEqual(a: CharSequence?, b: CharSequence?): Boolean {
         if (a === b) return true
         if (a == null || b == null) return false
         val len = a.length

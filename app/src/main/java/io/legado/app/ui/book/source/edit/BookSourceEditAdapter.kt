@@ -58,6 +58,11 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {
+            (editText.getTag(R.id.tag3) as? Runnable)?.let {
+                it.run()
+                editText.removeCallbacks(it)
+                editText.setTag(R.id.tag3, null)
+            }
             editText.setTag(R.id.tag, editEntity.key)
             editText.maxLines = editEntityMaxLine
             if (editText.getTag(R.id.tag1) == null) {
@@ -70,7 +75,11 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                     }
 
                     override fun onViewDetachedFromWindow(v: View) {
-
+                        (editText.getTag(R.id.tag3) as? Runnable)?.let {
+                            it.run()
+                            editText.removeCallbacks(it)
+                            editText.setTag(R.id.tag3, null)
+                        }
                     }
                 }
                 editText.addOnAttachStateChangeListener(listener)
@@ -81,7 +90,9 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                     editText.removeTextChangedListener(it)
                 }
             }
-            editText.setText(editEntity.value)
+            if (!editText.isTextEqual(editText.text, editEntity.value)) {
+                editText.setText(editEntity.value)
+            }
             textInputLayout.hint = editEntity.hint
             val textWatcher = object : TextWatcher {
                 override fun beforeTextChanged(
@@ -98,7 +109,15 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                 }
 
                 override fun afterTextChanged(s: Editable?) {
-                    editEntity.value = (s?.toString())
+                    (editText.getTag(R.id.tag3) as? Runnable)?.let {
+                        editText.removeCallbacks(it)
+                    }
+                    val runnable = Runnable {
+                        editEntity.value = (s?.toString())
+                        editText.setTag(R.id.tag3, null)
+                    }
+                    editText.setTag(R.id.tag3, runnable)
+                    editText.postDelayed(runnable, 500)
                 }
             }
             editText.addTextChangedListener(textWatcher)
