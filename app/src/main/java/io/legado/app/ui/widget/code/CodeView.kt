@@ -49,6 +49,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var tabWidthInCharacters = 0
     private var modified = true
     var highlightWhileTextChanging = true
+    private var textVersion = 0
     private var hasErrors = false
     var removeErrorsWhenTextChanged = true
     private var lastChangeStart = 0
@@ -128,8 +129,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         val layout = layout ?: return@OnScrollChangedListener
-        val firstLine = layout.getLineForVertical(visibleRect.top)
-        val lastLine = layout.getLineForVertical(visibleRect.bottom)
+        val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
+        val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
         val startLine = kotlin.math.max(0, firstLine - 5)
         val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 5)
@@ -176,8 +177,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         removeCallbacks(updateVisibleSpansRunnable)
         // 移除幽灵锚点，防止内存/视图泄漏
         cursorAnchor?.let { anchor ->
-            anchor.post {
-                (anchor.parent as? ViewGroup)?.removeView(anchor)
+            val parentGroup = anchor.parent as? ViewGroup
+            parentGroup?.post {
+                parentGroup.removeView(anchor)
             }
         }
         cursorAnchor = null
@@ -200,23 +202,21 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             charSequence: CharSequence, start: Int, before: Int, count: Int
         ) {
             if (!modified) return
+            textVersion++
             if (isLineNumberEnabled) {
                 updateEnterPosIncremental(charSequence, start, before, count)
             }
 
             val offset = count - before
             if (offset != 0 && allSyntaxSpans.isNotEmpty()) {
-                val it = allSyntaxSpans.iterator()
-                while (it.hasNext()) {
-                    val span = it.next()
+                // 使用索引循环代替 Iterator 提高性能，并避免实时删除导致 O(N^2)
+                for (i in 0 until allSyntaxSpans.size) {
+                    val span = allSyntaxSpans[i]
                     if (span.start >= start) {
                         span.start = kotlin.math.max(start, span.start + offset)
                     }
                     if (span.end > start) {
                         span.end = kotlin.math.max(start, span.end + offset)
-                    }
-                    if (span.start >= span.end) {
-                        it.remove()
                     }
                 }
             }
@@ -493,6 +493,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (mSyntaxPatternMap.isEmpty()) return
         val textSnapshot = editable.toString()
         val patternMapSnapshot = HashMap(mSyntaxPatternMap)
+        val capturedVersion = textVersion
 
         isHighlighting = true
         highlightJob?.cancel()
@@ -518,6 +519,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 filtered
             }
 
+            if (capturedVersion != textVersion) return@launch
+
             allSyntaxSpans.clear()
             allSyntaxSpans.addAll(newSpans)
 
@@ -531,8 +534,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val layout = layout ?: return
         if (!getLocalVisibleRect(visibleRect)) return
 
-        val firstLine = layout.getLineForVertical(visibleRect.top)
-        val lastLine = layout.getLineForVertical(visibleRect.bottom)
+        val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
+        val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
         val startLine = kotlin.math.max(0, firstLine - 5)
         val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 5)
@@ -551,68 +554,48 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         val editable = editableText ?: return
 
-        var opCount = 0
-        var hasMore = false
-
         // 1. 增量更新：移除已经不在渲染区域内的旧 Span
         val iterator = activeSyntaxSpans.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val span = entry.key
             if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
-                if (opCount >= 20) {
-                    hasMore = true
-                    break
-                }
                 editable.removeSpan(entry.value)
                 iterator.remove()
-                opCount++
             }
         }
 
-        if (!hasMore) {
-            // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
-            var low = 0
-            var high = allSyntaxSpans.size - 1
-            var startIndex = 0
-            while (low <= high) {
-                val mid = (low + high) / 2
-                if (allSyntaxSpans[mid].end <= renderStartOffset) {
-                    low = mid + 1
-                    startIndex = low
-                } else {
-                    high = mid - 1
-                }
+        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
+        var low = 0
+        var high = allSyntaxSpans.size - 1
+        var startIndex = 0
+        while (low <= high) {
+            val mid = (low + high) / 2
+            if (allSyntaxSpans[mid].end <= renderStartOffset) {
+                low = mid + 1
+                startIndex = low
+            } else {
+                high = mid - 1
             }
+        }
 
-            // 3. 增量更新：遍历并添加新进入视野的 Span
-            for (i in startIndex until allSyntaxSpans.size) {
-                val span = allSyntaxSpans[i]
-                if (span.start >= renderEndOffset) break
+        // 3. 增量更新：遍历并添加新进入视野的 Span
+        for (i in startIndex until allSyntaxSpans.size) {
+            val span = allSyntaxSpans[i]
+            if (span.start >= renderEndOffset) break
 
-                if (!activeSyntaxSpans.containsKey(span)) {
-                    if (opCount >= 20) {
-                        hasMore = true
-                        break
-                    }
-                    val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
-                    val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
-                    if (s < e) {
-                        val newSpan = SyntaxForegroundColorSpan(span.color)
-                        editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        activeSyntaxSpans[span] = newSpan
-                        opCount++
-                    }
+            if (!activeSyntaxSpans.containsKey(span)) {
+                val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
+                val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
+                if (s < e) {
+                    val newSpan = SyntaxForegroundColorSpan(span.color)
+                    editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    activeSyntaxSpans[span] = newSpan
                 }
             }
         }
 
-        if (hasMore) {
-            removeCallbacks(updateVisibleSpansRunnable)
-            post(updateVisibleSpansRunnable)
-        } else {
-            currentHighlightRange = Pair(renderStartOffset, renderEndOffset)
-        }
+        currentHighlightRange = Pair(renderStartOffset, renderEndOffset)
     }
 
     private fun highlightErrorLines(editable: Editable) {
@@ -723,27 +706,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun isTextEqual(a: CharSequence?, b: CharSequence?): Boolean {
-        if (a === b) return true
-        if (a == null || b == null) return false
-        val len = a.length
-        if (len != b.length) return false
-
-        if (a is String && b is String) return a == b
-
-        val chunkSize = 2048
-        val tempA = CharArray(chunkSize)
-        val tempB = CharArray(chunkSize)
-        var start = 0
-        while (start < len) {
-            val end = kotlin.math.min(start + chunkSize, len)
-            android.text.TextUtils.getChars(a, start, end, tempA, 0)
-            android.text.TextUtils.getChars(b, start, end, tempB, 0)
-            for (i in 0 until (end - start)) {
-                if (tempA[i] != tempB[i]) return false
-            }
-            start = end
-        }
-        return true
+        return android.text.TextUtils.equals(a, b)
     }
 
     fun setTextHighlighted(text: CharSequence?) {
@@ -1027,6 +990,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (matchRanges.isEmpty()) return
         var savedCursorPos = selectionStart
 
+        beginBatchEdit()
         modified = false // 暂时禁用 TextWatcher 中的增量计算逻辑
 
         // 倒序替换，避免坐标错位
@@ -1040,6 +1004,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         modified = true
+        endBatchEdit()
         // 替换完成后手动触发一次状态更新
         getEnterPos(editableText)
         updateLineNumberPadding()
@@ -1106,8 +1071,13 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (isLineNumberEnabled && enterPosSize > 0) {
-            val firstLine = layout.getLineForOffset(scrollY)
-            val lastLine = layout.getLineForOffset(scrollY + height)
+            canvas.getClipBounds(visibleRect)
+            val firstLine =
+                kotlin.math.max(0, layout.getLineForVertical(visibleRect.top - paddingTop))
+            val lastLine = kotlin.math.min(
+                layout.lineCount - 1,
+                layout.getLineForVertical(visibleRect.bottom - paddingTop)
+            )
             var lineStartOffset: Int
 
             val firstLineStartOffset = layout.getLineStart(firstLine)
@@ -1143,9 +1113,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val lineX = paddingLeft - 6f * displayDensity
             canvas.drawLine(
                 lineX,
-                (scrollY + paddingTop).toFloat(),
+                visibleRect.top.toFloat() + paddingTop,
                 lineX,
-                (scrollY + height - paddingBottom).toFloat(),
+                visibleRect.bottom.toFloat() - paddingBottom,
                 mLineDividerPaint
             )
         }
