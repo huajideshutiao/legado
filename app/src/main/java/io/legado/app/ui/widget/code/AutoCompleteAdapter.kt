@@ -17,6 +17,7 @@ class AutoCompleteAdapter(
 
     private val inflater = LayoutInflater.from(context)
     var completions: Map<String, List<String>?> = emptyMap()
+    var textProvider: (() -> CharSequence)? = null
     private var filteredResults: List<String> = emptyList()
     private var originalInput: String = ""
     private val filter = CompletionFilter()
@@ -61,6 +62,28 @@ class AutoCompleteAdapter(
             return resultValue?.toString() ?: ""
         }
 
+        private fun addEditorWords(
+            target: String,
+            scoredMatches: ArrayList<Pair<String, Int>>,
+            addedItems: HashSet<String>
+        ) {
+            try {
+                textProvider?.invoke()?.toString()?.let { text ->
+                    val matcher = wordPattern.matcher(text)
+                    while (matcher.find()) {
+                        val word = matcher.group()
+                        if (word == target) continue
+                        val score = fuzzyMatchScore(target, word)
+                        if (score > 0 && addedItems.add(word)) {
+                            scoredMatches.add(Pair(word, score))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         override fun performFiltering(constraint: CharSequence?): FilterResults {
             val results = FilterResults()
             originalInput = constraint?.toString() ?: ""
@@ -96,6 +119,7 @@ class AutoCompleteAdapter(
                             }
                         }
                     }
+                    addEditorWords(suffix, scoredMatches, addedItems)
                 }
             } else {
                 val items = completions.keys + (completions[""] ?: emptyList())
@@ -106,6 +130,7 @@ class AutoCompleteAdapter(
                         scoredMatches.add(Pair(item, score))
                     }
                 }
+                addEditorWords(input, scoredMatches, addedItems)
             }
 
             scoredMatches.sortByDescending { it.second }
@@ -126,6 +151,8 @@ class AutoCompleteAdapter(
     }
 
     companion object {
+        private val wordPattern = java.util.regex.Pattern.compile("[a-zA-Z_]\\w*")
+
         val defaultCompletions: Map<String, List<String>?> = mapOf(
             "*." to listOf(
                 "length","slice()","split()","replace()","substring()","indexOf()","includes()","map()","forEach()","join()","push()","toString()","match()"

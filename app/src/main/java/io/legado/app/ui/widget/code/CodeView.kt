@@ -258,7 +258,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         autoCompleteTokenizer = KeywordTokenizer()
         setTokenizer(autoCompleteTokenizer)
-        autoCompleteAdapter = AutoCompleteAdapter(context)
+        autoCompleteAdapter = AutoCompleteAdapter(context).apply {
+            textProvider = { text }
+        }
         setAdapter(autoCompleteAdapter)
         threshold = 1
         dropDownWidth = 150 * displayDensity.toInt()
@@ -377,17 +379,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     @Suppress("UselessCallOnNotNull")
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
-        if (autoCompleteAdapter != null && autoCompleteTokenizer != null) {
-            val text = editableText ?: return
-            val end = if (text.isNotEmpty()) minOf(selStart, text.length) else 0
-            val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
-            val constraint = if (tokenStart <= end && text.isNotEmpty()) {
-                text.subSequence(tokenStart, end)
-            } else {
-                ""
-            }
-            autoCompleteAdapter?.filter?.filter(constraint)
-        }
         if (currentMatchIndex >= 0 && !searchKeyword.isNullOrBlank()) {
             val range = matchRanges.getOrNull(currentMatchIndex)
             if (range != null && (selStart != range.first || selEnd != range.second)) {
@@ -1294,7 +1285,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun setAutoCompletions(completions: Map<String, List<String>>) {
         if (autoCompleteAdapter == null) {
-            autoCompleteAdapter = AutoCompleteAdapter(context, completions)
+            autoCompleteAdapter = AutoCompleteAdapter(context, completions).apply {
+                textProvider = { text }
+            }
             if (autoCompleteTokenizer == null) {
                 autoCompleteTokenizer = KeywordTokenizer()
                 setTokenizer(autoCompleteTokenizer)
