@@ -110,7 +110,11 @@ object ImageLoader {
             .load(path)
     }
 
-    suspend fun loadManga(imageUrl: String, coroutineContext : CoroutineContext): ByteArray? {
+    suspend fun loadManga(imageUrl: String, coroutineContext: CoroutineContext): Any? {
+        val book = ReadManga.book
+        if (book != null && io.legado.app.help.book.BookHelp.isImageExist(book, imageUrl)) {
+            return io.legado.app.help.book.BookHelp.getImage(book, imageUrl)
+        }
         val analyzeUrl = AnalyzeUrl(
             imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
         )

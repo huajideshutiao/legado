@@ -12,6 +12,7 @@ import androidx.core.util.size
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.bumptech.glide.Glide
@@ -38,6 +39,7 @@ class MangaAdapter(private val context: Context) :
     private lateinit var mConfig: MangaColorFilterConfig
     private var mTransformation: BitmapTransformation? = null
     private var currentMangaEInkThreshold = 0
+    private var recyclerView: RecyclerView? = null
 
     companion object {
         private const val LOADING_VIEW = 0
@@ -88,7 +90,10 @@ class MangaAdapter(private val context: Context) :
 
     //全部替换数据
     fun submitList(contents: List<Any>, runnable: Runnable? = null) {
-        mDiffer.submitList(contents, runnable)
+        mDiffer.submitList(contents) {
+            runnable?.run()
+            cancelOutOfBoundsJobs()
+        }
     }
 
     inner class PageViewHolder(binding: ItemBookMangaPageBinding) :
@@ -198,7 +203,6 @@ class MangaAdapter(private val context: Context) :
                 if (vh.binding.image.tag is String) {
                     val imageUrl = vh.binding.image.tag as String
                     ProgressManager.removeListener(imageUrl)
-                    MangaVH.cancelPreload(imageUrl)
                 }
             }
         }
@@ -264,5 +268,42 @@ class MangaAdapter(private val context: Context) :
             null
         }
         notifyItemRangeChanged(0, itemCount)
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        this.recyclerView = recyclerView
+        recyclerView.addOnScrollListener(scrollListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        recyclerView.removeOnScrollListener(scrollListener)
+        this.recyclerView = null
+    }
+
+    private val scrollListener = object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+            super.onScrolled(recyclerView, dx, dy)
+            cancelOutOfBoundsJobs()
+        }
+    }
+
+    private fun cancelOutOfBoundsJobs() {
+        val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager ?: return
+        val first = layoutManager.findFirstVisibleItemPosition()
+        val last = layoutManager.findLastVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return
+        val preDownloadNum = io.legado.app.help.config.AppConfig.mangaPreDownloadNum
+        val start = kotlin.math.max(0, first - preDownloadNum)
+        val end = kotlin.math.min(itemCount - 1, last + preDownloadNum)
+        val validUrls = mutableSetOf<String>()
+        for (i in start..end) {
+            val item = getItem(i)
+            if (item is MangaPage) {
+                validUrls.add(item.mImageUrl)
+            }
+        }
+        MangaVH.cancelJobsOutside(validUrls)
     }
 }

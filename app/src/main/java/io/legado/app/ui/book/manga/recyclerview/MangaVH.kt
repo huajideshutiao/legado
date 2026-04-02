@@ -20,8 +20,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.Transformation
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.BookHelp.isImageExist
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.model.ReadManga
@@ -52,19 +50,13 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
     )
 
     companion object {
-        private val preloadJobs = mutableMapOf<String, PreloadJob>()
+        private val preloadJobs = java.util.concurrent.ConcurrentHashMap<String, PreloadJob>()
 
         fun preloadImage(imageUrl: String) {
             if (preloadJobs.containsKey(imageUrl)) return
-            val book = ReadManga.book ?: return
-            if (isImageExist(book, imageUrl)) return
 
             val preloadJob = PreloadJob(Job())
             preloadJobs[imageUrl] = preloadJob
-
-            preloadJob.job.invokeOnCompletion {
-                preloadJobs.remove(imageUrl)
-            }
 
             CoroutineScope(IO).launch(preloadJob.job) {
                 try {
@@ -82,8 +74,15 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
             preloadJobs.remove(imageUrl)?.job?.cancel()
         }
 
+        fun cancelJobsOutside(validUrls: Set<String>) {
+            val keysToCancel = preloadJobs.keys().toList().filter { it !in validUrls }
+            for (key in keysToCancel) {
+                preloadJobs.remove(key)?.job?.cancel()
+            }
+        }
+
         fun cancelAllPreload() {
-            preloadJobs.values.forEach { it.job.cancel() }
+            preloadJobs.values.toList().forEach { it.job.cancel() }
             preloadJobs.clear()
         }
 
@@ -127,14 +126,24 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         mImage.tag = imageUrl
 
         val existingPreloadJob = getPreloadJob(imageUrl)
-        if (existingPreloadJob != null && existingPreloadJob.job.isActive) {
+        if (existingPreloadJob != null) {
             CoroutineScope(IO).launch {
-                existingPreloadJob.job.join()
+                if (existingPreloadJob.job.isActive) {
+                    existingPreloadJob.job.join()
+                }
                 withContext(Dispatchers.Main) {
                     if (mImage.tag != imageUrl) return@withContext
+                    val result = existingPreloadJob.result
+                    val glide = if (result is ByteArray) {
+                        Glide.with(context).load(result)
+                    } else if (result is java.io.File) {
+                        Glide.with(context).load(result)
+                    } else {
+                        null
+                    }
                     displayImageResult(
                         imageUrl,
-                        existingPreloadJob.result,
+                        glide,
                         existingPreloadJob.error,
                         isHorizontal,
                         isLastImage,
@@ -145,23 +154,25 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
             return
         }
 
-        removePreloadJob(imageUrl)
-
-        val newJob = CoroutineScope(IO).launch {
+        val preloadJob = PreloadJob(Job())
+        preloadJobs[imageUrl] = preloadJob
+        CoroutineScope(IO).launch(preloadJob.job) {
             var glide: Any? = null
             var error: Exception? = null
             try {
-                val book = ReadManga.book
-                if (book != null && isImageExist(book, imageUrl)) {
-                    glide = Glide.with(context).load(BookHelp.getImage(book, imageUrl))
-                } else {
-                    ImageLoader.loadManga(imageUrl, coroutineContext)?.let {
-                        glide = Glide.with(context).load(it)
-                    }
+                val result = ImageLoader.loadManga(imageUrl, coroutineContext)
+                preloadJob.result = result
+                if (result is java.io.File) {
+                    glide = Glide.with(context).load(result)
+                } else if (result is ByteArray) {
+                    glide = Glide.with(context).load(result)
                 }
             } catch (e: Exception) {
                 e.printOnDebug()
                 error = e
+                preloadJob.error = e
+            } finally {
+                preloadJob.isCompleted = true
             }
 
             withContext(Dispatchers.Main) {
@@ -177,7 +188,6 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                 }
             }
         }
-        preloadJobs[imageUrl] = PreloadJob(newJob, isCompleted = true)
     }
 
     private fun displayImageResult(
