@@ -3,9 +3,7 @@ package io.legado.app.ui.widget.code
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Paint
-import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
 import android.graphics.text.LineBreakConfig
 import android.os.Build
@@ -13,11 +11,12 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.Layout
 import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
-import android.text.style.ReplacementSpan
+import android.text.style.TabStopSpan
 import android.util.AttributeSet
 import android.util.SparseArray
 import android.view.ActionMode
@@ -40,6 +39,7 @@ import kotlinx.coroutines.withContext
 import java.util.TreeMap
 import java.util.regex.Pattern
 import kotlin.math.roundToInt
+import androidx.core.graphics.withClip
 
 @Suppress("unused")
 class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
@@ -270,8 +270,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         mLineDividerPaint.color = mLineNumberTextColor
         mLineDividerPaint.style = Paint.Style.STROKE
         mLineDividerPaint.strokeWidth = 1f * displayDensity
-        mLineDividerPaint.pathEffect =
-            DashPathEffect(floatArrayOf(5f * displayDensity, 5f * displayDensity), 0f)
+        mLineDividerPaint.alpha = 100
         filters = arrayOf(
             InputFilter { source, start, end, dest, dStart, dEnd ->
                 if (!modified) return@InputFilter source
@@ -385,6 +384,55 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             if (range != null && (selStart != range.first || selEnd != range.second)) {
                 clearCurrentMatchHighlight()
             }
+        }
+    }
+
+    @Suppress("KotlinConstantConditions")
+    override fun setText(text: CharSequence?, type: BufferType?) {
+        // 防止父类构造函数在子类属性初始化完成前调用 setText 导致空指针
+        val isInit = (allSyntaxSpans as Any?) != null
+        val wasModified = modified
+        modified = false
+
+        if (isInit) {
+            allSyntaxSpans.clear()
+            currentHighlightRange = Pair(-1, -1)
+            val editable = editableText
+            if (editable != null) {
+                clearSpans(editable)
+            }
+        }
+
+        // 痛点优化：采用 TabStopSpan 代替 ReplacementSpan 避免绘制碎裂并显著提升初始化性能
+        val processedText = if (isInit && tabWidth > 0 && text != null) {
+            val ssb = if (text is SpannableStringBuilder) text else SpannableStringBuilder(text)
+            for (i in 1..100) {
+                ssb.setSpan(
+                    TabStopSpan.Standard(i * tabWidth),
+                    0,
+                    ssb.length,
+                    Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+            }
+            ssb
+        } else {
+            text
+        }
+
+        super.setText(processedText, type)
+
+        modified = wasModified
+        if (isInit && wasModified) {
+            textVersion++
+            val newEditable = editableText
+            if (newEditable != null) {
+                if (isLineNumberEnabled) {
+                    getEnterPos(newEditable)
+                    updateLineNumberPadding()
+                }
+            }
+            removeCallbacks(highlightRunnable)
+            postDelayed(highlightRunnable, 150)
         }
     }
 
@@ -554,45 +602,50 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         val editable = editableText ?: return
 
-        // 1. 增量更新：移除已经不在渲染区域内的旧 Span
-        val iterator = activeSyntaxSpans.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            val span = entry.key
-            if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
-                editable.removeSpan(entry.value)
-                iterator.remove()
-            }
-        }
-
-        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
-        var low = 0
-        var high = allSyntaxSpans.size - 1
-        var startIndex = 0
-        while (low <= high) {
-            val mid = (low + high) / 2
-            if (allSyntaxSpans[mid].end <= renderStartOffset) {
-                low = mid + 1
-                startIndex = low
-            } else {
-                high = mid - 1
-            }
-        }
-
-        // 3. 增量更新：遍历并添加新进入视野的 Span
-        for (i in startIndex until allSyntaxSpans.size) {
-            val span = allSyntaxSpans[i]
-            if (span.start >= renderEndOffset) break
-
-            if (!activeSyntaxSpans.containsKey(span)) {
-                val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
-                val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
-                if (s < e) {
-                    val newSpan = SyntaxForegroundColorSpan(span.color)
-                    editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    activeSyntaxSpans[span] = newSpan
+        beginBatchEdit()
+        try {
+            // 1. 增量更新：移除已经不在渲染区域内的旧 Span
+            val iterator = activeSyntaxSpans.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val span = entry.key
+                if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
+                    editable.removeSpan(entry.value)
+                    iterator.remove()
                 }
             }
+
+            // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
+            var low = 0
+            var high = allSyntaxSpans.size - 1
+            var startIndex = 0
+            while (low <= high) {
+                val mid = (low + high) / 2
+                if (allSyntaxSpans[mid].end <= renderStartOffset) {
+                    low = mid + 1
+                    startIndex = low
+                } else {
+                    high = mid - 1
+                }
+            }
+
+            // 3. 增量更新：遍历并添加新进入视野的 Span
+            for (i in startIndex until allSyntaxSpans.size) {
+                val span = allSyntaxSpans[i]
+                if (span.start >= renderEndOffset) break
+
+                if (!activeSyntaxSpans.containsKey(span)) {
+                    val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
+                    val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
+                    if (s < e) {
+                        val newSpan = SyntaxForegroundColorSpan(span.color)
+                        editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        activeSyntaxSpans[span] = newSpan
+                    }
+                }
+            }
+        } finally {
+            endBatchEdit()
         }
 
         currentHighlightRange = Pair(renderStartOffset, renderEndOffset)
@@ -739,29 +792,39 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (tabWidthInCharacters == characters) return
         tabWidthInCharacters = characters
         tabWidth = (paint.measureText(" ") * characters).roundToInt()
+        val editable = editableText
+        if (editable != null && tabWidth > 0) {
+            beginBatchEdit()
+            val old = editable.getSpans(0, editable.length, TabStopSpan::class.java)
+            old.forEach { editable.removeSpan(it) }
+            for (i in 1..100) {
+                editable.setSpan(
+                    TabStopSpan.Standard(i * tabWidth),
+                    0,
+                    editable.length,
+                    Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+            }
+            endBatchEdit()
+        }
     }
 
     private fun clearSpans(editable: Editable) {
-        activeSyntaxSpans.values.forEach { editable.removeSpan(it) }
-        activeSyntaxSpans.clear()
-        editable.getSpans(0, editable.length, ForegroundColorSpan::class.java)
-            .forEach(editable::removeSpan)
-        editable.getSpans(0, editable.length, BackgroundColorSpan::class.java)
-            .forEach(editable::removeSpan)
+        beginBatchEdit()
+        try {
+            activeSyntaxSpans.values.forEach { editable.removeSpan(it) }
+            activeSyntaxSpans.clear()
+            editable.getSpans(0, editable.length, ForegroundColorSpan::class.java)
+                .forEach(editable::removeSpan)
+            editable.getSpans(0, editable.length, BackgroundColorSpan::class.java)
+                .forEach(editable::removeSpan)
+        } finally {
+            endBatchEdit()
+        }
     }
 
     private fun convertTabs(start: Int, count: Int) {
-        var startIndex = start
-        if (tabWidth < 1) return
-        val stop = startIndex + count
-        while (editableText.indexOf("\t", startIndex)
-                .also { startIndex = it } > -1 && startIndex < stop
-        ) {
-            editableText.setSpan(
-                TabWidthSpan(), startIndex, startIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            ++startIndex
-        }
+        // TabStopSpan 已全局挂载，无需单独处理
     }
 
     fun setSyntaxPatternsMap(syntaxPatterns: Map<Pattern, Int>?) {
@@ -1069,9 +1132,23 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
         if (isLineNumberEnabled && enterPosSize > 0) {
-            canvas.getClipBounds(visibleRect)
+            canvas.withClip(
+                scrollX + paddingLeft,
+                scrollY,
+                scrollX + width,
+                scrollY + height
+            ) {
+                // 裁剪掉左侧行号区域，避免文本水平滚动时与行号重叠
+                super.onDraw(canvas)
+            }
+
+            // 直接使用 scrollY 和 scrollY + height 精确判断在屏幕内的可见行，
+            // 避免 getLocalVisibleRect 在硬件加速滑动过程中偶尔返回 false 导致不绘制的 Bug
+            val currentScrollY = scrollY
+            val currentScrollBottom = currentScrollY + height
+            
+            // 增加上下 5 行的渲染补偿（Overdraw Buffer），防止快速上下滑动时边缘行号刷新不及时
             val firstLine =
                 kotlin.math.max(0, layout.getLineForVertical(visibleRect.top - paddingTop))
             val lastLine = kotlin.math.min(
@@ -1087,7 +1164,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 }
 
             var prevLineNumber = -1
-            val x = paddingLeft - 11f * displayDensity
+            // 加上 scrollX，使行号在水平滚动时始终固定在屏幕左侧
+            val x = scrollX + paddingLeft - 11f * displayDensity
             val yOffset = paddingTop.toFloat()
 
             for (i in firstLine..lastLine) {
@@ -1110,14 +1188,17 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
                 }
             }
-            val lineX = paddingLeft - 6f * displayDensity
+            // 分割线也加上 scrollX 保持固定
+            val lineX = scrollX + paddingLeft - 6f * displayDensity
             canvas.drawLine(
                 lineX,
-                visibleRect.top.toFloat() + paddingTop,
+                currentScrollY.toFloat() + paddingTop,
                 lineX,
-                visibleRect.bottom.toFloat() - paddingBottom,
+                currentScrollBottom.toFloat() - paddingBottom,
                 mLineDividerPaint
             )
+        } else {
+            super.onDraw(canvas)
         }
     }
 
@@ -1184,27 +1265,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 enterPos[firstIdx + i] = newEnters[i]
             }
             enterPosSize += numNew
-        }
-    }
-
-    private inner class TabWidthSpan : ReplacementSpan() {
-        override fun getSize(
-            paint: Paint, text: CharSequence, start: Int, end: Int, fm: FontMetricsInt?
-        ): Int {
-            return tabWidth
-        }
-
-        override fun draw(
-            canvas: Canvas,
-            text: CharSequence,
-            start: Int,
-            end: Int,
-            x: Float,
-            top: Int,
-            y: Int,
-            bottom: Int,
-            paint: Paint
-        ) {
         }
     }
 
