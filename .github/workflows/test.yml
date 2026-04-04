@@ -202,6 +202,8 @@ jobs:
           body: |
             此版本为测试版，签名与正式版不同，可能存在不稳定情况，升级前请务必备份好数据。
             releaseA 为共存版本，可同时安装使用，功能没有区别。
+
+            ${{ github.event.head_commit.message }}
           prerelease: true
           artifacts: ${{ github.workspace }}/apk/*.apk
 
