@@ -300,7 +300,10 @@ class AudioPlayActivity :
         }
 
         if (!AppConfig.showAddToShelfAlert) {
-            viewModel.removeFromBookshelf { super.finish() }
+            viewModel.removeFromBookshelf {
+                AudioPlay.stop()
+                super.finish()
+            }
         } else {
             alert(title = getString(R.string.add_to_bookshelf)) {
                 setMessage(getString(R.string.check_add_bookshelf, book.name))
@@ -311,8 +314,11 @@ class AudioPlayActivity :
                     setResult(RESULT_OK)
                 }
                 noButton {
-                    viewModel.removeFromBookshelf { super.finish() }
-                    AudioPlay.stop()
+                    viewModel.removeFromBookshelf {
+                        AudioPlay.stop()
+                        super.finish()
+                    }
+
                 }
             }
         }

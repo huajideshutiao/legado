@@ -9,11 +9,11 @@ import splitties.init.appCtx
 import splitties.resources.color
 import java.util.regex.Pattern
 
-val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@@|@(js|Json|css|XPath):")
+val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@@|@(?:js|Json|css|XPath):")
 
 // 推荐用法（Kotlin 原生字符串）：
 val jsonPattern: Pattern =
-    Pattern.compile("""(?<!\\)(["'`])(?:\\.|(?!\1)[^\\\n])*\1|[\[\]{}]""")
+    Pattern.compile("""(?<!\\)(?:"(?:\\.|[^\\"\n])*"|'(?:\\.|[^\\'\n])*'|`(?:\\.|[^\\`\n])*`)|[\[\]{}]""")
 val wrapPattern: Pattern = Pattern.compile("\\\\n")
 val operationPattern: Pattern =
     Pattern.compile("!=|[:=><%+\\-^&|?*]")

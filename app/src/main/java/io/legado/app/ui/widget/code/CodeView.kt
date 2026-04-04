@@ -3,7 +3,6 @@ package io.legado.app.ui.widget.code
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Paint.FontMetricsInt
 import android.graphics.Rect
@@ -55,6 +54,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var lastChangeStart = 0
     private var lastChangeBefore = 0
     private var lastChangeCount = 0
+    private var dirtyStart = -1
+    private var dirtyEnd = -1
 
     var autoCompleteTokenizer: Tokenizer? = null
     var autoCompleteAdapter: AutoCompleteAdapter? = null
@@ -75,14 +76,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 postInvalidate()
             }
         }
-    var mLineNumberTextColor = context.secondaryTextColor
+    var lineNumberTextColor = context.secondaryTextColor
         set(value) {
             field = value
             mLineDividerPaint.color = value
             mLineNumberPaint.color = value
             postInvalidate()
         }
-    var mLineNumberTextSize = textSize * 0.6f
+    var lineNumberTextSize = textSize * 0.6f
         set(value) {
             field = value
             updateLineNumberPadding()
@@ -115,6 +116,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var highlightJob: Job? = null
     private val allSyntaxSpans = ArrayList<SyntaxSpan>()
     private val activeSyntaxSpans = mutableMapOf<SyntaxSpan, SyntaxForegroundColorSpan>()
+    private val activeSearchSpans = mutableListOf<BackgroundColorSpan>()
+    private val activeErrorSpans = mutableListOf<BackgroundColorSpan>()
     private var currentHighlightRange = Pair(-1, -1)
     private val visibleRect = Rect()
 
@@ -132,8 +135,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
         val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
-        val startLine = kotlin.math.max(0, firstLine - 5)
-        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 5)
+        val startLine = kotlin.math.max(0, firstLine - 10)
+        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
 
         val startOffset = layout.getLineStart(startLine)
         val endOffset = layout.getLineEnd(endLine)
@@ -148,7 +151,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private val highlightRunnable = Runnable {
         if (modified) {
-            reHighlightSyntax()
+            val dStart = dirtyStart
+            val dEnd = dirtyEnd
+            dirtyStart = -1
+            dirtyEnd = -1
+            if (dStart != -1 && dEnd != -1) {
+                highlightSyntaxIncremental(editableText, dStart, dEnd)
+            } else {
+                reHighlightSyntax()
+            }
         }
     }
 
@@ -208,6 +219,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
 
             val offset = count - before
+
+            if (dirtyStart != -1) {
+                if (dirtyStart >= start) dirtyStart = kotlin.math.max(start, dirtyStart + offset)
+                if (dirtyEnd > start) dirtyEnd = kotlin.math.max(start, dirtyEnd + offset)
+            }
+
             if (offset != 0 && allSyntaxSpans.isNotEmpty()) {
                 // 使用索引循环代替 Iterator 提高性能，并避免实时删除导致 O(N^2)
                 for (i in 0 until allSyntaxSpans.size) {
@@ -241,6 +258,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             lastChangeBefore = before
             lastChangeCount = count
 
+            if (dirtyStart == -1) {
+                dirtyStart = start
+                dirtyEnd = start + count
+            } else {
+                dirtyStart = kotlin.math.min(dirtyStart, start)
+                dirtyEnd = kotlin.math.max(dirtyEnd, start + count)
+            }
+
             highlightJob?.cancel()
             currentHighlightRange = Pair(-1, -1)
             updateVisibleSpans()
@@ -265,13 +290,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         threshold = 1
         dropDownWidth = 150 * displayDensity.toInt()
         mLineNumberPaint.textAlign = Paint.Align.RIGHT
-        mLineNumberPaint.textSize = mLineNumberTextSize
-        mLineNumberPaint.color = mLineNumberTextColor
-        mLineDividerPaint.color = mLineNumberTextColor
-        mLineDividerPaint.style = Paint.Style.STROKE
+        mLineNumberPaint.textSize = lineNumberTextSize
+        mLineNumberPaint.color = lineNumberTextColor
+        mLineDividerPaint.color = lineNumberTextColor and 0x00FFFFFF or 0x60000000
         mLineDividerPaint.strokeWidth = 1f * displayDensity
-        mLineDividerPaint.pathEffect =
-            DashPathEffect(floatArrayOf(5f * displayDensity, 5f * displayDensity), 0f)
         filters = arrayOf(
             InputFilter { source, start, end, dest, dStart, dEnd ->
                 if (!modified) return@InputFilter source
@@ -489,6 +511,62 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
 
+    private fun highlightSyntaxIncremental(editable: Editable, dStart: Int, dEnd: Int) {
+        if (mSyntaxPatternMap.isEmpty()) return
+        val textSnapshot = editable.toString()
+        val patternMapSnapshot = HashMap(mSyntaxPatternMap)
+        val capturedVersion = textVersion
+
+        var lineStart = textSnapshot.lastIndexOf('\n', dStart - 1) + 1
+        if (lineStart < 0) lineStart = 0
+        var lineEnd = textSnapshot.indexOf('\n', dEnd)
+        if (lineEnd < 0) lineEnd = textSnapshot.length
+
+        isHighlighting = true
+        highlightJob?.cancel()
+        highlightJob = CoroutineScope(Dispatchers.Main).launch {
+            val newSpans = withContext(Dispatchers.Default) {
+                val result = mutableListOf<SyntaxSpan>()
+                val regionText = textSnapshot.substring(lineStart, lineEnd)
+                for ((pattern, color) in patternMapSnapshot) {
+                    val m = pattern.matcher(regionText)
+                    while (m.find()) {
+                        result.add(SyntaxSpan(lineStart + m.start(), lineStart + m.end(), color))
+                    }
+                }
+                result.sortWith(compareBy({ it.start }, { -it.end }))
+                val filtered = mutableListOf<SyntaxSpan>()
+                var lastMaxEnd = -1
+                for (span in result) {
+                    if (span.end > lastMaxEnd) {
+                        filtered.add(span)
+                        lastMaxEnd = span.end
+                    }
+                }
+                filtered
+            }
+
+            if (capturedVersion != textVersion) return@launch
+
+            allSyntaxSpans.removeAll { it.start >= lineStart && it.end <= lineEnd }
+            allSyntaxSpans.addAll(newSpans)
+            allSyntaxSpans.sortWith(compareBy({ it.start }, { -it.end }))
+
+            val currentEditable = editableText
+            if (currentEditable != null) {
+                activeSyntaxSpans.values.forEach {
+                    currentEditable.removeSpan(it)
+                    recycleSpan(it)
+                }
+                activeSyntaxSpans.clear()
+            }
+
+            currentHighlightRange = Pair(-1, -1)
+            updateVisibleSpans()
+            isHighlighting = false
+        }
+    }
+
     private fun highlightSyntax(editable: Editable) {
         if (mSyntaxPatternMap.isEmpty()) return
         val textSnapshot = editable.toString()
@@ -521,12 +599,39 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
             if (capturedVersion != textVersion) return@launch
 
+            val editable = editableText
+            if (editable != null) {
+                activeSyntaxSpans.values.forEach {
+                    editable.removeSpan(it)
+                    recycleSpan(it)
+                }
+                activeSyntaxSpans.clear()
+            }
+
             allSyntaxSpans.clear()
             allSyntaxSpans.addAll(newSpans)
 
             currentHighlightRange = Pair(-1, -1)
             updateVisibleSpans()
             isHighlighting = false
+        }
+    }
+
+    private val spanPool = java.util.ArrayDeque<SyntaxForegroundColorSpan>()
+
+    private fun obtainSpan(color: Int): SyntaxForegroundColorSpan {
+        val span = spanPool.poll()
+        return if (span != null) {
+            span.updateColor(color)
+            span
+        } else {
+            SyntaxForegroundColorSpan(color)
+        }
+    }
+
+    private fun recycleSpan(span: SyntaxForegroundColorSpan) {
+        if (spanPool.size < 500) {
+            spanPool.offer(span)
         }
     }
 
@@ -537,8 +642,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
         val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
-        val startLine = kotlin.math.max(0, firstLine - 5)
-        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 5)
+        val startLine = kotlin.math.max(0, firstLine - 10)
+        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
 
         val startOffset = layout.getLineStart(startLine)
         val endOffset = layout.getLineEnd(endLine)
@@ -547,8 +652,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             return
         }
 
-        val renderStartLine = kotlin.math.max(0, firstLine - 10)
-        val renderEndLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
+        val renderStartLine = kotlin.math.max(0, firstLine - 20)
+        val renderEndLine = kotlin.math.min(layout.lineCount - 1, lastLine + 20)
         val renderStartOffset = layout.getLineStart(renderStartLine)
         val renderEndOffset = layout.getLineEnd(renderEndLine)
 
@@ -560,8 +665,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val entry = iterator.next()
             val span = entry.key
             if (span.start >= renderEndOffset || span.end <= renderStartOffset) {
-                editable.removeSpan(entry.value)
+                val spanInstance = entry.value
+                editable.removeSpan(spanInstance)
                 iterator.remove()
+                recycleSpan(spanInstance)
             }
         }
 
@@ -588,7 +695,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
                 val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
                 if (s < e) {
-                    val newSpan = SyntaxForegroundColorSpan(span.color)
+                    val newSpan = obtainSpan(span.color)
                     editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     activeSyntaxSpans[span] = newSpan
                 }
@@ -717,114 +824,26 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (isTextEqual(this.text, text)) return
 
         removeAllErrorLines()
+        modified = false
+        super.setText(text, type)
+        modified = true
+
+        dirtyStart = -1
+        dirtyEnd = -1
         allSyntaxSpans.clear()
         activeSyntaxSpans.clear()
+        activeSearchSpans.clear()
+        activeErrorSpans.clear()
         currentHighlightRange = Pair(-1, -1)
 
-        highlightJob?.cancel()
-
-        highlightJob = CoroutineScope(Dispatchers.Main).launch {
-            val (spannable, newSpans) = withContext(Dispatchers.Default) {
-                val spanBuilder = android.text.SpannableStringBuilder(text)
-
-                // 行号
-                if (isLineNumberEnabled) {
-                    getEnterPos(spanBuilder)
-                }
-
-                // 语法高亮
-                val result = mutableListOf<SyntaxSpan>()
-                for ((pattern, color) in mSyntaxPatternMap) {
-                    val m = pattern.matcher(text)
-                    while (m.find()) {
-                        result.add(SyntaxSpan(m.start(), m.end(), color))
-                    }
-                }
-                result.sortWith(compareBy({ it.start }, { -it.end }))
-                val filtered = mutableListOf<SyntaxSpan>()
-                var lastMaxEnd = -1
-                for (span in result) {
-                    if (span.end > lastMaxEnd) {
-                        filtered.add(span)
-                        lastMaxEnd = span.end
-                    }
-                }
-
-                // 一次性应用所有 Span
-                for (span in filtered) {
-                    val s = kotlin.math.max(0, kotlin.math.min(span.start, text.length))
-                    val e = kotlin.math.max(0, kotlin.math.min(span.end, text.length))
-                    if (s < e) {
-                        spanBuilder.setSpan(
-                            SyntaxForegroundColorSpan(span.color),
-                            s, e,
-                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                        )
-                    }
-                }
-
-                // 错误行高亮
-                if (mErrorHashSet.isNotEmpty()) {
-                    val maxErrorLineValue = mErrorHashSet.lastKey()
-                    var lineNumber = 0
-                    val matcher = PATTERN_LINE.matcher(spanBuilder)
-                    while (matcher.find()) {
-                        if (mErrorHashSet.containsKey(lineNumber)) {
-                            val color = mErrorHashSet[lineNumber]!!
-                            spanBuilder.setSpan(
-                                BackgroundColorSpan(color),
-                                matcher.start(),
-                                matcher.end(),
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                        }
-                        lineNumber += 1
-                        if (lineNumber > maxErrorLineValue) break
-                    }
-                }
-
-                // 搜索高亮
-                if (searchKeyword.isNotEmpty() && matchRanges.isNotEmpty()) {
-                    matchRanges.forEachIndexed { i, range ->
-                        val color =
-                            if (i == currentMatchIndex) currentMatchColor else searchHighlightColor
-                        spanBuilder.setSpan(
-                            BackgroundColorSpan(color),
-                            range.first,
-                            range.second,
-                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                        )
-                    }
-                }
-
-                Pair(spanBuilder, filtered)
-            }
-
-            allSyntaxSpans.clear()
-            allSyntaxSpans.addAll(newSpans)
-
-            // 为了让 updateVisibleSpans 不要再清理我们刚才添加的 Span，
-            // 或者是既然我们已经把所有 Span 都添加进去了，就直接记录全部为 currentHighlightRange，
-            // 避免滚动时被重复添加和删除（因为要求只在 settext 生效一次性的完整 spanbuilder）
-            // 但如果之后有增量编辑，还是会触发 updateVisibleSpans，所以可以标记整个文本已加载：
-            currentHighlightRange = Pair(0, spannable.length)
-
-            // 记录这些 span 到 activeSyntaxSpans 中以备后续的移除
-            spannable.getSpans(0, spannable.length, SyntaxForegroundColorSpan::class.java)
-                .forEachIndexed { index, span ->
-                    if (index < allSyntaxSpans.size) {
-                        activeSyntaxSpans[allSyntaxSpans[index]] = span
-                    }
-                }
-
-            modified = false
-            super.setText(spannable, type)
-            modified = true
-
-            if (isLineNumberEnabled) {
-                updateLineNumberPadding()
-            }
+        val editable = editableText
+        if (isLineNumberEnabled) {
+            getEnterPos(editable)
+            updateLineNumberPadding()
         }
+        highlightErrorLines(editable)
+        highlightSearch(editable)
+        reHighlightSyntax()
     }
 
     fun setTabWidth(characters: Int) {
@@ -1097,11 +1116,13 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
         modified = true
         endBatchEdit()
+        textVersion++
         // 替换完成后手动触发一次状态更新
         getEnterPos(editableText)
         updateLineNumberPadding()
         setSelection(savedCursorPos)
         reHighlightSearch()
+        reHighlightSyntax()
     }
 
     fun clearSearch() {
@@ -1184,7 +1205,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
             for (i in firstLine..lastLine) {
                 lineStartOffset = layout.getLineStart(i)
-                if (lineStartOffset == 0 || text[lineStartOffset - 1] == '\n') {
+                val isRealLineStart = if (lineStartOffset == 0) true else {
+                    enterPos.binarySearch(lineStartOffset - 1, 0, enterPosSize) >= 0
+                }
+                if (isRealLineStart) {
                     while (currentLineIndex < enterPosSize && enterPos[currentLineIndex] < lineStartOffset) {
                         currentLineIndex++
                     }
@@ -1317,7 +1341,16 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private class SyntaxSpan(var start: Int, var end: Int, val color: Int)
 
-    private class SyntaxForegroundColorSpan(color: Int) : ForegroundColorSpan(color)
+    private class SyntaxForegroundColorSpan(var color: Int) : android.text.style.CharacterStyle(),
+        android.text.style.UpdateAppearance {
+        override fun updateDrawState(tp: android.text.TextPaint) {
+            tp.color = color
+        }
+
+        fun updateColor(newColor: Int) {
+            color = newColor
+        }
+    }
 
     companion object {
         private val PATTERN_LINE = Pattern.compile("(^.+$)+", Pattern.MULTILINE)

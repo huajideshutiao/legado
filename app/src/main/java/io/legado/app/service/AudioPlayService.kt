@@ -458,6 +458,7 @@ class AudioPlayService : BaseService(),
         upPlayProgressForLrcJob?.cancel()
         val lrc = durLrcData ?: return
         upPlayProgressForLrcJob = lifecycleScope.launch {
+            if (lrc[lrc.size - 1].first == -1) return@launch
             var position: Int = -1
             for (i in lrc.indices) {
                 if (lrc[i].first <= exoPlayer.currentPosition + 60) {

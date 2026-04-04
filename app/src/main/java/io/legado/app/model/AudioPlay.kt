@@ -119,6 +119,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun resetData(book: Book) {
         stop()
+        status = Status.STOP
         AudioPlay.book = book
         chapterList = GlobalVars.nowChapterList
         if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
@@ -169,13 +170,13 @@ object AudioPlay : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val musicCover = bookSource.getContentRule().musicCover
-            if (!musicCover.isNullOrBlank()) {
+            durCoverUrl = if (!musicCover.isNullOrBlank()) {
                 val analyzeRule = AnalyzeRule(book, bookSource)
                 analyzeRule.setCoroutineContext(currentCoroutineContext())
                 analyzeRule.setBaseUrl(chapter.url)
                 analyzeRule.setChapter(chapter)
-                durCoverUrl = analyzeRule.evalJS(musicCover).toString()
-            }
+                analyzeRule.evalJS(musicCover).toString()
+            } else book.getDisplayCover()
         }.onSuccess {
             callback?.upCover(durCoverUrl!!)
             context.startService<AudioPlayService> {
@@ -206,6 +207,10 @@ object AudioPlay : CoroutineScope by MainScope() {
                         val line = line.trim()
                         if (line.length < 3) return@forEach
                         val split = line.indexOf("]")
+                        if (split == -1) {
+                            tmp.add(Pair(-1, line))
+                            return@forEach
+                        }
                         if (line[1].isDigit()) {
                             val textPart = line.substring(split + 1)
                             val matcherResult =
