@@ -762,30 +762,122 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         return android.text.TextUtils.equals(a, b)
     }
 
-    fun setTextHighlighted(text: CharSequence?) {
+    override fun setText(text: CharSequence?, type: BufferType?) {
         if (text.isNullOrEmpty()) {
-            setText("")
+            super.setText("", type)
             return
         }
         if (isTextEqual(this.text, text)) return
 
         removeAllErrorLines()
-        modified = false
-        setText(text)
-        modified = true
-
         allSyntaxSpans.clear()
+        activeSyntaxSpans.clear()
         currentHighlightRange = Pair(-1, -1)
 
-        val editable = editableText
-        if (isLineNumberEnabled) {
-            getEnterPos(editable)
-            updateLineNumberPadding()
+        highlightJob?.cancel()
+
+        highlightJob = CoroutineScope(Dispatchers.Main).launch {
+            val (spannable, newSpans) = withContext(Dispatchers.Default) {
+                val spanBuilder = android.text.SpannableStringBuilder(text)
+
+                // 行号
+                if (isLineNumberEnabled) {
+                    getEnterPos(spanBuilder)
+                }
+
+                // 语法高亮
+                val result = mutableListOf<SyntaxSpan>()
+                for ((pattern, color) in mSyntaxPatternMap) {
+                    val m = pattern.matcher(text)
+                    while (m.find()) {
+                        result.add(SyntaxSpan(m.start(), m.end(), color))
+                    }
+                }
+                result.sortWith(compareBy({ it.start }, { -it.end }))
+                val filtered = mutableListOf<SyntaxSpan>()
+                var lastMaxEnd = -1
+                for (span in result) {
+                    if (span.end > lastMaxEnd) {
+                        filtered.add(span)
+                        lastMaxEnd = span.end
+                    }
+                }
+
+                // 一次性应用所有 Span
+                for (span in filtered) {
+                    val s = kotlin.math.max(0, kotlin.math.min(span.start, text.length))
+                    val e = kotlin.math.max(0, kotlin.math.min(span.end, text.length))
+                    if (s < e) {
+                        spanBuilder.setSpan(
+                            SyntaxForegroundColorSpan(span.color),
+                            s, e,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
+                }
+
+                // 错误行高亮
+                if (mErrorHashSet.isNotEmpty()) {
+                    val maxErrorLineValue = mErrorHashSet.lastKey()
+                    var lineNumber = 0
+                    val matcher = PATTERN_LINE.matcher(spanBuilder)
+                    while (matcher.find()) {
+                        if (mErrorHashSet.containsKey(lineNumber)) {
+                            val color = mErrorHashSet[lineNumber]!!
+                            spanBuilder.setSpan(
+                                BackgroundColorSpan(color),
+                                matcher.start(),
+                                matcher.end(),
+                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                        lineNumber += 1
+                        if (lineNumber > maxErrorLineValue) break
+                    }
+                }
+
+                // 搜索高亮
+                if (searchKeyword.isNotEmpty() && matchRanges.isNotEmpty()) {
+                    matchRanges.forEachIndexed { i, range ->
+                        val color =
+                            if (i == currentMatchIndex) currentMatchColor else searchHighlightColor
+                        spanBuilder.setSpan(
+                            BackgroundColorSpan(color),
+                            range.first,
+                            range.second,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
+                }
+
+                Pair(spanBuilder, filtered)
+            }
+
+            allSyntaxSpans.clear()
+            allSyntaxSpans.addAll(newSpans)
+
+            // 为了让 updateVisibleSpans 不要再清理我们刚才添加的 Span，
+            // 或者是既然我们已经把所有 Span 都添加进去了，就直接记录全部为 currentHighlightRange，
+            // 避免滚动时被重复添加和删除（因为要求只在 settext 生效一次性的完整 spanbuilder）
+            // 但如果之后有增量编辑，还是会触发 updateVisibleSpans，所以可以标记整个文本已加载：
+            currentHighlightRange = Pair(0, spannable.length)
+
+            // 记录这些 span 到 activeSyntaxSpans 中以备后续的移除
+            spannable.getSpans(0, spannable.length, SyntaxForegroundColorSpan::class.java)
+                .forEachIndexed { index, span ->
+                    if (index < allSyntaxSpans.size) {
+                        activeSyntaxSpans[allSyntaxSpans[index]] = span
+                    }
+                }
+
+            modified = false
+            super.setText(spannable, type)
+            modified = true
+
+            if (isLineNumberEnabled) {
+                updateLineNumberPadding()
+            }
         }
-        clearSpans(editable)
-        highlightErrorLines(editable)
-        highlightSearch(editable)
-        reHighlightSyntax()
     }
 
     fun setTabWidth(characters: Int) {
