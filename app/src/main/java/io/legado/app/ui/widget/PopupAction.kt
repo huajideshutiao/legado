@@ -10,9 +10,11 @@ import io.legado.app.lib.dialogs.SelectItem
 class PopupAction() {
 
     var onActionClick: ((action: String) -> Unit)? = null
+    var onDismiss: (() -> Unit)? = null
     private var actionMode: ActionMode? = null
     private val contentRect = Rect()
     private var items = emptyList<SelectItem<String>>()
+    private var dismissByApp = false
 
     private val actionModeCallback = object : ActionMode.Callback2() {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -38,6 +40,9 @@ class PopupAction() {
 
         override fun onDestroyActionMode(mode: ActionMode) {
             actionMode = null
+            if (!dismissByApp) {
+                onDismiss?.invoke()
+            }
         }
 
         override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
@@ -62,7 +67,9 @@ class PopupAction() {
     }
 
     fun dismiss() {
+        dismissByApp = true
         actionMode?.finish()
         actionMode = null
+        dismissByApp = false
     }
 }

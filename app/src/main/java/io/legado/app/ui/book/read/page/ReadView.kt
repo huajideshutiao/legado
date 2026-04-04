@@ -92,6 +92,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         onLongPress()
     }
     var isTextSelected = false
+    var isImageMenuShowing = false
     private var pressOnTextSelected = false
     private val initialTextPos = TextPos(0, 0, 0)
 
@@ -239,7 +240,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                         return true
                     }
                 }
-                if (isTextSelected) {
+                if (isTextSelected && !isImageMenuShowing) {
                     callBack.showTextActionMenu()
                 } else if (pageDelegate!!.isMoved) {
                     pageDelegate?.onTouch(event)
@@ -251,7 +252,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
                 pressDown = false
-                if (isTextSelected) {
+                if (isTextSelected && !isImageMenuShowing) {
                     callBack.showTextActionMenu()
                 } else if (pageDelegate!!.isMoved) {
                     pageDelegate?.onTouch(event)

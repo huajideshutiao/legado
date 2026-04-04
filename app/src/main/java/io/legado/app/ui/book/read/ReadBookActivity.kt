@@ -808,6 +808,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         cursorLeft.invisible()
         cursorRight.invisible()
         textActionMenu.dismiss()
+        popupAction.dismiss()
+        readView.isImageMenuShowing = false
     }
 
     override fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean {
@@ -1390,6 +1392,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     @SuppressLint("RtlHardcoded")
     override fun onImageLongPress(x: Float, y: Float, src: String) {
+        binding.readView.isTextSelected = true
+        binding.readView.isImageMenuShowing = true
         popupAction.setItems(
             listOf(
                 SelectItem(getString(R.string.show), "show"),
@@ -1418,6 +1422,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "selectFolder" -> selectImageDir.launch()
             }
             popupAction.dismiss()
+            binding.readView.cancelSelect()
+        }
+        popupAction.onDismiss = {
+            binding.readView.cancelSelect()
         }
         popupAction.show(binding.readView, x.toInt(), y.toInt())
     }
