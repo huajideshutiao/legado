@@ -30,7 +30,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val upAdapterLiveData = MutableLiveData<String>()
     val booksData = MutableLiveData<List<SearchBook>>()
     val errorLiveData = MutableLiveData<String>()
-    private var bookSource: BookSource? = null
+    val sourceReadyLiveData = MutableLiveData<Unit>()
+    var bookSource: BookSource? = null
+        private set
+    val exploreStyle get() = bookSource?.exploreStyle ?: 0
     private var exploreUrl: String? = null
     private var page = 1
     private var books = linkedSetOf<SearchBook>()
@@ -65,6 +68,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             if (bookSource == null && sourceUrl != null) {
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             }
+            sourceReadyLiveData.postValue(Unit)
             explore()
         }
     }
@@ -92,6 +96,19 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val bookUrl = book.bookUrl
         val key = if (author.isNotBlank()) "$name-$author" else name
         return bookshelf.contains(key) || bookshelf.contains(bookUrl)
+    }
+
+    fun switchLayout() {
+        bookSource?.let {
+            if (it.exploreStyle < 2) {
+                it.exploreStyle += 1
+            } else {
+                it.exploreStyle = 0
+            }
+            execute {
+                appDb.bookSourceDao.update(it)
+            }
+        }
     }
 
 }

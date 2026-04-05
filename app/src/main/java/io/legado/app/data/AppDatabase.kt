@@ -67,7 +67,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 78,
+    version = 79,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -109,7 +109,8 @@ val appDb by lazy {
         AutoMigration(from = 73, to = 74),
         AutoMigration(from = 74, to = 75),
         AutoMigration(from = 75, to = 76, spec = DatabaseMigrations.Migration_75_76::class),
-        AutoMigration(from = 77, to = 78)
+        AutoMigration(from = 77, to = 78),
+        AutoMigration(from = 78, to = 79)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -148,17 +149,23 @@ abstract class AppDatabase : RoomDatabase() {
 
             override fun onCreate(db: SupportSQLiteDatabase) {
                 // 只在 API 级别 23 (Marshmallow) 及以上版本尝试设置区域设置
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    try {
-                        Log.d("AppDatabaseCallback", "准备 设置 locale for API ${Build.VERSION.SDK_INT}...")
-                        db.setLocale(Locale.CHINESE)
-                        // 在 21 上报错，但无法拦截
-                        Log.d("AppDatabaseCallback", "成功 设置 locale for API ${Build.VERSION.SDK_INT}.")
-                    } catch (e: Exception) {
-                        Log.e("AppDatabaseCallback", "错误 设置 locale in onCreate for API ${Build.VERSION.SDK_INT}", e)
-                    }
-                } else {
-                    Log.i("AppDatabaseCallback", "跳过 setLocale for API ${Build.VERSION.SDK_INT} (below M).")
+                try {
+                    Log.d(
+                        "AppDatabaseCallback",
+                        "准备 设置 locale for API ${Build.VERSION.SDK_INT}..."
+                    )
+                    db.setLocale(Locale.CHINESE)
+                    // 在 21 上报错，但无法拦截
+                    Log.d(
+                        "AppDatabaseCallback",
+                        "成功 设置 locale for API ${Build.VERSION.SDK_INT}."
+                    )
+                } catch (e: Exception) {
+                    Log.e(
+                        "AppDatabaseCallback",
+                        "错误 设置 locale in onCreate for API ${Build.VERSION.SDK_INT}",
+                        e
+                    )
                 }
             }
 

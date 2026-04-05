@@ -84,6 +84,9 @@ data class BookSource(
     var exploreUrl: String? = null,
     // 发现筛选规则
     var exploreScreen: String? = null,
+    // 发现样式,0,1,2
+    @ColumnInfo(defaultValue = "0")
+    var exploreStyle: Int = 0,
     // 发现规则
     var ruleExplore: ExploreRule? = null,
     // 搜索url
@@ -251,6 +254,8 @@ data class BookSource(
                 && equal(loginCheckJs, source.loginCheckJs)
                 && equal(coverDecodeJs, source.coverDecodeJs)
                 && equal(exploreUrl, source.exploreUrl)
+            && equal(exploreScreen, source.exploreScreen)
+            && exploreStyle == source.exploreStyle
                 && equal(searchUrl, source.searchUrl)
                 && getSearchRule() == source.getSearchRule()
                 && getExploreRule() == source.getExploreRule()

@@ -33,10 +33,11 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override val viewModel by viewModels<ExploreShowViewModel>()
     private lateinit var adapter: BaseExploreShowAdapter<*>
     private val loadMoreView by lazy { LoadMoreView(this) }
+    private var switchLayoutMenuItem: MenuItem? = null
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
-        adapter = ExploreShowAdapter(this, this)
+        initAdapter(viewModel.exploreStyle)
         binding.recyclerView.addItemDecoration(VerticalDivider(this))
         binding.recyclerView.applyNavigationBarPadding()
         loadMoreView.startLoad()
@@ -64,36 +65,57 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 putString(it, null)
             })
         }
+        viewModel.sourceReadyLiveData.observe(this) {
+            upAdapterByStyle(viewModel.exploreStyle)
+        }
+    }
+
+    private fun initAdapter(style: Int) {
+        when (style) {
+            1 -> {
+                binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
+                adapter = BigExploreShowAdapter(this, this)
+            }
+
+            2 -> {
+                binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
+                adapter = GridExploreShowAdapter(this, this)
+            }
+
+            else -> {
+                binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
+                adapter = ExploreShowAdapter(this, this)
+            }
+        }
+    }
+
+    private fun upAdapterByStyle(style: Int) {
+        initAdapter(style)
+        bindAdapter()
+        viewModel.booksData.value?.let { upData(it) }
+        upSwitchLayoutIcon()
+    }
+
+    private fun upSwitchLayoutIcon() {
+        when (viewModel.exploreStyle) {
+            0 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_big_card)
+            1 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_grid)
+            2 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_list)
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.explore_bar, menu)
+        switchLayoutMenuItem = menu.findItem(R.id.menu_switch_layout)
+        upSwitchLayoutIcon()
         return super.onCompatCreateOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_switch_layout -> {
-                when (adapter) {
-                    is ExploreShowAdapter -> {
-                        adapter = BigExploreShowAdapter(this, this)
-                        item.setIcon(R.drawable.ic_layout_grid)
-                    }
-
-                    is BigExploreShowAdapter -> {
-                        binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
-                        adapter = GridExploreShowAdapter(this, this)
-                        item.setIcon(R.drawable.ic_layout_list)
-                    }
-
-                    is GridExploreShowAdapter -> {
-                        binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
-                        adapter = ExploreShowAdapter(this, this)
-                        item.setIcon(R.drawable.ic_layout_big_card)
-                    }
-                }
-                bindAdapter()
-                viewModel.booksData.value?.let { upData(it) }
+                viewModel.switchLayout()
+                upAdapterByStyle(viewModel.exploreStyle)
             }
         }
         return super.onCompatOptionsItemSelected(item)
