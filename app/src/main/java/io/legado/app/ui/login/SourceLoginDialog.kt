@@ -63,6 +63,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                         it.root.id = index + 1000
                         it.textInputLayout.hint = rowUi.name
                         it.editText.setText(loginInfo?.get(rowUi.name))
+                        it.editText.setAutofillHints("username")
                     }
 
                     RowUi.Type.password -> ItemSourceEditBinding.inflate(
@@ -76,6 +77,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                         it.editText.inputType =
                             InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
                         it.editText.setText(loginInfo?.get(rowUi.name))
+                        it.editText.setAutofillHints("password")
                     }
 
                     RowUi.Type.checkbox -> ItemCheckBoxBinding.inflate(
