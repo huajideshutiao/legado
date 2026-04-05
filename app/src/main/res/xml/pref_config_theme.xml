@@ -2,6 +2,47 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="showDiscovery"
+        android:title="@string/show_discovery"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="showRss"
+        android:title="@string/show_rss"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="bookshelfLayout"
+        android:title="@string/bookshelf_layout" />
+
+    <io.legado.app.lib.prefs.NameListPreference
+        android:defaultValue="bookshelf"
+        android:key="defaultHomePage"
+        android:title="@string/default_home_page"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:entries="@array/default_home_page"
+        app:entryValues="@array/default_home_page_value" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="showMangaUi"
+        android:title="@string/show_manga_ui"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="showVideoUi"
+        android:title="@string/show_video_ui"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="sourceEditMaxLine"
+        android:title="@string/source_edit_text_max_line" />
+
     <io.legado.app.lib.prefs.IconListPreference
         android:defaultValue="ic_launcher"
         android:entries="@array/icon_names"

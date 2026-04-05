@@ -6,16 +6,13 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
-import androidx.core.view.indices
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogBookshelfConfigBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
@@ -31,8 +28,6 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.checkByIndex
-import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
@@ -74,7 +69,6 @@ class OtherConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
         upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
         upPreferenceSummary(PreferKey.imageRetainNum, AppConfig.imageRetainNum.toString())
-        upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -92,7 +86,6 @@ class OtherConfigFragment : PreferenceFragment(),
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             PreferKey.userAgent -> showUserAgentDialog()
-            PreferKey.bookshelfLayout -> configBookshelf()
             PreferKey.defaultBookTreeUri -> localBookTreeSelect.launch {
                 title = getString(R.string.select_book_folder)
                 mode = HandleFileContract.DIR_SYS
@@ -148,17 +141,6 @@ class OtherConfigFragment : PreferenceFragment(),
                     AppConfig.imageRetainNum = it
                 }
 
-            PreferKey.sourceEditMaxLine -> {
-                NumberPickerDialog(requireContext())
-                    .setTitle(getString(R.string.source_edit_text_max_line))
-                    .setMaxValue(Int.MAX_VALUE)
-                    .setMinValue(10)
-                    .setValue(AppConfig.sourceEditMaxLine)
-                    .show {
-                        AppConfig.sourceEditMaxLine = it
-                    }
-            }
-
             PreferKey.clearWebViewData -> clearWebViewData()
             "localPassword" -> alertLocalPassword()
             PreferKey.shrinkDatabase -> shrinkDatabase()
@@ -202,7 +184,6 @@ class OtherConfigFragment : PreferenceFragment(),
                 setProcessTextEnable(it.getBoolean(key, true))
             }
 
-            PreferKey.showDiscovery, PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
             PreferKey.language -> listView.postDelayed(1000) {
                 appCtx.restart()
             }
@@ -222,10 +203,6 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.imageRetainNum -> {
                 upPreferenceSummary(key, AppConfig.imageRetainNum.toString())
             }
-
-            PreferKey.sourceEditMaxLine -> {
-                upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
-            }
         }
     }
 
@@ -241,9 +218,6 @@ class OtherConfigFragment : PreferenceFragment(),
                 getString(R.string.bitmap_cache_size_summary, value)
             PreferKey.imageRetainNum -> preference.summary =
                 getString(R.string.image_retain_number_summary, value)
-
-            PreferKey.sourceEditMaxLine -> preference.summary =
-                getString(R.string.source_edit_max_line_summary, value)
 
             else -> if (preference is ListPreference) {
                 val index = preference.findIndexOfValue(value)
@@ -269,113 +243,6 @@ class OtherConfigFragment : PreferenceFragment(),
                     removePref(PreferKey.userAgent)
                 } else {
                     putPrefString(PreferKey.userAgent, userAgent)
-                }
-            }
-            cancelButton()
-        }
-    }
-
-    @SuppressLint("InflateParams")
-    fun configBookshelf() {
-        alert(titleResource = R.string.bookshelf_layout) {
-            var bookshelfLayout = AppConfig.bookshelfLayout
-            var bookshelfSort = AppConfig.bookshelfSort
-            var fixedWidthMode = AppConfig.bookshelfFixedWidthMode
-            val gridWidth = AppConfig.bookshelfGridWidth
-            val alertBinding =
-                DialogBookshelfConfigBinding.inflate(layoutInflater)
-                    .apply {
-                        if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
-                            AppConfig.bookGroupStyle = 0
-                        }
-                        if (bookshelfLayout !in 0..6) {
-                            bookshelfLayout = 0
-                            AppConfig.bookshelfLayout = 0
-                        }
-                        if (bookshelfSort !in rgSort.indices) {
-                            bookshelfSort = 0
-                            AppConfig.bookshelfSort = 0
-                        }
-                        spGroupStyle.setSelection(AppConfig.bookGroupStyle)
-                        swShowUnread.isChecked = AppConfig.showUnread
-                        swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
-                        swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
-                        swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
-                        swFixedWidthMode.isChecked = fixedWidthMode
-                        sbColumnCount.progress = bookshelfLayout
-                        tvColumnValue.text =
-                            if (bookshelfLayout == 0) getString(R.string.layout_list) else bookshelfLayout.toString()
-                        etGridWidth.setText(gridWidth.toString())
-                        llColumnCount.visibility =
-                            if (fixedWidthMode) View.GONE else View.VISIBLE
-                        llFixedWidth.visibility =
-                            if (fixedWidthMode) View.VISIBLE else View.GONE
-                        sbColumnCount.setOnSeekBarChangeListener(object :
-                            android.widget.SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(
-                                seekBar: android.widget.SeekBar?,
-                                progress: Int,
-                                fromUser: Boolean
-                            ) {
-                                tvColumnValue.text =
-                                    if (progress == 0) getString(R.string.layout_list) else progress.toString()
-                            }
-
-                            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                        })
-                        swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
-                            fixedWidthMode = isChecked
-                            llColumnCount.visibility =
-                                if (isChecked) View.GONE else View.VISIBLE
-                            llFixedWidth.visibility =
-                                if (isChecked) View.VISIBLE else View.GONE
-                        }
-                        rgSort.checkByIndex(bookshelfSort)
-                    }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.apply {
-                    var notifyMain = false
-                    var recreate = false
-                    if (AppConfig.bookGroupStyle != spGroupStyle.selectedItemPosition) {
-                        AppConfig.bookGroupStyle = spGroupStyle.selectedItemPosition
-                        notifyMain = true
-                    }
-                    if (AppConfig.showUnread != swShowUnread.isChecked) {
-                        AppConfig.showUnread = swShowUnread.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (AppConfig.showLastUpdateTime != swShowLastUpdateTime.isChecked) {
-                        AppConfig.showLastUpdateTime = swShowLastUpdateTime.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (AppConfig.showWaitUpCount != swShowWaitUpBooks.isChecked) {
-                        AppConfig.showWaitUpCount = swShowWaitUpBooks.isChecked
-                    }
-                    if (AppConfig.showBookshelfFastScroller != swShowBookshelfFastScroller.isChecked) {
-                        AppConfig.showBookshelfFastScroller = swShowBookshelfFastScroller.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (bookshelfSort != rgSort.getCheckedIndex()) {
-                        AppConfig.bookshelfSort = rgSort.getCheckedIndex()
-                    }
-                    val newLayout = sbColumnCount.progress
-                    val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 130
-                    if (bookshelfLayout != newLayout ||
-                        AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||
-                        AppConfig.bookshelfGridWidth != newGridWidth
-                    ) {
-                        AppConfig.bookshelfLayout = newLayout
-                        AppConfig.bookshelfFixedWidthMode = fixedWidthMode
-                        AppConfig.bookshelfGridWidth = newGridWidth
-                        recreate = true
-                    }
-                    if (recreate) {
-                        postEvent(EventBus.RECREATE, "")
-                    } else if (notifyMain) {
-                        postEvent(EventBus.NOTIFY_MAIN, false)
-                    }
                 }
             }
             cancelButton()

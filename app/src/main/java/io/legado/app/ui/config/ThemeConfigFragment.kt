@@ -11,12 +11,14 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.SeekBar
 import androidx.core.view.MenuProvider
+import androidx.core.view.indices
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.DialogBookshelfConfigBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogImageBlurringBinding
 import io.legado.app.help.LauncherIconHelp
@@ -34,7 +36,9 @@ import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.checkByIndex
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.inputStream
@@ -80,6 +84,7 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
         upPreferenceSummary(PreferKey.barElevation, AppConfig.elevation.toString())
         upPreferenceSummary(PreferKey.fontScale)
+        upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
             it.onSaveColor = { color ->
                 if (!ColorUtils.isColorLight(color)) {
@@ -159,6 +164,12 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bgImageN -> {
                 upPreferenceSummary(key, getPrefString(key))
             }
+
+            PreferKey.showDiscovery, PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
+
+            PreferKey.sourceEditMaxLine -> {
+                upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
+            }
         }
 
     }
@@ -206,6 +217,19 @@ class ThemeConfigFragment : PreferenceFragment(),
 
             "welcomeStyle" -> startActivity<ConfigActivity> {
                 putExtra("configTag", ConfigTag.WELCOME_CONFIG)
+            }
+
+            PreferKey.bookshelfLayout -> configBookshelf()
+
+            PreferKey.sourceEditMaxLine -> {
+                NumberPickerDialog(requireContext())
+                    .setTitle(getString(R.string.source_edit_text_max_line))
+                    .setMaxValue(Int.MAX_VALUE)
+                    .setMinValue(10)
+                    .setValue(AppConfig.sourceEditMaxLine)
+                    .show {
+                        AppConfig.sourceEditMaxLine = it
+                    }
             }
         }
         return super.onPreferenceTreeClick(preference)
@@ -332,6 +356,9 @@ class ThemeConfigFragment : PreferenceFragment(),
                 value
             }
 
+            PreferKey.sourceEditMaxLine -> preference.summary =
+                getString(R.string.source_edit_max_line_summary, value)
+
             else -> preference.summary = value
         }
     }
@@ -353,6 +380,113 @@ class ThemeConfigFragment : PreferenceFragment(),
             }.onFailure {
                 appCtx.toastOnUi(it.localizedMessage)
             }
+        }
+    }
+
+    @SuppressLint("InflateParams")
+    fun configBookshelf() {
+        alert(titleResource = R.string.bookshelf_layout) {
+            var bookshelfLayout = AppConfig.bookshelfLayout
+            var bookshelfSort = AppConfig.bookshelfSort
+            var fixedWidthMode = AppConfig.bookshelfFixedWidthMode
+            val gridWidth = AppConfig.bookshelfGridWidth
+            val alertBinding =
+                DialogBookshelfConfigBinding.inflate(layoutInflater)
+                    .apply {
+                        if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
+                            AppConfig.bookGroupStyle = 0
+                        }
+                        if (bookshelfLayout !in 0..6) {
+                            bookshelfLayout = 0
+                            AppConfig.bookshelfLayout = 0
+                        }
+                        if (bookshelfSort !in rgSort.indices) {
+                            bookshelfSort = 0
+                            AppConfig.bookshelfSort = 0
+                        }
+                        spGroupStyle.setSelection(AppConfig.bookGroupStyle)
+                        swShowUnread.isChecked = AppConfig.showUnread
+                        swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
+                        swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
+                        swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
+                        swFixedWidthMode.isChecked = fixedWidthMode
+                        sbColumnCount.progress = bookshelfLayout
+                        tvColumnValue.text =
+                            if (bookshelfLayout == 0) getString(R.string.layout_list) else bookshelfLayout.toString()
+                        etGridWidth.setText(gridWidth.toString())
+                        llColumnCount.visibility =
+                            if (fixedWidthMode) View.GONE else View.VISIBLE
+                        llFixedWidth.visibility =
+                            if (fixedWidthMode) View.VISIBLE else View.GONE
+                        sbColumnCount.setOnSeekBarChangeListener(object :
+                            android.widget.SeekBar.OnSeekBarChangeListener {
+                            override fun onProgressChanged(
+                                seekBar: android.widget.SeekBar?,
+                                progress: Int,
+                                fromUser: Boolean
+                            ) {
+                                tvColumnValue.text =
+                                    if (progress == 0) getString(R.string.layout_list) else progress.toString()
+                            }
+
+                            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                        })
+                        swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
+                            fixedWidthMode = isChecked
+                            llColumnCount.visibility =
+                                if (isChecked) View.GONE else View.VISIBLE
+                            llFixedWidth.visibility =
+                                if (isChecked) View.VISIBLE else View.GONE
+                        }
+                        rgSort.checkByIndex(bookshelfSort)
+                    }
+            customView { alertBinding.root }
+            okButton {
+                alertBinding.apply {
+                    var notifyMain = false
+                    var recreate = false
+                    if (AppConfig.bookGroupStyle != spGroupStyle.selectedItemPosition) {
+                        AppConfig.bookGroupStyle = spGroupStyle.selectedItemPosition
+                        notifyMain = true
+                    }
+                    if (AppConfig.showUnread != swShowUnread.isChecked) {
+                        AppConfig.showUnread = swShowUnread.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.showLastUpdateTime != swShowLastUpdateTime.isChecked) {
+                        AppConfig.showLastUpdateTime = swShowLastUpdateTime.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.showWaitUpCount != swShowWaitUpBooks.isChecked) {
+                        AppConfig.showWaitUpCount = swShowWaitUpBooks.isChecked
+                    }
+                    if (AppConfig.showBookshelfFastScroller != swShowBookshelfFastScroller.isChecked) {
+                        AppConfig.showBookshelfFastScroller = swShowBookshelfFastScroller.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (bookshelfSort != rgSort.getCheckedIndex()) {
+                        AppConfig.bookshelfSort = rgSort.getCheckedIndex()
+                    }
+                    val newLayout = sbColumnCount.progress
+                    val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 130
+                    if (bookshelfLayout != newLayout ||
+                        AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||
+                        AppConfig.bookshelfGridWidth != newGridWidth
+                    ) {
+                        AppConfig.bookshelfLayout = newLayout
+                        AppConfig.bookshelfFixedWidthMode = fixedWidthMode
+                        AppConfig.bookshelfGridWidth = newGridWidth
+                        recreate = true
+                    }
+                    if (recreate) {
+                        postEvent(EventBus.RECREATE, "")
+                    } else if (notifyMain) {
+                        postEvent(EventBus.NOTIFY_MAIN, false)
+                    }
+                }
+            }
+            cancelButton()
         }
     }
 
