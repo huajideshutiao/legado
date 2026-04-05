@@ -65,16 +65,15 @@ import java.util.Locale
 import kotlin.math.abs
 
 @SuppressLint("UnsafeOptInUsageError")
-class VideoPlayActivity(
-) : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(), ChapterListAdapter.Callback {
+class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewModel>(),
+    ChapterListAdapter.Callback {
 
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
     private val adapter by lazy { ChapterListAdapter(this, this) }
-    private var isFullScreen = false
-    private var originalSpeed = 1f
-    private var position = 0L
-    private var screenWidth = Resources.getSystem().displayMetrics.widthPixels
+
+    private val player: androidx.media3.exoplayer.ExoPlayer?
+        get() = binding.ivPlayer.player as? androidx.media3.exoplayer.ExoPlayer
 
     private val sourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
@@ -102,35 +101,12 @@ class VideoPlayActivity(
         SimpleDateFormat("mm:ss", Locale.getDefault())
     }
 
-    private val player by lazy {
-        ExoPlayerHelper.createHttpExoPlayer(this).apply {
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
-                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
-                    }
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
-                        val msg = when (error.sourceException) {
-                            is UnrecognizedInputFormatException -> "不是视频链接"
-                            is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
-                            else -> "视频播放出错"
-                        }
-                        AppLog.put(msg, error, true)
-                    }
-                    super.onPlayerError(error)
-                }
-            })
-            binding.ivPlayer.player = this
-        }
-    }
-
     private enum class GestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
 
     private inner class VideoGestureListener : GestureDetector.SimpleOnGestureListener() {
+        private var originalSpeed = 1f
+        private var position = 0L
+        private val screenWidth get() = Resources.getSystem().displayMetrics.widthPixels
         private val screenHeight = 350.dpToPx()
         private var gestureMode = GestureMode.NONE
         private var startX = 0f
@@ -144,7 +120,7 @@ class VideoPlayActivity(
         private val scrollThrottleInterval = 32L //ms
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            if (player.isPlaying) player.pause() else player.play()
+            player?.let { if (it.isPlaying) it.pause() else it.play() }
             return true
         }
 
@@ -160,13 +136,15 @@ class VideoPlayActivity(
         }
 
         override fun onLongPress(e: MotionEvent) {
-            originalSpeed = player.playbackParameters.speed
-            player.playbackParameters =
-                PlaybackParameters(originalSpeed * 2f, player.playbackParameters.pitch)
-            binding.tvVideoSpeed.text = String.format(
-                Locale.getDefault(), "%.1fX", originalSpeed * 2f
-            )
-            binding.tvVideoSpeed.visibility = View.VISIBLE
+            player?.let { p ->
+                originalSpeed = p.playbackParameters.speed
+                p.playbackParameters =
+                    PlaybackParameters(originalSpeed * 2f, p.playbackParameters.pitch)
+                binding.tvVideoSpeed.text = String.format(
+                    Locale.getDefault(), "%.1fX", originalSpeed * 2f
+                )
+                binding.tvVideoSpeed.visibility = View.VISIBLE
+            }
         }
 
         override fun onScroll(
@@ -204,14 +182,16 @@ class VideoPlayActivity(
                 }
 
                 GestureMode.PROGRESS -> {
-                    position =
-                        (player.currentPosition + (e2.x - startX) / screenWidth * 180000).toLong()
-                            .coerceIn(0, player.duration)
-                    binding.tvVideoSpeed.text = String.format(
-                        "%s/%s",
-                        progressTimeFormat.format(position),
-                        progressTimeFormat.format(player.duration)
-                    )
+                    player?.let { p ->
+                        position =
+                            (p.currentPosition + (e2.x - startX) / screenWidth * 180000).toLong()
+                                .coerceIn(0, p.duration)
+                        binding.tvVideoSpeed.text = String.format(
+                            "%s/%s",
+                            progressTimeFormat.format(position),
+                            progressTimeFormat.format(p.duration)
+                        )
+                    }
                 }
 
                 GestureMode.BRIGHTNESS -> {
@@ -220,13 +200,9 @@ class VideoPlayActivity(
                     window.attributes = window.attributes.apply {
                         screenBrightness = deltaBrightness
                     }
-                    if (deltaBrightness == 0f) {
+                    if (deltaBrightness == 0f || deltaBrightness == 1f) {
                         startY = e2.y
-                        currentBrightness = 0f
-                    }
-                    if (deltaBrightness == 1f) {
-                        startY = e2.y
-                        currentBrightness = 1f
+                        currentBrightness = deltaBrightness
                     }
                     binding.tvVideoSpeed.text = String.format(
                         Locale.getDefault(), "亮度: %d%%", (deltaBrightness * 100).toInt()
@@ -237,13 +213,9 @@ class VideoPlayActivity(
                     val deltaVolume =
                         (currentVolume + (startY - e2.y) / screenHeight * maxVolume).toInt()
                             .coerceIn(0, maxVolume)
-                    if (deltaVolume == 0) {
+                    if (deltaVolume == 0 || deltaVolume == maxVolume) {
                         startY = e2.y
-                        currentVolume = 0
-                    }
-                    if (deltaVolume == maxVolume) {
-                        startY = e2.y
-                        currentVolume = maxVolume
+                        currentVolume = deltaVolume
                     }
                     audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, deltaVolume, 0)
                     binding.tvVideoSpeed.text = String.format(
@@ -257,15 +229,17 @@ class VideoPlayActivity(
         fun onUp() {
             when (gestureMode) {
                 GestureMode.PROGRESS -> {
-                    player.seekTo(position)
-                    player.play()
+                    player?.seekTo(position)
+                    player?.play()
                 }
 
                 GestureMode.NONE -> {
-                    if (originalSpeed != player.playbackParameters.speed) player.playbackParameters =
-                        PlaybackParameters(
-                            originalSpeed, player.playbackParameters.pitch
-                        )
+                    player?.let { p ->
+                        if (originalSpeed != p.playbackParameters.speed) p.playbackParameters =
+                            PlaybackParameters(
+                                originalSpeed, p.playbackParameters.pitch
+                            )
+                    }
                 }
 
                 else -> {}
@@ -286,6 +260,23 @@ class VideoPlayActivity(
         binding.titleBar.title = viewModel.bookTitle
         viewModel.videoUrl.observe(this) {
             refreshPlayer(it)
+            updateResolutionButtonText()
+        }
+        viewModel.resolutions.observe(this) { resolutions ->
+            val btn =
+                binding.ivPlayer.findViewById<android.widget.TextView>(R.id.tv_force_resolution)
+            if (resolutions.isNullOrEmpty() || resolutions.size <= 1) {
+                btn?.setOnClickListener {
+                    player?.let { p ->
+                        TrackSelectionDialogBuilder(
+                            this, getString(R.string.resolution), p, C.TRACK_TYPE_VIDEO
+                        ).build().show()
+                    }
+                }
+            } else {
+                btn?.visibility = View.VISIBLE
+                updateResolutionButtonText()
+            }
         }
         viewModel.chapterList.observe(this) {
             if (it.size > 1) {
@@ -299,13 +290,13 @@ class VideoPlayActivity(
         }
         binding.titleBar.toolbar.setOnClickListener {
             bookInfoResult.launch {
-                player.pause()
+                GlobalVars.nowBook = viewModel.book
+                GlobalVars.nowChapterList = viewModel.chapterList.value
+                player?.pause()
             }
         }
         binding.ivPlayer.findViewById<View>(R.id.tv_force_resolution)?.setOnClickListener {
-            TrackSelectionDialogBuilder(
-                this, getString(R.string.resolution), player, C.TRACK_TYPE_VIDEO
-            ).build().show()
+            showResolutionDialog()
         }
         binding.ivPlayer.setFullscreenButtonClickListener { isFullScreenRequested ->
             requestedOrientation = if (isFullScreenRequested) {
@@ -323,24 +314,26 @@ class VideoPlayActivity(
         }
         onBackPressedDispatcher.addCallback(this) {
             when {
-                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->{
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE -> {
                     //传入横屏状态
                     binding.ivPlayer.setFullscreenButtonState(false)
                     requestedOrientation =
                         ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 }
 
-                isFullScreen -> exitFullScreen()
+                supportActionBar?.isShowing == false -> setFullScreen(false)
                 else -> finish()
             }
         }
 
     }
 
-    @SuppressLint("SetTextI18n")
-    private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
+    private fun setPlayerMediaSource(
+        p: androidx.media3.exoplayer.ExoPlayer,
+        analyzeUrl: AnalyzeUrl
+    ) {
         if (analyzeUrl.url.startsWith("http")) {
-            player.setMediaItem(
+            p.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
                     analyzeUrl.url, analyzeUrl.headerMap
                 )
@@ -373,15 +366,45 @@ class VideoPlayActivity(
                     override fun close() = dataSource.close()
                 }
             }
-            player.setMediaSource(
+            p.setMediaSource(
                 HlsMediaSource.Factory(dataSourceFactory).createMediaSource(
                     MediaItem.Builder().setUri(fakeUrl).setMimeType(MimeTypes.APPLICATION_M3U8)
                         .build()
                 )
             )
         }
-        player.apply {
-            if (viewModel.position != 0L) seekTo(viewModel.position)
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
+        val p = player ?: ExoPlayerHelper.createHttpExoPlayer(this).apply {
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    super.onPlaybackStateChanged(playbackState)
+                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
+                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
+                        val msg = when (error.sourceException) {
+                            is UnrecognizedInputFormatException -> "不是视频链接"
+                            is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
+                            else -> "视频播放出错"
+                        }
+                        AppLog.put(msg, error, true)
+                    }
+                    super.onPlayerError(error)
+                }
+            })
+            binding.ivPlayer.player = this
+        }
+        setPlayerMediaSource(p, analyzeUrl)
+        p.apply {
+            if (viewModel.position != 0L) {
+                seekTo(viewModel.position)
+            }
             play()
             prepare()
         }
@@ -410,7 +433,7 @@ class VideoPlayActivity(
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_refresh -> {
-                player.pause()
+                player?.pause()
                 viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
             }
 
@@ -443,11 +466,7 @@ class VideoPlayActivity(
                 }
             }
 
-            R.id.menu_full_screen -> if (isFullScreen) {
-                exitFullScreen()
-            } else {
-                enterFullScreen()
-            }
+            R.id.menu_full_screen -> setFullScreen(supportActionBar?.isShowing == true)
 
             R.id.menu_login -> viewModel.bookSource?.let {
                 GlobalVars.nowBook = viewModel.book
@@ -469,28 +488,20 @@ class VideoPlayActivity(
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         when (newConfig.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> enterFullScreen()
-            Configuration.ORIENTATION_PORTRAIT -> exitFullScreen()
+            Configuration.ORIENTATION_LANDSCAPE -> setFullScreen(true)
+            Configuration.ORIENTATION_PORTRAIT -> setFullScreen(false)
             else -> {}
         }
-        screenWidth = Resources.getSystem().displayMetrics.widthPixels
         super.onConfigurationChanged(newConfig)
     }
 
-    private fun enterFullScreen() {
-        isFullScreen = true
-        toggleSystemBar(false)
-        supportActionBar?.hide()
-        binding.ivPlayer.layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
-        binding.recyclerView.isVisible = false
-    }
-
-    private fun exitFullScreen() {
-        isFullScreen = false
-        toggleSystemBar(true)
-        supportActionBar?.show()
-        binding.ivPlayer.layoutParams.height = 0
-        viewModel.chapterList.value?.let { showChapterList(it) }
+    private fun setFullScreen(isFull: Boolean) {
+        toggleSystemBar(!isFull)
+        if (isFull) supportActionBar?.hide() else supportActionBar?.show()
+        binding.ivPlayer.layoutParams.height =
+            if (isFull) WindowManager.LayoutParams.MATCH_PARENT else 0
+        if (isFull) binding.recyclerView.isVisible = false
+        else viewModel.chapterList.value?.let { showChapterList(it) }
     }
 
     private fun showChapterList(list: List<BookChapter>) {
@@ -508,12 +519,92 @@ class VideoPlayActivity(
         }
     }
 
-    override fun onDestroy() {
-        viewModel.saveRead(
-            if (player.currentPosition > player.duration - 1000) 0L
-            else player.currentPosition
+    private fun updateResolutionButtonText() {
+        val btn = binding.ivPlayer.findViewById<android.widget.TextView>(R.id.tv_force_resolution)
+        val resolutions = viewModel.resolutions.value
+        btn?.text = if (!resolutions.isNullOrEmpty() && resolutions.size > 1) {
+            resolutions.getOrNull(viewModel.currentResolutionIndex)?.name
+                ?: getString(R.string.resolution)
+        } else {
+            getString(R.string.resolution)
+        }
+    }
+
+    private fun showResolutionDialog() {
+        val resolutions = viewModel.resolutions.value
+
+        if (resolutions.isNullOrEmpty() || resolutions.size <= 1) {
+            player?.let { p ->
+                TrackSelectionDialogBuilder(
+                    this, getString(R.string.resolution), p, C.TRACK_TYPE_VIDEO
+                ).build().show()
+            }
+            return
+        }
+
+        val names = resolutions.map { it.name }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.resolution)
+            .setSingleChoiceItems(names, viewModel.currentResolutionIndex) { dialog, which ->
+                dialog.dismiss()
+                binding.ivPlayer.hideController()
+                if (which != viewModel.currentResolutionIndex) {
+                    val position = if (player == null) 0L
+                    else player!!.currentPosition + 800L
+                    switchResolution(which, position)
+                }
+            }
+            .show()
+    }
+
+    private fun switchResolution(index: Int, seekPosition: Long) {
+        val source = viewModel.videoSource.value ?: return
+        val resolution = source.getResolution(index) ?: return
+        viewModel.currentResolutionIndex = index
+        updateResolutionButtonText()
+
+        val analyzeUrl = AnalyzeUrl(
+            mUrl = resolution.url,
+            source = viewModel.bookSource,
+            headerMapF = source.headers
         )
-        player.release()
+        val newPlayer = ExoPlayerHelper.createHttpExoPlayer(this)
+        setPlayerMediaSource(newPlayer, analyzeUrl)
+        newPlayer.seekTo(seekPosition)
+        newPlayer.addListener(object : Player.Listener,
+            androidx.lifecycle.DefaultLifecycleObserver {
+            init {
+                lifecycle.addObserver(this)
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    val oldPlayer = player
+                    binding.ivPlayer.player = newPlayer
+                    if (oldPlayer?.isPlaying ?: false) newPlayer.play()
+                    oldPlayer?.stop()
+                    oldPlayer?.release()
+                    newPlayer.removeListener(this)
+                    lifecycle.removeObserver(this)
+                }
+            }
+
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                if (binding.ivPlayer.player != newPlayer) {
+                    newPlayer.release()
+                }
+            }
+        })
+        newPlayer.prepare()
+    }
+
+    override fun onDestroy() {
+        val currentPlayer = player
+        viewModel.saveRead(
+            if ((currentPlayer?.currentPosition ?: 0) > (currentPlayer?.duration ?: 1) - 1000) 0L
+            else currentPlayer?.currentPosition ?: 0L
+        )
+        currentPlayer?.release()
         super.onDestroy()
     }
 
