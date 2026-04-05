@@ -40,10 +40,12 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
             for (url in urls) {
                 val bookUrl = url.trim()
                 if (bookUrl.isEmpty()) continue
-                try{
-                    getBookInfoByUrlAwait(bookUrl).let{
+                try {
+                    getBookInfoByUrlAwait(bookUrl).let {
                         val dbBook = appDb.bookDao.getBook(it.name, it.author)
-                        val toc = WebBook.getChapterListAwait(GlobalVars.nowSource as BookSource, it).getOrThrow()
+                        val toc =
+                            WebBook.getChapterListAwait(GlobalVars.nowSource as BookSource, it)
+                                .getOrThrow()
                         if (dbBook != null) dbBook.migrateTo(it, toc)
                         else it.order = appDb.bookDao.minOrder - 1
                         appDb.bookDao.insert(it)
@@ -51,14 +53,15 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         successCount++
                         addBookProgressLiveData.postValue(successCount)
                     }
-                }catch (e: Throwable){
+                } catch (e: Throwable) {
                     AppLog.put("添加 $bookUrl 失败\n${e.localizedMessage}", e, true)
                 }
             }
         }.onSuccess {
-            context.toastOnUi(if (successCount > 0) {
-                successCount.toString()+"/"+urls.size+" "+R.string.success
-            } else "添加网址失败"
+            context.toastOnUi(
+                if (successCount > 0) {
+                    successCount.toString() + "/" + urls.size + " " + R.string.success
+                } else "添加网址失败"
             )
         }.onFinally {
             addBookProgressLiveData.postValue(-1)
@@ -100,10 +103,10 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                 val bookUrl = bookInfo["bookUrl"] as String?
                 if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
                 semaphore.withPermit {
-                    (if(origin!=null&&bookUrl!=null) {
+                    (if (origin != null && bookUrl != null) {
                         val book = Book(bookUrl)
                         bookInfo.forEach { (key, value) ->
-                            if(value is String) {
+                            if (value is String) {
                                 when (key) {
                                     "name" -> book.name = value
                                     "author" -> book.author = value
@@ -111,11 +114,18 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                                     "coverUrl" -> book.coverUrl = value
                                     "intro" -> book.intro = value
                                     "origin" -> book.origin = value
+                                    "wordCount" -> book.wordCount = value
+                                    "tocUrl" -> book.tocUrl = value
                                 }
+                            } else if (value is Int) {
+                                when (key) {
+                                    "type" -> book.type = value
+                                }
+
                             }
                         }
                         val bookSource = appDb.bookSourceDao.getBookSource(origin)
-                        if (bookSource==null)return@forEach
+                        if (bookSource == null) return@forEach
                         else Coroutine.async(this) {
                             getBookInfoAwait(bookSource, book)
                         }.onSuccess {
