@@ -100,8 +100,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                         binding.flexbox.addView(it.root)
                         if (rowUi.type == RowUi.Type.button) rowUi.style().apply(it.root)
                         if (rowUi.type == RowUi.Type.title) FlexChildStyle(
-                            layout_flexBasisPercent = 1F,
-                            layout_flexGrow = 1F
+                            layout_flexBasisPercent = 1F
                         ).apply(it.root)
                         it.root.id = index + 1000
                         it.textView.text = rowUi.name

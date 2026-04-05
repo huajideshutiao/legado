@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import io.legado.app.R
@@ -16,11 +15,10 @@ import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import org.json.JSONObject
 
-class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server, true),
+class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long) : this() {
@@ -37,11 +35,6 @@ class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server, t
         RowUi("username"),
         RowUi("password", RowUi.Type.password)
     )
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

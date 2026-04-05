@@ -8,8 +8,7 @@
     android:layout_gravity="center"
     android:background="@drawable/shape_card_view"
     android:orientation="vertical"
-    tools:ignore="UselessParent"
-    >
+    tools:ignore="UselessParent">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/tool_bar"
@@ -36,10 +35,8 @@
                 android:layout_marginTop="8dp"
                 android:clipToPadding="false"
                 android:padding="3dp"
-                app:dividerDrawable="@drawable/shape_space_divider"
                 app:flexDirection="row"
-                app:flexWrap="wrap"
-                app:showDivider="middle" />
+                app:flexWrap="wrap" />
 
         </androidx.core.widget.NestedScrollView>
 

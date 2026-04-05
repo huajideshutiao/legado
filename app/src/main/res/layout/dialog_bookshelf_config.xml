@@ -26,7 +26,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:entries="@array/group_style"
-            android:theme="@style/Spinner"
             tools:ignore="TouchTargetSizeCheck" />
 
     </LinearLayout>
