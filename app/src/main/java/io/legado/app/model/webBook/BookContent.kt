@@ -10,6 +10,9 @@ import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.exception.ContentEmptyException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -134,7 +137,8 @@ object BookContent {
             }
         }
         var contentStr = contentList.joinToString("\n")
-        contentStr = HtmlFormatter.formatKeepImg(contentStr, redirectUrl, needSave)
+        if (!book.isImage && !book.isVideo && !book.isAudio) contentStr =
+            HtmlFormatter.formatKeepImg(contentStr, redirectUrl)
         //全文替换
         val replaceRegex = contentRule.replaceRegex
         if (!replaceRegex.isNullOrEmpty()) {

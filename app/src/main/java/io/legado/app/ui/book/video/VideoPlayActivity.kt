@@ -71,6 +71,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     override val binding by viewBinding(ActivityVideoPlayBinding::inflate)
     override val viewModel by viewModels<VideoViewModel>()
     private val adapter by lazy { ChapterListAdapter(this, this) }
+    private var hasRefreshedOnPlayError = false
 
     private val player: androidx.media3.exoplayer.ExoPlayer?
         get() = binding.ivPlayer.player as? androidx.media3.exoplayer.ExoPlayer
@@ -377,6 +378,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
+        hasRefreshedOnPlayError = false
         val p = player ?: ExoPlayerHelper.createHttpExoPlayer(this).apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -387,7 +389,10 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
+                    if (!hasRefreshedOnPlayError) {
+                        hasRefreshedOnPlayError = true
+                        viewModel.refreshChapter()
+                    } else if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
                         val msg = when (error.sourceException) {
                             is UnrecognizedInputFormatException -> "不是视频链接"
                             is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
@@ -434,7 +439,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         when (item.itemId) {
             R.id.menu_refresh -> {
                 player?.pause()
-                viewModel.initChapter(viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)!!)
+                viewModel.refreshChapter()
             }
 
             R.id.menu_shelf -> {

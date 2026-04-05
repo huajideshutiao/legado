@@ -2,7 +2,6 @@ package io.legado.app.ui.book.video
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.base.BaseViewModel
@@ -14,6 +13,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BookHelp.getContent
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.update
@@ -57,8 +58,8 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun initChapter(chapter: BookChapter) {
-        Coroutine.async(viewModelScope) {
-            getContentAwait(bookSource!!, book, chapter, needSave = false)
+        execute {
+            getContent(book, chapter) ?: getContentAwait(bookSource!!, book, chapter)
         }.onSuccess { content ->
             if (content.isEmpty()) {
                 context.toastOnUi("未获取到资源链接")
@@ -67,6 +68,16 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             }
         }.onError { e ->
             AppLog.put("获取资源链接出错\n$e", e, true)
+        }
+    }
+
+    fun refreshChapter() {
+        execute {
+            chapterList.value?.let { chapterList ->
+                val chapter = chapterList[book.durChapterIndex]
+                BookHelp.delContent(book, chapter)
+                initChapter(chapter)
+            }
         }
     }
 
@@ -168,7 +179,8 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                     .signature(ObjectKey("covers"))
                     .onlyRetrieveFromCache(true)
                     .submit().get()?.delete()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }.onSuccess {
             success?.invoke()
         }

@@ -36,7 +36,7 @@ object HtmlFormatter {
             .replace(lastRegex, "")
     }
 
-    fun formatKeepImg(html: String, redirectUrl: String? = null, needSave: Boolean = true): String {
+    fun formatKeepImg(html: String, redirectUrl: String? = null): String {
         val str = StringBuilder()
         val tmp = html.indexOf("<")
         if (tmp == -1 || html.indexOf(">", tmp) == -1) {
@@ -44,7 +44,7 @@ object HtmlFormatter {
                 val oo = it.trim()
                 if (oo == "") return@forEach
                 if (str.isNotEmpty()) str.append("\n")
-                if (needSave) str.append("　　")
+                str.append("　　")
                 str.append(oo)
             }
         } else {
@@ -59,7 +59,7 @@ object HtmlFormatter {
                                     val oo = it.trim()
                                     if (oo == "") return@forEach
                                     if (str.isNotEmpty()) append("\n")
-                                    if (needSave) append("　　")
+                                    append("　　")
                                     append(oo)
                                 }
                             }

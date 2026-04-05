@@ -141,7 +141,7 @@ object BookHelp {
                 val imgList = Jsoup.parse(content).select("img")
                 for (i in imgList) {
                     val src = i.attr("src")
-                    if (src.isBlank())continue
+                    if (src.isBlank()) continue
                     imgNames.add("${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}")
                 }
             }
@@ -198,7 +198,7 @@ object BookHelp {
             val imgList = Jsoup.parse(content).select("img")
             for (i in imgList) {
                 val src = i.attr("src")
-                if (src.isBlank())continue
+                if (src.isBlank()) continue
                 emit(src)
             }
         }
@@ -323,7 +323,7 @@ object BookHelp {
 
     fun getChapterFiles(book: Book): HashSet<String> {
         val fileNames = hashSetOf<String>()
-        if (book.isLocalTxt || book.isVideo || book.isAudio) {
+        if (book.isLocalTxt || book.isAudio) {
             return fileNames
         }
         FileUtils.createFolderIfNotExist(
@@ -576,9 +576,9 @@ object BookHelp {
         val chapterName1 = StringUtils.fullToHalf(chapterName).replace(regexA, "")
         return StringUtils.stringToInt(
             (
-                    chapterNamePattern1.matcher(chapterName1).takeIf { it.find() }
-                        ?: chapterNamePattern2.matcher(chapterName1).takeIf { it.find() }
-                    )?.group(1)
+                chapterNamePattern1.matcher(chapterName1).takeIf { it.find() }
+                    ?: chapterNamePattern2.matcher(chapterName1).takeIf { it.find() }
+                )?.group(1)
                 ?: "-1"
         )
     }
