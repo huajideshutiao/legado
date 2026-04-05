@@ -180,9 +180,36 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var bookshelfLayout: Int
-        get() = appCtx.getPrefInt(PreferKey.bookshelfLayout, 0)
+        get() {
+            val value = appCtx.getPrefInt(PreferKey.bookshelfLayout, 0)
+            if (!appCtx.getPrefBoolean("bookshelfLayoutMigrated", false)) {
+                val migrated = when (value) {
+                    1 -> 3
+                    2 -> 4
+                    3 -> 5
+                    4 -> 6
+                    else -> value
+                }
+                appCtx.putPrefInt(PreferKey.bookshelfLayout, migrated)
+                appCtx.putPrefBoolean("bookshelfLayoutMigrated", true)
+                return migrated
+            }
+            return value
+        }
         set(value) {
             appCtx.putPrefInt(PreferKey.bookshelfLayout, value)
+        }
+
+    var bookshelfFixedWidthMode: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfFixedWidthMode, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookshelfFixedWidthMode, value)
+        }
+
+    var bookshelfGridWidth: Int
+        get() = appCtx.getPrefInt(PreferKey.bookshelfGridWidth, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookshelfGridWidth, value)
         }
 
     var saveTabPosition: Int

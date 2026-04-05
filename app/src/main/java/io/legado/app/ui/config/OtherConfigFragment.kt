@@ -280,13 +280,15 @@ class OtherConfigFragment : PreferenceFragment(),
         alert(titleResource = R.string.bookshelf_layout) {
             var bookshelfLayout = AppConfig.bookshelfLayout
             var bookshelfSort = AppConfig.bookshelfSort
+            var fixedWidthMode = AppConfig.bookshelfFixedWidthMode
+            val gridWidth = AppConfig.bookshelfGridWidth
             val alertBinding =
                 DialogBookshelfConfigBinding.inflate(layoutInflater)
                     .apply {
                         if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
                             AppConfig.bookGroupStyle = 0
                         }
-                        if (bookshelfLayout !in rgLayout.indices) {
+                        if (bookshelfLayout !in 0..6) {
                             bookshelfLayout = 0
                             AppConfig.bookshelfLayout = 0
                         }
@@ -299,7 +301,36 @@ class OtherConfigFragment : PreferenceFragment(),
                         swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
                         swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
                         swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
-                        rgLayout.checkByIndex(bookshelfLayout)
+                        swFixedWidthMode.isChecked = fixedWidthMode
+                        sbColumnCount.progress = bookshelfLayout
+                        tvColumnValue.text =
+                            if (bookshelfLayout == 0) getString(R.string.layout_list) else bookshelfLayout.toString()
+                        etGridWidth.setText(gridWidth.toString())
+                        llColumnCount.visibility =
+                            if (fixedWidthMode) View.GONE else View.VISIBLE
+                        llFixedWidth.visibility =
+                            if (fixedWidthMode) View.VISIBLE else View.GONE
+                        sbColumnCount.setOnSeekBarChangeListener(object :
+                            android.widget.SeekBar.OnSeekBarChangeListener {
+                            override fun onProgressChanged(
+                                seekBar: android.widget.SeekBar?,
+                                progress: Int,
+                                fromUser: Boolean
+                            ) {
+                                tvColumnValue.text =
+                                    if (progress == 0) getString(R.string.layout_list) else progress.toString()
+                            }
+
+                            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                        })
+                        swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
+                            fixedWidthMode = isChecked
+                            llColumnCount.visibility =
+                                if (isChecked) View.GONE else View.VISIBLE
+                            llFixedWidth.visibility =
+                                if (isChecked) View.VISIBLE else View.GONE
+                        }
                         rgSort.checkByIndex(bookshelfSort)
                     }
             customView { alertBinding.root }
@@ -329,8 +360,15 @@ class OtherConfigFragment : PreferenceFragment(),
                     if (bookshelfSort != rgSort.getCheckedIndex()) {
                         AppConfig.bookshelfSort = rgSort.getCheckedIndex()
                     }
-                    if (bookshelfLayout != rgLayout.getCheckedIndex()) {
-                        AppConfig.bookshelfLayout = rgLayout.getCheckedIndex()
+                    val newLayout = sbColumnCount.progress
+                    val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 130
+                    if (bookshelfLayout != newLayout ||
+                        AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||
+                        AppConfig.bookshelfGridWidth != newGridWidth
+                    ) {
+                        AppConfig.bookshelfLayout = newLayout
+                        AppConfig.bookshelfFixedWidthMode = fixedWidthMode
+                        AppConfig.bookshelfGridWidth = newGridWidth
                         recreate = true
                     }
                     if (recreate) {

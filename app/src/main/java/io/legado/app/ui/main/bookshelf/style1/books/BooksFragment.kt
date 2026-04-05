@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
@@ -63,14 +64,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private val binding by viewBinding(FragmentBooksBinding::bind)
     private val activityViewModel by activityViewModels<MainViewModel>()
-    private val bookshelfLayout by lazy { AppConfig.bookshelfLayout }
-    private val booksAdapter: BaseBooksAdapter<*> by lazy {
-        if (bookshelfLayout == 0) {
-            BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-        } else {
-            BooksAdapterGrid(requireContext(), this)
-        }
-    }
+    private var booksAdapter: BaseBooksAdapter<*>? = null
     private var booksFlowJob: Job? = null
     var position = 0
         private set
@@ -80,6 +74,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         private set
     private var upLastUpdateTimeJob: Job? = null
     private var enableRefresh = true
+
+    private fun getSpanCount(): Int {
+        if (AppConfig.bookshelfFixedWidthMode) {
+            val displayMetrics = resources.displayMetrics
+            val screenWidthDp = displayMetrics.widthPixels / displayMetrics.density
+            val spanCount = (screenWidthDp / AppConfig.bookshelfGridWidth).toInt()
+            return maxOf(1, spanCount)
+        }
+        return AppConfig.bookshelfLayout
+    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -93,43 +97,76 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         upRecyclerData()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateLayoutManager()
+    }
+
+    private fun updateLayoutManager() {
+        val spanCount = getSpanCount()
+        val layoutManager = binding.rvBookshelf.layoutManager
+        if (spanCount == 0) {
+            if (layoutManager !is LinearLayoutManager) {
+                binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+            }
+        } else {
+            if (layoutManager is GridLayoutManager) {
+                layoutManager.spanCount = spanCount
+            } else {
+                binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
+            }
+        }
+    }
+
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
-            activityViewModel.upToc(booksAdapter.getItems())
+            activityViewModel.upToc(booksAdapter?.getItems() ?: emptyList())
         }
-        if (bookshelfLayout == 0) {
+        val spanCount = getSpanCount()
+        if (spanCount == 0) {
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
         } else {
-            binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout + 2)
+            binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
         }
-        if (bookshelfLayout == 0) {
+        if (spanCount == 0) {
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
         } else {
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksGridRecycledViewPool)
         }
-        booksAdapter.stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
-        binding.rvBookshelf.adapter = booksAdapter
-        booksAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                val layoutManager = binding.rvBookshelf.layoutManager
-                if (positionStart == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
-                    val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                    binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
-                }
+        val adapter = booksAdapter
+        if (adapter == null) {
+            val newAdapter = if (spanCount == 0) {
+                BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
+            } else {
+                BooksAdapterGrid(requireContext(), this)
             }
+            newAdapter.stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
+            binding.rvBookshelf.adapter = newAdapter
+            newAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                    val layoutManager = binding.rvBookshelf.layoutManager
+                    if (positionStart == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
+                        val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
+                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                    }
+                }
 
-            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                val layoutManager = binding.rvBookshelf.layoutManager
-                if (toPosition == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
-                    val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                    binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
+                    val layoutManager = binding.rvBookshelf.layoutManager
+                    if (toPosition == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
+                        val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
+                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                    }
                 }
-            }
-        })
+            })
+            booksAdapter = newAdapter
+        } else {
+            binding.rvBookshelf.adapter = adapter
+        }
         startLastUpdateTimeJob()
     }
 
@@ -193,7 +230,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }.conflate().flowOn(Dispatchers.Default).collect { list ->
                 binding.tvEmptyMsg.isGone = list.isNotEmpty()
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
-                booksAdapter.setItems(list)
+                booksAdapter?.setItems(list)
                 delay(100)
             }
         }
@@ -201,13 +238,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun startLastUpdateTimeJob() {
         upLastUpdateTimeJob?.cancel()
-        if (!AppConfig.showLastUpdateTime || bookshelfLayout != 0) {
+        if (!AppConfig.showLastUpdateTime || getSpanCount() != 0) {
             return
         }
         upLastUpdateTimeJob = viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (isActive) {
-                    booksAdapter.upLastUpdateTime()
+                    booksAdapter?.upLastUpdateTime()
                     delay(30 * 1000)
                 }
             }
@@ -215,7 +252,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooks(): List<Book> {
-        return booksAdapter.getItems()
+        return booksAdapter?.getItems() ?: emptyList()
     }
 
     fun gotoTop() {
@@ -227,7 +264,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooksCount(): Int {
-        return booksAdapter.itemCount
+        return booksAdapter?.itemCount ?: 0
     }
 
     override fun onDestroyView() {
@@ -259,10 +296,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.UP_BOOKSHELF) {
-            booksAdapter.notification(it)
+            booksAdapter?.notification(it)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            booksAdapter.notifyDataSetChanged()
+            booksAdapter?.notifyDataSetChanged()
             startLastUpdateTimeJob()
             upFastScrollerBar()
         }

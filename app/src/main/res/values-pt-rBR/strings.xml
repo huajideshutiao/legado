@@ -62,6 +62,9 @@
     <string name="layout_grid4">Grade-4</string>
     <string name="layout_grid5">Grade-5</string>
     <string name="layout_grid6">Grade-6</string>
+    <string name="fixed_width_mode">Modo de largura fixa</string>
+    <string name="column_count">Colunas</string>
+    <string name="grid_width_dp">Largura</string>
     <string name="bookshelf_layout">Layout</string>
     <string name="view">Vista</string>
     <string name="book_library">Biblioteca</string>

@@ -56,6 +56,9 @@
     <string name="layout_grid4">網格四列</string>
     <string name="layout_grid5">網格五列</string>
     <string name="layout_grid6">網格六列</string>
+    <string name="fixed_width_mode">固定寬度模式</string>
+    <string name="column_count">列數</string>
+    <string name="grid_width_dp">寬度</string>
     <string name="bookshelf_layout">書架布局</string>
     <string name="view">檢視</string>
     <string name="book_library">書城</string>

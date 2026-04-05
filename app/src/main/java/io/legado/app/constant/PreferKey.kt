@@ -37,6 +37,8 @@ object PreferKey {
     const val enableReview = "enableReview"
     const val showRss = "showRss"
     const val bookshelfLayout = "bookshelfLayout"
+    const val bookshelfFixedWidthMode = "bookshelfFixedWidthMode"
+    const val bookshelfGridWidth = "bookshelfGridWidth"
     const val bookshelfSort = "bookshelfSort"
     const val bookExportFileName = "bookExportFileName"
     const val bookImportFileName = "bookImportFileName"

@@ -62,6 +62,9 @@
     <string name="layout_grid4">Grid-4</string>
     <string name="layout_grid5">Grid-5</string>
     <string name="layout_grid6">Grid-6</string>
+    <string name="fixed_width_mode">固定幅モード</string>
+    <string name="column_count">列数</string>
+    <string name="grid_width_dp">幅</string>
     <string name="bookshelf_layout">Layout</string>
     <string name="view">View</string>
     <string name="book_library">Library</string>

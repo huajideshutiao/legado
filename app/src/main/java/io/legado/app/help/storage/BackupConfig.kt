@@ -32,6 +32,8 @@ object BackupConfig {
         themeConfigKey,
         coverConfigKey,
         PreferKey.bookshelfLayout,
+        PreferKey.bookshelfFixedWidthMode,
+        PreferKey.bookshelfGridWidth,
         PreferKey.showRss,
         PreferKey.threadCount,
         localBookKey
@@ -113,7 +115,7 @@ object BackupConfig {
             ignoreThemeConfig && themePrefKeys.contains(key) -> false
             ignoreCoverConfig && coverPrefKeys.contains(key) -> false
             PreferKey.themeMode == key && ignoreThemeMode -> false
-            PreferKey.bookshelfLayout == key && ignoreBookshelfLayout -> false
+            (key == PreferKey.bookshelfLayout || key == PreferKey.bookshelfFixedWidthMode || key == PreferKey.bookshelfGridWidth) && ignoreBookshelfLayout -> false
             PreferKey.showRss == key && ignoreShowRss -> false
             PreferKey.threadCount == key && ignoreThreadCount -> false
             else -> true

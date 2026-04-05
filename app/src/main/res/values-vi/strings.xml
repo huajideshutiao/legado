@@ -61,6 +61,9 @@
     <string name="layout_grid4">Lưới-4</string>
     <string name="layout_grid5">Lưới-5</string>
     <string name="layout_grid6">Lưới-6</string>
+    <string name="fixed_width_mode">Chế độ chiều rộng cố định</string>
+    <string name="column_count">Số cột</string>
+    <string name="grid_width_dp">Chiều rộng</string>
     <string name="bookshelf_layout">Bố cục tủ sách</string>
     <string name="view">Chế độ xem</string>
     <string name="book_library">Thư viện sách</string>

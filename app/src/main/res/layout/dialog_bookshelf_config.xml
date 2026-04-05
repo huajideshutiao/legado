@@ -66,58 +66,103 @@
         app:layout_constraintTop_toBottomOf="@+id/sw_show_wait_up_books"
         tools:ignore="TouchTargetSizeCheck" />
 
+    <io.legado.app.lib.theme.view.ThemeSwitch
+        android:id="@+id/sw_fixed_width_mode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="6dp"
+        android:text="@string/fixed_width_mode"
+        app:layout_constraintTop_toBottomOf="@+id/sw_show_bookshelf_fast_scroller"
+        tools:ignore="TouchTargetSizeCheck" />
+
     <LinearLayout
         android:id="@+id/ll_layout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/ll_sort"
-        app:layout_constraintTop_toBottomOf="@+id/sw_show_bookshelf_fast_scroller"
-        app:layout_constraintLeft_toLeftOf="parent">
+        app:layout_constraintTop_toBottomOf="@+id/sw_fixed_width_mode">
 
         <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_layout_title"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:padding="6dp"
             android:text="@string/view"
             android:textSize="16sp" />
 
-        <RadioGroup
-            android:id="@+id/rg_layout"
+        <LinearLayout
+            android:id="@+id/ll_column_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="8dp">
 
-            <RadioButton
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tv_column_value"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/layout_list"
-                tools:ignore="TouchTargetSizeCheck" />
+                android:textSize="16sp"
+                android:textStyle="bold"
+                tools:text="列表" />
 
-            <RadioButton
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/layout_grid3"
-                tools:ignore="TouchTargetSizeCheck" />
+            <io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper
+                android:layout_width="wrap_content"
+                android:layout_height="120dp"
+                android:layout_marginTop="8dp">
 
-            <RadioButton
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/layout_grid4"
-                tools:ignore="TouchTargetSizeCheck" />
+                <io.legado.app.ui.widget.seekbar.VerticalSeekBar
+                    android:id="@+id/sb_column_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:max="6"
+                    android:progress="0"
+                    app:seekBarRotation="CW270"
+                    tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/layout_grid5"
-                tools:ignore="TouchTargetSizeCheck" />
+            </io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper>
 
-            <RadioButton
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tv_column_label"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/layout_grid6"
-                tools:ignore="TouchTargetSizeCheck" />
-        </RadioGroup>
+                android:layout_marginTop="4dp"
+                android:text="@string/column_count" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_fixed_width"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/grid_width_dp" />
+
+            <EditText
+                android:id="@+id/et_grid_width"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:text="100"
+                android:textAlignment="center"
+                tools:ignore="HardcodedText,TouchTargetSizeCheck,Autofill" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" dp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
@@ -127,8 +172,8 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         app:layout_constraintLeft_toRightOf="@+id/ll_layout"
-        app:layout_constraintTop_toBottomOf="@id/sw_show_bookshelf_fast_scroller"
-        app:layout_constraintRight_toRightOf="parent">
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/sw_fixed_width_mode">
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:layout_width="match_parent"
