@@ -11,10 +11,12 @@ data class RemoteBook(
     val size: Long,
     val lastModify: Long,
     var contentType: String = "folder",
-    var isOnBookShelf: Boolean = false
+    var isOnBookShelf: Boolean = false,
+    val isUpDir: Boolean = false
 ) {
 
-    val isDir get() = contentType == "folder"
+    val isDir get() = contentType == "folder" && !isUpDir
+    val name get() = if (isUpDir) ".." else filename
 
     constructor(webDavFile: WebDavFile) : this(
         webDavFile.displayName,

@@ -68,7 +68,6 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
         }
         lifecycleScope.launch {
             initView()
-            initEvent()
             if (setBookStorage() && AppConfig.importBookPath.isNullOrBlank()) {
                 AppConfig.importBookPath = AppConfig.defaultBookTreeUri
             }
@@ -140,19 +139,19 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
         binding.selectActionBar.setCallBack(this)
     }
 
-    private fun initEvent() {
-        binding.tvGoBack.setOnClickListener {
-            goBackDir()
-        }
-    }
-
     private fun initData() {
         viewModel.dataFlowStart = {
             initRootDoc()
         }
         lifecycleScope.launch {
             viewModel.dataFlow.conflate().collect { docs ->
-                adapter.setItems(docs)
+                val items = if (viewModel.subDocs.isNotEmpty()) {
+                    val upDirBook = ImportBook(viewModel.subDocs.last(), isUpDir = true)
+                    listOf(upDirBook) + docs
+                } else {
+                    docs
+                }
+                adapter.setItems(items)
             }
         }
     }
@@ -230,7 +229,6 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
 
     @Synchronized
     private fun upPath() {
-        binding.tvGoBack.isEnabled = viewModel.subDocs.isNotEmpty()
         viewModel.rootDoc?.let {
             scanDocJob?.cancel()
             upDocs(it)
@@ -247,7 +245,6 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
         }
         binding.tvPath.text = path
         adapter.selected.clear()
-        adapter.clearItems()
         viewModel.loadDoc(lastDoc)
     }
 
@@ -285,6 +282,11 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
     }
 
     @Synchronized
+    override fun goBack() {
+        goBackDir()
+    }
+
+    @Synchronized
     override fun nextDoc(fileDoc: FileDoc) {
         viewModel.subDocs.add(fileDoc)
         upPath()
@@ -299,6 +301,10 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
         } else {
             false
         }
+    }
+
+    override fun openFile(fileDoc: FileDoc) {
+        startRead(fileDoc)
     }
 
     override fun onSearchTextChange(newText: String?) {

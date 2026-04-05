@@ -8,8 +8,9 @@ import java.io.File
 
 class FileManageViewModel(application: Application) : BaseViewModel(application) {
 
+    var sort = 0
     val rootDoc = context.getExternalFilesDir(null)?.parentFile
-    var subDocs = mutableListOf<File>()
+    val subDocs = mutableListOf<File>()
     val filesLiveData = MutableLiveData<List<File>>()
 
     val lastDir: File? get() = subDocs.lastOrNull() ?: rootDoc
@@ -17,32 +18,36 @@ class FileManageViewModel(application: Application) : BaseViewModel(application)
     fun upFiles(parentFile: File?) {
         execute {
             parentFile ?: return@execute emptyList()
+            val comparator = when (sort) {
+                1 -> compareBy { it.length() }
+                2 -> compareBy<File> { it.lastModified() }
+                else -> compareBy { it.name.lowercase() }
+            }
             if (parentFile == rootDoc) {
                 parentFile.listFiles()?.sortedWith(
-                    compareBy({ it.isFile }, { it.name })
-                )
+                    compareBy<File> { it.isFile }.then(comparator)
+                ) ?: emptyList()
             } else {
                 val list = arrayListOf(parentFile)
                 parentFile.listFiles()?.sortedWith(
-                    compareBy({ it.isFile }, { it.name })
+                    compareBy<File> { it.isFile }.then(comparator)
                 )?.let {
                     list.addAll(it)
                 }
                 list
             }
-        }.onStart {
-            filesLiveData.postValue(emptyList())
         }.onSuccess {
-            filesLiveData.postValue(it ?: emptyList())
+            filesLiveData.postValue(it)
         }.onError {
             context.toastOnUi(it.localizedMessage)
         }
     }
 
-    fun delFile(file: File) {
+    fun delFiles(files: List<File>, onSuccess: () -> Unit) {
         execute {
-            file.delete()
+            files.forEach { it.delete() }
         }.onSuccess {
+            onSuccess.invoke()
             upFiles(lastDir)
         }.onError {
             context.toastOnUi(it.localizedMessage)

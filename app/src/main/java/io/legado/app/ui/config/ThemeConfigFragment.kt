@@ -3,7 +3,6 @@ package io.legado.app.ui.config
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -77,9 +76,6 @@ class ThemeConfigFragment : PreferenceFragment(),
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_theme)
-        if (Build.VERSION.SDK_INT < 26) {
-            preferenceScreen.removePreferenceRecursively(PreferKey.launcherIcon)
-        }
         upPreferenceSummary(PreferKey.bgImage, getPrefString(PreferKey.bgImage))
         upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
         upPreferenceSummary(PreferKey.barElevation, AppConfig.elevation.toString())
@@ -419,9 +415,9 @@ class ThemeConfigFragment : PreferenceFragment(),
                         llFixedWidth.visibility =
                             if (fixedWidthMode) View.VISIBLE else View.GONE
                         sbColumnCount.setOnSeekBarChangeListener(object :
-                            android.widget.SeekBar.OnSeekBarChangeListener {
+                            SeekBar.OnSeekBarChangeListener {
                             override fun onProgressChanged(
-                                seekBar: android.widget.SeekBar?,
+                                seekBar: SeekBar?,
                                 progress: Int,
                                 fromUser: Boolean
                             ) {
@@ -429,8 +425,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                                     if (progress == 0) getString(R.string.layout_list) else progress.toString()
                             }
 
-                            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
                         })
                         swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
                             fixedWidthMode = isChecked

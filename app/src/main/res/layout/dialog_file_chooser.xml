@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@color/background">
 
     <androidx.appcompat.widget.Toolbar
@@ -14,42 +15,60 @@
         app:titleTextAppearance="@style/ToolbarTitle"
         app:popupTheme="@style/AppTheme.PopupOverlay" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_path"
+    <LinearLayout
+        android:id="@+id/lay_top"
         android:layout_width="match_parent"
-        android:layout_height="24dp"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:background="@color/background_card"
-        android:elevation="5dp" />
+        android:layout_height="wrap_content"
+        android:background="@color/background"
+        android:elevation="1dp"
+        android:gravity="center_vertical"
+        android:minHeight="36dp"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tv_path"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:singleLine="true"
+            android:textColor="@color/secondaryText"
+            android:textSize="13sp"
+            tools:text="/" />
+    </LinearLayout>
+
+    <io.legado.app.ui.widget.anima.RefreshProgressBar
+        android:id="@+id/refresh_progress_bar"
+        android:layout_width="match_parent"
+        android:layout_height="2dp" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@color/background_card">
+        android:layout_weight="1">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rv_file"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <TextView
-            android:id="@+id/tv_empty"
+        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
+            android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            tools:ignore="SpeakableTextPresentCheck" />
+
+        <TextView
+            android:id="@+id/tv_empty_msg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_margin="16dp"
             android:gravity="center"
+            android:text="@string/empty"
             android:visibility="gone" />
 
     </FrameLayout>
 
-    <io.legado.app.ui.widget.text.AccentBgTextView
-        android:id="@+id/tv_ok"
+    <io.legado.app.ui.widget.SelectActionBar
+        android:id="@+id/select_action_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="10dp"
-        android:layout_margin="3dp"
-        android:text="@string/ok"
-        android:gravity="center" />
+        android:layout_height="wrap_content" />
 
 </LinearLayout>

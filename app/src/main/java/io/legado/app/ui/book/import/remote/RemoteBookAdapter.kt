@@ -43,7 +43,13 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                if (item.isDir) {
+                if (item.isUpDir) {
+                    ivIcon.setImageResource(R.drawable.ic_folder_open)
+                    ivIcon.visible()
+                    cbSelect.invisible()
+                    llBrief.gone()
+                    cbSelect.isChecked = false
+                } else if (item.isDir) {
                     ivIcon.setImageResource(R.drawable.ic_folder)
                     ivIcon.visible()
                     cbSelect.invisible()
@@ -64,7 +70,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
                     tvDate.text = AppConst.dateFormat.format(item.lastModify)
                     cbSelect.isChecked = selected.contains(item)
                 }
-                tvName.text = item.filename
+                tvName.text = item.name
             } else {
                 cbSelect.isChecked = selected.contains(item)
             }
@@ -74,7 +80,9 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemImportBookBinding) {
         holder.itemView.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                if (it.isDir) {
+                if (it.isUpDir) {
+                    callBack.goBack()
+                } else if (it.isDir) {
                     callBack.openDir(it)
                 } else if (!it.isOnBookShelf) {
                     if (!selected.contains(it)) {
@@ -92,7 +100,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
         }
         holder.itemView.setOnLongClickListener {
             getItem(holder.layoutPosition)?.let { remoteBook ->
-                if (remoteBook.isOnBookShelf) {
+                if (!remoteBook.isUpDir && remoteBook.isOnBookShelf) {
                     callBack.addToBookShelfAgain(remoteBook)
                 }
             }
@@ -103,7 +111,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
     private fun upCheckableCount() {
         checkableCount = 0
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isUpDir && !it.isDir && !it.isOnBookShelf) {
                 checkableCount++
             }
         }
@@ -114,7 +122,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
     fun selectAll(selectAll: Boolean) {
         if (selectAll) {
             getItems().forEach {
-                if (!it.isDir && !it.isOnBookShelf) {
+                if (!it.isUpDir && !it.isDir && !it.isOnBookShelf) {
                     selected.add(it)
                 }
             }
@@ -127,7 +135,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
 
     fun revertSelection() {
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isUpDir && !it.isDir && !it.isOnBookShelf) {
                 if (selected.contains(it)) {
                     selected.remove(it)
                 } else {
@@ -141,6 +149,7 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
 
 
     interface CallBack {
+        fun goBack()
         fun openDir(remoteBook: RemoteBook)
         fun upCountView()
         fun startRead(remoteBook: RemoteBook)

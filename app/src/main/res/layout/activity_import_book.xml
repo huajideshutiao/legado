@@ -28,30 +28,14 @@
 
         <TextView
             android:id="@+id/tv_path"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:focusable="true"
             android:gravity="center_vertical"
             android:singleLine="true"
             android:textColor="@color/secondaryText"
             android:textSize="13sp"
             tools:text="/" />
-
-        <io.legado.app.ui.widget.text.StrokeTextView
-            android:id="@+id/tv_go_back"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_margin="4dp"
-            android:gravity="center"
-            android:paddingLeft="16dp"
-            android:paddingRight="16dp"
-            android:text="@string/go_back"
-            android:textFontWeight="800"
-            android:textSize="14sp"
-            app:cornerRadius="5dp"
-            tools:ignore="UnusedAttribute" />
     </LinearLayout>
 
     <io.legado.app.ui.widget.anima.RefreshProgressBar

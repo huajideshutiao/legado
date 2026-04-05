@@ -26,7 +26,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import java.io.File
@@ -56,13 +55,17 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
                 return@launch
             }
             initView()
-            initEvent()
             launch {
                 viewModel.dataFlow.conflate().collect { sortedRemoteBooks ->
                     binding.refreshProgressBar.isAutoLoading = false
                     binding.tvEmptyMsg.isGone = sortedRemoteBooks.isNotEmpty()
-                    adapter.setItems(sortedRemoteBooks)
-                    delay(500)
+                    val items = if (viewModel.dirList.isNotEmpty()) {
+                        val upDirBook = viewModel.dirList.last().copy(isUpDir = true)
+                        listOf(upDirBook) + sortedRemoteBooks
+                    } else {
+                        sortedRemoteBooks
+                    }
+                    adapter.setItems(items)
                 }
             }
             viewModel.initData {
@@ -98,13 +101,6 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
             viewModel.sortKey = sortKey
         }
     }
-
-    private fun initEvent() {
-        binding.tvGoBack.setOnClickListener {
-            goBackDir()
-        }
-    }
-
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_remote, menu)
@@ -169,7 +165,6 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
     }
 
     private fun upPath() {
-        binding.tvGoBack.isEnabled = viewModel.dirList.isNotEmpty()
         var path = if (viewModel.isDefaultWebdav) {
             "books" + File.separator
         } else {
@@ -191,6 +186,10 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
     override fun openDir(remoteBook: RemoteBook) {
         viewModel.dirList.add(remoteBook)
         upPath()
+    }
+
+    override fun goBack() {
+        goBackDir()
     }
 
     override fun upCountView() {

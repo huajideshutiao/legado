@@ -134,8 +134,9 @@ open class WebDav(
     @Throws(WebDavException::class)
     suspend fun listFiles(): List<WebDavFile> {
         propFindResponse()?.let { body ->
+            val normalizedPath = path.removeSuffix("/")
             return parseBody(body).filter {
-                it.path != path
+                it.path.removeSuffix("/") != normalizedPath
             }
         }
         return emptyList()

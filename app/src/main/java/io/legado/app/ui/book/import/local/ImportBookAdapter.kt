@@ -19,6 +19,7 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     RecyclerAdapter<ImportBook, ItemImportBookBinding>(context) {
     val selected = hashSetOf<ImportBook>()
     var checkableCount = 0
+    var isFileManageMode = false
 
     override fun getViewBinding(parent: ViewGroup): ItemImportBookBinding {
         return ItemImportBookBinding.inflate(inflater, parent, false)
@@ -36,14 +37,23 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                if (item.isDir) {
+                if (item.isUpDir) {
+                    ivIcon.setImageResource(R.drawable.ic_folder_open)
+                    ivIcon.visible()
+                    cbSelect.invisible()
+                    llBrief.gone()
+                    cbSelect.isChecked = false
+                } else if (item.isDir) {
                     ivIcon.setImageResource(R.drawable.ic_folder)
                     ivIcon.visible()
                     cbSelect.invisible()
                     llBrief.gone()
                     cbSelect.isChecked = false
                 } else {
-                    if (item.isOnBookShelf) {
+                    if (isFileManageMode) {
+                        ivIcon.invisible()
+                        cbSelect.visible()
+                    } else if (item.isOnBookShelf) {
                         ivIcon.setImageResource(R.drawable.ic_book_has)
                         ivIcon.visible()
                         cbSelect.invisible()
@@ -67,9 +77,11 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemImportBookBinding) {
         holder.itemView.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                if (it.isDir) {
+                if (it.isUpDir) {
+                    callBack.goBack()
+                } else if (it.isDir) {
                     callBack.nextDoc(it.file)
-                } else if (!it.isOnBookShelf) {
+                } else if (isFileManageMode || !it.isOnBookShelf) {
                     if (!selected.contains(it)) {
                         selected.add(it)
                     } else {
@@ -78,17 +90,24 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
                     notifyItemChanged(holder.layoutPosition, true)
                     callBack.upCountView()
                 } else {
-                    /* 点击开始阅读 */
                     callBack.startRead(it.file)
                 }
             }
+        }
+        holder.itemView.setOnLongClickListener {
+            getItem(holder.layoutPosition)?.let {
+                if (!it.isUpDir && !it.isDir && (isFileManageMode || !it.isOnBookShelf)) {
+                    callBack.openFile(it.file)
+                }
+            }
+            true
         }
     }
 
     private fun upCheckableCount() {
         checkableCount = 0
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isUpDir && !it.isDir && (isFileManageMode || !it.isOnBookShelf)) {
                 checkableCount++
             }
         }
@@ -99,7 +118,7 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     fun selectAll(selectAll: Boolean) {
         if (selectAll) {
             getItems().forEach {
-                if (!it.isDir && !it.isOnBookShelf) {
+                if (!it.isUpDir && !it.isDir && (isFileManageMode || !it.isOnBookShelf)) {
                     selected.add(it)
                 }
             }
@@ -112,7 +131,7 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
 
     fun revertSelection() {
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isUpDir && !it.isDir && (isFileManageMode || !it.isOnBookShelf)) {
                 if (selected.contains(it)) {
                     selected.remove(it)
                 } else {
@@ -133,7 +152,9 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     }
 
     interface CallBack {
+        fun goBack()
         fun nextDoc(fileDoc: FileDoc)
+        fun openFile(fileDoc: FileDoc)
         fun upCountView()
         fun startRead(fileDoc: FileDoc)
     }

@@ -49,8 +49,6 @@ class FilePickerViewModel(application: Application) : BaseViewModel(application)
                 }
                 list
             }
-        }.onStart {
-            filesLiveData.postValue(emptyList())
         }.onSuccess {
             filesLiveData.postValue(it ?: emptyList())
         }.onError {
