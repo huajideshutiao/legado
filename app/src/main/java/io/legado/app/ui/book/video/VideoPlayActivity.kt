@@ -558,8 +558,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(R.string.resolution)
             .setSingleChoiceItems(names, viewModel.currentResolutionIndex) { dialog, which ->
-                dialog.dismiss()
                 binding.ivPlayer.hideController()
+                dialog.dismiss()
                 if (which != viewModel.currentResolutionIndex) {
                     val position = if (player == null) 0L
                     else player!!.currentPosition + 800L

@@ -50,7 +50,9 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 book.isNotShelf || book.totalChapterNum == 0 ->
                     WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
 
-                else -> appDb.bookChapterDao.getChapterList(book.bookUrl)
+                else -> appDb.bookChapterDao.getChapterList(book.bookUrl).ifEmpty {
+                    WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
+                }
             }
             chapterList.postValue(tmp1)
             initChapter(tmp1[(book.durChapterIndex)])
