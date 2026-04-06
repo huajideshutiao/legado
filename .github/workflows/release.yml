@@ -1,11 +1,9 @@
 name: Release Build
 
 on:
-#  push:
-#    branches:
-#      - master
-#    paths:
-#      - 'CHANGELOG.md'
+  push:
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
@@ -75,6 +73,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
 
+      - name: Generate Release Notes
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          else
+            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            git log -1 --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          fi
+          cat ${{ github.workspace }}/RELEASE_NOTES.md
+
       - name: Organize the Files
         run: |
           mkdir -p ${{ github.workspace }}/apk/
@@ -92,7 +103,7 @@ jobs:
         with:
           name: legado_app_${{ env.VERSION }}
           tag_name: ${{ env.VERSION }}
-          body_path: ${{ github.workspace }}/CHANGELOG.md
+          body_path: ${{ github.workspace }}/RELEASE_NOTES.md
           draft: false
           prerelease: false
           files: ${{ github.workspace }}/apk/legado_app_*.apk
@@ -103,8 +114,8 @@ jobs:
         if: env.product == 'google' && env.play == 'yes'
         run: |
           mkdir -p ReleaseNotes
-          ln -s ${{ github.workspace }}/CHANGELOG.md ReleaseNotes/whatsnew-en-US
-          ln -s ${{ github.workspace }}/CHANGELOG.md ReleaseNotes/whatsnew-zh-CN
+          ln -s ${{ github.workspace }}/RELEASE_NOTES.md ReleaseNotes/whatsnew-en-US
+          ln -s ${{ github.workspace }}/RELEASE_NOTES.md ReleaseNotes/whatsnew-zh-CN
 
       - name: Release To GooglePlay
         if: env.product == 'google' && env.play == 'yes'

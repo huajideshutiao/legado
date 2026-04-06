@@ -162,6 +162,8 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: apk/
@@ -178,6 +180,19 @@ jobs:
               mv "$file" $(echo $file | sed s/共存/releaseA/)
             fi
           done
+
+      - name: Generate Release Notes
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          else
+            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            git log -1 --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          fi
+          cat ${{ github.workspace }}/RELEASE_NOTES.md
 
       - name: Delete Pre-Release
         run: |
@@ -199,11 +214,7 @@ jobs:
         with:
           name: legado_${{ env.VERSION }}
           tag: "beta"
-          body: |
-            此版本为测试版，签名与正式版不同，可能存在不稳定情况，升级前请务必备份好数据。
-            releaseA 为共存版本，可同时安装使用，功能没有区别。
-
-            ${{ github.event.head_commit.message }}
+          bodyFile: ${{ github.workspace }}/RELEASE_NOTES.md
           prerelease: true
           artifacts: ${{ github.workspace }}/apk/*.apk
 
@@ -221,6 +232,8 @@ jobs:
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: apk/
@@ -239,6 +252,8 @@ jobs:
     if: ${{ github.event_name != 'pull_request' && github.actor == 'gedoor' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: apk/
@@ -262,6 +277,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: apk/
