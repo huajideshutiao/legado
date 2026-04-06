@@ -378,11 +378,13 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     @SuppressLint("SetTextI18n")
     private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
-        hasRefreshedOnPlayError = false
         val p = player ?: ExoPlayerHelper.createHttpExoPlayer(this).apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     super.onPlaybackStateChanged(playbackState)
+                    if (playbackState == Player.STATE_READY) {
+                        hasRefreshedOnPlayError = false
+                    }
                     if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
                         openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
                     }
