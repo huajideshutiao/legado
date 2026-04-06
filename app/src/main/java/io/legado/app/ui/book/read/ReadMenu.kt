@@ -12,6 +12,7 @@ import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 import android.view.animation.Animation
 import android.widget.FrameLayout
 import android.widget.SeekBar
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -108,6 +109,14 @@ class ReadMenu @JvmOverloads constructor(
                 when (it.itemId) {
                     R.id.menu_login -> callBack.showLogin()
                     R.id.menu_chapter_pay -> callBack.payAction()
+                    R.id.menu_set_source_variable -> ReadBook.bookSource?.showSourceVariableDialog(
+                        context as AppCompatActivity
+                    )
+
+                    R.id.menu_set_book_variable -> ReadBook.book?.showBookVariableDialog(
+                        context as AppCompatActivity,
+                        ReadBook.bookSource
+                    )
                     R.id.menu_edit_source -> callBack.openSourceEditActivity()
                     R.id.menu_disable_source -> callBack.disableSource()
                 }

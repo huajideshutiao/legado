@@ -483,6 +483,11 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
+            R.id.menu_set_source_variable -> viewModel.bookSource?.showSourceVariableDialog(this)
+            R.id.menu_set_book_variable -> viewModel.book.showBookVariableDialog(
+                this,
+                viewModel.bookSource
+            )
             R.id.menu_edit_source -> viewModel.bookSource?.let {
                 GlobalVars.nowSource = it
                 sourceEditResult.launch {}

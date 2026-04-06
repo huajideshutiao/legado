@@ -35,7 +35,6 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
-import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager
 import io.legado.app.ui.widget.text.EditEntity
@@ -49,7 +48,6 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.share
 import io.legado.app.utils.shareWithQr
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -60,8 +58,7 @@ import splitties.views.bottomPadding
 
 class BookSourceEditActivity :
     VMBaseActivity<ActivityBookSourceEditBinding, BookSourceEditViewModel>(),
-    KeyboardToolPop.CallBack,
-    VariableDialog.Callback {
+    KeyboardToolPop.CallBack {
 
     override val binding by viewBinding(ActivityBookSourceEditBinding::inflate)
     override val viewModel by viewModels<BookSourceEditViewModel>()
@@ -148,7 +145,9 @@ class BookSourceEditActivity :
                 source.showLoginDialog(this)
             }
 
-            R.id.menu_set_source_variable -> setSourceVariable()
+            R.id.menu_set_source_variable -> viewModel.save(getSource()) { source ->
+                source.showSourceVariableDialog(this)
+            }
             R.id.menu_search -> viewModel.save(getSource()) { source ->
                 startActivity<SearchActivity> {
                     putExtra("searchScope", SearchScope(source).toString())
@@ -622,28 +621,6 @@ class BookSourceEditActivity :
                 edit.replace(start, end, text)//光标所在位置插入文字
             }
         }
-    }
-
-    private fun setSourceVariable() {
-        viewModel.save(getSource()) { source ->
-            lifecycleScope.launch {
-                val comment =
-                    source.getDisplayVariableComment("源变量可在js中通过source.getVariable()获取")
-                val variable = withContext(IO) { source.getVariable() }
-                showDialogFragment(
-                    VariableDialog(
-                        getString(R.string.set_source_variable),
-                        source.getKey(),
-                        variable,
-                        comment
-                    )
-                )
-            }
-        }
-    }
-
-    override fun setVariable(key: String, variable: String?) {
-        viewModel.bookSource?.setVariable(variable)
     }
 
 }

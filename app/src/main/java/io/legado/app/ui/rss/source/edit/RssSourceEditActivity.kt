@@ -5,7 +5,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
-import androidx.lifecycle.lifecycleScope
 import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
@@ -23,7 +22,6 @@ import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
-import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
@@ -37,19 +35,14 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.share
 import io.legado.app.utils.shareWithQr
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
 
 class RssSourceEditActivity :
     VMBaseActivity<ActivityRssSourceEditBinding, RssSourceEditViewModel>(),
-    KeyboardToolPop.CallBack,
-    VariableDialog.Callback {
+    KeyboardToolPop.CallBack {
 
     override val binding by viewBinding(ActivityRssSourceEditBinding::inflate)
     override val viewModel by viewModels<RssSourceEditViewModel>()
@@ -136,7 +129,9 @@ class RssSourceEditActivity :
                 it.showLoginDialog(this)
             }
 
-            R.id.menu_set_source_variable -> setSourceVariable()
+            R.id.menu_set_source_variable -> viewModel.save(getRssSource()) { source ->
+                source.showSourceVariableDialog(this)
+            }
             R.id.menu_clear_cookie -> viewModel.clearCookie(getRssSource().sourceUrl)
             R.id.menu_auto_complete -> viewModel.autoComplete = !viewModel.autoComplete
             R.id.menu_copy_source -> sendToClip(GSON.toJson(getRssSource()))
@@ -331,28 +326,6 @@ class RssSourceEditActivity :
             }
         }
         return source
-    }
-
-    private fun setSourceVariable() {
-        viewModel.save(getRssSource()) { source ->
-            lifecycleScope.launch {
-                val comment =
-                    source.getDisplayVariableComment("源变量可在js中通过source.getVariable()获取")
-                val variable = withContext(Dispatchers.IO) { source.getVariable() }
-                showDialogFragment(
-                    VariableDialog(
-                        getString(R.string.set_source_variable),
-                        source.getKey(),
-                        variable,
-                        comment
-                    )
-                )
-            }
-        }
-    }
-
-    override fun setVariable(key: String, variable: String?) {
-        viewModel.rssSource?.setVariable(variable)
     }
 
     override fun helpActions(): List<SelectItem<String>> {

@@ -19,14 +19,22 @@ class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
 
     private val binding by viewBinding(DialogVariableBinding::bind)
     private val viewModel by viewModels<ViewModel>()
+    private var onSave: ((key: String, variable: String?) -> Unit)? = null
 
-    constructor(title: String, key: String, variable: String?, comment: String) : this() {
+    constructor(
+        title: String,
+        key: String,
+        variable: String?,
+        comment: String,
+        onSave: ((key: String, variable: String?) -> Unit)? = null
+    ) : this() {
         arguments = Bundle().apply {
             putString("title", title)
             putString("key", key)
             putString("variable", variable)
             putString("comment", comment)
         }
+        this.onSave = onSave
     }
 
 //    override fun onStart() {
@@ -54,10 +62,10 @@ class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_save -> {
-                callback?.setVariable(
-                    viewModel.key ?: "",
-                    binding.tvVariable.text?.toString()
-                )
+                val key = viewModel.key ?: ""
+                val variable = binding.tvVariable.text?.toString()
+                onSave?.invoke(key, variable)
+                    ?: callback?.setVariable(key, variable)
                 dismissAllowingStateLoss()
             }
         }

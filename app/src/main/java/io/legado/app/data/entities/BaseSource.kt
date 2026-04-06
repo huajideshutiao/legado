@@ -5,6 +5,7 @@ import cn.hutool.crypto.symmetric.AES
 import com.script.ScriptBindings
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
+import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
@@ -16,6 +17,7 @@ import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.ui.login.SourceLoginDialog
+import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.fromJsonArray
@@ -275,5 +277,24 @@ interface BaseSource : JsExtensions {
         } else {
             activity.showDialogFragment<SourceLoginDialog>()
         }
+    }
+
+    fun showSourceVariableDialog(activity: AppCompatActivity) {
+        if (this !is BookSource && this !is RssSource) return
+        val suffix = "源变量可在js中通过source.getVariable()获取"
+        val comment = when (this) {
+            is BookSource -> variableComment
+            is RssSource -> variableComment
+            else -> null
+        }.takeIf { it.isNullOrBlank() }?.let { "$it\n$suffix" } ?: suffix
+        val variable = getVariable()
+        activity.showDialogFragment(
+            VariableDialog(
+                activity.getString(R.string.set_source_variable),
+                getKey(),
+                variable,
+                comment
+            ) { _, v -> setVariable(v) }
+        )
     }
 }

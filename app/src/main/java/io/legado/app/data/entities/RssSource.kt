@@ -173,12 +173,4 @@ data class RssSource(
         return this
     }
 
-    fun getDisplayVariableComment(otherComment: String): String {
-        return if (variableComment.isNullOrBlank()) {
-            otherComment
-        } else {
-            "${variableComment}\n$otherComment"
-        }
-    }
-
 }

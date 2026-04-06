@@ -1,8 +1,12 @@
 package io.legado.app.data.entities
 
+import androidx.appcompat.app.AppCompatActivity
+import io.legado.app.R
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.model.analyzeRule.RuleDataInterface
+import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.splitNotBlank
 
 interface BaseBook : RuleDataInterface {
@@ -29,6 +33,29 @@ interface BaseBook : RuleDataInterface {
 
     fun getCustomVariable(): String {
         return getVariable("custom")
+    }
+
+    fun showBookVariableDialog(activity: AppCompatActivity, source: BaseSource?) {
+        val sourceComment = when (source) {
+            is BookSource -> source.variableComment
+            is RssSource -> source.variableComment
+            else -> return
+        }
+        val defaultComment = """书籍变量可在js中通过book.getVariable("custom")获取"""
+        val comment = if (sourceComment.isNullOrBlank()) {
+            defaultComment
+        } else {
+            "${sourceComment}\n$defaultComment"
+        }
+        val variable = getCustomVariable()
+        activity.showDialogFragment(
+            VariableDialog(
+                activity.getString(R.string.set_book_variable),
+                bookUrl,
+                variable,
+                comment
+            ) { _, v -> putCustomVariable(v) }
+        )
     }
 
     override fun putBigVariable(key: String, value: String?) {

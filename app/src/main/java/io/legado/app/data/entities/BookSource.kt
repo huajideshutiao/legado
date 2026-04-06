@@ -226,14 +226,6 @@ data class BookSource(
         }?.joinToString() ?: ""
     }
 
-    fun getDisplayVariableComment(otherComment: String): String {
-        return if (variableComment.isNullOrBlank()) {
-            otherComment
-        } else {
-            "${variableComment}\n$otherComment"
-        }
-    }
-
     fun equal(source: BookSource): Boolean {
         return equal(bookSourceName, source.bookSourceName)
                 && equal(bookSourceUrl, source.bookSourceUrl)

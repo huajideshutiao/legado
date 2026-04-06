@@ -21,6 +21,16 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_set_source_variable"
+        android:title="@string/set_source_variable"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_set_book_variable"
+        android:title="@string/set_book_variable"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_edit_source"
         android:title="@string/edit_book_source"
         app:showAsAction="never" />

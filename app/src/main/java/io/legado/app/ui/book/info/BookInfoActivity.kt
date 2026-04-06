@@ -59,7 +59,6 @@ import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
@@ -86,8 +85,7 @@ class BookInfoActivity :
     VMBaseActivity<ActivityBookInfoBinding, BookInfoViewModel>(toolBarTheme = Theme.Dark),
     GroupSelectDialog.CallBack,
     ChangeBookSourceDialog.CallBack,
-    ChangeCoverDialog.CallBack,
-    VariableDialog.Callback {
+    ChangeCoverDialog.CallBack {
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -219,8 +217,11 @@ class BookInfoActivity :
             }
 
             R.id.menu_top -> viewModel.topBook()
-            R.id.menu_set_source_variable -> setSourceVariable()
-            R.id.menu_set_book_variable -> setBookVariable()
+            R.id.menu_set_source_variable ->
+                viewModel.bookSource?.showSourceVariableDialog(this)
+
+            R.id.menu_set_book_variable -> viewModel.getBook()
+                ?.showBookVariableDialog(this, viewModel.bookSource)
             R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let {
                 sendToClip(it)
             }
@@ -517,62 +518,6 @@ class BookInfoActivity :
         refreshLayout?.setOnRefreshListener {
             refreshLayout.isRefreshing = false
             refreshBook()
-        }
-    }
-
-    private fun setSourceVariable() {
-        lifecycleScope.launch {
-            val source = viewModel.bookSource
-            if (source == null) {
-                toastOnUi("书源不存在")
-                return@launch
-            }
-            val comment =
-                source.getDisplayVariableComment("源变量可在js中通过source.getVariable()获取")
-            val variable = withContext(IO) { source.getVariable() }
-            showDialogFragment(
-                VariableDialog(
-                    getString(R.string.set_source_variable),
-                    source.getKey(),
-                    variable,
-                    comment
-                )
-            )
-        }
-    }
-
-    private fun setBookVariable() {
-        lifecycleScope.launch {
-            val source = viewModel.bookSource
-            if (source == null) {
-                toastOnUi("书源不存在")
-                return@launch
-            }
-            val book = viewModel.getBook() ?: return@launch
-            val variable = withContext(IO) { book.getCustomVariable() }
-            val comment = source.getDisplayVariableComment(
-                """书籍变量可在js中通过book.getVariable("custom")获取"""
-            )
-            showDialogFragment(
-                VariableDialog(
-                    getString(R.string.set_book_variable),
-                    book.bookUrl,
-                    variable,
-                    comment
-                )
-            )
-        }
-    }
-
-    override fun setVariable(key: String, variable: String?) {
-        when (key) {
-            viewModel.bookSource?.getKey() -> viewModel.bookSource?.setVariable(variable)
-            viewModel.bookData.value?.bookUrl -> viewModel.bookData.value?.let {
-                it.putCustomVariable(variable)
-                if (viewModel.inBookshelf) {
-                    viewModel.saveBook(it)
-                }
-            }
         }
     }
 
