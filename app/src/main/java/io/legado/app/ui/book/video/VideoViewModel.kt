@@ -13,8 +13,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.BookHelp.getContent
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.update
@@ -44,11 +42,13 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             position = book.durChapterPos.toLong()
             if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, true)
             val tmp1 = when {
-                GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl ->
-                    GlobalVars.nowChapterList!!
+                GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl -> GlobalVars.nowChapterList!!
 
-                book.isNotShelf || book.totalChapterNum == 0 ->
-                    WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
+                book.isNotShelf || book.totalChapterNum == 0 -> WebBook.getChapterListAwait(
+                    bookSource!!,
+                    book,
+                    true
+                ).getOrThrow()
 
                 else -> appDb.bookChapterDao.getChapterList(book.bookUrl).ifEmpty {
                     WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
@@ -61,11 +61,14 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun initChapter(chapter: BookChapter) {
         execute {
-            getContent(book, chapter) ?: getContentAwait(bookSource!!, book, chapter)
+            chapter.resourceUrl ?: getContentAwait(
+                bookSource!!, book, chapter, needSave = false
+            )
         }.onSuccess { content ->
             if (content.isEmpty()) {
                 context.toastOnUi("未获取到资源链接")
             } else {
+                chapter.resourceUrl = content
                 parseVideoContent(content)
             }
         }.onError { e ->
@@ -77,7 +80,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             chapterList.value?.let { chapterList ->
                 val chapter = chapterList[book.durChapterIndex]
-                BookHelp.delContent(book, chapter)
+                chapter.resourceUrl = null
                 initChapter(chapter)
             }
         }
@@ -93,18 +96,14 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
                 null
             }
         } else if (content.contains("::") && content.contains("\n")) {
-            val resolutions = content.lines()
-                .filter { it.contains("::") }
-                .mapNotNull { line ->
-                    val parts = line.split("::", limit = 2)
-                    if (parts.size == 2) {
-                        VideoResolution(
-                            name = parts[0].trim(),
-                            url = parts[1].trim()
-                        )
-                    } else null
-                }
-                .filter { it.url.isNotEmpty() }
+            val resolutions = content.lines().filter { it.contains("::") }.mapNotNull { line ->
+                val parts = line.split("::", limit = 2)
+                if (parts.size == 2) {
+                    VideoResolution(
+                        name = parts[0].trim(), url = parts[1].trim()
+                    )
+                } else null
+            }.filter { it.url.isNotEmpty() }
 
             if (resolutions.isNotEmpty()) {
                 VideoSource(resolutions = resolutions)
@@ -119,9 +118,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             if (resolution != null) {
                 videoUrl.postValue(
                     AnalyzeUrl(
-                        mUrl = resolution.url,
-                        source = bookSource,
-                        headerMapF = source.headers
+                        mUrl = resolution.url, source = bookSource, headerMapF = source.headers
                     )
                 )
             }
@@ -176,11 +173,8 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             book.delete()
             try {
-                Glide.with(context).asFile()
-                    .load(book.coverUrl)
-                    .signature(ObjectKey("covers"))
-                    .onlyRetrieveFromCache(true)
-                    .submit().get()?.delete()
+                Glide.with(context).asFile().load(book.coverUrl).signature(ObjectKey("covers"))
+                    .onlyRetrieveFromCache(true).submit().get()?.delete()
             } catch (_: Exception) {
             }
         }.onSuccess {

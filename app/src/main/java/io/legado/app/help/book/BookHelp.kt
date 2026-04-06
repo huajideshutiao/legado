@@ -323,7 +323,7 @@ object BookHelp {
 
     fun getChapterFiles(book: Book): HashSet<String> {
         val fileNames = hashSetOf<String>()
-        if (book.isLocalTxt || book.isAudio) {
+        if (book.isLocalTxt || book.isVideo || book.isAudio) {
             return fileNames
         }
         FileUtils.createFolderIfNotExist(
