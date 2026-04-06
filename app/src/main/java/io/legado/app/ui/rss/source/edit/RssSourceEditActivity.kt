@@ -211,7 +211,7 @@ class RssSourceEditActivity :
             add(EditEntity("sortUrl", rs.sortUrl, R.string.sort_url))
             add(EditEntity("loginUrl", rs.loginUrl, R.string.login_url))
             add(EditEntity("loginUi", rs.loginUi, R.string.login_ui))
-            add(EditEntity("loginCheckJs", rs.loginCheckJs, R.string.login_check_js))
+//            add(EditEntity("loginCheckJs", rs.loginCheckJs, R.string.login_check_js))
             add(EditEntity("coverDecodeJs", rs.coverDecodeJs, R.string.cover_decode_js))
             add(EditEntity("header", rs.header, R.string.source_http_header))
             add(EditEntity("variableComment", rs.variableComment, R.string.variable_comment))
