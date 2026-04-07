@@ -106,6 +106,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             durCoverUrl?.let { callback!!.upCover(it) }
             if (durLrcData == null) {
                 getLrcData(bookSource!!, book, durChapter!!).onSuccess {
+                    if (it.isEmpty()) return@onSuccess
                     durLrcData = it
                     callback!!.upLrc(it)
                     context.startService<AudioPlayService> {
@@ -243,12 +244,9 @@ object AudioPlay : CoroutineScope by MainScope() {
             }
             return@async tmp
         }.onSuccess {
+            if (it.isEmpty()) return@onSuccess
             durLrcData = it
             callback!!.upLrc(it)
-//            context.startService<AudioPlayService> {
-//                action = IntentAction.lrc
-//            }
-
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }
@@ -535,7 +533,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     private fun isPlayToEnd(): Boolean {
         return durChapterIndex + 1 == simulatedChapterSize
-                && durChapterPos == durAudioSize
+            && durChapterPos == durAudioSize
     }
 
     fun register(context: Context) {
