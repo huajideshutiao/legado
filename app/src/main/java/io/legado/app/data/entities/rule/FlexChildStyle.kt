@@ -4,7 +4,7 @@ import android.view.View
 import com.google.android.flexbox.FlexboxLayout
 
 data class FlexChildStyle(
-    val layout_flexGrow: Float = 1F,
+    val layout_flexGrow: Float = 0F,
     val layout_flexShrink: Float = 1F,
     val layout_alignSelf: String = "auto",
     val layout_flexBasisPercent: Float = 0.3F,
