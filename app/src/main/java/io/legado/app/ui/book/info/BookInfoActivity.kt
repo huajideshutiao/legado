@@ -141,7 +141,6 @@ class BookInfoActivity :
         }
         book?.let { book ->
             viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
-            viewModel.refreshBook(book)
         }
     }
     private var chapterChanged = false
