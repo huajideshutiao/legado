@@ -25,9 +25,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadManga
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.DocumentUtils
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.isContentScheme
+import io.legado.app.help.FileSaveHelper
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -42,7 +40,6 @@ import kotlinx.coroutines.flow.take
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 
 class ReadMangaViewModel(application: Application) : BaseViewModel(application) {
 
@@ -237,20 +234,7 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         execute {
             val image = BookHelp.getImage(book, src)
             FileInputStream(image).use { input ->
-                if (uri.isContentScheme()) {
-                    DocumentFile.fromTreeUri(context, uri)?.let { doc ->
-                        val imageDoc = DocumentUtils.createFileIfNotExist(doc, image.name)!!
-                        context.contentResolver.openOutputStream(imageDoc.uri)!!.use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } else {
-                    val dir = File(uri.path ?: uri.toString())
-                    val file = FileUtils.createFileIfNotExist(dir, image.name)
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
-                }
+                FileSaveHelper.saveFileFromStream(context, uri, image.name, input)
             }
             appCtx.toastOnUi("已保存图片")
         }.onError {

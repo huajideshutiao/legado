@@ -13,6 +13,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.DialogPhotoViewBinding
+import io.legado.app.help.FileSaveHelper
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
@@ -22,10 +23,10 @@ import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ACache
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toast
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.launch
 
 /**
  * 显示图片
@@ -122,10 +123,8 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             lifecycleScope.launch {
                 kotlin.runCatching {
                     val bitmap = ImageProvider.get(it) ?: return@launch
-                    val outputStream = requireContext().contentResolver.openOutputStream(uri)
-                    outputStream?.use {out ->
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                    }
+                    val fileName = "image_${System.currentTimeMillis()}.png"
+                    FileSaveHelper.saveFile(requireContext(), uri, fileName, bitmap)
                     toast(R.string.save_success)
                 }.onFailure {
                     toast(R.string.save_fail)
