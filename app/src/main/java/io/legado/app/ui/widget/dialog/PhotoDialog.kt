@@ -25,7 +25,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ACache
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.utils.setLayout
-import io.legado.app.utils.toast
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -114,6 +114,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             default.add(SelectItem(path, -1))
         }
         saveImage.launch {
+            mode = HandleFileContract.DIR
             otherActions = default
         }
     }
@@ -125,9 +126,9 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
                     val bitmap = ImageProvider.get(it) ?: return@launch
                     val fileName = "image_${System.currentTimeMillis()}.png"
                     FileSaveHelper.saveFile(requireContext(), uri, fileName, bitmap)
-                    toast(R.string.save_success)
+                    toastOnUi("已保存图片")
                 }.onFailure {
-                    toast(R.string.save_fail)
+                    toastOnUi("保存图片出错\n${it.localizedMessage}")
                 }
             }
         }
