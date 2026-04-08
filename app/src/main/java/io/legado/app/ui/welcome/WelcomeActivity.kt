@@ -52,7 +52,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         kotlin.runCatching {
             binding.tvLegado.visible(AppConfig.welcomeShowText)
             binding.ivBook.visible(AppConfig.welcomeShowIcon)
-            binding.tvGzh.visible(AppConfig.welcomeShowText)
+            binding.tvGzh.visible(AppConfig.welcomeShowIcon)
             val path = when (ThemeConfig.getTheme()) {
                 Theme.Dark -> getPrefString(PreferKey.welcomeImageDark)
                 else -> getPrefString(PreferKey.welcomeImage)
