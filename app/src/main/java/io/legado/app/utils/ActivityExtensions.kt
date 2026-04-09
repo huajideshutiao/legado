@@ -3,6 +3,7 @@ package io.legado.app.utils
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.DisplayMetrics
@@ -21,6 +22,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.widget.dialog.TextDialog
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
@@ -163,16 +165,14 @@ fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
         }
     }
     @Suppress("DEPRECATION")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val decorView = window.decorView
-        var systemUiVisibility = decorView.systemUiVisibility
-        systemUiVisibility = if (isLightBor) {
-            systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-        } else {
-            systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
-        }
-        decorView.systemUiVisibility = systemUiVisibility
+    val decorView = window.decorView
+    var systemUiVisibility = decorView.systemUiVisibility
+    systemUiVisibility = if (isLightBor) {
+        systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+    } else {
+        systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
     }
+    decorView.systemUiVisibility = systemUiVisibility
 }
 
 fun Activity.keepScreenOn(on: Boolean) {
@@ -232,4 +232,42 @@ val Activity.navigationBarGravity: Int
 fun AppCompatActivity.showHelp(fileName: String) {
     val mdText = String(assets.open("web/help/md/${fileName}.md").readBytes())
     showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+}
+
+/**
+ * 显示导出成功对话框
+ */
+fun Activity.showExportSuccess(uri: Uri) {
+    alert(R.string.export_success) {
+        if (uri.toString().isAbsUrl()) {
+            setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
+        }
+        val alertBinding = io.legado.app.databinding.DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.path)
+            editView.setText(uri.toString())
+        }
+        customView { alertBinding.root }
+        okButton {
+            sendToClip(uri.toString())
+        }
+    }
+}
+
+/**
+ * 显示导出成功对话框 (Fragment版本)
+ */
+fun androidx.fragment.app.Fragment.showExportSuccess(uri: Uri) {
+    alert(R.string.export_success) {
+        if (uri.toString().isAbsUrl()) {
+            setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
+        }
+        val alertBinding = io.legado.app.databinding.DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.path)
+            editView.setText(uri.toString())
+        }
+        customView { alertBinding.root }
+        okButton {
+            requireContext().sendToClip(uri.toString())
+        }
+    }
 }

@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
@@ -34,9 +33,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.utils.DocumentUtils
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toStringArray
@@ -52,9 +49,7 @@ import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 
 /**
  * 阅读界面数据处理
@@ -503,22 +498,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         val book = ReadBook.book ?: return
         execute {
             val image = BookHelp.getImage(book, src)
-            FileInputStream(image).use { input ->
-                if (uri.isContentScheme()) {
-                    DocumentFile.fromTreeUri(context, uri)?.let { doc ->
-                        val imageDoc = DocumentUtils.createFileIfNotExist(doc, image.name)!!
-                        context.contentResolver.openOutputStream(imageDoc.uri)!!.use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } else {
-                    val dir = File(uri.path ?: uri.toString())
-                    val file = FileUtils.createFileIfNotExist(dir, image.name)
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
+            FileUtils.saveImage(image, uri)
         }.onError {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
             context.toastOnUi("保存图片出错\n${it.localizedMessage}")

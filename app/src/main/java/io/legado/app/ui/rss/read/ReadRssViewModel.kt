@@ -3,32 +3,24 @@ package io.legado.app.ui.rss.read
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.util.Base64
-import android.webkit.URLUtil
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.script.rhino.runScriptWithContext
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssStar
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.TTS
-import io.legado.app.help.http.newCallResponseBody
-import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.utils.ACache
+import io.legado.app.utils.FileUtils
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
-import java.util.Date
-import kotlin.coroutines.coroutineContext
 
 
 class ReadRssViewModel(application: Application) : BaseViewModel(application) {
@@ -177,24 +169,12 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
     fun saveImage(webPic: String?, uri: Uri) {
         webPic ?: return
         execute {
-            val fileName = "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}.jpg"
-            val byteArray = webData2bitmap(webPic) ?: throw NoStackTraceException("NULL")
-            uri.writeBytes(context, fileName, byteArray)
+            FileUtils.saveImage(webPic, uri)
         }.onError {
             ACache.get().remove(imagePathKey)
             context.toastOnUi("保存图片失败:${it.localizedMessage}")
         }.onSuccess {
             context.toastOnUi("保存成功")
-        }
-    }
-
-    private suspend fun webData2bitmap(data: String): ByteArray? {
-        return if (URLUtil.isValidUrl(data)) {
-            okHttpClient.newCallResponseBody {
-                url(data)
-            }.bytes()
-        } else {
-            Base64.decode(data.split(",").toTypedArray()[1], Base64.DEFAULT)
         }
     }
 

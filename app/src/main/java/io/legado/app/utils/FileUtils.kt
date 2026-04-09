@@ -1,8 +1,13 @@
 package io.legado.app.utils
 
+import android.net.Uri
 import android.os.Environment
+import android.util.Base64
 import android.webkit.MimeTypeMap
+import android.webkit.URLUtil
 import androidx.annotation.IntDef
+import androidx.documentfile.provider.DocumentFile
+import io.legado.app.constant.AppConst
 import splitties.init.appCtx
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -18,6 +23,7 @@ import java.nio.charset.Charset
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Collections
+import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -662,6 +668,96 @@ object FileUtils {
      */
     fun makeDirs(file: File): Boolean {
         return file.mkdirs()
+    }
+
+    /**
+     * 将图片URL或Base64数据保存到指定目录
+     * @param imageData 图片URL或Base64数据
+     * @param dirUri 目标目录Uri (content:// 或 file://)
+     * @param fileName 保存的文件名，为空时自动生成时间戳文件名
+     * @return 保存成功返回true
+     */
+    fun saveImage(imageData: String, dirUri: Uri, fileName: String? = null): Boolean {
+        val byteArray = urlOrBase64ToBytes(imageData) ?: return false
+        val name = fileName
+            ?: "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}.jpg"
+        val fileDoc = FileDoc.fromDir(dirUri)
+        val picFile = fileDoc.createFileIfNotExist(name)
+        picFile.openOutputStream().getOrThrow().use {
+            it.write(byteArray)
+        }
+        return true
+    }
+
+    /**
+     * 将本地图片文件保存到指定目录
+     * @param imageFile 本地图片文件
+     * @param dirUri 目标目录URI（支持content://和file://）
+     * @param fileName 保存的文件名，默认使用原文件名
+     * @return 是否保存成功
+     */
+    fun saveImage(imageFile: File, dirUri: Uri, fileName: String? = null): Boolean {
+        val name = fileName ?: imageFile.name
+        val fileDoc = FileDoc.fromDir(dirUri)
+        val picFile = fileDoc.createFileIfNotExist(name)
+        FileInputStream(imageFile).use { input ->
+            picFile.openOutputStream().getOrThrow().use { output ->
+                input.copyTo(output)
+            }
+        }
+        return true
+    }
+
+    /**
+     * 将图片URL或Base64数据转换为ByteArray
+     * @param data 图片URL或Base64数据
+     * @return 图片的ByteArray，失败返回null
+     */
+    fun urlOrBase64ToBytes(data: String): ByteArray? {
+        return if (URLUtil.isValidUrl(data)) {
+            try {
+                val request = okhttp3.Request.Builder().url(data).build()
+                io.legado.app.help.http.okHttpClient.newCall(request).execute().body.bytes()
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            try {
+                Base64.decode(data.split(",").toTypedArray()[1], Base64.DEFAULT)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    /**
+     * 将数据导出到指定目录（不带上传）
+     * @param dirUri 目标目录Uri (content:// 或 file://)
+     * @param fileName 保存的文件名
+     * @param data 数据，支持 File/ByteArray/String/其他对象(自动JSON序列化)
+     * @return 保存后的文件Uri
+     */
+    fun exportFile(dirUri: Uri, fileName: String, data: Any): Uri {
+        val bytes = when (data) {
+            is File -> data.readBytes()
+            is ByteArray -> data
+            is String -> data.toByteArray()
+            else -> GSON.toJson(data).toByteArray()
+        }
+        return if (dirUri.isContentScheme()) {
+            val doc = DocumentFile.fromTreeUri(appCtx, dirUri)!!
+            doc.findFile(fileName)?.delete()
+            val newDoc = doc.createFile("", fileName)!!
+            appCtx.contentResolver.openOutputStream(newDoc.uri)!!.use {
+                it.write(bytes)
+            }
+            newDoc.uri
+        } else {
+            val file = File(dirUri.path ?: dirUri.toString())
+            val newFile = createFileIfNotExist(file, fileName)
+            newFile.writeBytes(bytes)
+            Uri.fromFile(newFile)
+        }
     }
 
     class SortByExtension : Comparator<File> {

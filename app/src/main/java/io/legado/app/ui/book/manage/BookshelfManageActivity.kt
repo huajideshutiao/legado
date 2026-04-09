@@ -31,7 +31,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityArrangeBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
-import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.contains
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
@@ -63,14 +62,13 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.iconItemOnLongClick
-import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
@@ -123,19 +121,7 @@ class BookshelfManageActivity :
                 startExport(dirPath)
             }
         }else{
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton {
-                    sendToClip(uri.toString())
-                }
-            }
+            showExportSuccess(uri)
         }
     }
 
