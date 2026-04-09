@@ -659,8 +659,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.showMangaUi, true)
 
     //直接跳转到视频界面，忽略详情
-    val showVideoUi: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.showVideoUi, false)
+    val devFeat: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.devFeat, false)
 
     //禁用漫画缩放
     var disableMangaScale: Boolean

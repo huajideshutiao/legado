@@ -1241,8 +1241,9 @@
     <string name="sys_image_picker">System image picker</string>
     <string name="rule_lrc_rule">lyrics rule(lrcRule)</string>
     <string name="rule_music_cover">music cover url rule</string>
-    <string name="show_video_ui">Video UI</string>
+    <string name="dev_feat">Development Features</string>
     <string name="book_url">Book Path</string>
     <string name="enable_dangerous_api">Dangerous API</string>
     <string name="enable_dangerous_api_confirm">Warning: Allowing unknown sources to use dangerous APIs can cause unpredictable results. In the worst case, it may lead to app data being cleared or leaked, and locally accessible files being exposed. Please make sure you have audited the code and trust the source, otherwise do not enable this.</string>
+    <string name="dev_feat_summary">Enable some experimental features, such as 16:9 video thumbnails and direct access to the reading page with a click</string>
 </resources>

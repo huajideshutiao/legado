@@ -47,6 +47,6 @@ abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val ca
          */
         fun isInBookshelf(book: BaseBook): Boolean
 
-        fun showBookInfo(book: Book, action: Boolean = false)
+        fun showBookInfo(book: Book, longClick: Boolean = false)
     }
 }
