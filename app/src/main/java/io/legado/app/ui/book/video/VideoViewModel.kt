@@ -2,19 +2,14 @@ package io.legado.app.ui.book.video
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.bumptech.glide.Glide
-import com.bumptech.glide.signature.ObjectKey
-import io.legado.app.base.BaseViewModel
+import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -25,44 +20,34 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.toastOnUi
 
-class VideoViewModel(application: Application) : BaseViewModel(application) {
-    val bookTitle by lazy { book.name }
-    val chapterList = MutableLiveData<List<BookChapter>>()
+class VideoViewModel(application: Application) : BaseReadViewModel(application) {
+    val bookTitle by lazy { curBook?.name ?: "" }
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     val videoSource = MutableLiveData<VideoSource>()
     val resolutions = MutableLiveData<List<VideoResolution>>()
     var currentResolutionIndex = 0
     var position: Long = 0L
-    var bookSource: BookSource? = null
-    val book: Book = GlobalVars.nowBook!!
+    override var curBook: Book? = GlobalVars.nowBook
+
+    override fun onUpSource(book: Book) {
+        curBookSource = book.getBookSource()
+    }
 
     fun initData() {
         execute {
-            bookSource = book.getBookSource() ?: return@execute
-            position = book.durChapterPos.toLong()
-            if (book.tocUrl.isEmpty()) WebBook.getBookInfoAwait(bookSource!!, book, true)
-            val tmp1 = when {
-                GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl -> GlobalVars.nowChapterList!!
-
-                book.isNotShelf || book.totalChapterNum == 0 -> WebBook.getChapterListAwait(
-                    bookSource!!,
-                    book,
-                    true
-                ).getOrThrow()
-
-                else -> appDb.bookChapterDao.getChapterList(book.bookUrl).ifEmpty {
-                    WebBook.getChapterListAwait(bookSource!!, book, true).getOrThrow()
-                }
-            }
-            chapterList.postValue(tmp1)
-            initChapter(tmp1[(book.durChapterIndex)])
+            val curBook = curBook ?: return@execute
+            curBookSource = curBook.getBookSource() ?: return@execute
+            position = curBook.durChapterPos.toLong()
+            if (curBook.tocUrl.isEmpty()) WebBook.getBookInfoAwait(curBookSource!!, curBook, true)
+            upBook(curBook)
+            initChapter(chapterListData.value!![(curBook.durChapterIndex)])
         }
     }
 
     fun initChapter(chapter: BookChapter) {
         execute {
             chapter.resourceUrl ?: getContentAwait(
-                bookSource!!, book, chapter, needSave = false
+                curBookSource!!, curBook!!, chapter, needSave = false
             )
         }.onSuccess { content ->
             if (content.isEmpty()) {
@@ -78,8 +63,8 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
 
     fun refreshChapter() {
         execute {
-            chapterList.value?.let { chapterList ->
-                val chapter = chapterList[book.durChapterIndex]
+            chapterListData.value?.let { chapterList ->
+                val chapter = chapterList[curBook!!.durChapterIndex]
                 chapter.resourceUrl = null
                 initChapter(chapter)
             }
@@ -118,7 +103,7 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
             if (resolution != null) {
                 videoUrl.postValue(
                     AnalyzeUrl(
-                        mUrl = resolution.url, source = bookSource, headerMapF = source.headers
+                        mUrl = resolution.url, source = curBookSource, headerMapF = source.headers
                     )
                 )
             }
@@ -142,49 +127,21 @@ class VideoViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun changeChapter(chapter: BookChapter) {
-        if (chapter.index != book.durChapterIndex) {
-            book.durChapterIndex = chapter.index
-            book.durChapterTitle = chapter.title
+        val curBook = curBook ?: return
+        if (chapter.index != curBook.durChapterIndex) {
+            curBook.durChapterIndex = chapter.index
+            curBook.durChapterTitle = chapter.title
             position = 0L
             currentResolutionIndex = 0
             initChapter(chapter)
         }
     }
 
-    fun upSource() {
-        execute {
-            bookSource = book.getBookSource()
-        }
-    }
-
-    fun addToBookshelf(success: (() -> Unit)?) {
-        execute {
-            if (book.order == 0) book.order = appDb.bookDao.minOrder - 1
-            book.save()
-            chapterList.value?.let {
-                appDb.bookChapterDao.insert(*it.toTypedArray())
-            }
-        }.onSuccess {
-            success?.invoke()
-        }
-    }
-
-    fun delBook(success: (() -> Unit)? = null) {
-        execute {
-            book.delete()
-            try {
-                Glide.with(context).asFile().load(book.coverUrl).signature(ObjectKey("covers"))
-                    .onlyRetrieveFromCache(true).submit().get()?.delete()
-            } catch (_: Exception) {
-            }
-        }.onSuccess {
-            success?.invoke()
-        }
-    }
+    fun delBook(success: (() -> Unit)?) = delBook(false, success)
 
     fun saveRead(position: Long) {
         Coroutine.async {
-            book.apply {
+            curBook!!.apply {
                 lastCheckCount = 0
                 durChapterTime = System.currentTimeMillis()
                 durChapterPos = position.toInt()

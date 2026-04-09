@@ -468,7 +468,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
     override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (book.isImage) {
             binding.flLoading.isVisible = true
-            viewModel.changeTo(book, toc)
+            viewModel.changeTo(source, book, toc)
         } else {
             toastOnUi("所选择的源不是漫画源")
         }

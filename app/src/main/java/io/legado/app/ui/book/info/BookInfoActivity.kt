@@ -139,14 +139,11 @@ class BookInfoActivity :
         if (it.resultCode == RESULT_CANCELED) {
             return@registerForActivityResult
         }
-        book?.let { book ->
-            viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
-        }
+        viewModel.upSource()
     }
     private var chapterChanged = false
     private val waitDialog by lazy { WaitDialog(this) }
     private var editMenuItem: MenuItem? = null
-    private val book get() = viewModel.getBook(false)
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
     override val viewModel by viewModels<BookInfoViewModel>()
@@ -181,13 +178,13 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_split_long_chapter)?.isChecked =
             viewModel.bookData.value?.getSplitLongChapter() ?: true
         menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.bookSource?.loginUrl.isNullOrBlank()
+            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_set_source_variable)?.isVisible =
-            viewModel.bookSource != null
+            viewModel.curBookSource != null
         menu.findItem(R.id.menu_set_book_variable)?.isVisible =
-            viewModel.bookSource != null
+            viewModel.curBookSource != null
         menu.findItem(R.id.menu_can_update)?.isVisible =
-            viewModel.bookSource != null
+            viewModel.curBookSource != null
         menu.findItem(R.id.menu_split_long_chapter)?.isVisible =
             viewModel.bookData.value?.isLocalTxt ?: false
         menu.findItem(R.id.menu_upload)?.isVisible =
@@ -206,21 +203,21 @@ class BookInfoActivity :
                 }
             }
 
-            R.id.menu_share_it -> share("[${GSON.toJson(book)}]")
+            R.id.menu_share_it -> share("[${GSON.toJson(viewModel.curBook)}]")
 
             R.id.menu_refresh -> refreshBook()
 
-            R.id.menu_login -> viewModel.bookSource?.let {
+            R.id.menu_login -> viewModel.curBookSource?.let {
                 GlobalVars.nowBook = viewModel.bookData.value
                 it.showLoginDialog(this)
             }
 
             R.id.menu_top -> viewModel.topBook()
             R.id.menu_set_source_variable ->
-                viewModel.bookSource?.showSourceVariableDialog(this)
+                viewModel.curBookSource?.showSourceVariableDialog(this)
 
             R.id.menu_set_book_variable -> viewModel.getBook()
-                ?.showBookVariableDialog(this, viewModel.bookSource)
+                ?.showBookVariableDialog(this, viewModel.curBookSource)
             R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let {
                 sendToClip(it)
             }
@@ -247,7 +244,9 @@ class BookInfoActivity :
                 upLoading(true)
                 viewModel.getBook()?.let {
                     it.setSplitLongChapter(!item.isChecked)
-                    viewModel.loadBookInfo(it)
+                    lifecycleScope.launch {
+                        viewModel.loadBookInfo(it)
+                    }
                 }
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
@@ -393,7 +392,7 @@ class BookInfoActivity :
             }
 
             else -> {
-                book?.let {
+                viewModel.curBook?.let {
                     binding.tvToc.text = getString(R.string.toc_s, it.durChapterTitle)
                     binding.tvLasted.text = getString(R.string.lasted_show, it.latestChapterTitle)
                 }
@@ -413,7 +412,7 @@ class BookInfoActivity :
     private fun upGroup(groupId: Long) {
         viewModel.loadGroup(groupId) {
             if (it.isNullOrEmpty()) {
-                binding.tvGroup.text = if (book?.isLocal == true) {
+                binding.tvGroup.text = if (viewModel.curBook?.isLocal == true) {
                     getString(R.string.group_s, getString(R.string.local_no_group))
                 } else {
                     getString(R.string.group_s, getString(R.string.no_group))

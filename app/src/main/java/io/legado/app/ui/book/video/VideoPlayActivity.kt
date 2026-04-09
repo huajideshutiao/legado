@@ -44,7 +44,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
@@ -279,20 +278,20 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                 updateResolutionButtonText()
             }
         }
-        viewModel.chapterList.observe(this) {
+        viewModel.chapterListData.observe(this) {
             if (it.size > 1) {
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
                 binding.recyclerView.adapter = adapter
                 adapter.setItems(it)
-                binding.recyclerView.scrollToPosition(viewModel.book.durChapterIndex)
-                adapter.upDisplayTitles(viewModel.book.durChapterIndex)
+                binding.recyclerView.scrollToPosition(viewModel.curBook!!.durChapterIndex)
+                adapter.upDisplayTitles(viewModel.curBook!!.durChapterIndex)
             }
             showChapterList(it)
         }
         binding.titleBar.toolbar.setOnClickListener {
             bookInfoResult.launch {
-                GlobalVars.nowBook = viewModel.book
-                GlobalVars.nowChapterList = viewModel.chapterList.value
+                GlobalVars.nowBook = viewModel.curBook
+                GlobalVars.nowChapterList = viewModel.chapterListData.value
                 player?.pause()
             }
         }
@@ -385,8 +384,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                     if (playbackState == Player.STATE_READY) {
                         hasRefreshedOnPlayError = false
                     }
-                    if (playbackState == Player.STATE_ENDED && viewModel.chapterList.value!!.size != viewModel.book.durChapterIndex + 1) {
-                        openChapter(viewModel.chapterList.value!![viewModel.book.durChapterIndex + 1])
+                    if (playbackState == Player.STATE_ENDED && viewModel.chapterListData.value!!.size != viewModel.curBook!!.durChapterIndex + 1) {
+                        openChapter(viewModel.chapterListData.value!![viewModel.curBook!!.durChapterIndex + 1])
                     }
                 }
 
@@ -424,9 +423,10 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible = !viewModel.bookSource?.loginUrl.isNullOrBlank()
+        menu.findItem(R.id.menu_login)?.isVisible =
+            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_shelf).apply {
-            if (!viewModel.book.isNotShelf) {
+            if (viewModel.inBookshelf) {
                 setIcon(R.drawable.ic_star)
                 setTitle(R.string.in_favorites)
             } else {
@@ -445,7 +445,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             }
 
             R.id.menu_shelf -> {
-                if (!viewModel.book.isNotShelf) {
+                if (viewModel.inBookshelf) {
                     if (LocalConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw, messageResource = R.string.sure_del
@@ -475,20 +475,21 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
             R.id.menu_full_screen -> setFullScreen(supportActionBar?.isShowing == true)
 
-            R.id.menu_login -> viewModel.bookSource?.let {
-                GlobalVars.nowBook = viewModel.book
+            R.id.menu_login -> viewModel.curBookSource?.let {
+                GlobalVars.nowBook = viewModel.curBook
                 GlobalVars.nowChapter =
-                    viewModel.chapterList.value?.get(viewModel.book.durChapterIndex)
+                    viewModel.chapterListData.value?.get(viewModel.curBook!!.durChapterIndex)
                 it.showLoginDialog(this)
             }
 
             R.id.menu_copy_audio_url -> viewModel.videoUrl.value?.let { sendToClip(it.url) }
-            R.id.menu_set_source_variable -> viewModel.bookSource?.showSourceVariableDialog(this)
-            R.id.menu_set_book_variable -> viewModel.book.showBookVariableDialog(
+            R.id.menu_set_source_variable -> viewModel.curBookSource?.showSourceVariableDialog(this)
+            R.id.menu_set_book_variable -> viewModel.curBook!!.showBookVariableDialog(
                 this,
-                viewModel.bookSource
+                viewModel.curBookSource
             )
-            R.id.menu_edit_source -> viewModel.bookSource?.let {
+
+            R.id.menu_edit_source -> viewModel.curBookSource?.let {
                 GlobalVars.nowSource = it
                 sourceEditResult.launch {}
             }
@@ -513,7 +514,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         binding.ivPlayer.layoutParams.height =
             if (isFull) WindowManager.LayoutParams.MATCH_PARENT else 0
         if (isFull) binding.recyclerView.isVisible = false
-        else viewModel.chapterList.value?.let { showChapterList(it) }
+        else viewModel.chapterListData.value?.let { showChapterList(it) }
     }
 
     private fun showChapterList(list: List<BookChapter>) {
@@ -577,7 +578,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
         val analyzeUrl = AnalyzeUrl(
             mUrl = resolution.url,
-            source = viewModel.bookSource,
+            source = viewModel.curBookSource,
             headerMapF = source.headers
         )
         val newPlayer = ExoPlayerHelper.createHttpExoPlayer(this)
@@ -621,17 +622,17 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     }
 
     override val scope = lifecycleScope
-    override val book by lazy { viewModel.book }
+    override val book by lazy { viewModel.curBook }
     override val isLocalBook = false
     override fun openChapter(bookChapter: BookChapter) {
         lifecycleScope.launch {
-            val tmp = viewModel.book.durChapterIndex
+            val tmp = viewModel.curBook!!.durChapterIndex
             viewModel.changeChapter(bookChapter)
             adapter.notifyItemChanged(tmp)
             adapter.notifyItemChanged(bookChapter.index)
         }
     }
 
-    override fun durChapterIndex(): Int = viewModel.book.durChapterIndex
+    override fun durChapterIndex(): Int = viewModel.curBook!!.durChapterIndex
     override fun onListChanged() {}
 }

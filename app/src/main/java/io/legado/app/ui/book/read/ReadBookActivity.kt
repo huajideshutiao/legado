@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Looper
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.Menu
@@ -1077,7 +1078,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (!book.isAudio) {
-            viewModel.changeTo(book, toc)
+            viewModel.changeTo(source, book, toc)
         } else {
             ReadAloud.stop(this)
             lifecycleScope.launch {
@@ -1149,6 +1150,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openBookInfoActivity() {
         ReadBook.book?.let {
             bookInfoActivity.launch {
+                Log.e("ReadBookActivity", "openBookInfoActivity: ${it}")
                 putExtra("name", it.name)
                 putExtra("author", it.author)
                 GlobalVars.nowBook = it

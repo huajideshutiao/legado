@@ -94,7 +94,7 @@ object ReadManga : CoroutineScope by MainScope() {
             durChapterPos = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
             clearMangaChapter()
         }
-        if (durChapterIndex !in 0 until simulatedChapterSize) {
+        if (durChapterIndex !in 0..simulatedChapterSize) {
             book.durChapterIndex = 0
             durChapterIndex = 0
             durChapterPos = 0

@@ -5,26 +5,18 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
-import io.legado.app.base.BaseViewModel
+import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
 import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
-import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
-import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -34,40 +26,55 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.mapParallelSafe
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.toStringArray
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.onEmpty
-import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.take
-import java.io.File
+import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 
 /**
  * 阅读界面数据处理
  */
-class ReadBookViewModel(application: Application) : BaseViewModel(application) {
+class ReadBookViewModel(application: Application) : BaseReadViewModel(application) {
     val permissionDenialLiveData = MutableLiveData<Int>()
     var isInitFinish = false
     var searchContentQuery = ""
     var searchResultList: List<SearchResult>? = null
     var searchResultIndex: Int = 0
-    private var changeSourceCoroutine: Coroutine<*>? = null
+
+    override var curBook: Book? = ReadBook.book
 
     init {
         AppConfig.detectClickArea()
     }
 
+    override fun onSourceChanged(book: Book, toc: List<BookChapter>) {
+        ReadBook.upMsg(context.getString(R.string.loading))
+        ReadBook.initData(book)
+        ReadBook.upMsg(null)
+        ReadBook.loadContent(resetPageOffset = true)
+    }
+
+    override fun applyProgress(progress: BookProgress) {
+        ReadBook.setProgress(progress)
+    }
+
+    override fun onSourceChanging(msg: String) {
+        if (msg.isNotEmpty()) {
+            ReadBook.upMsg(msg)
+        } else {
+            ReadBook.upMsg(null)
+        }
+    }
+
+    override fun onUpSource(book: Book) {
+        ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
+    }
+
     fun initReadBookConfig() {
-        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?:return
+        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: return
         GlobalVars.nowBook = book
         ReadBook.upReadBookConfig(book)
     }
@@ -78,11 +85,11 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
             val book = GlobalVars.nowBook ?: ReadBook.book
-            if(book != null){
+            if (book != null) {
                 ReadBook.inBookshelf = !book.isNotShelf
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
                 initBook(book)
-            }else ReadBook.upMsg(context.getString(R.string.no_book))
+            } else ReadBook.upMsg(context.getString(R.string.no_book))
         }.onSuccess {
             success?.invoke()
         }.onError {
@@ -96,17 +103,16 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
+        upBook(book)
+        withContext(Dispatchers.Main) {
+            GlobalVars.nowChapterList = chapterListData.value
+        }
         ReadBook.initData(book)
         isInitFinish = true
-        if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
-            return
-        }
         if (book.isLocal && !checkLocalBookFileExist(book)) {
             return
         }
-        if ((ReadBook.chapterSize == 0 || book.isLocalModified()) && !loadChapterListAwait(book)) {
-            return
-        }
+        if (chapterListData.value.isNullOrEmpty()) return
         ReadBook.upMsg(null)
         if (!isSameBook) {
             ReadBook.loadContent(resetPageOffset = true)
@@ -138,21 +144,6 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             if (e is SecurityException || e is FileNotFoundException) {
                 permissionDenialLiveData.postValue(0)
             }
-            return false
-        }
-    }
-
-    /**
-     * 加载详情页
-     */
-    private suspend fun loadBookInfo(book: Book): Boolean {
-        val source = ReadBook.bookSource ?: return true
-        try {
-            WebBook.getBookInfoAwait(source, book, canReName = false)
-            return true
-        } catch (e: Throwable) {
-            currentCoroutineContext().ensureActive()
-            ReadBook.upMsg("详情页出错: ${e.localizedMessage}")
             return false
         }
     }
@@ -216,113 +207,13 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         return true
     }
 
-    /**
-     * 同步进度
-     */
-    fun syncBookProgress(
-        book: Book,
-        alertSync: ((progress: BookProgress) -> Unit)? = null
-    ) {
-        if (!AppConfig.syncBookProgress) return
-        execute {
-            AppWebDav.getBookProgress(book)
-        }.onError {
-            AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
-        }.onSuccess { progress ->
-            progress ?: return@onSuccess
-            if (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos == book.durChapterPos) {
-                return@onSuccess
-            }
-            if (progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                        && progress.durChapterPos < book.durChapterPos)
-            ) {
-                alertSync?.invoke(progress)
-            } else if (progress.durChapterIndex < book.simulatedTotalChapterNum()) {
-                ReadBook.setProgress(progress)
-                AppLog.put("自动同步阅读进度成功《${book.name}》 ${progress.durChapterTitle}")
-                context.toastOnUi("已同步最新阅读进度")
-            }
-        }
-    }
-
-    /**
-     * 换源
-     */
-    fun changeTo(book: Book, toc: List<BookChapter>) {
-        changeSourceCoroutine?.cancel()
-        changeSourceCoroutine = execute {
-            ReadBook.upMsg(context.getString(R.string.loading))
-            ReadBook.book?.migrateTo(book, toc)
-            book.removeType(BookType.updateError)
-            ReadBook.book?.delete()
-            appDb.bookDao.insert(book)
-            appDb.bookChapterDao.insert(*toc.toTypedArray())
-            ReadBook.initData(book)
-            ReadBook.upMsg(null)
-            ReadBook.loadContent(resetPageOffset = true)
-        }.onError {
-            AppLog.put("换源失败\n$it", it, true)
-            ReadBook.upMsg(null)
-        }.onFinally {
-            postEvent(EventBus.SOURCE_CHANGED, book.bookUrl)
-        }
-    }
-
-    /**
-     * 自动换源
-     */
-    private fun autoChangeSource(name: String, author: String) {
-        if (!AppConfig.autoChangeSource) return
-        execute {
-            val sources = appDb.bookSourceDao.allTextEnabledPart
-            flow {
-                for (source in sources) {
-                    source.getBookSource()?.let {
-                        emit(it)
-                    }
-                }
-            }.onStart {
-                ReadBook.upMsg(context.getString(R.string.source_auto_changing))
-            }.mapParallelSafe(AppConfig.threadCount,sources.size) { source ->
-                val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
-                if (book.tocUrl.isEmpty()) {
-                    WebBook.getBookInfoAwait(source, book)
-                }
-                val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
-                val chapter = toc.getOrElse(book.durChapterIndex) {
-                    toc.last()
-                }
-                val nextChapter = toc.getOrElse(chapter.index) {
-                    toc.first()
-                }
-                WebBook.getContentAwait(
-                    bookSource = source,
-                    book = book,
-                    bookChapter = chapter,
-                    nextChapterUrl = nextChapter.url
-                )
-                book to toc
-            }.take(1).onEach { (book, toc) ->
-                changeTo(book, toc)
-            }.onEmpty {
-                throw NoStackTraceException("没有合适书源")
-            }.onCompletion {
-                ReadBook.upMsg(null)
-            }.catch {
-                AppLog.put("自动换源失败\n${it.localizedMessage}", it)
-                context.toastOnUi("自动换源失败\n${it.localizedMessage}")
-            }.collect()
-        }
-    }
-
     fun openChapter(index: Int, durChapterPos: Int = 0, success: (() -> Unit)? = null) {
         ReadBook.openChapter(index, durChapterPos, success = success)
     }
 
-    fun removeFromBookshelf(success: (() -> Unit)?) {
+    override fun removeFromBookshelf(success: (() -> Unit)?) {
         val book = ReadBook.book
-        Coroutine.async {
+        execute {
             book?.delete()
         }.onSuccess {
             success?.invoke()
@@ -330,13 +221,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun upBookSource(success: (() -> Unit)?) {
-        execute {
-            ReadBook.book?.let { book ->
-                ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
-            }
-        }.onSuccess {
-            success?.invoke()
-        }
+        upSource()
+        success?.invoke()
     }
 
     fun refreshContentDur(book: Book) {
@@ -490,10 +376,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    /**
-     * 保存图片
-     */
-    fun saveImage(src: String?, uri: Uri) {
+    override fun saveImage(src: String?, uri: Uri) {
         src ?: return
         val book = ReadBook.book ?: return
         execute {
