@@ -320,6 +320,37 @@ class BookInfoActivity :
     }
 
     private fun showBook(book: Book) = binding.run {
+        if (AppConfig.devFeat && !book.isVideo) {
+            bgBook.gone()
+            arcView.gone()
+            val constraintSet = androidx.constraintlayout.widget.ConstraintSet()
+            constraintSet.clone(clContent)
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP, 16.dpToPx())
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START, 16.dpToPx())
+            constraintSet.clear(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.END)
+            constraintSet.clear(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.START, cvCover.id, androidx.constraintlayout.widget.ConstraintSet.END, 16.dpToPx())
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+            constraintSet.applyTo(clContent)
+            tvName.gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+            (tvName.parent as android.widget.LinearLayout).gravity = android.view.Gravity.START
+        } else {
+            bgBook.visible()
+            arcView.visible()
+            val constraintSet = androidx.constraintlayout.widget.ConstraintSet()
+            constraintSet.clone(clContent)
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+            constraintSet.connect(cvCover.id, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, arcView.id, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.TOP, arcView.id, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+            constraintSet.connect(llInfo.id, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+            constraintSet.applyTo(clContent)
+            tvName.gravity = android.view.Gravity.CENTER
+            (tvName.parent as android.widget.LinearLayout).gravity = android.view.Gravity.CENTER
+        }
         showCover(book)
         tvName.text = book.name
         tvAuthor.text = getString(R.string.author_show, book.getRealAuthor())
@@ -366,7 +397,7 @@ class BookInfoActivity :
             book.origin,
             inBookshelf = viewModel.inBookshelf
         ) {
-            if (!AppConfig.isEInkMode) {
+            if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo)) {
                 BookCover.loadBlur(
                     Glide.with(this),
                     book.getDisplayCover(),
