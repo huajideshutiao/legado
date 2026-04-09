@@ -617,6 +617,25 @@ object FileUtils {
     }
 
     /**
+     * 通过文件头魔数获取图片后缀名（含"."）
+     */
+    fun getImageExtension(file: File): String {
+        return FileInputStream(file).use { input ->
+            val header = ByteArray(12)
+            val read = input.read(header)
+            if (read < 3) return ".jpg"
+            when {
+                header[0] == 0x47.toByte() && header[1] == 0x49.toByte() && header[2] == 0x46.toByte() -> ".gif"
+                header[0] == 0x89.toByte() && header[1] == 0x50.toByte() && header[2] == 0x4E.toByte() && header[3] == 0x47.toByte() -> ".png"
+                header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte() -> ".jpg"
+                read >= 12 && header[0] == 0x52.toByte() && header[1] == 0x49.toByte() && header[2] == 0x46.toByte() && header[3] == 0x46.toByte() && header[8] == 0x57.toByte() && header[9] == 0x45.toByte() && header[10] == 0x42.toByte() && header[11] == 0x50.toByte() -> ".webp"
+                header[0] == 0x42.toByte() && header[1] == 0x4D.toByte() -> ".bmp"
+                else -> ".jpg"
+            }
+        }
+    }
+
+    /**
      * 获取文件的MIME类型
      */
     fun getMimeType(pathOrUrl: String): String {
@@ -679,8 +698,12 @@ object FileUtils {
      */
     fun saveImage(imageData: String, dirUri: Uri, fileName: String? = null): Boolean {
         val byteArray = urlOrBase64ToBytes(imageData) ?: return false
-        val name = fileName
-            ?: "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}.jpg"
+        val name = fileName ?: run {
+            val ext = getExtension(imageData).let {
+                if (it.length <= 5 && it.matches(Regex("[a-zA-Z0-9]+"))) ".$it" else ".jpg"
+            }
+            "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}$ext"
+        }
         val fileDoc = FileDoc.fromDir(dirUri)
         val picFile = fileDoc.createFileIfNotExist(name)
         picFile.openOutputStream().getOrThrow().use {
@@ -697,7 +720,9 @@ object FileUtils {
      * @return 是否保存成功
      */
     fun saveImage(imageFile: File, dirUri: Uri, fileName: String? = null): Boolean {
-        val name = fileName ?: imageFile.name
+        val ext = getImageExtension(imageFile)
+        val name =
+            fileName ?: "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}$ext"
         val fileDoc = FileDoc.fromDir(dirUri)
         val picFile = fileDoc.createFileIfNotExist(name)
         FileInputStream(imageFile).use { input ->

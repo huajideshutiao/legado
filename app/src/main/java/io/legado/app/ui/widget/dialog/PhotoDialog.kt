@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.net.toUri
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
@@ -16,7 +17,6 @@ import io.legado.app.databinding.DialogPhotoViewBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
-
 import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
@@ -27,7 +27,6 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.io.File
-import androidx.core.net.toUri
 
 /**
  * 显示图片
@@ -104,7 +103,23 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         execute {
             val result = localImageFile?.let { file ->
                 FileUtils.saveImage(file, uri)
-            } ?: FileUtils.saveImage(src, uri)
+            } ?: run {
+                try {
+                    val options = RequestOptions()
+                    arguments?.getString("sourceOrigin")?.let { sourceOrigin ->
+                        options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
+                    }
+                    val glideFile = Glide.with(requireContext())
+                        .downloadOnly()
+                        .apply(options)
+                        .load(src)
+                        .submit()
+                        .get()
+                    FileUtils.saveImage(glideFile, uri)
+                } catch (_: Exception) {
+                    FileUtils.saveImage(src, uri)
+                }
+            }
             if (!result) error("保存图片失败")
         }.onError {
             ACache.get().remove(AppConst.imagePathKey)
