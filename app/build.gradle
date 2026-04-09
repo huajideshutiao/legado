@@ -53,7 +53,7 @@ android {
         versionCode 10000 + gitCommits
         versionName version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        project.ext.set("archivesBaseName", name + "_" + version)
+        project.ext.set("archivesBaseName", name)
 
         buildConfigField "String", "Cronet_Version", "\"$CronetVersion\""
         buildConfigField "String", "Cronet_Main_Version", "\"$CronetMainVersion\""
@@ -131,7 +131,7 @@ android {
                     "all"       : "all"
             ]
             def abiName = abiShortMap.get(abi ?: "all")
-            outputFileName = "${name}_${abiName}_${defaultConfig.versionName}.apk"
+            outputFileName = "${name}_${abiName}.apk"
         }
     }
 
