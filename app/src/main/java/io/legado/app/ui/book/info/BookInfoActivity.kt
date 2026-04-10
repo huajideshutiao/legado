@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.RelativeLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import io.legado.app.R
@@ -42,6 +45,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
@@ -69,6 +73,8 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
+import io.legado.app.utils.setLightStatusBar
+import io.legado.app.utils.modifyBegin
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
@@ -150,7 +156,6 @@ class BookInfoActivity :
 
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.setBackgroundResource(R.color.transparent)
         binding.refreshLayout?.setColorSchemeColors(accentColor)
         binding.arcView.setBgColor(backgroundColor)
         binding.llInfo.setBackgroundColor(backgroundColor)
@@ -331,6 +336,37 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
+        applyDevFeatLayout(book)
+    }
+
+    @SuppressLint("PrivateResource")
+    private fun applyDevFeatLayout(book: Book) = binding.run {
+        if (AppConfig.devFeat && !book.isVideo) {
+            setLightStatusBar(isDarkTheme)
+            bgBook.gone()
+            arcView.gone()
+            titleBar.setTextColor(getPrimaryTextColor(isDarkTheme))
+            titleBar.setColorFilter(getPrimaryTextColor(isDarkTheme))
+            titleBar.setBackgroundColor(backgroundColor)
+            rlCover?.setBackgroundColor(backgroundColor)
+            tvName.gravity = Gravity.START
+            (rlCover?.layoutParams as RelativeLayout.LayoutParams).let {
+                it.bottomMargin = 8.dpToPx()
+                it.leftMargin = 16.dpToPx()
+                rlCover.layoutParams = it
+            }
+            clContent?.modifyBegin()?.apply {
+                // rl_cover: left, wrap content
+                setWidth(R.id.rl_cover, ConstraintSet.WRAP_CONTENT)
+                // ll_info_top: right of cover, to end
+                setWidth(R.id.ll_info_top, 0)
+                leftToRightOf(R.id.ll_info_top, R.id.rl_cover)
+                topToTopOf(R.id.ll_info_top, R.id.rl_cover)
+                //ll_info : right of cover, to end
+                topToBottomOf(R.id.ll_info, R.id.rl_cover)
+                commit()
+            }
+        }
     }
 
     private fun upKinds(book: Book) = binding.run {
@@ -355,7 +391,7 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
-        if (book.isVideo)binding.ivCover.layoutParams.apply {
+        if (book.isVideo) binding.ivCover.layoutParams.apply {
             width = height * 16 / 9
         }
         binding.ivCover.load(
@@ -366,7 +402,7 @@ class BookInfoActivity :
             book.origin,
             inBookshelf = viewModel.inBookshelf
         ) {
-            if (!AppConfig.isEInkMode) {
+            if (!AppConfig.isEInkMode && !AppConfig.devFeat) {
                 BookCover.loadBlur(
                     Glide.with(this),
                     book.getDisplayCover(),

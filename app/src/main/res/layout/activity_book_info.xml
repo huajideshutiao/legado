@@ -18,13 +18,13 @@
         android:id="@+id/vw_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#50000000"
         android:orientation="vertical">
 
         <io.legado.app.ui.widget.TitleBar
             android:id="@+id/title_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#50000000"
             app:layout_constraintTop_toTopOf="parent"
             app:themeMode="dark"
             app:title="@string/book_info" />
@@ -47,15 +47,18 @@
                 android:scrollbarStyle="outsideOverlay"
                 android:scrollbars="vertical">
 
-                <LinearLayout
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/cl_content"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:orientation="vertical">
+                    android:layout_height="wrap_content">
 
                     <RelativeLayout
+                        android:id="@+id/rl_cover"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp">
+                        android:background="#50000000"
+                        app:layout_constraintLeft_toLeftOf="parent"
+                        app:layout_constraintTop_toTopOf="parent">
 
                         <io.legado.app.ui.widget.image.ArcView
                             android:id="@+id/arc_view"
@@ -67,6 +70,7 @@
                             app:bgColor="@color/background" />
 
                         <androidx.cardview.widget.CardView
+                            android:id="@+id/cv_cover"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_centerHorizontal="true"
@@ -87,51 +91,58 @@
                     </RelativeLayout>
 
                     <LinearLayout
-                        android:id="@+id/ll_info"
+                        android:id="@+id/ll_info_top"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingLeft="10dp"
+                        android:paddingTop="8dp"
+                        android:paddingRight="10dp"
+                        android:paddingBottom="3dp"
+                        app:layout_constraintRight_toRightOf="parent"
+                        app:layout_constraintTop_toBottomOf="@id/rl_cover">
+
+                        <TextView
+                            android:id="@+id/tv_name"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="6dp"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="@string/book_name"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            tools:ignore="RtlHardcoded" />
+
+                        <HorizontalScrollView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:layout_marginBottom="6dp"
+                            android:scrollbars="none">
+
+                            <io.legado.app.ui.widget.LabelsBar
+                                android:id="@+id/lb_kind"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:visibility="gone" />
+                        </HorizontalScrollView>
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/ll_info"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
                         android:background="@color/background"
                         android:orientation="vertical"
                         android:paddingLeft="8dp"
                         android:paddingRight="8dp"
-                        android:paddingBottom="8dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="8dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="3dp">
-
-                            <TextView
-                                android:id="@+id/tv_name"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginBottom="6dp"
-                                android:gravity="center"
-                                android:includeFontPadding="false"
-                                android:text="@string/book_name"
-                                android:textColor="@color/primaryText"
-                                android:textSize="18sp"
-                                tools:ignore="RtlHardcoded" />
-
-                            <HorizontalScrollView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_gravity="center"
-                                android:layout_marginBottom="6dp"
-                                android:scrollbars="none">
-
-                                <io.legado.app.ui.widget.LabelsBar
-                                    android:id="@+id/lb_kind"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:visibility="gone" />
-                            </HorizontalScrollView>
-
-                        </LinearLayout>
+                        android:paddingBottom="8dp"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@id/ll_info_top">
 
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -365,7 +376,7 @@
 
                     </LinearLayout>
 
-                </LinearLayout>
+                </androidx.constraintlayout.widget.ConstraintLayout>
 
             </io.legado.app.ui.widget.NoChildScrollNestedScrollView>
 
