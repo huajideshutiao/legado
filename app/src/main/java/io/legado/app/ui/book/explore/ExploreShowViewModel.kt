@@ -8,6 +8,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
@@ -63,10 +64,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun initData(intent: Intent) {
         execute {
-            val sourceUrl = intent.getStringExtra("sourceUrl")
             exploreUrl = intent.getStringExtra("exploreUrl")
-            if (bookSource == null && sourceUrl != null) {
-                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+            if (bookSource == null) {
+                bookSource = GlobalVars.nowSource as BookSource
             }
             sourceReadyLiveData.postValue(Unit)
             explore()

@@ -45,13 +45,13 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun initData() {
         execute {
+            if (curBook != null) return@execute
             GlobalVars.nowBook?.let {
                 inBookshelf = !it.isNotShelf
                 curBook = it
                 upBook(it)
                 return@execute
             }
-            throw NoStackTraceException("未找到书籍")
         }.onError {
             AppLog.put(it.localizedMessage, it)
             context.toastOnUi(it.localizedMessage)

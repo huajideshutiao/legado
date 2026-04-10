@@ -16,7 +16,9 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabase
+import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.help.config.AppConfig
@@ -183,11 +185,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         (binding.rvFind.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pos, 0)
     }
 
-    override fun openExplore(sourceUrl: String, title: String, exploreUrl: String?) {
+    override fun openExplore(source: BookSource, title: String, exploreUrl: String?) {
         if (exploreUrl.isNullOrBlank()) return
+        GlobalVars.nowSource = source
         startActivity<ExploreShowActivity> {
             putExtra("exploreName", title)
-            putExtra("sourceUrl", sourceUrl)
             putExtra("exploreUrl", exploreUrl)
         }
     }

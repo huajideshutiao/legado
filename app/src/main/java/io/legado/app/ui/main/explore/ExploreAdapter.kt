@@ -13,6 +13,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.FlexChildStyle
@@ -57,6 +58,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 tvName.text = item.bookSourceName
             }
             if (exIndex == holder.layoutPosition) {
+                val item = item.getBookSource()!!
                 ivStatus.setImageResource(R.drawable.ic_arrow_down)
                 rotateLoading.loadingColor = context.accentColor
                 rotateLoading.visible()
@@ -85,7 +87,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
     private fun upKindList(
         flexbox: FlexboxLayout,
-        sourcePart: BookSourcePart,
+        source: BookSource,
         kinds: List<ExploreKind>
     ) {
         if (kinds.isNotEmpty()) kotlin.runCatching {
@@ -111,7 +113,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                         kind.type == RowUi.Type.button -> CoroutineScope(IO).launch {
                             kotlin.runCatching {
                                 runScriptWithContext {
-                                    sourcePart.getBookSource()?.evalJS(kind.url)
+                                    source.evalJS(kind.url)
                                 }
                             }.onFailure { e ->
                                 ensureActive()
@@ -119,7 +121,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                             }
                         }
 
-                        else -> callBack.openExplore(sourcePart.bookSourceUrl, kind.title, kind.url)
+                        else -> callBack.openExplore(source, kind.title, kind.url)
                     }
                 }
 
@@ -201,7 +203,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     interface CallBack {
         val scope: CoroutineScope
         fun scrollTo(pos: Int)
-        fun openExplore(sourceUrl: String, title: String, exploreUrl: String?)
+        fun openExplore(source: BookSource, title: String, exploreUrl: String?)
         fun editSource(sourceUrl: String)
         fun toTop(source: BookSourcePart)
         fun deleteSource(source: BookSourcePart)

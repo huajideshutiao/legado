@@ -45,27 +45,27 @@
             android:gravity="center"
             android:orientation="vertical">
 
-            <RelativeLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="30dp">
+                android:layout_height="wrap_content">
 
                 <io.legado.app.ui.widget.image.ArcView
                     android:id="@+id/arc_view"
                     android:layout_width="match_parent"
                     android:layout_height="78dp"
-                    android:layout_marginTop="128dp"
                     app:arcDirectionTop="true"
                     app:arcHeight="36dp"
-                    app:bgColor="@color/background" />
+                    app:bgColor="@color/background"
+                    app:layout_constraintBottom_toBottomOf="parent" />
 
                 <androidx.cardview.widget.CardView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_centerHorizontal="true"
-                    android:layout_margin="3dp"
                     app:cardCornerRadius="5dp"
-                    app:cardElevation="8dp">
+                    app:cardElevation="8dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent">
 
                     <io.legado.app.ui.widget.image.CoverImageView
                         android:id="@+id/iv_cover"
@@ -78,10 +78,10 @@
 
                 </androidx.cardview.widget.CardView>
 
-            </RelativeLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
             <LinearLayout
-                android:id="@+id/ll_info"
+                android:id="@+id/ll_info_top"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@color/background"
@@ -90,7 +90,7 @@
                 android:paddingTop="8dp"
                 android:paddingRight="16dp"
                 android:paddingBottom="3dp"
-                tools:ignore="RtlHardcoded">
+                tools:ignore="RtlHardcoded,NegativeMargin">
 
                 <TextView
                     android:id="@+id/tv_name"
@@ -105,47 +105,14 @@
                     android:textSize="18sp"
                     tools:ignore="RtlHardcoded" />
 
-                <io.legado.app.ui.widget.LabelsBar
+                <com.google.android.flexbox.FlexboxLayout
                     android:id="@+id/lb_kind"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
                     android:layout_marginBottom="6dp"
-                    android:gravity="center"
-                    android:visibility="gone" />
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:gravity="center"
-                    android:layout_gravity="center"
-                    android:orientation="horizontal"
-                    android:paddingTop="3dp"
-                    android:paddingBottom="3dp"
-                    tools:ignore="UseCompoundDrawables">
-
-                    <ImageView
-                        android:layout_width="18sp"
-                        android:layout_height="18sp"
-                        android:contentDescription="@string/origin_format"
-                        android:paddingRight="4dp"
-                        android:src="@drawable/ic_author"
-                        app:tint="@color/tv_text_summary"
-                        tools:ignore="RtlHardcoded,RtlSymmetry" />
-
-                    <TextView
-                        android:id="@+id/tv_author"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:text="@string/author"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="13sp"
-                        tools:ignore="NestedWeights,TextContrastCheck" />
-
-                </LinearLayout>
+                    android:visibility="gone"
+                    app:flexDirection="row"
+                    app:flexWrap="wrap" />
 
             </LinearLayout>
 
@@ -154,10 +121,10 @@
 
 
         <LinearLayout
-            android:layout_weight="1.0"
-            android:orientation="vertical"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:layout_weight="1.0"
+            android:orientation="vertical">
 
             <androidx.core.widget.NestedScrollView
                 android:id="@+id/scroll_view"
@@ -166,17 +133,49 @@
                 android:layout_weight="1"
                 android:background="@color/background"
                 android:fillViewport="true"
-                android:fitsSystemWindows="true"
+                android:fitsSystemWindows="false"
                 android:focusable="true"
-                android:scrollbarStyle="outsideInset"
+                android:scrollbarStyle="outsideOverlay"
                 android:scrollbars="vertical"
                 tools:ignore="NestedWeights">
 
                 <LinearLayout
+                    android:id="@+id/ll_info"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="8dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:paddingTop="3dp"
+                        android:paddingBottom="3dp"
+                        tools:ignore="UseCompoundDrawables">
+
+                        <ImageView
+                            android:layout_width="18sp"
+                            android:layout_height="18sp"
+                            android:contentDescription="@string/origin_format"
+                            android:paddingRight="4dp"
+                            android:src="@drawable/ic_author"
+                            app:tint="@color/tv_text_summary"
+                            tools:ignore="RtlHardcoded,RtlSymmetry" />
+
+                        <TextView
+                            android:id="@+id/tv_author"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:includeFontPadding="false"
+                            android:singleLine="true"
+                            android:text="@string/author"
+                            android:textColor="@color/tv_text_summary"
+                            android:textSize="13sp"
+                            tools:ignore="NestedWeights,TextContrastCheck" />
+
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -354,7 +353,7 @@
                         android:focusable="true"
                         android:minHeight="48dp"
                         android:paddingLeft="8dp"
-                        android:paddingBottom="8dp"
+                        android:paddingRight="8dp"
                         android:text="@string/book_intro"
                         android:textColor="@color/secondaryText"
                         android:textIsSelectable="true"

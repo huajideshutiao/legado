@@ -2,8 +2,10 @@ package io.legado.app.ui.book.info
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -23,6 +25,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityBookInfoBinding
+import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.addType
@@ -42,12 +45,14 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
+import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.edit.BookInfoEditActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
@@ -66,11 +71,13 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -80,6 +87,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import splitties.views.onClick
 
 class BookInfoActivity :
     VMBaseActivity<ActivityBookInfoBinding, BookInfoViewModel>(toolBarTheme = Theme.Dark),
@@ -153,6 +161,7 @@ class BookInfoActivity :
         binding.titleBar.setBackgroundResource(R.color.transparent)
         binding.refreshLayout?.setColorSchemeColors(accentColor)
         binding.arcView.setBgColor(backgroundColor)
+        binding.llInfoTop.setBackgroundColor(backgroundColor)
         binding.llInfo.setBackgroundColor(backgroundColor)
         binding.flAction.setBackgroundColor(bottomBackground)
         binding.flAction.applyNavigationBarPadding()
@@ -169,6 +178,10 @@ class BookInfoActivity :
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_info, menu)
         editMenuItem = menu.findItem(R.id.menu_edit)
+        if (AppConfig.devFeat && viewModel.curBook?.isVideo != true && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) menu.applyTint(
+            this,
+            Theme.Light
+        )
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -218,6 +231,7 @@ class BookInfoActivity :
 
             R.id.menu_set_book_variable -> viewModel.getBook()
                 ?.showBookVariableDialog(this, viewModel.curBookSource)
+
             R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let {
                 sendToClip(it)
             }
@@ -331,6 +345,26 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
+        applyDevFeatLayout(book)
+    }
+
+    private fun applyDevFeatLayout(book: Book) = binding.run {
+        if (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) return@run
+        setLightStatusBar(isDarkTheme)
+        bgBook.gone()
+        arcView.gone()
+        vwBg.setBackgroundColor(backgroundColor)
+        tvName.gravity = Gravity.START
+        llTop?.orientation = LinearLayout.HORIZONTAL
+        (rlCover?.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.WRAP_CONTENT
+            leftMargin = 16.dpToPx()
+        }
+        (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
+            width = 0
+            weight = 1f
+        }
+        (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
     }
 
     private fun upKinds(book: Book) = binding.run {
@@ -349,13 +383,32 @@ class BookInfoActivity :
                 lbKind.gone()
             } else {
                 lbKind.visible()
-                lbKind.setLabels(kinds)
+                lbKind.removeAllViews()
+                for ((index, name) in kinds.withIndex()) {
+                    ItemFilletTextBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        lbKind.addView(it.root)
+                        it.root.id = index + 1000
+                        it.textView.text = name
+                        val tmp = name.split("::", limit = 1)
+                        if (tmp.size > 1) it.root.onClick {
+                            GlobalVars.nowSource = viewModel.curBookSource
+                            startActivity<ExploreShowActivity> {
+                                putExtra("exploreName", tmp[0])
+                                putExtra("exploreUrl", tmp[1])
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     private fun showCover(book: Book) {
-        if (book.isVideo)binding.ivCover.layoutParams.apply {
+        if (book.isVideo) binding.ivCover.layoutParams.apply {
             width = height * 16 / 9
         }
         binding.ivCover.load(
@@ -366,7 +419,7 @@ class BookInfoActivity :
             book.origin,
             inBookshelf = viewModel.inBookshelf
         ) {
-            if (!AppConfig.isEInkMode) {
+            if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
                 BookCover.loadBlur(
                     Glide.with(this),
                     book.getDisplayCover(),
