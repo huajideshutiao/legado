@@ -115,8 +115,11 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                                     "author" -> book.author = value
                                     "kind" -> book.kind = value
                                     "coverUrl" -> book.coverUrl = value
+                                    "customCoverUrl" -> book.customCoverUrl = value
                                     "intro" -> book.intro = value
+                                    "customIntro" -> book.customIntro = value
                                     "origin" -> book.origin = value
+                                    "originName" -> book.originName = value
                                     "wordCount" -> book.wordCount = value
                                     "tocUrl" -> book.tocUrl = value
                                 }

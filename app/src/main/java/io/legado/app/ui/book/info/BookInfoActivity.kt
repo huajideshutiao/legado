@@ -207,7 +207,29 @@ class BookInfoActivity :
                 }
             }
 
-            R.id.menu_share_it -> share("[${GSON.toJson(viewModel.curBook)}]")
+            R.id.menu_share_it -> viewModel.curBook?.let { book ->
+                share(
+                    "[${
+                        GSON.toJson(
+                            mapOf(
+                                "bookUrl" to book.bookUrl,
+                                "tocUrl" to book.tocUrl,
+                                "origin" to book.origin,
+                                "originName" to book.originName,
+                                "name" to book.name,
+                                "author" to book.author,
+                                "kind" to book.kind,
+                                "coverUrl" to book.coverUrl,
+                                "customCoverUrl" to book.customCoverUrl,
+                                "intro" to book.intro,
+                                "customIntro" to book.customIntro,
+                                "type" to book.type,
+                                "wordCount" to book.wordCount
+                            )
+                        )
+                    }]"
+                )
+            }
 
             R.id.menu_refresh -> refreshBook()
 

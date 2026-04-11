@@ -147,15 +147,21 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                     writer.setIndent("  ")
                     writer.beginArray()
                     books.forEach {
-                        val bookMap = hashMapOf<String, Any?>()
-                        bookMap["name"] = it.name
-                        bookMap["author"] = it.author
-                        bookMap["bookUrl"] = it.bookUrl
-                        bookMap["origin"] = it.origin
-                        bookMap["originName"] = it.originName
-                        bookMap["type"] = it.type
-                        bookMap["coverUrl"] = it.coverUrl
-                        bookMap["intro"] = it.getDisplayIntro()
+                        val bookMap = mapOf(
+                            "bookUrl" to it.bookUrl,
+                            "tocUrl" to it.tocUrl,
+                            "origin" to it.origin,
+                            "originName" to it.originName,
+                            "name" to it.name,
+                            "author" to it.author,
+                            "kind" to it.kind,
+                            "coverUrl" to it.coverUrl,
+                            "customCoverUrl" to it.customCoverUrl,
+                            "intro" to it.intro,
+                            "customIntro" to it.customIntro,
+                            "type" to it.type,
+                            "wordCount" to it.wordCount
+                        )
                         GSON.toJson(bookMap, bookMap::class.java, writer)
                     }
                     writer.endArray()
