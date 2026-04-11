@@ -77,46 +77,89 @@ class CoverImageView @JvmOverloads constructor(
         }
     }
 
+    private fun drawTextWithStroke(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        paint: TextPaint
+    ) {
+        paint.color = Color.WHITE
+        paint.style = Paint.Style.STROKE
+        canvas.drawText(text, x, y, paint)
+        paint.color = context.accentColor
+        paint.style = Paint.Style.FILL
+        canvas.drawText(text, x, y, paint)
+    }
+
     private fun drawNameAuthor(canvas: Canvas) {
-        if (!BookCover.drawBookName) return
-        var startX = width * 0.2f
-        var startY = viewHeight * 0.2f
-        name?.toStringArray()?.let { name ->
+        val nameArr = if (BookCover.drawBookName) name?.toStringArray() else null
+        val authorArr = if (BookCover.drawBookAuthor) author?.toStringArray() else null
+        if (nameArr.isNullOrEmpty() && authorArr.isNullOrEmpty()) return
+
+        val topMargin = viewHeight * 0.05f
+        val bottomMargin = viewHeight * 0.95f
+        val leftMargin = viewWidth * 0.1f
+
+        nameArr?.let { nameList ->
             namePaint.textSize = viewWidth / 6
             namePaint.strokeWidth = namePaint.textSize / 5
-            name.forEachIndexed { index, char ->
-                namePaint.color = Color.WHITE
-                namePaint.style = Paint.Style.STROKE
-                canvas.drawText(char, startX, startY, namePaint)
-                namePaint.color = context.accentColor
-                namePaint.style = Paint.Style.FILL
-                canvas.drawText(char, startX, startY, namePaint)
-                startY += namePaint.textHeight
-                if (startY > viewHeight * 0.8) {
-                    startX += namePaint.textSize
-                    namePaint.textSize = viewWidth / 10
-                    startY = (viewHeight - (name.size - index - 1) * namePaint.textHeight) / 2
+            var colX = leftMargin + namePaint.textSize / 2
+            var curY = topMargin + namePaint.textHeight
+            var colNum = 1
+
+            for (i in nameList.indices) {
+                val isLastCharOfName = i == nameList.size - 1
+                val nextY = curY + namePaint.textHeight
+                val isLastSlotInColumn = nextY > bottomMargin
+
+                if (colNum == 3 && isLastSlotInColumn && !isLastCharOfName) {
+                    drawTextWithStroke(canvas, "…", colX, curY, namePaint)
+                    break
+                }
+
+                drawTextWithStroke(canvas, nameList[i], colX, curY, namePaint)
+
+                if (!isLastCharOfName) {
+                    if (isLastSlotInColumn) {
+                        colNum++
+                        if (colNum > 3) break
+
+                        colX += namePaint.textSize
+                        namePaint.textSize = viewWidth / 10
+                        namePaint.strokeWidth = namePaint.textSize / 5
+
+                        val remaining = nameList.size - i - 1
+                        val neededHeight = remaining * namePaint.textHeight
+                        curY = if (neededHeight < (bottomMargin - topMargin)) {
+                            (viewHeight - neededHeight) / 2 + namePaint.textHeight
+                        } else {
+                            topMargin + namePaint.textHeight
+                        }
+                        curY = maxOf(curY, topMargin + namePaint.textHeight)
+                    } else {
+                        curY = nextY
+                    }
                 }
             }
         }
-        if (!BookCover.drawBookAuthor) return
-        author?.toStringArray()?.let { author ->
+
+        authorArr?.let { authorList ->
             authorPaint.textSize = viewWidth / 10
             authorPaint.strokeWidth = authorPaint.textSize / 5
-            startX = width * 0.8f
-            startY = viewHeight * 0.95f - author.size * authorPaint.textHeight
-            startY = maxOf(startY, viewHeight * 0.3f)
-            author.forEach {
-                authorPaint.color = Color.WHITE
-                authorPaint.style = Paint.Style.STROKE
-                canvas.drawText(it, startX, startY, authorPaint)
-                authorPaint.color = context.accentColor
-                authorPaint.style = Paint.Style.FILL
-                canvas.drawText(it, startX, startY, authorPaint)
-                startY += authorPaint.textHeight
-                if (startY > viewHeight * 0.95) {
-                    return@let
+            val colX = viewWidth * 0.85f
+            val neededHeight = authorList.size * authorPaint.textHeight
+            var curY = viewHeight * 0.95f - neededHeight
+            curY = maxOf(curY, viewHeight * 0.2f)
+
+            authorList.forEach { char ->
+                if (curY < topMargin + authorPaint.textHeight) {
+                    curY = topMargin + authorPaint.textHeight
                 }
+                if (curY > viewHeight * 0.98f) return@forEach
+
+                drawTextWithStroke(canvas, char, colX, curY, authorPaint)
+                curY += authorPaint.textHeight
             }
         }
     }
