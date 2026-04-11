@@ -69,12 +69,8 @@
 
                     <io.legado.app.ui.widget.image.CoverImageView
                         android:id="@+id/iv_cover"
-                        android:layout_width="130dp"
-                        android:layout_height="200dp"
-                        android:contentDescription="@string/img_cover"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/image_cover_default"
-                        tools:ignore="ImageContrastCheck" />
+                        android:layout_width="141dp"
+                        android:layout_height="wrap_content" />
 
                 </androidx.cardview.widget.CardView>
 

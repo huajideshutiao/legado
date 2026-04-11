@@ -13,6 +13,8 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.graphics.toColorInt
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import io.legado.app.R
@@ -66,6 +68,7 @@ import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
@@ -91,9 +94,7 @@ import splitties.views.onClick
 
 class BookInfoActivity :
     VMBaseActivity<ActivityBookInfoBinding, BookInfoViewModel>(toolBarTheme = Theme.Dark),
-    GroupSelectDialog.CallBack,
-    ChangeBookSourceDialog.CallBack,
-    ChangeCoverDialog.CallBack {
+    GroupSelectDialog.CallBack, ChangeBookSourceDialog.CallBack, ChangeCoverDialog.CallBack {
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -182,24 +183,18 @@ class BookInfoActivity :
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_can_update)?.isChecked =
-            viewModel.bookData.value?.canUpdate ?: true
+        menu.findItem(R.id.menu_can_update)?.isChecked = viewModel.bookData.value?.canUpdate ?: true
         menu.findItem(R.id.menu_split_long_chapter)?.isChecked =
             viewModel.bookData.value?.getSplitLongChapter() ?: true
         menu.findItem(R.id.menu_login)?.isVisible =
             !viewModel.curBookSource?.loginUrl.isNullOrBlank()
-        menu.findItem(R.id.menu_set_source_variable)?.isVisible =
-            viewModel.curBookSource != null
-        menu.findItem(R.id.menu_set_book_variable)?.isVisible =
-            viewModel.curBookSource != null
-        menu.findItem(R.id.menu_can_update)?.isVisible =
-            viewModel.curBookSource != null
+        menu.findItem(R.id.menu_set_source_variable)?.isVisible = viewModel.curBookSource != null
+        menu.findItem(R.id.menu_set_book_variable)?.isVisible = viewModel.curBookSource != null
+        menu.findItem(R.id.menu_can_update)?.isVisible = viewModel.curBookSource != null
         menu.findItem(R.id.menu_split_long_chapter)?.isVisible =
             viewModel.bookData.value?.isLocalTxt ?: false
-        menu.findItem(R.id.menu_upload)?.isVisible =
-            viewModel.bookData.value?.isLocal ?: false
-        menu.findItem(R.id.menu_delete_alert)?.isChecked =
-            LocalConfig.bookInfoDeleteAlert
+        menu.findItem(R.id.menu_upload)?.isVisible = viewModel.bookData.value?.isLocal ?: false
+        menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -222,8 +217,7 @@ class BookInfoActivity :
             }
 
             R.id.menu_top -> viewModel.topBook()
-            R.id.menu_set_source_variable ->
-                viewModel.curBookSource?.showSourceVariableDialog(this)
+            R.id.menu_set_source_variable -> viewModel.curBookSource?.showSourceVariableDialog(this)
 
             R.id.menu_set_book_variable -> viewModel.getBook()
                 ?.showBookVariableDialog(this, viewModel.curBookSource)
@@ -315,9 +309,7 @@ class BookInfoActivity :
             waitDialog.setText("上传中.....")
             waitDialog.show()
             try {
-                bookWebDav
-                    ?.upload(book)
-                    ?: throw NoStackTraceException("未配置webDav")
+                bookWebDav?.upload(book) ?: throw NoStackTraceException("未配置webDav")
                 //更新书籍最后更新时间,使之比远程书籍的时间新
                 book.lastCheckTime = System.currentTimeMillis()
                 viewModel.saveBook(book)
@@ -330,6 +322,7 @@ class BookInfoActivity :
     }
 
     private fun showBook(book: Book) = binding.run {
+        applyDevFeatLayout(book)
         showCover(book)
         tvName.text = book.name
         tvAuthor.text = getString(R.string.author_show, book.getRealAuthor())
@@ -341,28 +334,62 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
-        applyDevFeatLayout(book)
     }
 
     private fun applyDevFeatLayout(book: Book) = binding.run {
-        if (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) return@run
-        setLightStatusBar(isDarkTheme)
-        bgBook.gone()
-        arcView.gone()
-        vwBg.setBackgroundColor(backgroundColor)
-        titleBar.setTextColor(primaryTextColor)
-        titleBar.setColorFilter(primaryTextColor)
-        tvName.gravity = Gravity.START
-        llTop?.orientation = LinearLayout.HORIZONTAL
-        (rlCover?.layoutParams as LinearLayout.LayoutParams).apply {
-            width = LinearLayout.LayoutParams.WRAP_CONTENT
-            leftMargin = 16.dpToPx()
+        if (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            //反转下面的设置
+            if (bgBook.isVisible) return@run
+            setLightStatusBar(false)
+            bgBook.visible()
+            arcView.visible()
+            vwBg.setBackgroundColor("#50000000".toColorInt())
+            titleBar.setTextColor(getPrimaryTextColor(false))
+            titleBar.setColorFilter(getPrimaryTextColor(false))
+            tvName.gravity = Gravity.CENTER
+            llTop?.orientation = LinearLayout.VERTICAL
+            (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
+                this?.width = LinearLayout.LayoutParams.MATCH_PARENT
+            }
+            (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                weight = 0f
+            }
+            llInfoTop.apply {
+                setPadding(
+                    paddingRight,
+                    paddingTop,
+                    paddingRight,
+                    paddingBottom
+                )
+            }
+            (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
+        } else {
+            setLightStatusBar(isDarkTheme)
+            bgBook.gone()
+            arcView.gone()
+            vwBg.setBackgroundColor(backgroundColor)
+            titleBar.setTextColor(primaryTextColor)
+            titleBar.setColorFilter(primaryTextColor)
+            tvName.gravity = Gravity.START
+            llTop?.orientation = LinearLayout.HORIZONTAL
+            (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
+                this?.width = LinearLayout.LayoutParams.WRAP_CONTENT
+            }
+            (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
+                width = 0
+                weight = 1f
+            }
+            llInfoTop.apply {
+                setPadding(
+                    0,
+                    paddingTop,
+                    paddingRight,
+                    paddingBottom
+                )
+            }
+            (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
         }
-        (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
-            width = 0
-            weight = 1f
-        }
-        (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
     }
 
     private fun upKinds(book: Book) = binding.run {
@@ -381,23 +408,33 @@ class BookInfoActivity :
                 lbKind.gone()
             } else {
                 lbKind.visible()
-                lbKind.removeAllViews()
+                val diff = kinds.size - lbKind.childCount
+                if (diff > 0) {
+                    repeat(diff) {
+                        ItemFilletTextBinding.inflate(layoutInflater, lbKind, false).let {
+                            lbKind.addView(it.root)
+                        }
+                    }
+                } else if (diff < 0) {
+                    repeat(-diff) {
+                        lbKind.removeViewAt(lbKind.childCount - 1)
+                    }
+                }
                 for ((index, kind) in kinds.withIndex()) {
-                    ItemFilletTextBinding.inflate(
-                        layoutInflater,
-                        binding.root,
-                        false
-                    ).let {
-                        lbKind.addView(it.root)
+                    ItemFilletTextBinding.bind(lbKind.getChildAt(index)).let {
                         it.root.id = index + 1000
                         val tmp = kind.split("::", limit = 2)
                         it.textView.text = tmp[0]
-                        if (tmp.size > 1) it.root.onClick {
-                            IntentData.put("nowSource", viewModel.curBookSource)
-                            startActivity<ExploreShowActivity> {
-                                putExtra("exploreName", tmp[0])
-                                putExtra("exploreUrl", tmp[1])
+                        if (tmp.size > 1) {
+                            it.root.onClick {
+                                IntentData.put("nowSource", viewModel.curBookSource)
+                                startActivity<ExploreShowActivity> {
+                                    putExtra("exploreName", tmp[0])
+                                    putExtra("exploreUrl", tmp[1])
+                                }
                             }
+                        } else {
+                            it.root.setOnClickListener(null)
                         }
                     }
                 }
@@ -406,9 +443,10 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) {
-        if (book.isVideo) binding.ivCover.layoutParams.apply {
-            width = height * 16 / 9
-        }
+        if (book.isVideo && binding.bgBook.isVisible) binding.ivCover.coverRatio =
+            CoverImageView.CoverRatio.VIDEO
+        else if (binding.ivCover.coverRatio != CoverImageView.CoverRatio.NOVEL) binding.ivCover.coverRatio =
+            CoverImageView.CoverRatio.NOVEL
         binding.ivCover.load(
             book.getDisplayCover(),
             book.name,
@@ -423,8 +461,7 @@ class BookInfoActivity :
                     book.getDisplayCover(),
                     sourceOrigin = book.origin,
                     inBookshelf = viewModel.inBookshelf
-                )
-                    .placeholder(binding.bgBook.drawable).into(binding.bgBook)
+                ).placeholder(binding.bgBook.drawable).into(binding.bgBook)
             }
         }
     }
@@ -437,8 +474,7 @@ class BookInfoActivity :
 
             chapterList.isNullOrEmpty() -> {
                 binding.tvToc.text = getString(
-                    R.string.toc_s,
-                    getString(R.string.error_load_toc)
+                    R.string.toc_s, getString(R.string.error_load_toc)
                 )
             }
 
@@ -575,8 +611,7 @@ class BookInfoActivity :
         viewModel.getBook()?.let {
             if (LocalConfig.bookInfoDeleteAlert) {
                 alert(
-                    titleResource = R.string.draw,
-                    messageResource = R.string.sure_del
+                    titleResource = R.string.draw, messageResource = R.string.sure_del
                 ) {
                     var checkBox: CheckBox? = null
                     if (it.isLocal) {
@@ -619,16 +654,13 @@ class BookInfoActivity :
             return
         }
         selector(
-            R.string.download_and_import_file,
-            webFiles
+            R.string.download_and_import_file, webFiles
         ) { _, webFile, _ ->
-            if (webFile.isSupported) {
-                /* import */
+            if (webFile.isSupported) {/* import */
                 viewModel.importOrDownloadWebFile<Book>(webFile) {
                     onClick?.invoke(it)
                 }
-            } else if (webFile.isSupportDecompress) {
-                /* 解压筛选后再选择导入项 */
+            } else if (webFile.isSupportDecompress) {/* 解压筛选后再选择导入项 */
                 viewModel.importOrDownloadWebFile<Uri>(webFile) { uri ->
                     viewModel.getArchiveFilesName(uri) { fileNames ->
                         if (fileNames.size == 1) {
@@ -667,8 +699,7 @@ class BookInfoActivity :
             return
         }
         selector(
-            R.string.import_select_book,
-            fileNames
+            R.string.import_select_book, fileNames
         ) { _, name, _ ->
             viewModel.importArchiveBook(archiveFileUri, name) {
                 success?.invoke(it)
@@ -693,8 +724,7 @@ class BookInfoActivity :
         IntentData.put("nowChapterList", viewModel.chapterListData.value)
         readBookResult.launch(
             Intent(
-                this,
-                when {
+                this, when {
                     book.isVideo -> VideoPlayActivity::class.java
                     !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
                     book.isAudio -> AudioPlayActivity::class.java

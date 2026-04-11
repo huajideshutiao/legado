@@ -30,14 +30,9 @@
             <io.legado.app.ui.widget.image.CoverImageView
                 android:id="@+id/iv_cover"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
+                android:layout_height="wrap_content"
                 android:layout_margin="8dp"
-                android:scrollbars="none"
-                android:src="@drawable/image_cover_default"
-                android:transitionName="img_cover"
-                app:layout_constraintDimensionRatio="W,7:5"
                 app:layout_constraintTop_toTopOf="parent"
-                tools:ignore="UnusedAttribute,ImageContrastCheck"
                 tools:layout_editor_absoluteX="8dp" />
 
             <io.legado.app.ui.widget.text.BadgeView
@@ -72,7 +67,8 @@
                 app:layout_constraintStart_toStartOf="@+id/iv_cover"
                 app:layout_constraintTop_toTopOf="@+id/iv_cover"
                 app:layout_constraintWidth_percent="0.25"
-                app:srcCompat="@drawable/ic_bookmark" />
+                app:srcCompat="@drawable/ic_bookmark"
+                tools:ignore="ContentDescription" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 

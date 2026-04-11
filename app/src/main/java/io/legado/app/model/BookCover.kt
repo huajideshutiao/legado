@@ -1,9 +1,9 @@
 package io.legado.app.model
 
 import android.annotation.SuppressLint
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.annotation.Keep
+import androidx.core.graphics.drawable.toDrawable
 import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.RequestManager
 import com.bumptech.glide.load.DataSource
@@ -72,7 +72,7 @@ object BookCover {
             return
         }
         defaultDrawable = kotlin.runCatching {
-            BitmapDrawable(appCtx.resources, BitmapUtils.decodeBitmap(path, 600, 900))
+            BitmapUtils.decodeBitmap(path, 600, 900)!!.toDrawable(appCtx.resources)
         }.getOrDefault(appCtx.resources.getDrawable(R.drawable.image_cover_default, null))
     }
 

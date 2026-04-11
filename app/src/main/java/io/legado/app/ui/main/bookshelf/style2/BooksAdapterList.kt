@@ -7,7 +7,6 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfListBinding
-import io.legado.app.databinding.ItemBookshelfListGroupBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
@@ -20,7 +19,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
-            1 -> GroupViewHolder(ItemBookshelfListGroupBinding.inflate(inflater, parent, false))
+            1 -> GroupViewHolder(ItemBookshelfListBinding.inflate(inflater, parent, false))
             else -> BookViewHolder(ItemBookshelfListBinding.inflate(inflater, parent, false))
         }
     }
@@ -33,12 +32,12 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         when (holder) {
             is BookViewHolder -> (getItem(position) as? Book)?.let {
                 holder.registerListener(it)
-                holder.onBind(it, position, payloads)
+                holder.onBind(it, payloads)
             }
 
             is GroupViewHolder -> (getItem(position) as? BookGroup)?.let {
                 holder.registerListener(it)
-                holder.onBind(it, position, payloads)
+                holder.onBind(it, payloads)
             }
         }
     }
@@ -59,7 +58,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             upRefresh(this, item)
         }
 
-        fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
+        fun onBind(item: Book, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
                 onBind(item)
             } else {
@@ -113,7 +112,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
 
     }
 
-    inner class GroupViewHolder(val binding: ItemBookshelfListGroupBinding) :
+    inner class GroupViewHolder(val binding: ItemBookshelfListBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: BookGroup) = binding.run {
@@ -126,9 +125,10 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvAuthor.gone()
             tvLast.gone()
             tvRead.gone()
+            tvLastUpdateTime.gone()
         }
 
-        fun onBind(item: BookGroup, position: Int, payloads: MutableList<Any>) = binding.run {
+        fun onBind(item: BookGroup, payloads: MutableList<Any>) = binding.run {
             if (payloads.isEmpty()) {
                 onBind(item)
             } else {

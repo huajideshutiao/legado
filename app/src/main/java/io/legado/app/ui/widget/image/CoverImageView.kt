@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.content.withStyledAttributes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
@@ -17,9 +18,11 @@ import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.lifecycle
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
@@ -32,6 +35,37 @@ class CoverImageView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : AppCompatImageView(context, attrs) {
+
+    enum class CoverRatio(val widthRatio: Int, val heightRatio: Int) {
+        NOVEL(3, 4),
+        VIDEO(16, 9)
+    }
+
+    var coverRatio: CoverRatio = CoverRatio.NOVEL
+        set(value) {
+            if (field != value) {
+                field = value
+                requestLayout()
+            }
+        }
+
+    init {
+        scaleType = ScaleType.CENTER_CROP
+        transitionName = "img_cover"
+        contentDescription = context.getString(R.string.img_cover)
+        if (isInEditMode) {
+            setImageResource(R.drawable.image_cover_default)
+        }
+        attrs?.let {
+            context.withStyledAttributes(it, R.styleable.CoverImageView) {
+                coverRatio = when (getInt(R.styleable.CoverImageView_coverRatio, 1)) {
+                    2 -> CoverRatio.VIDEO
+                    else -> CoverRatio.NOVEL
+                }
+            }
+        }
+    }
+
     private var filletPath = Path()
     private var viewWidth: Float = 0f
     private var viewHeight: Float = 0f
@@ -40,8 +74,6 @@ class CoverImageView @JvmOverloads constructor(
         private set
     private var name: String? = null
     private var author: String? = null
-    private var nameHeight = 0f
-    private var authorHeight = 0f
     private val namePaint by lazy {
         TextPaint().apply {
             typeface = Typeface.DEFAULT_BOLD
@@ -63,7 +95,16 @@ class CoverImageView @JvmOverloads constructor(
         viewHeight = height.toFloat()
         filletPath.reset()
         if (width > 10 && height > 10) {
-            filletPath.addRoundRect(0f, 0f, viewWidth, viewHeight, 10f, 10f, Path.Direction.CW)
+            val radius = 4f.dpToPx()
+            filletPath.addRoundRect(
+                0f,
+                0f,
+                viewWidth,
+                viewHeight,
+                radius,
+                radius,
+                Path.Direction.CW
+            )
         }
     }
 
@@ -99,19 +140,17 @@ class CoverImageView @JvmOverloads constructor(
 
         val topMargin = viewHeight * 0.05f
         val bottomMargin = viewHeight * 0.95f
-        val leftMargin = viewWidth * 0.1f
 
         nameArr?.let { nameList ->
             namePaint.textSize = viewWidth / 6
             namePaint.strokeWidth = namePaint.textSize / 5
-            var colX = leftMargin + namePaint.textSize / 2
+            var colX = viewWidth * 0.1f + namePaint.textSize / 2
             var curY = topMargin + namePaint.textHeight
             var colNum = 1
 
             for (i in nameList.indices) {
                 val isLastCharOfName = i == nameList.size - 1
-                val nextY = curY + namePaint.textHeight
-                val isLastSlotInColumn = nextY > bottomMargin
+                val isLastSlotInColumn = curY + namePaint.textHeight > bottomMargin
 
                 if (colNum == 3 && isLastSlotInColumn && !isLastCharOfName) {
                     drawTextWithStroke(canvas, "…", colX, curY, namePaint)
@@ -123,8 +162,6 @@ class CoverImageView @JvmOverloads constructor(
                 if (!isLastCharOfName) {
                     if (isLastSlotInColumn) {
                         colNum++
-                        if (colNum > 3) break
-
                         colX += namePaint.textSize
                         namePaint.textSize = viewWidth / 10
                         namePaint.strokeWidth = namePaint.textSize / 5
@@ -136,9 +173,8 @@ class CoverImageView @JvmOverloads constructor(
                         } else {
                             topMargin + namePaint.textHeight
                         }
-                        curY = maxOf(curY, topMargin + namePaint.textHeight)
                     } else {
-                        curY = nextY
+                        curY += namePaint.textHeight
                     }
                 }
             }
@@ -149,24 +185,31 @@ class CoverImageView @JvmOverloads constructor(
             authorPaint.strokeWidth = authorPaint.textSize / 5
             val colX = viewWidth * 0.85f
             val neededHeight = authorList.size * authorPaint.textHeight
-            var curY = viewHeight * 0.95f - neededHeight
-            curY = maxOf(curY, viewHeight * 0.2f)
+            var curY = maxOf(viewHeight * 0.95f - neededHeight, viewHeight * 0.2f)
 
             authorList.forEach { char ->
-                if (curY < topMargin + authorPaint.textHeight) {
-                    curY = topMargin + authorPaint.textHeight
-                }
+                curY = maxOf(curY, topMargin + authorPaint.textHeight)
                 if (curY > viewHeight * 0.98f) return@forEach
-
                 drawTextWithStroke(canvas, char, colX, curY, authorPaint)
                 curY += authorPaint.textHeight
             }
         }
     }
 
-    fun setHeight(height: Int) {
-        val width = height * 5 / 7
-        minimumWidth = width
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val wSpec = MeasureSpec.getSize(widthMeasureSpec)
+        val hSpec = MeasureSpec.getSize(heightMeasureSpec)
+        val wMode = MeasureSpec.getMode(widthMeasureSpec)
+        val hMode = MeasureSpec.getMode(heightMeasureSpec)
+        if (wMode == MeasureSpec.EXACTLY && hMode != MeasureSpec.EXACTLY && wSpec > 0) {
+            val h = wSpec * coverRatio.heightRatio / coverRatio.widthRatio
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+        } else if (hMode == MeasureSpec.EXACTLY && wMode != MeasureSpec.EXACTLY && hSpec > 0) {
+            val w = hSpec * coverRatio.widthRatio / coverRatio.heightRatio
+            super.onMeasure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), heightMeasureSpec)
+        } else {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
     }
 
     private val glideListener by lazy {
@@ -212,9 +255,9 @@ class CoverImageView @JvmOverloads constructor(
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
         defaultCover = true
         invalidate()
-        val requestManager =
-            if (fragment != null && lifecycle != null) Glide.with(fragment).lifecycle(lifecycle)
-            else Glide.with(context)
+        val requestManager = fragment?.let {
+            lifecycle?.let { Glide.with(fragment).lifecycle(it) }
+        } ?: Glide.with(context)
         BookCover.load(requestManager, path, loadOnlyWifi, sourceOrigin, inBookshelf, onLoadFinish)
             .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
     }

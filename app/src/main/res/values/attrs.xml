@@ -208,6 +208,13 @@
         <attr name="isBottomBackground" />
     </declare-styleable>
 
+    <declare-styleable name="CoverImageView">
+        <attr name="coverRatio" format="enum">
+            <enum name="novel" value="1" />
+            <enum name="video" value="2" />
+        </attr>
+    </declare-styleable>
+
     <!--斜角标签-->
     <declare-styleable name="BevelLabelView">
         <!--背景颜色-->
