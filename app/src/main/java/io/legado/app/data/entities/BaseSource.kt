@@ -77,7 +77,21 @@ interface BaseSource : JsExtensions {
     }
 
     fun loginUi(): List<RowUi>? {
-        return GSON.fromJsonArray<RowUi>(loginUi).onFailure {
+        val uiStr = loginUi ?: return null
+        val json = try {
+            when {
+                uiStr.startsWith("@js:") -> evalJS(uiStr.substring(4)).toString()
+                uiStr.startsWith("<js>") -> evalJS(
+                    uiStr.substring(4, uiStr.lastIndexOf("<"))
+                ).toString()
+
+                else -> uiStr
+            }
+        } catch (e: Exception) {
+            AppLog.put("执行登录UI规则出错\n$e", e)
+            return null
+        }
+        return GSON.fromJsonArray<RowUi>(json).onFailure {
             it.printOnDebug()
         }.getOrNull()
     }
@@ -117,8 +131,8 @@ interface BaseSource : JsExtensions {
         header?.let {
             try {
                 val json = when {
-                    it.startsWith("@js:", true) -> evalJS(it.substring(4)).toString()
-                    it.startsWith("<js>", true) -> evalJS(
+                    it.startsWith("@js:") -> evalJS(it.substring(4)).toString()
+                    it.startsWith("<js>") -> evalJS(
                         it.substring(4, it.lastIndexOf("<"))
                     ).toString()
 

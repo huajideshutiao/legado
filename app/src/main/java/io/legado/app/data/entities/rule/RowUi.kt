@@ -19,7 +19,7 @@ data class RowUi(
     }
 
     fun style(): FlexChildStyle {
-        return style ?: FlexChildStyle.defaultStyle
+        return style ?: FlexChildStyle.defaultStyle2
     }
 
 }
