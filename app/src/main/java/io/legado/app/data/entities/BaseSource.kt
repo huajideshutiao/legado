@@ -112,8 +112,7 @@ interface BaseSource : JsExtensions {
     fun login() {
         val loginJs = getLoginJs()
         if (!loginJs.isNullOrBlank()) {
-            @Language("js")
-            val js = """$loginJs
+            @Language("js") val js = """$loginJs
                 if(typeof login=='function'){
                     login.apply(this);
                 } else {
@@ -127,12 +126,14 @@ interface BaseSource : JsExtensions {
     /**
      * 解析header规则
      */
-    fun getHeaderMap(hasLoginHeader: Boolean = false) = HashMap<String, String>().apply {
+    fun getHeaderMap(
+        hasLoginHeader: Boolean = false, evalJs: (String) -> Any? = this::evalJS
+    ) = HashMap<String, String>().apply {
         header?.let {
             try {
                 val json = when {
-                    it.startsWith("@js:") -> evalJS(it.substring(4)).toString()
-                    it.startsWith("<js>") -> evalJS(
+                    it.startsWith("@js:") -> evalJs(it.substring(4)).toString()
+                    it.startsWith("<js>") -> evalJs(
                         it.substring(4, it.lastIndexOf("<"))
                     ).toString()
 
@@ -304,11 +305,7 @@ interface BaseSource : JsExtensions {
         val variable = getVariable()
         activity.showDialogFragment(
             VariableDialog(
-                activity.getString(R.string.set_source_variable),
-                getKey(),
-                variable,
-                comment
-            ) { _, v -> setVariable(v) }
-        )
+                activity.getString(R.string.set_source_variable), getKey(), variable, comment
+            ) { _, v -> setVariable(v) })
     }
 }

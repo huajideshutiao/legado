@@ -117,18 +117,21 @@ class AnalyzeUrl(
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
-        paramPattern.matcher(baseUrl).takeIf { it.find() }?.let {
-            baseUrl = baseUrl.substring(0, it.start())
+        if (baseUrl.contains("{")) {
+            val matcher = paramPattern.matcher(baseUrl)
+            if (matcher.find()) {
+                baseUrl = baseUrl.substring(0, matcher.start())
+            }
         }
-        // 先初始化基础header，确保source/headerMapF的header不会被analyzeUrl中的option header覆盖
         if (headerMapF.isNullOrEmpty()) {
-            headerMap.putAll(source?.getHeaderMap(hasLoginHeader) ?: emptyMap())
+            headerMap.putAll(source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap())
             headerMap.remove("proxy")?.let { proxy = it }
         } else {
             headerMap.putAll(headerMapF)
         }
         initUrl()
-        domain = NetworkUtils.getSubDomain(source?.getKey() ?: url)
+        domain =
+            NetworkUtils.getSubDomain(source?.getKey()?.takeIf { it.startsWith("http") } ?: url)
     }
 
     /**
@@ -148,17 +151,22 @@ class AnalyzeUrl(
      * 执行@js,<js></js>
      */
     private fun analyzeJs() {
+        if (!ruleUrl.contains("js")) return
         var start = 0
         val jsMatcher = JS_PATTERN.matcher(ruleUrl)
         var result = ruleUrl
         while (jsMatcher.find()) {
-            ruleUrl.substring(start, jsMatcher.start()).trim().takeIf { it.isNotEmpty() }
-                ?.let { result = it.replace("@result", result) }
+            val s = ruleUrl.substring(start, jsMatcher.start()).trim()
+            if (s.isNotEmpty()) {
+                result = s.replace("@result", result)
+            }
             result = evalJS(jsMatcher.group(2) ?: jsMatcher.group(1), result).toString()
             start = jsMatcher.end()
         }
-        ruleUrl.substring(start).trim().takeIf { it.isNotEmpty() }
-            ?.let { result = it.replace("@result", result) }
+        val s = ruleUrl.substring(start).trim()
+        if (s.isNotEmpty()) {
+            result = s.replace("@result", result)
+        }
         ruleUrl = result
     }
 
@@ -168,16 +176,20 @@ class AnalyzeUrl(
     private fun replaceKeyPageJs() {
         //先替换内嵌规则再替换页数规则，避免内嵌规则中存在大于小于号时，规则被切错
         if (ruleUrl.contains("{{") && ruleUrl.contains("}}")) {
-            RuleAnalyzer(ruleUrl).innerRule("{{", "}}") {
+            val res = RuleAnalyzer(ruleUrl).innerRule("{{", "}}") {
                 when (val jsEval = evalJS(it) ?: "") {
                     is String -> jsEval
                     is Double if jsEval % 1.0 == 0.0 -> String.format("%.0f", jsEval)
                     else -> jsEval.toString()
                 }
-            }.takeIf { it.isNotEmpty() }?.let { ruleUrl = it }
+            }
+            if (res.isNotEmpty()) {
+                ruleUrl = res
+            }
         }
         page?.let {
-            pagePattern.matcher(ruleUrl).let { matcher ->
+            if (ruleUrl.contains("<")) {
+                val matcher = pagePattern.matcher(ruleUrl)
                 while (matcher.find()) {
                     val pages = matcher.group(1)!!.split(",")
                     val target = pages[(page - 1).coerceAtMost(pages.size - 1)]
@@ -191,14 +203,20 @@ class AnalyzeUrl(
      * 解析Url
      */
     private fun analyzeUrl() {
-        val urlMatcher = paramPattern.matcher(ruleUrl)
-        val urlNoOption =
-            urlMatcher.takeIf { it.find() }?.let { ruleUrl.substring(0, it.start()) } ?: ruleUrl
+        var urlNoOption = ruleUrl
+        var urlOptionEnd = -1
+        if (ruleUrl.contains("{")) {
+            val urlMatcher = paramPattern.matcher(ruleUrl)
+            if (urlMatcher.find()) {
+                urlNoOption = ruleUrl.substring(0, urlMatcher.start())
+                urlOptionEnd = urlMatcher.end()
+            }
+        }
         url = if (urlNoOption.startsWith("data:")) urlNoOption
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
-        if (urlNoOption.length != ruleUrl.length) {
-            val urlOptionStr = ruleUrl.substring(urlMatcher.end())
+        if (urlOptionEnd != -1) {
+            val urlOptionStr = ruleUrl.substring(urlOptionEnd)
             val urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
                 ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")
@@ -221,13 +239,19 @@ class AnalyzeUrl(
         }
         urlNoQuery = url
         when (method) {
-            RequestMethod.GET -> url.indexOf('?').takeIf { it != -1 }?.let { pos ->
-                analyzeQuery(url.substring(pos + 1))
-                urlNoQuery = url.substring(0, pos)
+            RequestMethod.GET -> {
+                val pos = url.indexOf('?')
+                if (pos != -1) {
+                    analyzeQuery(url.substring(pos + 1))
+                    urlNoQuery = url.substring(0, pos)
+                }
             }
 
-            RequestMethod.POST -> body?.takeIf { !it.isJson() && !it.isXml() && headerMap["Content-Type"].isNullOrEmpty() }
-                ?.let { analyzeFields(it) }
+            RequestMethod.POST -> {
+                if (body != null && !body.isJson() && !body.isXml() && headerMap["Content-Type"].isNullOrEmpty()) {
+                    analyzeFields(body!!)
+                }
+            }
         }
     }
 
