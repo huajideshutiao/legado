@@ -11,37 +11,32 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="@string/bg_image"
+        android:foreground="#50000000"
         android:scaleType="centerCrop"
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="ImageContrastCheck" />
-
-    <View
-        android:id="@+id/vw_bg"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#50000000" />
 
     <io.legado.app.ui.widget.TitleBar
         android:id="@+id/title_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:layout_constraintTop_toTopOf="parent"
-        app:title="@string/book_info"
-        app:themeMode="dark" />
+        app:themeMode="dark"
+        app:title="@string/book_info" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/title_bar"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/title_bar"
         tools:ignore="DisableBaselineAlignment">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1.0"
             android:layout_gravity="center"
+            android:layout_weight="1.0"
             android:gravity="center"
             android:orientation="vertical">
 

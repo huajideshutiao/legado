@@ -387,22 +387,25 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 binding.tvBookShow.gone()
                 binding.rvBookshelfSearch.gone()
             } else {
-                appDb.bookDao.flowSearch(key).conflate().collect {
+                launch {
+                    appDb.bookDao.flowSearch(key).conflate().collect {
                         val booksFound = it.isNotEmpty()
                         binding.tvBookShow.isVisible = booksFound
                         binding.rvBookshelfSearch.isVisible = booksFound
                         if (booksFound) bookAdapter.setItems(it.reversed())
-            }
+                    }
                 }
+            }
 
+            launch {
                 (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
                 else appDb.searchKeywordDao.flowSearch(key))
                     .catch { AppLog.put("搜索界面获取本地数据失败\n${it.localizedMessage}", it) }
                     .flowOn(IO).conflate().collect {
-                historyKeyAdapter.setItems(it)
+                        historyKeyAdapter.setItems(it)
                         binding.tvClearHistory.isVisible = it.isNotEmpty()
-                }
-
+                    }
+            }
         }
     }
 

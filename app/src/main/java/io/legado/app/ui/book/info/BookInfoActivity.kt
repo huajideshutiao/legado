@@ -13,7 +13,7 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.core.graphics.toColorInt
+
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -360,15 +360,14 @@ class BookInfoActivity :
 
     private fun applyDevFeatLayout(book: Book) = binding.run {
         if (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            //反转下面的设置
             if (bgBook.isVisible) return@run
             setLightStatusBar(false)
             bgBook.visible()
             arcView.visible()
-            vwBg.setBackgroundColor("#50000000".toColorInt())
             titleBar.setTextColor(getPrimaryTextColor(false))
             titleBar.setColorFilter(getPrimaryTextColor(false))
             tvName.gravity = Gravity.CENTER
+            lbKind.setPadding(0, 0, 0, 0)
             llTop?.orientation = LinearLayout.VERTICAL
             (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
                 this?.width = LinearLayout.LayoutParams.MATCH_PARENT
@@ -377,23 +376,16 @@ class BookInfoActivity :
                 width = LinearLayout.LayoutParams.MATCH_PARENT
                 weight = 0f
             }
-            llInfoTop.apply {
-                setPadding(
-                    paddingRight,
-                    paddingTop,
-                    paddingRight,
-                    paddingBottom
-                )
-            }
+            llInfoTop.apply { setPadding(paddingRight, 0, paddingRight, 0) }
             (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
         } else {
             setLightStatusBar(isDarkTheme)
             bgBook.gone()
             arcView.gone()
-            vwBg.setBackgroundColor(backgroundColor)
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
             tvName.gravity = Gravity.START
+            lbKind.setPadding((-4).dpToPx(), 0, 0, 0)
             llTop?.orientation = LinearLayout.HORIZONTAL
             (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
                 this?.width = LinearLayout.LayoutParams.WRAP_CONTENT
@@ -402,14 +394,7 @@ class BookInfoActivity :
                 width = 0
                 weight = 1f
             }
-            llInfoTop.apply {
-                setPadding(
-                    0,
-                    paddingTop,
-                    paddingRight,
-                    paddingBottom
-                )
-            }
+            llInfoTop.apply { setPadding(0, 0, paddingRight, 0) }
             (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
         }
     }
