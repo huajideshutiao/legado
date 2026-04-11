@@ -258,7 +258,21 @@ class CoverImageView @JvmOverloads constructor(
         val requestManager = fragment?.let {
             lifecycle?.let { Glide.with(fragment).lifecycle(it) }
         } ?: Glide.with(context)
-        BookCover.load(requestManager, path, loadOnlyWifi, sourceOrigin, inBookshelf, onLoadFinish)
-            .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
+        val doLoad = {
+            BookCover.load(
+                requestManager,
+                path,
+                loadOnlyWifi,
+                sourceOrigin,
+                inBookshelf,
+                onLoadFinish
+            )
+                .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
+            Unit
+        }
+        // 等待布局完成，确保Glide获取到最新的cover宽高
+        if (width > 0 && height > 0 && !isLayoutRequested) {
+            doLoad()
+        } else post(doLoad)
     }
 }
