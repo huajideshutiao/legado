@@ -9,7 +9,6 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -17,6 +16,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isLocal
@@ -103,13 +103,15 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
 
     protected suspend fun upBook(book: Book) {
         curBookSource =
-            GlobalVars.nowSource as BookSource? ?: if (book.isLocal) null else book.getBookSource()
+            IntentData.get<BookSource>("nowSource")
+                ?: if (book.isLocal) null else book.getBookSource()
         if (book.tocUrl.isEmpty() && !book.isLocal) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
+            val cachedChapterList = IntentData.get<List<BookChapter>>("nowChapterList")
             when {
-                GlobalVars.nowChapterList != null && GlobalVars.nowChapterList!![0].bookUrl == book.bookUrl -> chapterListData.postValue(
-                    GlobalVars.nowChapterList!!
+                cachedChapterList != null && cachedChapterList[0].bookUrl == book.bookUrl -> chapterListData.postValue(
+                    cachedChapterList
                 )
 
                 !inBookshelf || book.totalChapterNum == 0 -> loadChapterList(book)
@@ -180,7 +182,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 LocalBook.getChapterList(book).let {
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
-                    GlobalVars.nowChapterList = it
+                    IntentData.put("nowChapterList", it)
                     if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
                     ReadBook.onChapterListUpdated(book)
                     curBook = book
@@ -208,7 +210,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                         BookHelp.updateCacheFolder(oldBook, book)
                     }
                     appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                    GlobalVars.nowChapterList = tmp
+                    IntentData.put("nowChapterList", tmp)
                     if (!book.isNotShelf) appDb.bookChapterDao.insert(*tmp.toTypedArray())
                 }
                 curBook = book
@@ -231,7 +233,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         changeSourceCoroutine = execute {
             curBookSource = source
             curBook?.migrateTo(book, toc)
-            GlobalVars.nowChapterList = toc
+            IntentData.put("nowChapterList", toc)
             if (inBookshelf) {
                 book.removeType(BookType.updateError)
                 curBook?.delete()

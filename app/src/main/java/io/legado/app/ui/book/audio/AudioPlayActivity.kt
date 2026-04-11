@@ -21,12 +21,12 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.constant.Theme
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityAudioPlayBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -123,8 +123,8 @@ class AudioPlayActivity :
             }
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
-                GlobalVars.nowBook = AudioPlay.book
-                GlobalVars.nowChapter = AudioPlay.durChapter
+                IntentData.put("nowBook", AudioPlay.book)
+                IntentData.put("nowChapter", AudioPlay.durChapter)
                 it.showLoginDialog(this)
             }
 
@@ -136,7 +136,7 @@ class AudioPlayActivity :
                 AudioPlay.bookSource
             )
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
-                GlobalVars.nowSource = it
+                IntentData.put("nowSource", it)
                 sourceEditResult.launch {}
             }
 
@@ -213,8 +213,8 @@ class AudioPlayActivity :
             }
         })
         binding.ivChapter.setOnClickListener {
-            GlobalVars.nowBook = AudioPlay.book
-            GlobalVars.nowChapterList = AudioPlay.chapterList
+            IntentData.put("nowBook", AudioPlay.book)
+            IntentData.put("nowChapterList", AudioPlay.chapterList)
             tocActivityResult.launch("")
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {

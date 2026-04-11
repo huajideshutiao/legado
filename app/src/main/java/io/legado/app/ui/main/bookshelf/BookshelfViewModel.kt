@@ -5,11 +5,11 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.decompressed
@@ -44,7 +44,10 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                     getBookInfoByUrlAwait(bookUrl).let {
                         val dbBook = appDb.bookDao.getBook(it.name, it.author)
                         val toc =
-                            WebBook.getChapterListAwait(GlobalVars.nowSource as BookSource, it)
+                            WebBook.getChapterListAwait(
+                                IntentData.get<BookSource>("nowSource")!!,
+                                it
+                            )
                                 .getOrThrow()
                         if (dbBook != null) dbBook.migrateTo(it, toc)
                         else it.order = appDb.bookDao.minOrder - 1

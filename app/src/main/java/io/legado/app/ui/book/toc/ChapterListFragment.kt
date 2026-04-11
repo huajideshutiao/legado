@@ -11,11 +11,11 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.EventBus
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.FragmentChapterListBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -122,10 +122,10 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
-                var chapterList = GlobalVars.nowChapterList?.subList(0, end+1)
+                var chapterList =
+                    IntentData.get<List<BookChapter>>("nowChapterList")?.subList(0, end + 1)
                 if (chapterList?.get(0)?.bookUrl != book?.bookUrl){
                     chapterList = null
-                    GlobalVars.nowChapterList = null
                 }
                 when {
                     searchKey.isNullOrBlank() ->

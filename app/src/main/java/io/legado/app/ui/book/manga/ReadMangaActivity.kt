@@ -26,12 +26,12 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.EventBus
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityMangaBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
@@ -500,8 +500,8 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
 
             R.id.menu_catalog -> {
-                GlobalVars.nowBook = ReadManga.book
-                GlobalVars.nowChapterList = ReadManga.chapterList
+                IntentData.put("nowBook", ReadManga.book)
+                IntentData.put("nowChapterList", ReadManga.chapterList)
                 tocActivity.launch("")
             }
 
@@ -644,7 +644,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
-                GlobalVars.nowBook = it
+                IntentData.put("nowBook", it)
             }
         }
     }

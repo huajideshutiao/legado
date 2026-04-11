@@ -4,21 +4,22 @@ import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class VideoViewModel(application: Application) : BaseReadViewModel(application) {
     val bookTitle by lazy { curBook?.name ?: "" }
@@ -27,24 +28,24 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     val resolutions = MutableLiveData<List<VideoResolution>>()
     var currentResolutionIndex = 0
     var position: Long = 0L
-    override var curBook: Book? = GlobalVars.nowBook
+    override var curBook: Book? = IntentData.get<Book>("nowBook")
 
     override fun onUpSource(book: Book) {
         curBookSource = book.getBookSource()
     }
 
     fun initData() {
+        val curBook = curBook ?: return
+        curBookSource = curBook.getBookSource() ?: return
+        position = curBook.durChapterPos.toLong()
         execute {
-            val curBook = curBook ?: return@execute
-            curBookSource = curBook.getBookSource() ?: return@execute
-            position = curBook.durChapterPos.toLong()
-            if (curBook.tocUrl.isEmpty()) WebBook.getBookInfoAwait(curBookSource!!, curBook, true)
             upBook(curBook)
-            initChapter(chapterListData.value!![(curBook.durChapterIndex)])
+            val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
+            initChapter(chapterList!![curBook.durChapterIndex])
         }
     }
 
-    fun initChapter(chapter: BookChapter) {
+    private fun initChapter(chapter: BookChapter) {
         execute {
             chapter.resourceUrl ?: getContentAwait(
                 curBookSource!!, curBook!!, chapter, needSave = false
@@ -62,10 +63,10 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     }
 
     fun refreshChapter() {
-        execute {
-            chapterListData.value?.let { chapterList ->
-                val chapter = chapterList[curBook!!.durChapterIndex]
-                chapter.resourceUrl = null
+        chapterListData.value?.let { chapterList ->
+            val chapter = chapterList[curBook!!.durChapterIndex]
+            chapter.resourceUrl = null
+            execute {
                 initChapter(chapter)
             }
         }

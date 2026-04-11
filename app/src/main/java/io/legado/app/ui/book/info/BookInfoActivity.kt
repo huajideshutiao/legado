@@ -19,7 +19,6 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.Theme
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -28,6 +27,7 @@ import io.legado.app.databinding.ActivityBookInfoBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isAudio
@@ -207,7 +207,7 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
-                    GlobalVars.nowBook = it
+                    IntentData.put("nowBook", it)
                     infoEditResult.launch {}
                 }
             }
@@ -217,7 +217,7 @@ class BookInfoActivity :
             R.id.menu_refresh -> refreshBook()
 
             R.id.menu_login -> viewModel.curBookSource?.let {
-                GlobalVars.nowBook = viewModel.bookData.value
+                IntentData.put("nowBook", viewModel.bookData.value)
                 it.showLoginDialog(this)
             }
 
@@ -393,7 +393,7 @@ class BookInfoActivity :
                         val tmp = kind.split("::", limit = 2)
                         it.textView.text = tmp[0]
                         if (tmp.size > 1) it.root.onClick {
-                            GlobalVars.nowSource = viewModel.curBookSource
+                            IntentData.put("nowSource", viewModel.curBookSource)
                             startActivity<ExploreShowActivity> {
                                 putExtra("exploreName", tmp[0])
                                 putExtra("exploreUrl", tmp[1])
@@ -538,8 +538,8 @@ class BookInfoActivity :
                 return@setOnClickListener
             }
             viewModel.getBook()?.let {
-                GlobalVars.nowBook = it
-                GlobalVars.nowChapterList = viewModel.chapterListData.value
+                IntentData.put("nowBook", it)
+                IntentData.put("nowChapterList", viewModel.chapterListData.value)
                 tocActivityResult.launch(it.bookUrl)
             }
         }
@@ -677,7 +677,7 @@ class BookInfoActivity :
     }
 
     private fun readBook(book: Book) {
-        GlobalVars.nowChapterList = viewModel.chapterListData.value
+        IntentData.put("nowChapterList", viewModel.chapterListData.value)
         if (!viewModel.inBookshelf) {
             book.addType(BookType.notShelf)
             startReadActivity(book)
@@ -689,8 +689,8 @@ class BookInfoActivity :
     }
 
     private fun startReadActivity(book: Book) {
-        GlobalVars.nowBook = book
-        GlobalVars.nowChapterList = viewModel.chapterListData.value
+        IntentData.put("nowBook", book)
+        IntentData.put("nowChapterList", viewModel.chapterListData.value)
         readBookResult.launch(
             Intent(
                 this,

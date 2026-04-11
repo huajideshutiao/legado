@@ -9,13 +9,16 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
+import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
 import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
@@ -41,9 +44,9 @@ import splitties.views.onClick
 class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
-    private val source by lazy { GlobalVars.nowSource }
-    private val book by lazy { GlobalVars.nowBook }
-    private val chapter by lazy { GlobalVars.nowChapter }
+    private val source by lazy { IntentData.get<BaseSource>("nowSource") }
+    private val book by lazy { IntentData.get<Book>("nowBook") }
+    private val chapter by lazy { IntentData.get<BookChapter>("nowChapter") }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = source ?: return
@@ -141,7 +144,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     }
 
     private fun handleButtonClick(
-        source: io.legado.app.data.entities.BaseSource,
+        source: BaseSource,
         rowUi: RowUi,
         loginUi: List<RowUi>
     ) {
@@ -190,7 +193,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     }
 
     private fun login(
-        source: io.legado.app.data.entities.BaseSource,
+        source: BaseSource,
         loginData: HashMap<String, String>
     ) {
         lifecycleScope.launch(IO) {

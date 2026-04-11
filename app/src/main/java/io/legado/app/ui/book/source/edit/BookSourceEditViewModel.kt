@@ -4,10 +4,10 @@ import android.app.Application
 import android.content.Intent
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.IntentData
 import io.legado.app.help.RuleComplete
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.http.CookieStore
@@ -39,8 +39,8 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
             val sourceUrl = intent.getStringExtra("sourceUrl")
             bookSource = if(sourceUrl!=null) {
             appDb.bookSourceDao.getBookSource(sourceUrl) ?:return@execute
-            }else GlobalVars.nowSource as BookSource
-            GlobalVars.nowSource = null
+            } else IntentData.get<BookSource>("nowSource")
+
         }.onFinally {
             onFinally()
         }

@@ -4,8 +4,8 @@ import android.app.Application
 import com.script.rhino.runScriptWithContext
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.help.IntentData
 import io.legado.app.utils.toastOnUi
 
 class SourceLoginViewModel(application: Application) : BaseViewModel(application) {
@@ -15,7 +15,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
 
     fun initData(success: (bookSource: BaseSource) -> Unit, error: () -> Unit) {
         execute {
-            source = GlobalVars.nowSource
+            source = IntentData.get<BaseSource>("nowSource")
             headerMap = runScriptWithContext {
                 source?.getHeaderMap(true) ?: emptyMap()
             }

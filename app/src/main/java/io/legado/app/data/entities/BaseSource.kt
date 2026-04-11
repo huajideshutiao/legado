@@ -8,9 +8,9 @@ import com.script.rhino.RhinoScriptEngine
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.CacheManager
+import io.legado.app.help.IntentData
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
@@ -271,7 +271,7 @@ interface BaseSource : JsExtensions {
     }
 
     fun showLoginDialog(activity: AppCompatActivity) {
-        GlobalVars.nowSource = this
+        IntentData.put("nowSource", this)
         if (loginUi.isNullOrEmpty()) {
             activity.startActivity<io.legado.app.ui.login.SourceLoginActivity>()
         } else {

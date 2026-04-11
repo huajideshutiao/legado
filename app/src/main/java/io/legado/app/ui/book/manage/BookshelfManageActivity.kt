@@ -22,7 +22,6 @@ import io.legado.app.constant.AppConst.charsets
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -31,6 +30,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityArrangeBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.contains
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
@@ -562,7 +562,7 @@ class BookshelfManageActivity :
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            GlobalVars.nowBook = book
+            IntentData.put("nowBook", book)
         }
     }
 

@@ -1,13 +1,13 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.IntentData
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
@@ -119,7 +119,7 @@ object WebBook {
             bookUrl.matches(source.bookUrlPattern!!.toRegex())
         }
         try {
-            GlobalVars.nowSource = source
+            IntentData.put("nowSource", source)
             val book = Book(
                 bookUrl = bookUrl,
                 type = source!!.getBookType(),

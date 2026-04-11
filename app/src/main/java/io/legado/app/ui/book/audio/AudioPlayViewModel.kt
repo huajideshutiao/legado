@@ -5,9 +5,9 @@ import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.Status
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.model.AudioPlay
@@ -33,7 +33,8 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
             val book =
-                (if (intent.action != "activity") GlobalVars.nowBook else book) ?: return@execute
+                (if (intent.action != "activity") IntentData.get<Book>("nowBook") else book)
+                    ?: return@execute
             inBookshelf = !book.isNotShelf
             upBook(book)
             if (AudioPlay.book?.bookUrl == book.bookUrl) upData(book)

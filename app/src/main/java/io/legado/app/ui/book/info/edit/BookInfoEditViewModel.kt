@@ -4,16 +4,16 @@ import android.app.Application
 import android.database.sqlite.SQLiteConstraintException
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.help.IntentData
 import io.legado.app.model.ReadBook
 
 class BookInfoEditViewModel(application: Application) : BaseViewModel(application) {
     var book: Book? = null
 
     fun loadBook() {
-            book = GlobalVars.nowBook
+        book = IntentData.get<Book>("nowBook")
     }
 
     fun saveBook(book: Book, bookUrl: String?, success: (() -> Unit)?) {

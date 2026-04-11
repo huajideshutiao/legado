@@ -21,12 +21,12 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.Selector
@@ -471,7 +471,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      */
     override fun showBookInfo(book: Book, type : String) {
         searchView.clearFocus()
-        GlobalVars.nowBook = book
+        IntentData.put("nowBook", book)
         if (type == "click" && AppConfig.devFeat) {
             startActivityForBook(book)
         }

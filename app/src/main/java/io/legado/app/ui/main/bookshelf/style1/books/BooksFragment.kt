@@ -19,11 +19,11 @@ import io.legado.app.base.BaseFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -284,7 +284,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            GlobalVars.nowBook = book.copy()
+            IntentData.put("nowBook", book.copy())
         }
     }
 

@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Looper
-import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.Menu
@@ -29,7 +28,6 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -866,7 +864,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.bookSource?.bookSourceUrl?.let {
                     scopes.add(it)
                 }
-                val text = selectedText.lineSequence().map { it.trim() }.joinToString("\n")
+                val text = selectedText.lineSequence().joinToString("\n") { it.trim() }
                 replaceActivity.launch(
                     ReplaceEditActivity.startIntent(
                         this,
@@ -1142,7 +1140,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openSourceEditActivity() {
         ReadBook.bookSource?.let {
-            GlobalVars.nowSource = it
+            IntentData.put("nowSource", it)
             sourceEditActivity.launch {}
         }
     }
@@ -1150,10 +1148,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openBookInfoActivity() {
         ReadBook.book?.let {
             bookInfoActivity.launch {
-                Log.e("ReadBookActivity", "openBookInfoActivity: ${it}")
                 putExtra("name", it.name)
                 putExtra("author", it.author)
-                GlobalVars.nowBook = it
+                IntentData.put("nowBook", it)
             }
         }
     }
@@ -1169,8 +1166,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 打开目录
      */
     override fun openChapterList() {
-        GlobalVars.nowBook = ReadBook.book
-        GlobalVars.nowChapterList = ReadBook.chapterList
+        IntentData.put("nowBook", ReadBook.book)
+        IntentData.put("nowChapterList", ReadBook.chapterList)
         tocActivity.launch("")
     }
 
@@ -1180,7 +1177,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
         searchContentActivity.launch {
-            GlobalVars.nowBook = book
+            IntentData.put("nowBook", book)
             putExtra("searchWord", searchWord ?: viewModel.searchContentQuery)
             putExtra("searchResultIndex", viewModel.searchResultIndex)
             viewModel.searchResultList?.first()?.let {
@@ -1260,8 +1257,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showLogin() {
         ReadBook.bookSource?.let {
-            GlobalVars.nowBook = ReadBook.book
-            GlobalVars.nowChapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex)
+            IntentData.put("nowBook", ReadBook.book)
+            IntentData.put("nowChapter", ReadBook.chapterList?.get(ReadBook.durChapterIndex))
             it.showLoginDialog(this)
         }
     }

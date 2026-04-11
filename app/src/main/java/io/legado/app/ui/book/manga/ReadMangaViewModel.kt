@@ -5,12 +5,12 @@ import android.content.Intent
 import io.legado.app.R
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
@@ -46,7 +46,7 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val book = GlobalVars.nowBook ?: ReadManga.book
+            val book = IntentData.get<Book>("nowBook") ?: ReadManga.book
             when {
                 book != null -> {
                     ReadManga.inBookshelf = !book.isNotShelf

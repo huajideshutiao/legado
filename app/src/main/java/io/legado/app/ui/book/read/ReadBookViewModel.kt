@@ -7,11 +7,11 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
@@ -74,8 +74,8 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     fun initReadBookConfig() {
-        val book = GlobalVars.nowBook ?: appDb.bookDao.lastReadBook ?: return
-        GlobalVars.nowBook = book
+        val book = IntentData.get<Book>("nowBook") ?: appDb.bookDao.lastReadBook ?: return
+        IntentData.put("nowBook", book)
         ReadBook.upReadBookConfig(book)
     }
 
@@ -84,7 +84,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val book = GlobalVars.nowBook ?: ReadBook.book
+            val book = IntentData.get<Book>("nowBook") ?: ReadBook.book
             if (book != null) {
                 ReadBook.inBookshelf = !book.isNotShelf
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
@@ -105,7 +105,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
         upBook(book)
         withContext(Dispatchers.Main) {
-            GlobalVars.nowChapterList = chapterListData.value
+            IntentData.put("nowChapterList", chapterListData.value)
         }
         ReadBook.initData(book)
         isInitFinish = true

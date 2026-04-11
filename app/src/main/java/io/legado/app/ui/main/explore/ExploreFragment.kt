@@ -16,11 +16,11 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabase
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.FragmentExploreBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
@@ -187,7 +187,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun openExplore(source: BookSource, title: String, exploreUrl: String?) {
         if (exploreUrl.isNullOrBlank()) return
-        GlobalVars.nowSource = source
+        IntentData.put("nowSource", source)
         startActivity<ExploreShowActivity> {
             putExtra("exploreName", title)
             putExtra("exploreUrl", exploreUrl)

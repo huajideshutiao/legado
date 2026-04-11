@@ -8,12 +8,12 @@ import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
@@ -46,7 +46,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun initData() {
         execute {
             if (curBook != null) return@execute
-            GlobalVars.nowBook?.let {
+            IntentData.get<Book>("nowBook")?.let {
                 inBookshelf = !it.isNotShelf
                 curBook = it
                 upBook(it)
@@ -248,7 +248,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     fun upEditBook() {
-        bookData.postValue(GlobalVars.nowBook)
+        bookData.postValue(IntentData.get<Book>("nowBook"))
     }
 
     private fun changeToLocalBook(localBook: Book): Book {

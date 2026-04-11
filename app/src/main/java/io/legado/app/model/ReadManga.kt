@@ -2,7 +2,6 @@ package io.legado.app.model
 
 import io.legado.app.R
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -11,6 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ConcurrentRateLimiter
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
@@ -81,10 +81,9 @@ object ReadManga : CoroutineScope by MainScope() {
             readRecord.bookName = book.name
             readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
-        chapterList = GlobalVars.nowChapterList
+        chapterList = IntentData.get<List<BookChapter>>("nowChapterList")
         if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
             chapterList = null
-            GlobalVars.nowChapterList = null
         }
         chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()

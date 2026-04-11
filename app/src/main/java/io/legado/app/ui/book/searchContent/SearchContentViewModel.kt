@@ -3,9 +3,9 @@ package io.legado.app.ui.book.searchContent
 
 import android.app.Application
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
@@ -25,7 +25,7 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
 
     fun initBook(success: () -> Unit) {
         execute {
-            book = GlobalVars.nowBook
+            book = IntentData.get<Book>("nowBook")
             book?.let {
                 contentProcessor = ContentProcessor.get(it.name, it.origin)
             }

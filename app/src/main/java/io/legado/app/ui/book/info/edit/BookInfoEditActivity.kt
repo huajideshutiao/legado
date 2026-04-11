@@ -9,9 +9,9 @@ import androidx.core.view.WindowInsetsCompat
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
@@ -142,7 +142,7 @@ class BookInfoEditActivity :
             tieBookUrl.text?.apply {
                     book.bookUrl = this.toString()
                 }
-            GlobalVars.nowBook = book
+            IntentData.put("nowBook", book)
             finish()
         }
     }

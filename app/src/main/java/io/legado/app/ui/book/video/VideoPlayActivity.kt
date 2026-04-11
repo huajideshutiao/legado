@@ -41,9 +41,9 @@ import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
@@ -290,8 +290,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         }
         binding.titleBar.toolbar.setOnClickListener {
             bookInfoResult.launch {
-                GlobalVars.nowBook = viewModel.curBook
-                GlobalVars.nowChapterList = viewModel.chapterListData.value
+                IntentData.put("nowBook", viewModel.curBook)
+                IntentData.put("nowChapterList", viewModel.chapterListData.value)
                 player?.pause()
             }
         }
@@ -476,9 +476,11 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             R.id.menu_full_screen -> setFullScreen(supportActionBar?.isShowing == true)
 
             R.id.menu_login -> viewModel.curBookSource?.let {
-                GlobalVars.nowBook = viewModel.curBook
-                GlobalVars.nowChapter =
+                IntentData.put("nowBook", viewModel.curBook)
+                IntentData.put(
+                    "nowChapter",
                     viewModel.chapterListData.value?.get(viewModel.curBook!!.durChapterIndex)
+                )
                 it.showLoginDialog(this)
             }
 
@@ -490,7 +492,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             )
 
             R.id.menu_edit_source -> viewModel.curBookSource?.let {
-                GlobalVars.nowSource = it
+                IntentData.put("nowSource", it)
                 sourceEditResult.launch {}
             }
 

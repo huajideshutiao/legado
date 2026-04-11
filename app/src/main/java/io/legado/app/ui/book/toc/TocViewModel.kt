@@ -7,10 +7,10 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.IntentData
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.FileDoc
@@ -28,7 +28,7 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var searchKey: String? = null
 
     fun initBook() {
-        GlobalVars.nowBook?.let {
+        IntentData.get<Book>("nowBook")?.let {
             bookData.postValue(it)
             bookUrl = it.bookUrl
         }

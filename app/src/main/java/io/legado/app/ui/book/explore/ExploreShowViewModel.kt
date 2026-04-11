@@ -8,11 +8,11 @@ import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook.getBookListAwait
@@ -66,7 +66,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         execute {
             exploreUrl = intent.getStringExtra("exploreUrl")
             if (bookSource == null) {
-                bookSource = GlobalVars.nowSource as BookSource
+                bookSource = IntentData.get<BookSource>("nowSource")
             }
             sourceReadyLiveData.postValue(Unit)
             explore()

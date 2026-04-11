@@ -8,12 +8,12 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.data.GlobalVars
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
@@ -152,13 +152,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun showBookInfo(book: Book, longClick: Boolean) {
         if (book.bookUrl.contains("::")) {
             val tmp = book.bookUrl.split("::")
-            GlobalVars.nowSource = viewModel.bookSource
+            IntentData.put("nowSource", viewModel.bookSource)
             startActivity<ExploreShowActivity> {
                 putExtra("exploreName", tmp[0])
                 putExtra("exploreUrl", tmp[1])
             }
         } else if (longClick || !AppConfig.devFeat) {
-            GlobalVars.nowBook = book
+            IntentData.put("nowBook", book)
             startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
