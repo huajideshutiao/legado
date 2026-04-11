@@ -2,16 +2,15 @@ package io.legado.app.ui.book.search
 
 import android.content.Context
 import android.view.ViewGroup
-import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.book.search.SearchAdapter.CallBack
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
-import io.legado.app.ui.book.search.SearchAdapter.CallBack
 
 
 class BookAdapter(context: Context, val callBack: CallBack) :
@@ -34,7 +33,6 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         binding.run {
             tvName.text = item.name
             tvAuthor.text = context.getString(R.string.author_show, item.author)
-            ivInBookshelf.isVisible = false
             tvIntroduce.text = context.getString(R.string.intro_show,item.intro )
             upKind(binding, item.getKindList())
             upLasted(binding, item.latestChapterTitle)

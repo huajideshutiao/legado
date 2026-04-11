@@ -11,7 +11,6 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppConst.timeLimit
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseSource
@@ -46,7 +45,6 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
-import io.legado.app.utils.has
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
@@ -93,7 +91,8 @@ class AnalyzeUrl(
     var ruleUrl = ""
         private set
     var url: String = ""
-        //private set
+
+    //private set
     var type: String? = null
         private set
     val headerMap = LinkedHashMap<String, String>()
@@ -118,49 +117,17 @@ class AnalyzeUrl(
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
-        val urlMatcher = paramPattern.matcher(baseUrl)
-        if (urlMatcher.find()) baseUrl = baseUrl.substring(0, urlMatcher.start())
-        initUrl()
+        paramPattern.matcher(baseUrl).takeIf { it.find() }?.let {
+            baseUrl = baseUrl.substring(0, it.start())
+        }
+        // 先初始化基础header，确保source/headerMapF的header不会被analyzeUrl中的option header覆盖
         if (headerMapF.isNullOrEmpty()) {
-            headerMap.apply {
-                source?.header?.let {
-                    try {
-                        val json = when {
-                            it.startsWith("@js:", true) -> evalJS(it.substring(4)).toString()
-                            it.startsWith("<js>", true) -> evalJS(
-                                it.substring(4, it.lastIndexOf("<"))
-                            ).toString()
-
-                            else -> it
-                        }
-                        GSONStrict.fromJsonObject<Map<String, String>>(json).getOrNull()
-                            ?.let { map ->
-                                putAll(map)
-                            } ?: GSON.fromJsonObject<Map<String, String>>(json).getOrNull()
-                            ?.let { map ->
-                                log("请求头规则 JSON 格式不规范，请改为规范格式")
-                                putAll(map)
-                            }
-                    } catch (e: Exception) {
-                        AppLog.put("执行请求头规则出错\n$e", e)
-                    }
-                }
-                if (!has(UA_NAME, true)) {
-                    put(UA_NAME, AppConfig.userAgent)
-                }
-                if (hasLoginHeader) {
-                    source?.getLoginHeaderMap()?.let {
-                        putAll(it)
-                    }
-                }
-                if (containsKey("proxy")) {
-                    proxy = this["proxy"]
-                    remove("proxy")
-                }
-            }
+            headerMap.putAll(source?.getHeaderMap(hasLoginHeader) ?: emptyMap())
+            headerMap.remove("proxy")?.let { proxy = it }
         } else {
             headerMap.putAll(headerMapF)
         }
+        initUrl()
         domain = NetworkUtils.getSubDomain(source?.getKey() ?: url)
     }
 
@@ -185,53 +152,36 @@ class AnalyzeUrl(
         val jsMatcher = JS_PATTERN.matcher(ruleUrl)
         var result = ruleUrl
         while (jsMatcher.find()) {
-            if (jsMatcher.start() > start) {
-                ruleUrl.substring(start, jsMatcher.start()).trim().let {
-                    if (it.isNotEmpty()) {
-                        result = it.replace("@result", result)
-                    }
-                }
-            }
+            ruleUrl.substring(start, jsMatcher.start()).trim().takeIf { it.isNotEmpty() }
+                ?.let { result = it.replace("@result", result) }
             result = evalJS(jsMatcher.group(2) ?: jsMatcher.group(1), result).toString()
             start = jsMatcher.end()
         }
-        if (ruleUrl.length > start) {
-            ruleUrl.substring(start).trim().let {
-                if (it.isNotEmpty()) {
-                    result = it.replace("@result", result)
-                }
-            }
-        }
+        ruleUrl.substring(start).trim().takeIf { it.isNotEmpty() }
+            ?.let { result = it.replace("@result", result) }
         ruleUrl = result
     }
 
     /**
      * 替换关键字,页数,JS
      */
-    private fun replaceKeyPageJs() { //先替换内嵌规则再替换页数规则，避免内嵌规则中存在大于小于号时，规则被切错
-        //js
+    private fun replaceKeyPageJs() {
+        //先替换内嵌规则再替换页数规则，避免内嵌规则中存在大于小于号时，规则被切错
         if (ruleUrl.contains("{{") && ruleUrl.contains("}}")) {
-            val analyze = RuleAnalyzer(ruleUrl) //创建解析
-            //替换所有内嵌{{js}}
-            val url = analyze.innerRule("{{", "}}") {
-                val jsEval = evalJS(it) ?: ""
-                when {
-                    jsEval is String -> jsEval
-                    jsEval is Double && jsEval % 1.0 == 0.0 -> String.format("%.0f", jsEval)
+            RuleAnalyzer(ruleUrl).innerRule("{{", "}}") {
+                when (val jsEval = evalJS(it) ?: "") {
+                    is String -> jsEval
+                    is Double if jsEval % 1.0 == 0.0 -> String.format("%.0f", jsEval)
                     else -> jsEval.toString()
                 }
-            }
-            if (url.isNotEmpty()) ruleUrl = url
+            }.takeIf { it.isNotEmpty() }?.let { ruleUrl = it }
         }
-        //page
         page?.let {
-            val matcher = pagePattern.matcher(ruleUrl)
-            while (matcher.find()) {
-                val pages = matcher.group(1)!!.split(",")
-                ruleUrl = if (page < pages.size) { //pages[pages.size - 1]等同于pages.last()
-                    ruleUrl.replace(matcher.group(), pages[page - 1].trim { it <= ' ' })
-                } else {
-                    ruleUrl.replace(matcher.group(), pages.last().trim { it <= ' ' })
+            pagePattern.matcher(ruleUrl).let { matcher ->
+                while (matcher.find()) {
+                    val pages = matcher.group(1)!!.split(",")
+                    val target = pages[(page - 1).coerceAtMost(pages.size - 1)]
+                    ruleUrl = ruleUrl.replace(matcher.group(), target.trim())
                 }
             }
         }
@@ -241,63 +191,43 @@ class AnalyzeUrl(
      * 解析Url
      */
     private fun analyzeUrl() {
-        //replaceKeyPageJs已经替换掉额外内容，此处url是基础形式，可以直接切首个‘,’之前字符串。
         val urlMatcher = paramPattern.matcher(ruleUrl)
         val urlNoOption =
-            if (urlMatcher.find()) ruleUrl.substring(0, urlMatcher.start()) else ruleUrl
+            urlMatcher.takeIf { it.find() }?.let { ruleUrl.substring(0, it.start()) } ?: ruleUrl
         url = if (urlNoOption.startsWith("data:")) urlNoOption
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
-        NetworkUtils.getBaseUrl(url)?.let {
-            baseUrl = it
-        }
+        NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlNoOption.length != ruleUrl.length) {
             val urlOptionStr = ruleUrl.substring(urlMatcher.end())
-            var urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
-            if (urlOption == null) {
-                urlOption = GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
-                if (urlOption != null) {
+            val urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
+                ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")
                 }
-            }
             urlOption?.let { option ->
-                option.getMethod()?.let {
-                    if (it.equals("POST", true)) method = RequestMethod.POST
-                }
-                option.getHeaderMap()?.forEach { entry ->
-                    headerMap[entry.key.toString()] = entry.value.toString()
-                }
-                option.getBody()?.let {
-                    body = it
-                }
+                option.getMethod()?.takeIf { it.equals("POST", true) }
+                    ?.let { method = RequestMethod.POST }
+                option.getHeaderMap()
+                    ?.forEach { headerMap[it.key.toString()] = it.value.toString() }
+                body = option.getBody()
                 type = option.getType()
                 charset = option.getCharset()
                 retry = option.getRetry()
                 useWebView = option.useWebView()
                 webJs = option.getWebJs()
-                option.getJs()?.let { jsStr ->
-                    evalJS(jsStr, url)?.toString()?.let {
-                        url = it
-                    }
-                }
+                option.getJs()?.let { jsStr -> evalJS(jsStr, url)?.toString()?.let { url = it } }
                 serverID = option.getServerID()
                 webViewDelayTime = max(0, option.getWebViewDelayTime() ?: 0)
             }
         }
         urlNoQuery = url
         when (method) {
-            RequestMethod.GET -> {
-                val pos = url.indexOf('?')
-                if (pos != -1) {
-                    analyzeQuery(url.substring(pos + 1))
-                    urlNoQuery = url.substring(0, pos)
-                }
+            RequestMethod.GET -> url.indexOf('?').takeIf { it != -1 }?.let { pos ->
+                analyzeQuery(url.substring(pos + 1))
+                urlNoQuery = url.substring(0, pos)
             }
 
-            RequestMethod.POST -> body?.let {
-                if (!it.isJson() && !it.isXml() && headerMap["Content-Type"].isNullOrEmpty()) {
-                    analyzeFields(it)
-                }
-            }
+            RequestMethod.POST -> body?.takeIf { !it.isJson() && !it.isXml() && headerMap["Content-Type"].isNullOrEmpty() }
+                ?.let { analyzeFields(it) }
         }
     }
 
@@ -331,7 +261,7 @@ class AnalyzeUrl(
         val len = params.length
         val sb = StringBuilder()
         var pos = 0
-        while (pos <= len) {
+        while (pos < len) {
             if (sb.isNotEmpty()) {
                 sb.append("&")
             }
@@ -411,17 +341,10 @@ class AnalyzeUrl(
         return value
     }
 
-    fun get(key: String): String {
-        when (key) {
-            "bookName" -> (ruleData as? Book)?.let {
-                return it.name
-            }
-
-            "title" -> chapter?.let {
-                return it.title
-            }
-        }
-        return chapter?.getVariable(key)?.takeIf { it.isNotEmpty() }
+    fun get(key: String): String = when (key) {
+        "bookName" -> (ruleData as? Book)?.name ?: ""
+        "title" -> chapter?.title ?: ""
+        else -> chapter?.getVariable(key)?.takeIf { it.isNotEmpty() }
             ?: ruleData?.getVariable(key)?.takeIf { it.isNotEmpty() }
             ?: ""
     }
@@ -434,73 +357,85 @@ class AnalyzeUrl(
         sourceRegex: String? = null,
         useWebView: Boolean = true,
     ): StrResponse {
-        getByteArrayIfDataUri()?.let {
-            return StrResponse(url, it.toHexString())
-        }
+        getByteArrayIfDataUri()?.let { return StrResponse(url, it.toHexString()) }
         concurrentRateLimiter.withLimit {
             setCookie()
-            val strResponse: StrResponse
-            if (this.useWebView && useWebView) {
-                strResponse = when (method) {
-                    RequestMethod.POST -> {
-                        val res = getClient().newCallStrResponse(retry) {
-                            addHeaders(headerMap)
-                            url(urlNoQuery)
-                            if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) {
-                                postForm(encodedForm ?: "")
-                            } else {
-                                postJson(body)
-                            }
-                        }
-                        BackstageWebView(
-                            url = res.url,
-                            html = res.body,
-                            tag = source?.getKey(),
-                            javaScript = webJs ?: jsStr,
-                            sourceRegex = sourceRegex,
-                            headerMap = headerMap,
-                            delayTime = webViewDelayTime
-                        ).getStrResponse()
-                    }
-
-                    else -> BackstageWebView(
-                        url = url,
-                        tag = source?.getKey(),
-                        javaScript = webJs ?: jsStr,
-                        sourceRegex = sourceRegex,
-                        headerMap = headerMap,
-                        delayTime = webViewDelayTime
-                    ).getStrResponse()
+            try {
+                return if (this.useWebView && useWebView) {
+                    getWebViewResponse(jsStr, sourceRegex)
+                } else {
+                    getOkHttpStrResponse()
                 }
-            } else {
-                strResponse = getClient().newCallStrResponse(retry) {
-                    addHeaders(headerMap)
-                    when (method) {
-                        RequestMethod.POST -> {
-                            url(urlNoQuery)
-                            val contentType = headerMap["Content-Type"]
-                            val body = body
-                            if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) {
-                                postForm(encodedForm ?: "")
-                            } else if (!contentType.isNullOrBlank()) {
-                                val requestBody = body.toRequestBody(contentType.toMediaType())
-                                post(requestBody)
-                            } else {
-                                postJson(body)
-                            }
-                        }
-
-                        else -> get(urlNoQuery, encodedQuery)
-                    }
-                }.let {
-                    val isXml = it.raw.body.contentType()?.toString()
-                        ?.matches(AppPattern.xmlContentTypeRegex) == true
-                    if (isXml && it.body?.trim()?.startsWith("<?xml", true) == false) {
-                        StrResponse(it.raw, "<?xml version=\"1.0\"?>" + it.body)
-                    } else it
-                }
+            } finally {
+                saveCookie()
             }
-            return strResponse
+        }
+    }
+
+    /**
+     * WebView方式获取响应
+     */
+    private suspend fun getWebViewResponse(
+        jsStr: String?,
+        sourceRegex: String?,
+    ): StrResponse = when (method) {
+        RequestMethod.POST -> {
+            val res = getClient().newCallStrResponse(retry) {
+                addHeaders(headerMap)
+                url(urlNoQuery)
+                if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) postForm(
+                    encodedForm ?: ""
+                )
+                else postJson(body)
+            }
+            BackstageWebView(
+                url = res.url, html = res.body, tag = source?.getKey(),
+                javaScript = webJs ?: jsStr, sourceRegex = sourceRegex,
+                headerMap = headerMap, delayTime = webViewDelayTime
+            ).getStrResponse()
+        }
+
+        else -> BackstageWebView(
+            url = url, tag = source?.getKey(),
+            javaScript = webJs ?: jsStr, sourceRegex = sourceRegex,
+            headerMap = headerMap, delayTime = webViewDelayTime
+        ).getStrResponse()
+    }
+
+    /**
+     * OkHttp方式获取StrResponse
+     */
+    private suspend fun getOkHttpStrResponse(): StrResponse =
+        getClient().newCallStrResponse(retry) {
+            addHeaders(headerMap)
+            configureRequest()
+        }.let {
+            val isXml = it.raw.body.contentType()?.toString()
+                ?.matches(AppPattern.xmlContentTypeRegex) == true
+            if (isXml && it.body?.trim()?.startsWith("<?xml", true) == false)
+                StrResponse(it.raw, "<?xml version=\"1.0\"?>" + it.body)
+            else it
+        }
+
+    /**
+     * 配置OkHttp请求参数（GET/POST）
+     */
+    private fun okhttp3.Request.Builder.configureRequest() {
+        when (method) {
+            RequestMethod.POST -> {
+                url(urlNoQuery)
+                val contentType = headerMap["Content-Type"]
+                val body = body
+                if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) postForm(
+                    encodedForm ?: ""
+                )
+                else if (!contentType.isNullOrBlank()) post(
+                    body.toRequestBody(contentType.toMediaType())
+                )
+                else postJson(body)
+            }
+
+            else -> get(urlNoQuery, encodedQuery)
         }
     }
 
@@ -509,99 +444,60 @@ class AnalyzeUrl(
         jsStr: String? = null,
         sourceRegex: String? = null,
         useWebView: Boolean = true,
-    ): StrResponse {
-        return runBlocking(coroutineContext) {
-            getStrResponseAwait(jsStr, sourceRegex, useWebView)
-        }
-    }
+    ): StrResponse =
+        runBlocking(coroutineContext) { getStrResponseAwait(jsStr, sourceRegex, useWebView) }
 
     /**
      * 访问网站,返回Response
      */
-    suspend fun getResponseAwait(): Response {
-        concurrentRateLimiter.withLimit {
-            setCookie()
-            val response = getClient().newCallResponse(retry) {
+    suspend fun getResponseAwait(): Response = concurrentRateLimiter.withLimit {
+        setCookie()
+        try {
+            getClient().newCallResponse(retry) {
                 addHeaders(headerMap)
-                when (method) {
-                    RequestMethod.POST -> {
-                        url(urlNoQuery)
-                        val contentType = headerMap["Content-Type"]
-                        val body = body
-                        if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) {
-                            postForm(encodedForm ?: "")
-                        } else if (!contentType.isNullOrBlank()) {
-                            val requestBody = body.toRequestBody(contentType.toMediaType())
-                            post(requestBody)
-                        } else {
-                            postJson(body)
-                        }
-                    }
-
-                    else -> get(urlNoQuery, encodedQuery)
-                }
+                configureRequest()
             }
-            return response
+        } finally {
+            saveCookie()
         }
     }
 
     private fun getClient(): OkHttpClient {
         val client = getProxyClient(proxy)
-        if (readTimeout == null && callTimeout == null) {
-            return client
-        }
-        return client.newBuilder().run {
-            if (readTimeout != null) {
-                readTimeout(readTimeout, TimeUnit.MILLISECONDS)
-                callTimeout(max(timeLimit, readTimeout) * 2, TimeUnit.MILLISECONDS)
+        if (readTimeout == null && callTimeout == null) return client
+        return client.newBuilder().apply {
+            readTimeout?.let {
+                readTimeout(it, TimeUnit.MILLISECONDS)
+                callTimeout(max(timeLimit, it) * 2, TimeUnit.MILLISECONDS)
             }
-            if (callTimeout != null) {
-                callTimeout(callTimeout, TimeUnit.MILLISECONDS)
-            }
-            build()
-        }
+            callTimeout?.let { callTimeout(it, TimeUnit.MILLISECONDS) }
+        }.build()
     }
 
-    fun getResponse(): Response {
-        return runBlocking(coroutineContext) {
-            getResponseAwait()
-        }
-    }
+    fun getResponse(): Response = runBlocking(coroutineContext) { getResponseAwait() }
 
     private fun getByteArrayIfDataUri(): ByteArray? {
-        if (!url.startsWith("data:"))return null
-        val dataUriFindResult = urlNoQuery.indexOf(";base64,")
-        return if (dataUriFindResult != -1) {
-            val dataUriBase64 = urlNoQuery.substring(dataUriFindResult + 8)
-            Base64.decode(dataUriBase64, Base64.DEFAULT)
-        } else ByteArray(0)
+        if (!url.startsWith("data:")) return null
+        val pos = urlNoQuery.indexOf(";base64,")
+        return if (pos != -1) Base64.decode(urlNoQuery.substring(pos + 8), Base64.DEFAULT)
+        else ByteArray(0)
     }
 
     /**
      * 访问网站,返回ByteArray
      */
-    suspend fun getByteArrayAwait(): ByteArray {
-        return getByteArrayIfDataUri() ?: getResponseAwait().body.bytes()
-    }
+    suspend fun getByteArrayAwait(): ByteArray =
+        getByteArrayIfDataUri() ?: getResponseAwait().body.bytes()
 
-    fun getByteArray(): ByteArray {
-        return runBlocking(coroutineContext) {
-            getByteArrayAwait()
-        }
-    }
+    fun getByteArray(): ByteArray = runBlocking(coroutineContext) { getByteArrayAwait() }
 
     /**
      * 访问网站,返回InputStream
      */
-    suspend fun getInputStreamAwait(): InputStream {
-        return getByteArrayIfDataUri()?.inputStream() ?: getResponseAwait().body.byteStream()
-    }
+    suspend fun getInputStreamAwait(): InputStream =
+        getByteArrayIfDataUri()?.inputStream() ?: getResponseAwait().body.byteStream()
 
-    fun getInputStream(): InputStream {
-        return runBlocking(coroutineContext) {
-            getInputStreamAwait()
-        }
-    }
+    fun getInputStream(): InputStream = runBlocking(coroutineContext) { getInputStreamAwait() }
 
     /**
      * 上传文件
@@ -610,13 +506,10 @@ class AnalyzeUrl(
         return getProxyClient(proxy).newCallStrResponse(retry) {
             url(urlNoQuery)
             val bodyMap = GSON.fromJsonObject<HashMap<String, Any>>(body).getOrNull()!!
-            bodyMap.forEach { entry ->
-                if (entry.value.toString() == "fileRequest") {
-                    bodyMap[entry.key] = mapOf(
-                        Pair("fileName", fileName),
-                        Pair("file", file),
-                        Pair("contentType", contentType)
-                    )
+            bodyMap.forEach { (k, v) ->
+                if (v.toString() == "fileRequest") {
+                    bodyMap[k] =
+                        mapOf("fileName" to fileName, "file" to file, "contentType" to contentType)
                 }
             }
             postMultipart(type, bodyMap)
@@ -628,42 +521,23 @@ class AnalyzeUrl(
      * urlOption临时cookie > 数据库cookie
      */
     private fun setCookie() {
-        val cookie = kotlin.run {
-            /* 每次调用getXX cookieJar已经保存过了
-            if (enabledCookieJar) {
-                val key = "${domain}_cookieJar"
-                CacheManager.getFromMemory(key)?.let {
-                    return@run it
-                }
-            }
-            */
-            CookieStore.getCookie(domain)
-        }
+        val cookie = CookieStore.getCookie(domain)
         if (cookie.isNotEmpty()) {
-            mergeCookies(cookie, headerMap["Cookie"])?.let {
-                headerMap.put("Cookie", it)
-            }
+            mergeCookies(cookie, headerMap["Cookie"])?.let { headerMap["Cookie"] = it }
         }
-        if (enabledCookieJar) {
-            headerMap[CookieManager.cookieJarHeader] = "1"
-        } else {
-            headerMap.remove(CookieManager.cookieJarHeader)
-        }
+        if (enabledCookieJar) headerMap[CookieManager.cookieJarHeader] = "1"
+        else headerMap.remove(CookieManager.cookieJarHeader)
     }
 
     /**
      * 保存cookieJar中的cookie在访问结束时就保存,不等到下次访问
      */
     private fun saveCookie() {
-        //书源启用保存cookie时 添加内存中的cookie到数据库
-        if (enabledCookieJar) {
-            val key = "${domain}_cookieJar"
-            CacheManager.getFromMemory(key)?.let {
-                if (it is String) {
-                    CookieStore.replaceCookie(domain, it)
-                    CacheManager.deleteMemory(key)
-                }
-            }
+        if (!enabledCookieJar) return
+        val key = "${domain}_cookieJar"
+        (CacheManager.getFromMemory(key) as? String)?.let {
+            CookieStore.replaceCookie(domain, it)
+            CacheManager.deleteMemory(key)
         }
     }
 
@@ -675,17 +549,11 @@ class AnalyzeUrl(
         return GlideUrl(url, GlideHeaders(headerMap))
     }
 
-    fun getUserAgent(): String {
-        return headerMap.get(UA_NAME, true) ?: AppConfig.userAgent
-    }
+    fun getUserAgent(): String = headerMap.get(UA_NAME, true) ?: AppConfig.userAgent
 
-    fun isPost(): Boolean {
-        return method == RequestMethod.POST
-    }
+    fun isPost(): Boolean = method == RequestMethod.POST
 
-    override fun getSource(): BaseSource? {
-        return source
-    }
+    override fun getSource(): BaseSource? = source
 
     companion object {
         val paramPattern: Pattern = Pattern.compile("\\s*,\\s*(?=\\{)")

@@ -11,24 +11,10 @@
     android:scrollbars="none"
     tools:ignore="UnusedAttribute">
 
-    <io.legado.app.ui.widget.image.CoverImageView
-        android:id="@+id/iv_cover"
-        android:layout_width="90dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="12dp"
-        android:contentDescription="@string/img_cover"
-        android:transitionName="img_cover"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
     <FrameLayout
         android:id="@+id/fl_has_new"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
         app:layout_constraintBottom_toBottomOf="@+id/tv_name"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="@+id/tv_name">
@@ -52,6 +38,17 @@
             app:loading_width="2dp"
             tools:ignore="RtlHardcoded" />
     </FrameLayout>
+
+    <io.legado.app.ui.widget.image.CoverImageView
+        android:id="@+id/iv_cover"
+        android:layout_width="90dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:contentDescription="@string/img_cover"
+        android:transitionName="img_cover"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
         android:id="@+id/tv_name"
@@ -192,10 +189,8 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:background="?android:attr/selectableItemBackground"
-        android:scrollbars="none"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.0"
         tools:layout_editor_absoluteX="0dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

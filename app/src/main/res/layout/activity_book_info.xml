@@ -85,7 +85,7 @@
                                 <io.legado.app.ui.widget.image.CoverImageView
                                     android:id="@+id/iv_cover"
                                     android:layout_width="wrap_content"
-                                    android:layout_height="160dp" />
+                                    android:layout_height="144dp" />
 
                             </androidx.cardview.widget.CardView>
 
