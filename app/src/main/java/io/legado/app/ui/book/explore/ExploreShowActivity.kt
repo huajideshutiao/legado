@@ -17,7 +17,8 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
-import io.legado.app.ui.widget.recycler.VerticalDivider
+
+
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
@@ -37,7 +38,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
         initAdapter(viewModel.exploreStyle)
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
+
+
         binding.recyclerView.applyNavigationBarPadding()
         loadMoreView.startLoad()
         loadMoreView.setOnClickListener {
