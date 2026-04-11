@@ -46,6 +46,7 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
@@ -71,7 +72,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
@@ -178,10 +178,6 @@ class BookInfoActivity :
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_info, menu)
         editMenuItem = menu.findItem(R.id.menu_edit)
-        if (AppConfig.devFeat && viewModel.curBook?.isVideo != true && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) menu.applyTint(
-            this,
-            Theme.Light
-        )
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -354,6 +350,8 @@ class BookInfoActivity :
         bgBook.gone()
         arcView.gone()
         vwBg.setBackgroundColor(backgroundColor)
+        titleBar.setTextColor(primaryTextColor)
+        titleBar.setColorFilter(primaryTextColor)
         tvName.gravity = Gravity.START
         llTop?.orientation = LinearLayout.HORIZONTAL
         (rlCover?.layoutParams as LinearLayout.LayoutParams).apply {
@@ -384,7 +382,7 @@ class BookInfoActivity :
             } else {
                 lbKind.visible()
                 lbKind.removeAllViews()
-                for ((index, name) in kinds.withIndex()) {
+                for ((index, kind) in kinds.withIndex()) {
                     ItemFilletTextBinding.inflate(
                         layoutInflater,
                         binding.root,
@@ -392,8 +390,8 @@ class BookInfoActivity :
                     ).let {
                         lbKind.addView(it.root)
                         it.root.id = index + 1000
-                        it.textView.text = name
-                        val tmp = name.split("::", limit = 1)
+                        val tmp = kind.split("::", limit = 2)
+                        it.textView.text = tmp[0]
                         if (tmp.size > 1) it.root.onClick {
                             GlobalVars.nowSource = viewModel.curBookSource
                             startActivity<ExploreShowActivity> {
