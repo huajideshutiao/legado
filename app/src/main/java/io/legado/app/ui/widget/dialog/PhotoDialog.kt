@@ -8,9 +8,14 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
+import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.request.target.Target
+import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppConst
@@ -45,6 +50,14 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
     private lateinit var src: String
     private var localImageFile: File? = null
 
+    private val requestOptions: RequestOptions by lazy {
+        RequestOptions().apply {
+            arguments?.getString("sourceOrigin")?.let {
+                set(OkHttpModelLoader.sourceOriginOption, it)
+            }
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -57,15 +70,19 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         }
     }
 
-    @SuppressLint("CheckResult")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val args = arguments ?: return
-        val imageSrc = args.getString("src") ?: return
-        src = imageSrc
+        src = arguments?.getString("src") ?: return
+
         // 预先查找本地图片文件
         localImageFile = ReadBook.book?.let { book ->
             BookHelp.getImage(book, src).takeIf { it.exists() }
         }
+
+        initEvent()
+        loadPhoto()
+    }
+
+    private fun initEvent() {
         binding.photoView.setOnLongClickListener {
             binding.photoView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             val path = ACache.get().getAsString(AppConst.imagePathKey)
@@ -76,28 +93,56 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             }
             true
         }
+    }
+
+    private fun loadPhoto() {
         ImageProvider.get(src)?.let {
             binding.photoView.setImageBitmap(it)
             return
         }
-        val file = localImageFile
-        if (file != null) {
-            Glide.with(requireContext()).load(file)
+
+        localImageFile?.let { file ->
+            Glide.with(this).load(file)
                 .error(R.drawable.image_loading_error)
                 .dontTransform()
                 .downsample(DownsampleStrategy.NONE)
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .into(binding.photoView)
-        } else {
-            ImageLoader.load(requireContext(), src).apply {
-                args.getString("sourceOrigin")?.let { sourceOrigin ->
-                    apply(RequestOptions().set(OkHttpModelLoader.sourceOriginOption, sourceOrigin))
-                }
-            }.error(BookCover.defaultDrawable)
-                .dontTransform()
-                .downsample(DownsampleStrategy.NONE)
-                .into(binding.photoView)
+            return
         }
+
+        ImageLoader.load(requireContext(), src)
+            .apply(requestOptions)
+            .error(BookCover.defaultDrawable)
+            .dontTransform()
+            .downsample(DownsampleStrategy.NONE)
+            .addListener(object : RequestListener<android.graphics.drawable.Drawable> {
+                override fun onLoadFailed(
+                    e: GlideException?,
+                    model: Any?,
+                    target: Target<android.graphics.drawable.Drawable>,
+                    isFirstResource: Boolean,
+                ): Boolean {
+                    // 默认缓存找不到，尝试用 "covers" 签名从 coversCache 再找一次
+                    ImageLoader.load(requireContext(), src)
+                        .apply(requestOptions)
+                        .signature(ObjectKey("covers"))
+                        .error(BookCover.defaultDrawable)
+                        .dontTransform()
+                        .downsample(DownsampleStrategy.NONE)
+                        .into(binding.photoView)
+                    return true
+                }
+
+                override fun onResourceReady(
+                    resource: android.graphics.drawable.Drawable,
+                    model: Any,
+                    target: Target<android.graphics.drawable.Drawable>?,
+                    dataSource: DataSource,
+                    isFirstResource: Boolean,
+                ): Boolean = false
+            })
+            .into(binding.photoView)
     }
 
     @SuppressLint("CheckResult")
@@ -106,22 +151,17 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             val result = localImageFile?.let { file ->
                 FileUtils.saveImage(file, uri)
             } ?: run {
-                try {
-                    val options = RequestOptions()
-                    arguments?.getString("sourceOrigin")?.let { sourceOrigin ->
-                        options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-                    }
-                    val glideFile = Glide.with(requireContext())
+                val glideFile = runCatching {
+                    Glide.with(requireContext())
                         .downloadOnly()
-                        .apply(options)
+                        .apply(requestOptions)
                         .onlyRetrieveFromCache(true)
                         .load(src)
                         .submit()
                         .get()
-                    FileUtils.saveImage(glideFile, uri)
-                } catch (_: Exception) {
-                    FileUtils.saveImage(src, uri)
-                }
+                }.getOrNull()
+
+                glideFile?.let { FileUtils.saveImage(it, uri) } ?: FileUtils.saveImage(src, uri)
             }
             if (!result) error("保存图片失败")
         }.onError {
