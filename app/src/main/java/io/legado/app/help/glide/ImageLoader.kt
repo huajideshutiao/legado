@@ -83,7 +83,7 @@ object ImageLoader {
         return load(context, path)
             .apply(options)
             .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
-            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .diskCacheStrategy(DiskCacheStrategy.DATA)
             .skipMemoryCache(true).let {
                 if (transformation != null) {
                     it.transform(transformation)
