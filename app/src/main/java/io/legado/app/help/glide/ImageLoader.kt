@@ -37,6 +37,7 @@ object ImageLoader {
         inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
         return requestManager.load(if (path.isFilePath()) File(path) else path)
+            .diskCacheStrategy(DiskCacheStrategy.DATA)
             .let { if (inBookshelf) it.signature(ObjectKey("covers")) else it }
     }
 
@@ -62,7 +63,7 @@ object ImageLoader {
         return when {
             path.isFilePath() -> requestManager.load(File(path))
             else -> requestManager.load(path)
-        }
+        }.diskCacheStrategy(DiskCacheStrategy.DATA)
     }
 
     /**
