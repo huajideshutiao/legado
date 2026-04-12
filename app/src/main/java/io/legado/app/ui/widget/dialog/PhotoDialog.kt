@@ -3,6 +3,7 @@ package io.legado.app.ui.widget.dialog
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.net.toUri
@@ -66,6 +67,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             BookHelp.getImage(book, src).takeIf { it.exists() }
         }
         binding.photoView.setOnLongClickListener {
+            binding.photoView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             val path = ACache.get().getAsString(AppConst.imagePathKey)
             if (path.isNullOrEmpty()) {
                 saveImageLauncher.launch { }
@@ -112,6 +114,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
                     val glideFile = Glide.with(requireContext())
                         .downloadOnly()
                         .apply(options)
+                        .onlyRetrieveFromCache(true)
                         .load(src)
                         .submit()
                         .get()

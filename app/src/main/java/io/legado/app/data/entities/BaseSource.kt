@@ -126,8 +126,9 @@ interface BaseSource : JsExtensions {
     /**
      * 解析header规则
      */
+    fun getHeaderMap(hasLoginHeader: Boolean = false) = getHeaderMap(hasLoginHeader, this::evalJS)
     fun getHeaderMap(
-        hasLoginHeader: Boolean = false, evalJs: (String) -> Any? = this::evalJS
+        hasLoginHeader: Boolean = false, evalJs: (String) -> Any?
     ) = HashMap<String, String>().apply {
         header?.let {
             try {
