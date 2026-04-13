@@ -124,7 +124,9 @@ class AnalyzeUrl(
             }
         }
         if (headerMapF.isNullOrEmpty()) {
-            headerMap.putAll(source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap())
+            val sourceHeaders = source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap()
+            // 先添加 source 级别的请求头
+            headerMap.putAll(sourceHeaders)
             headerMap.remove("proxy")?.let { proxy = it }
         } else {
             headerMap.putAll(headerMapF)
