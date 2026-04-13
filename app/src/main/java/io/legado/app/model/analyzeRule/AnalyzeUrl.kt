@@ -123,13 +123,10 @@ class AnalyzeUrl(
                 baseUrl = baseUrl.substring(0, matcher.start())
             }
         }
-        // 先执行一次 initUrl()，处理 URL 并设置相关参数，这样 source.header 里的 js 才能拿到相关参数
-        ruleUrl = mUrl
-        analyzeJs()
-        replaceKeyPageJs()
-        // 先不执行 analyzeUrl()，因为需要先添加 source 级别的请求头
+        // 直接前置执行 initUrl()，这样 source.header 里的 js 才能拿到相关参数
+        initUrl()
         
-        // 添加 source 级别的请求头
+        // 然后添加 source 级别的请求头，即使被覆盖了也无所谓
         if (headerMapF.isNullOrEmpty()) {
             val sourceHeaders = source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap()
             headerMap.putAll(sourceHeaders)
@@ -137,9 +134,6 @@ class AnalyzeUrl(
         } else {
             headerMap.putAll(headerMapF)
         }
-        
-        // 再执行 analyzeUrl()，处理 URL 级别的请求头，这样 URL 级别的请求头会覆盖 source 级别的请求头
-        analyzeUrl()
         
         domain =
             NetworkUtils.getSubDomain(source?.getKey()?.takeIf { it.startsWith("http") } ?: url)
