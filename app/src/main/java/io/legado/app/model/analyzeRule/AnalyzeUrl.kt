@@ -123,6 +123,7 @@ class AnalyzeUrl(
                 baseUrl = baseUrl.substring(0, matcher.start())
             }
         }
+        initUrl()
         if (headerMapF.isNullOrEmpty()) {
             val sourceHeaders = source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap()
             // 先添加 source 级别的请求头
@@ -131,7 +132,6 @@ class AnalyzeUrl(
         } else {
             headerMap.putAll(headerMapF)
         }
-        initUrl()
         domain =
             NetworkUtils.getSubDomain(source?.getKey()?.takeIf { it.startsWith("http") } ?: url)
     }
