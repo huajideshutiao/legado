@@ -123,15 +123,24 @@ class AnalyzeUrl(
                 baseUrl = baseUrl.substring(0, matcher.start())
             }
         }
-        initUrl()
+        // 先执行一次 initUrl()，处理 URL 并设置相关参数，这样 source.header 里的 js 才能拿到相关参数
+        ruleUrl = mUrl
+        analyzeJs()
+        replaceKeyPageJs()
+        // 先不执行 analyzeUrl()，因为需要先添加 source 级别的请求头
+        
+        // 添加 source 级别的请求头
         if (headerMapF.isNullOrEmpty()) {
             val sourceHeaders = source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap()
-            // 先添加 source 级别的请求头
             headerMap.putAll(sourceHeaders)
             headerMap.remove("proxy")?.let { proxy = it }
         } else {
             headerMap.putAll(headerMapF)
         }
+        
+        // 再执行 analyzeUrl()，处理 URL 级别的请求头，这样 URL 级别的请求头会覆盖 source 级别的请求头
+        analyzeUrl()
+        
         domain =
             NetworkUtils.getSubDomain(source?.getKey()?.takeIf { it.startsWith("http") } ?: url)
     }
