@@ -401,6 +401,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     fun delBook(deleteOriginal: Boolean = false, success: (() -> Unit)? = null) {
         execute {
             curBook?.let {
+                appDb.bookChapterDao.delByBook(it.bookUrl)
                 it.delete()
                 try {
                     Glide.with(context).asFile().load(it.coverUrl).signature(ObjectKey("covers"))

@@ -43,4 +43,7 @@ interface BookChapterDao {
     @Query("update chapters set wordCount = :wordCount where bookUrl = :bookUrl and url = :url")
     fun upWordCount(bookUrl: String, url: String, wordCount: String)
 
+    @Query("delete from chapters where bookUrl not in (select bookUrl from books where (type & ${io.legado.app.constant.BookType.notShelf}) == 0)")
+    fun deleteNotShelfBookChapters()
+
 }
