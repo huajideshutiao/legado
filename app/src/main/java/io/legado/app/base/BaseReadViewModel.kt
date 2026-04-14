@@ -70,7 +70,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      * 唯一必须实现的属性, 被 changeTo/removeFromBookshelf/saveImage/upSource 使用
      */
     abstract var curBook: Book?
-    var inBookshelf: Boolean = false
+    open var inBookshelf: Boolean = false
     open var curBookSource: BookSource? = null
         protected set
     val chapterListData = MutableLiveData<List<BookChapter>>()
@@ -102,17 +102,19 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     protected open fun getTextEnabledSources() = appDb.bookSourceDao.allTextEnabledPart
 
     protected suspend fun upBook(book: Book) {
-        curBookSource =
-            IntentData.get<BookSource>("nowSource")
-                ?: if (book.isLocal) null else book.getBookSource()
+        curBookSource = IntentData.get<BookSource>("nowSource")
+            ?: if (book.isLocal) null else book.getBookSource()
+        inBookshelf = !book.isNotShelf
+        curBook = book
         if (book.tocUrl.isEmpty()) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
             val tmp = IntentData.get<List<BookChapter>>("nowChapterList")
             when {
-                tmp != null && tmp[0].bookUrl == book.bookUrl -> chapterListData.postValue(
-                    tmp
-                )
+                tmp != null && tmp[0].bookUrl == book.bookUrl -> {
+                    curBook = book
+                    chapterListData.postValue(tmp)
+                }
 
                 !inBookshelf || book.totalChapterNum == 0 -> loadChapterList(book)
 
@@ -121,6 +123,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     if (chapterList.isEmpty()) {
                         loadChapterList(book)
                     } else {
+                        curBook = book
                         chapterListData.postValue(chapterList)
                     }
                 }
@@ -129,15 +132,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     }
 
     suspend fun loadBookInfo(
-        book: Book,
-        canReName: Boolean = true,
-        runPreUpdateJs: Boolean = true
+        book: Book, canReName: Boolean = true, runPreUpdateJs: Boolean = true
     ) {
         if (book.isLocal) {
             val tmp = book.copy()
             LocalBook.upBookInfo(book)
-            curBook = book
             if (tmp.tocUrl != book.tocUrl) loadChapterList(book)
+            else curBook = book
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())
@@ -145,26 +146,25 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 return
             }
             try {
-                val tmp = getBookInfoAwait(bookSource, book, canReName)
-
+                getBookInfoAwait(bookSource, book, canReName)
                 val dbBook = appDb.bookDao.getBook(book.name, book.author)
-                if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
+                if (dbBook != null && dbBook.origin == book.origin) {
                     /**
                      * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
                      * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
                      * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
                      */
-                    dbBook.updateTo(tmp)
+                    dbBook.updateTo(book)
                     inBookshelf = true
                 }
-                curBook = tmp
                 if (inBookshelf) {
-                    tmp.save()
+                    book.save()
                 }
-                if (tmp.isWebFile) {
-                    loadWebFile(tmp)
+                if (book.isWebFile) {
+                    loadWebFile(book)
+                    curBook = book
                 } else {
-                    loadChapterList(tmp, runPreUpdateJs)
+                    loadChapterList(book, runPreUpdateJs)
                 }
             } catch (e: Throwable) {
                 AppLog.put("获取书籍信息失败\n${e.localizedMessage}", e)
@@ -184,7 +184,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
                     IntentData.put("nowChapterList", it)
-                    if (!book.isNotShelf) appDb.bookChapterDao.insert(*it.toTypedArray())
+                    if (inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
                     ReadBook.onChapterListUpdated(book)
                     curBook = book
                     chapterListData.postValue(it)
@@ -212,7 +212,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     }
                     appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                     IntentData.put("nowChapterList", tmp)
-                    if (!book.isNotShelf) appDb.bookChapterDao.insert(*tmp.toTypedArray())
+                    if (inBookshelf) appDb.bookChapterDao.insert(*tmp.toTypedArray())
                 }
                 curBook = book
                 chapterListData.postValue(tmp)

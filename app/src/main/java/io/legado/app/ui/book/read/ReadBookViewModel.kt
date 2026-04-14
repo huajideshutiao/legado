@@ -15,7 +15,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
@@ -25,9 +24,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.toStringArray
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -44,7 +41,12 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     var searchResultList: List<SearchResult>? = null
     var searchResultIndex: Int = 0
 
-    override var curBook: Book? = ReadBook.book
+    override var curBook: Book? = null
+    override var inBookshelf: Boolean
+        get() = ReadBook.inBookshelf
+        set(value) {
+            ReadBook.inBookshelf = value
+        }
 
     init {
         AppConfig.detectClickArea()
@@ -86,9 +88,9 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
         execute {
             val book = IntentData.get<Book>("nowBook") ?: ReadBook.book
             if (book != null) {
-                ReadBook.inBookshelf = !book.isNotShelf
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
-                initBook(book)
+                upBook(book)
+                initBook(curBook!!)
             } else ReadBook.upMsg(context.getString(R.string.no_book))
         }.onSuccess {
             success?.invoke()
@@ -97,12 +99,11 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             ReadBook.upMsg(msg)
             AppLog.put(msg, it)
         }
-            //.onFinally { ReadBook.saveRead() }
+        //.onFinally { ReadBook.saveRead() }
     }
 
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
-        upBook(book)
         withContext(Dispatchers.Main) {
             IntentData.put("nowChapterList", chapterListData.value)
         }
@@ -376,15 +377,8 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     override fun saveImage(src: String?, uri: Uri) {
-        src ?: return
-        val book = ReadBook.book ?: return
-        execute {
-            val image = BookHelp.getImage(book, src)
-            FileUtils.saveImage(image, uri)
-        }.onError {
-            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
-            context.toastOnUi("保存图片出错\n${it.localizedMessage}")
-        }
+        curBook = ReadBook.book
+        super.saveImage(src, uri)
     }
 
     /**

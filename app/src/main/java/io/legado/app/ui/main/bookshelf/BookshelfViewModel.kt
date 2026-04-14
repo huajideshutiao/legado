@@ -123,9 +123,9 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                                     "wordCount" -> book.wordCount = value
                                     "tocUrl" -> book.tocUrl = value
                                 }
-                            } else if (value is Int) {
+                            } else if (value is Long) {
                                 when (key) {
-                                    "type" -> book.type = value
+                                    "type" -> book.type = value.toInt()
                                 }
 
                             }

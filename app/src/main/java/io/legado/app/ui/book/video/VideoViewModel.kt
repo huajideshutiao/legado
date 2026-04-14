@@ -35,10 +35,10 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     }
 
     fun initData() {
-        val curBook = curBook ?: return
-        curBookSource = curBook.getBookSource() ?: return
-        position = curBook.durChapterPos.toLong()
         execute {
+            val curBook = curBook ?: return@execute
+            curBookSource = curBook.getBookSource() ?: return@execute
+            position = curBook.durChapterPos.toLong()
             upBook(curBook)
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook.durChapterIndex])

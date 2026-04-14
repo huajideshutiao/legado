@@ -14,7 +14,6 @@ import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadManga
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +27,11 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
         set(value) {
             ReadManga.bookSource = value
             ReadManga.rateLimiter = ConcurrentRateLimiter(value)
+        }
+    override var inBookshelf: Boolean
+        get() = ReadManga.inBookshelf
+        set(value) {
+            ReadManga.inBookshelf = value
         }
 
     override fun onSourceChanged(book: Book, toc: List<BookChapter>) {
@@ -49,13 +53,12 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
             val book = IntentData.get<Book>("nowBook") ?: ReadManga.book
             when {
                 book != null -> {
-                    ReadManga.inBookshelf = !book.isNotShelf
                     ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
                     upBook(book)
                     withContext(Dispatchers.Main) {
                         ReadManga.chapterList = chapterListData.value
                     }
-                    initManga(book)
+                    initManga(curBook!!)
                 }
 
                 else -> context.getString(R.string.no_book)//没有找到书
@@ -65,7 +68,7 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
         }.onError {
             AppLog.put("初始化数据失败\n${it.localizedMessage}", it)
         }
-            //.onFinally { ReadManga.saveRead() }
+        //.onFinally { ReadManga.saveRead() }
     }
 
     private fun initManga(book: Book) {

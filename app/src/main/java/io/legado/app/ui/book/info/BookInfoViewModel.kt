@@ -18,7 +18,6 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
@@ -46,12 +45,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun initData() {
         execute {
             if (curBook != null) return@execute
-            IntentData.get<Book>("nowBook")?.let {
-                inBookshelf = !it.isNotShelf
-                curBook = it
-                upBook(it)
-                return@execute
-            }
+            IntentData.get<Book>("nowBook")?.let { upBook(it) }
         }.onError {
             AppLog.put(it.localizedMessage, it)
             context.toastOnUi(it.localizedMessage)
@@ -253,7 +247,6 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     private fun changeToLocalBook(localBook: Book): Book {
         return LocalBook.mergeBook(localBook, bookData.value).let {
-            bookData.postValue(it)
             execute { loadChapterList(it) }
             inBookshelf = true
             it
