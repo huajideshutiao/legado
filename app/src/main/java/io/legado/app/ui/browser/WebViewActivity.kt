@@ -192,7 +192,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     ) { _, charSequence, _ ->
                         when (charSequence.value) {
                             "save" -> saveImage(webPic)
-                            "selectFolder" -> selectSaveFolder()
+                            "selectFolder" -> saveImage.launch {}
                         }
                     }
                     return@setOnLongClickListener true
@@ -213,20 +213,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         this.webPic = webPic
         val path = ACache.get().getAsString(imagePathKey)
         if (path.isNullOrEmpty()) {
-            selectSaveFolder()
+            saveImage.launch {}
         } else {
             viewModel.saveImage(webPic, path)
-        }
-    }
-
-    private fun selectSaveFolder() {
-        val default = arrayListOf<SelectItem<Int>>()
-        val path = ACache.get().getAsString(imagePathKey)
-        if (!path.isNullOrEmpty()) {
-            default.add(SelectItem(path, -1))
-        }
-        saveImage.launch {
-            otherActions = default
         }
     }
 

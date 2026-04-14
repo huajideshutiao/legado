@@ -883,13 +883,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
 
     private fun selectSaveFolder(url: String) {
         this.imageSrc = url
-        val default = arrayListOf<SelectItem<Int>>()
-        val path = ACache.get().getAsString(imagePathKey)
-        if (!path.isNullOrEmpty()) {
-            default.add(SelectItem(path, -1))
-        }
-        saveImage.launch {
-            otherActions = default
-        }
+        saveImage.launch {}
     }
 }
