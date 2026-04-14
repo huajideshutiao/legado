@@ -41,7 +41,7 @@ data class FlexChildStyle(
 
     companion object {
         val defaultStyle = FlexChildStyle()
-        val defaultStyle2 = FlexChildStyle(layout_flexGrow = 1F, layout_flexBasisPercent = 0.5F)
+        val defaultStyle2 = FlexChildStyle(layout_flexGrow = 1F, layout_flexBasisPercent = 0.4F)
     }
 
 }
