@@ -105,13 +105,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         curBookSource =
             IntentData.get<BookSource>("nowSource")
                 ?: if (book.isLocal) null else book.getBookSource()
-        if (book.tocUrl.isEmpty() && !book.isLocal) {
+        if (book.tocUrl.isEmpty()) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
-            val cachedChapterList = IntentData.get<List<BookChapter>>("nowChapterList")
+            val tmp = IntentData.get<List<BookChapter>>("nowChapterList")
             when {
-                cachedChapterList != null && cachedChapterList[0].bookUrl == book.bookUrl -> chapterListData.postValue(
-                    cachedChapterList
+                tmp != null && tmp[0].bookUrl == book.bookUrl -> chapterListData.postValue(
+                    tmp
                 )
 
                 !inBookshelf || book.totalChapterNum == 0 -> loadChapterList(book)
@@ -136,7 +136,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         if (book.isLocal) {
             LocalBook.upBookInfo(book)
             curBook = book
-            loadChapterList(book)
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())

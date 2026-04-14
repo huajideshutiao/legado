@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ConcurrentRateLimiter
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
@@ -81,7 +80,6 @@ object ReadManga : CoroutineScope by MainScope() {
             readRecord.bookName = book.name
             readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
-        chapterList = IntentData.get<List<BookChapter>>("nowChapterList")
         if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
             chapterList = null
         }
@@ -93,22 +91,15 @@ object ReadManga : CoroutineScope by MainScope() {
             durChapterPos = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
             clearMangaChapter()
         }
-        if (durChapterIndex !in 0..simulatedChapterSize) {
+        if (durChapterIndex !in 0 until simulatedChapterSize) {
             book.durChapterIndex = 0
             durChapterIndex = 0
             durChapterPos = 0
         }
-        upWebBook(book)
         synchronized(this) {
             loadingChapters.clear()
             downloadedChapters.clear()
             downloadFailChapters.clear()
-        }
-    }
-
-    fun upWebBook(book: Book) {
-        bookSource = appDb.bookSourceDao.getBookSource(book.origin)?.apply {
-            rateLimiter = ConcurrentRateLimiter(this)
         }
     }
 

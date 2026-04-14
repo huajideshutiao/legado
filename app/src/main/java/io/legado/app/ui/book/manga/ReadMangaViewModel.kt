@@ -10,24 +10,24 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadManga
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ReadMangaViewModel(application: Application) : BaseReadViewModel(application) {
 
-    override var curBook: Book?
-        get() = ReadManga.book
-        set(value) {
-            ReadManga.book = value
-        }
+    override var curBook: Book? = null
     override var curBookSource: BookSource?
         get() = ReadManga.bookSource
         set(value) {
             ReadManga.bookSource = value
+            ReadManga.rateLimiter = ConcurrentRateLimiter(value)
         }
 
     override fun onSourceChanged(book: Book, toc: List<BookChapter>) {
@@ -52,6 +52,9 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
                     ReadManga.inBookshelf = !book.isNotShelf
                     ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
                     upBook(book)
+                    withContext(Dispatchers.Main) {
+                        ReadManga.chapterList = chapterListData.value
+                    }
                     initManga(book)
                 }
 
@@ -60,11 +63,9 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
         }.onSuccess {
             success?.invoke()
         }.onError {
-            val msg = "初始化数据失败\n${it.localizedMessage}"
-            AppLog.put(msg, it)
-        }.onFinally {
-            ReadManga.saveRead()
+            AppLog.put("初始化数据失败\n${it.localizedMessage}", it)
         }
+            //.onFinally { ReadManga.saveRead() }
     }
 
     private fun initManga(book: Book) {
