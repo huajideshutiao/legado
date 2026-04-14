@@ -96,9 +96,8 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             val msg = "初始化数据失败\n${it.localizedMessage}"
             ReadBook.upMsg(msg)
             AppLog.put(msg, it)
-        }.onFinally {
-            ReadBook.saveRead()
         }
+            //.onFinally { ReadBook.saveRead() }
     }
 
     private suspend fun initBook(book: Book) {

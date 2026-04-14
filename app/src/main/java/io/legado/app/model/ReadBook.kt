@@ -187,7 +187,6 @@ object ReadBook : CoroutineScope by MainScope() {
         ) {
             durChapterIndex = progress.durChapterIndex
             durChapterPos = progress.durChapterPos
-            saveRead()
             clearTextChapter()
             callBack?.upContent()
             loadContent(resetPageOffset = true)
@@ -298,7 +297,6 @@ object ReadBook : CoroutineScope by MainScope() {
                 durChapterPos = nextPagePos
                 callBack?.cancelSelect()
                 callBack?.upContent()
-                saveRead(true)
             }
         }
         return hasNextPage
@@ -312,7 +310,6 @@ object ReadBook : CoroutineScope by MainScope() {
                 hasPrevPage = true
                 durChapterPos = prevPagePos
                 callBack?.upContent()
-                saveRead(true)
             }
         }
         return hasPrevPage
@@ -411,13 +408,11 @@ object ReadBook : CoroutineScope by MainScope() {
             success?.invoke()
         }
         curPageChanged()
-        saveRead(true)
     }
 
     fun setPageIndex(index: Int) {
         recycleRecorders(durPageIndex, index)
         durChapterPos = curTextChapter?.getReadLength(index) ?: index
-        saveRead(true)
         curPageChanged(true)
     }
 
@@ -875,7 +870,6 @@ object ReadBook : CoroutineScope by MainScope() {
             it.charset = charset
             callBack?.loadChapterList(it)
         }
-        saveRead()
     }
 
     fun saveRead(pageChanged: Boolean = false) {

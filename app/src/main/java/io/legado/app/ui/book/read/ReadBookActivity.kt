@@ -1565,7 +1565,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun changeReplaceRuleState() {
         ReadBook.book?.let {
             it.setUseReplaceRule(!it.getUseReplaceRule())
-            ReadBook.saveRead()
             menu?.findItem(R.id.menu_enable_replace)?.isChecked = it.getUseReplaceRule()
             viewModel.replaceRuleChanged()
         }

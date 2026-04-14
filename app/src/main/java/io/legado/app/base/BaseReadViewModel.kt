@@ -134,8 +134,10 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         runPreUpdateJs: Boolean = true
     ) {
         if (book.isLocal) {
+            val tmp = book.copy()
             LocalBook.upBookInfo(book)
             curBook = book
+            if (tmp.tocUrl != book.tocUrl) loadChapterList(book)
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())

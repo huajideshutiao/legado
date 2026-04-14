@@ -352,7 +352,7 @@ class BookInfoActivity :
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
         llToc?.visible(!book.isWebFile)
-        binding.tvToc.text = getString(R.string.toc_s, book.durChapterTitle)
+        //tvToc.text = getString(R.string.toc_s, book.durChapterTitle)
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
