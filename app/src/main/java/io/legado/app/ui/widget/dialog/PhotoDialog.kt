@@ -8,13 +8,9 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
-import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -51,11 +47,9 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
     private var localImageFile: File? = null
 
     private val requestOptions: RequestOptions by lazy {
-        RequestOptions().apply {
-            arguments?.getString("sourceOrigin")?.let {
-                set(OkHttpModelLoader.sourceOriginOption, it)
-            }
-        }
+        arguments?.getString("sourceOrigin")?.let {
+            RequestOptions().set(OkHttpModelLoader.sourceOriginOption, it)
+        } ?: RequestOptions()
     }
 
     override fun onStart() {
@@ -111,59 +105,49 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             return
         }
 
-        ImageLoader.load(requireContext(), src)
+        val normalRequest = ImageLoader.load(requireContext(), src)
             .apply(requestOptions)
             .error(BookCover.defaultDrawable)
             .dontTransform()
             .downsample(DownsampleStrategy.NONE)
-            .addListener(object : RequestListener<android.graphics.drawable.Drawable> {
-                override fun onLoadFailed(
-                    e: GlideException?,
-                    model: Any?,
-                    target: Target<android.graphics.drawable.Drawable>,
-                    isFirstResource: Boolean,
-                ): Boolean {
-                    // 默认缓存找不到，尝试用 "covers" 签名从 coversCache 再找一次
-                    ImageLoader.load(requireContext(), src)
-                        .apply(requestOptions)
-                        .signature(ObjectKey("covers"))
-                        .error(BookCover.defaultDrawable)
-                        .dontTransform()
-                        .downsample(DownsampleStrategy.NONE)
-                        .into(binding.photoView)
-                    return true
-                }
 
-                override fun onResourceReady(
-                    resource: android.graphics.drawable.Drawable,
-                    model: Any,
-                    target: Target<android.graphics.drawable.Drawable>?,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean,
-                ): Boolean = false
-            })
+        // 优先从 covers 缓存中查找，找不到再去执行正常的网络请求
+        ImageLoader.load(requireContext(), src)
+            .apply(requestOptions)
+            .signature(ObjectKey("covers"))
+            .onlyRetrieveFromCache(true)
+            .error(normalRequest)
+            .dontTransform()
+            .downsample(DownsampleStrategy.NONE)
             .into(binding.photoView)
     }
 
     @SuppressLint("CheckResult")
     private fun doSaveImage(uri: Uri) {
         execute {
-            val result = localImageFile?.let { file ->
-                FileUtils.saveImage(file, uri)
-            } ?: run {
-                val glideFile = runCatching {
-                    Glide.with(requireContext())
-                        .downloadOnly()
+            val file = localImageFile ?: run {
+                val glide = Glide.with(requireContext())
+                runCatching {
+                    glide.downloadOnly()
+                        .apply(requestOptions)
+                        .signature(ObjectKey("covers"))
+                        .onlyRetrieveFromCache(true)
+                        .load(src)
+                        .submit()
+                        .get()
+                }.getOrNull() ?: runCatching {
+                    glide.downloadOnly()
                         .apply(requestOptions)
                         .onlyRetrieveFromCache(true)
                         .load(src)
                         .submit()
                         .get()
                 }.getOrNull()
-
-                glideFile?.let { FileUtils.saveImage(it, uri) } ?: FileUtils.saveImage(src, uri)
             }
-            if (!result) error("保存图片失败")
+
+            val result = file?.let { FileUtils.saveImage(it, uri) } ?: FileUtils.saveImage(src, uri)
+
+            if (!result) error("找不到数据")
         }.onError {
             ACache.get().remove(AppConst.imagePathKey)
             context?.toastOnUi("保存图片失败:${it.localizedMessage}")
