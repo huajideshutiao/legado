@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.VideoResolution
@@ -37,7 +38,6 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun initData() {
         execute {
             val curBook = curBook ?: return@execute
-            curBookSource = curBook.getBookSource() ?: return@execute
             position = curBook.durChapterPos.toLong()
             upBook(curBook)
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
@@ -54,7 +54,10 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
             if (content.isEmpty()) {
                 context.toastOnUi("未获取到资源链接")
             } else {
-                chapter.resourceUrl = content
+                if (chapter.resourceUrl != content) {
+                    chapter.resourceUrl = content
+                    if (inBookshelf) appDb.bookChapterDao.update(chapter)
+                }
                 parseVideoContent(content)
             }
         }.onError { e ->
