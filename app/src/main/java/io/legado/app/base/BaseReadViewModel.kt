@@ -18,13 +18,13 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadBook
@@ -134,6 +134,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     suspend fun loadBookInfo(
         book: Book, canReName: Boolean = true, runPreUpdateJs: Boolean = true
     ) {
+        var book = book
         if (book.isLocal) {
             val tmp = book.copy()
             LocalBook.upBookInfo(book)
@@ -146,26 +147,27 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 return
             }
             try {
-                getBookInfoAwait(bookSource, book, canReName)
-                val dbBook = appDb.bookDao.getBook(book.name, book.author)
+                if (!inBookshelf) getBookInfoAwait(bookSource, book, canReName)
+                val dbBook = appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(
+                    book.name, book.author
+                )
                 if (dbBook != null && dbBook.origin == book.origin) {
                     /**
                      * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
                      * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
                      * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
                      */
-                    dbBook.updateTo(book)
+                    book = dbBook
                     inBookshelf = true
-                }
-                if (inBookshelf) {
-                    book.save()
+                } else {
+                    if (inBookshelf) getBookInfoAwait(bookSource, book, canReName)
+                    book.addType(BookType.notShelf)
+                    inBookshelf = false
                 }
                 if (book.isWebFile) {
                     loadWebFile(book)
                     curBook = book
-                } else {
-                    loadChapterList(book, runPreUpdateJs)
-                }
+                } else loadChapterList(book, runPreUpdateJs)
             } catch (e: Throwable) {
                 AppLog.put("获取书籍信息失败\n${e.localizedMessage}", e)
                 context.toastOnUi(R.string.error_get_book_info)
@@ -200,9 +202,16 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             }
             val oldBook = book.copy()
             try {
-                val tmp = getChapterListAwait(bookSource, book, runPreUpdateJs).getOrThrow()
-
-                if (inBookshelf) {
+                var isFromWeb = false
+                var tmp =
+                    if (inBookshelf) appDb.bookChapterDao.getChapterList(book.bookUrl) else emptyList()
+                if (tmp.isEmpty()) {
+                    tmp = getChapterListAwait(
+                        bookSource, book, runPreUpdateJs
+                    ).getOrThrow()
+                    isFromWeb = true
+                }
+                if (inBookshelf && isFromWeb) {
                     appDb.bookDao.replace(oldBook, book)
                     /**
                      * runPreUpdateJs 有可能会修改 book 的 bookUrl
@@ -211,8 +220,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                         BookHelp.updateCacheFolder(oldBook, book)
                     }
                     appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                    IntentData.put("nowChapterList", tmp)
-                    if (inBookshelf) appDb.bookChapterDao.insert(*tmp.toTypedArray())
+                    appDb.bookChapterDao.insert(*tmp.toTypedArray())
                 }
                 curBook = book
                 chapterListData.postValue(tmp)
