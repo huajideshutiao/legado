@@ -50,7 +50,7 @@ class ReadMangaViewModel(application: Application) : BaseReadViewModel(applicati
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val book = IntentData.get<Book>("nowBook") ?: ReadManga.book
+            val book = IntentData.book ?: ReadManga.book
             when {
                 book != null -> {
                     ReadManga.chapterChanged = intent.getBooleanExtra("chapterChanged", false)

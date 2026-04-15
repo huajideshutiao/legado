@@ -65,7 +65,7 @@ class SearchContentActivity :
         binding.tvCurrentSearchInfo.setTextColor(btc)
         binding.ivSearchContentTop.setColorFilter(btc)
         binding.ivSearchContentBottom.setColorFilter(btc)
-        val searchResultList = IntentData.get<List<SearchResult>>("searchResultList")
+        val searchResultList = IntentData.searchResultList
         val position = intent.getIntExtra("searchResultIndex", 0)
         val noSearchResult = searchResultList == null
         initSearchView(noSearchResult)

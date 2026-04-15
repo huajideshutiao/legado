@@ -290,8 +290,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         }
         binding.titleBar.toolbar.setOnClickListener {
             bookInfoResult.launch {
-                IntentData.put("nowBook", viewModel.curBook)
-                IntentData.put("nowChapterList", viewModel.chapterListData.value)
+                IntentData.book = viewModel.curBook
+                IntentData.chapterList = viewModel.chapterListData.value
                 player?.pause()
             }
         }
@@ -476,7 +476,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             R.id.menu_full_screen -> setFullScreen(supportActionBar?.isShowing == true)
 
             R.id.menu_login -> viewModel.curBookSource?.let {
-                IntentData.put("nowBook", viewModel.curBook)
+                IntentData.book = viewModel.curBook
                 IntentData.put(
                     "nowChapter",
                     viewModel.chapterListData.value?.get(viewModel.curBook!!.durChapterIndex)
@@ -492,7 +492,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             )
 
             R.id.menu_edit_source -> viewModel.curBookSource?.let {
-                IntentData.put("nowSource", it)
+                IntentData.source = it
                 sourceEditResult.launch {}
             }
 

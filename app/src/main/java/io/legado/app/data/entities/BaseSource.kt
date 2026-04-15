@@ -287,7 +287,7 @@ interface BaseSource : JsExtensions {
     }
 
     fun showLoginDialog(activity: AppCompatActivity) {
-        IntentData.put("nowSource", this)
+        IntentData.source = this
         if (loginUi.isNullOrEmpty()) {
             activity.startActivity<io.legado.app.ui.login.SourceLoginActivity>()
         } else {

@@ -154,13 +154,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun showBookInfo(book: Book, longClick: Boolean) {
         if (book.bookUrl.contains("::")) {
             val tmp = book.bookUrl.split("::")
-            IntentData.put("nowSource", viewModel.bookSource)
+            IntentData.source = viewModel.bookSource
             startActivity<ExploreShowActivity> {
                 putExtra("exploreName", tmp[0])
                 putExtra("exploreUrl", tmp[1])
             }
         } else if (longClick || !AppConfig.devFeat) {
-            IntentData.put("nowBook", book)
+            IntentData.book = book
             startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)

@@ -1,6 +1,41 @@
 package io.legado.app.help
 
+import io.legado.app.data.entities.BaseBook
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.ui.book.searchContent.SearchResult
+
 object IntentData {
+    var book: BaseBook?
+        get() = get("nowBook")
+        set(value) {
+            put("nowBook", value)
+        }
+
+    var source: Any?
+        get() = get("nowSource")
+        set(value) {
+            put("nowSource", value)
+        }
+
+    @Suppress("UNCHECKED_CAST")
+    var chapterList: List<BookChapter>?
+        get() = get("nowChapterList")
+        set(value) {
+            put("nowChapterList", value)
+        }
+
+    var chapter: BookChapter?
+        get() = get("nowChapter")
+        set(value) {
+            put("nowChapter", value)
+        }
+
+    @Suppress("UNCHECKED_CAST")
+    var searchResultList: List<SearchResult>?
+        get() = get("searchResultList")
+        set(value) {
+            put("searchResultList", value)
+        }
 
     private val bigData: MutableMap<String, Any> = mutableMapOf()
 

@@ -45,7 +45,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         val dbBook = appDb.bookDao.getBook(it.name, it.author)
                         val toc =
                             WebBook.getChapterListAwait(
-                                IntentData.get<BookSource>("nowSource")!!,
+                                (IntentData.source as? BookSource)!!,
                                 it
                             )
                                 .getOrThrow()

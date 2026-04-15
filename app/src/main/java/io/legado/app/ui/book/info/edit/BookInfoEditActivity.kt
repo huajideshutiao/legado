@@ -142,7 +142,7 @@ class BookInfoEditActivity :
             tieBookUrl.text?.apply {
                     book.bookUrl = this.toString()
                 }
-            IntentData.put("nowBook", book)
+            IntentData.book = book
             finish()
         }
     }

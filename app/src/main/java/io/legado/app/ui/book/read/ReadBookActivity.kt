@@ -287,10 +287,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             finish()
         }
-    }
-
-    override fun onPostCreate(savedInstanceState: Bundle?) {
-        super.onPostCreate(savedInstanceState)
         viewModel.initReadBookConfig()
         Looper.myQueue().addIdleHandler {
             viewModel.initData(intent)
@@ -1140,7 +1136,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openSourceEditActivity() {
         ReadBook.bookSource?.let {
-            IntentData.put("nowSource", it)
+            IntentData.source = it
             sourceEditActivity.launch {}
         }
     }
@@ -1150,7 +1146,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
-                IntentData.put("nowBook", it)
+                IntentData.book = it
             }
         }
     }
@@ -1166,8 +1162,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 打开目录
      */
     override fun openChapterList() {
-        IntentData.put("nowBook", ReadBook.book)
-        IntentData.put("nowChapterList", ReadBook.chapterList)
+        IntentData.book = ReadBook.book
+        IntentData.chapterList = ReadBook.chapterList
         tocActivity.launch("")
     }
 
@@ -1177,12 +1173,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
         searchContentActivity.launch {
-            IntentData.put("nowBook", book)
+            IntentData.book = book
             putExtra("searchWord", searchWord ?: viewModel.searchContentQuery)
             putExtra("searchResultIndex", viewModel.searchResultIndex)
             viewModel.searchResultList?.first()?.let {
                 if (it.query == viewModel.searchContentQuery) {
-                    IntentData.put("searchResultList", viewModel.searchResultList)
+                    IntentData.searchResultList = viewModel.searchResultList
                 }
             }
         }
@@ -1257,8 +1253,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showLogin() {
         ReadBook.bookSource?.let {
-            IntentData.put("nowBook", ReadBook.book)
-            IntentData.put("nowChapter", ReadBook.chapterList?.get(ReadBook.durChapterIndex))
+            IntentData.book = ReadBook.book
+            IntentData.chapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex)
             it.showLoginDialog(this)
         }
     }

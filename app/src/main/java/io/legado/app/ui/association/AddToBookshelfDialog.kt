@@ -12,11 +12,9 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.DialogAddToBookshelfBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.addType
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.utils.setLayout
@@ -76,10 +74,10 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             dismiss()
         }
         viewModel.load(bookUrl) {
-                startActivity<BookInfoActivity> {
-                    IntentData.put("nowBook", it.apply { it.addType(BookType.notShelf) })
-                }
-                dismiss()
+            startActivity<BookInfoActivity> {
+                IntentData.book = it
+            }
+            dismiss()
         }
         binding.tvCancel.setOnClickListener {
             dismiss()

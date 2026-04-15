@@ -45,7 +45,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun initData() {
         execute {
             if (curBook != null) return@execute
-            IntentData.get<Book>("nowBook")?.let { upBook(it) }
+            IntentData.book?.let { upBook(it) }
         }.onError {
             AppLog.put(it.localizedMessage, it)
             context.toastOnUi(it.localizedMessage)
@@ -207,9 +207,9 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
                 book.order = appDb.bookDao.minOrder - 1
             }
             appDb.bookDao.getBook(book.name, book.author)?.let {
-                book.durChapterIndex = it.durChapterIndex
-                book.durChapterPos = it.durChapterPos
-                book.durChapterTitle = it.durChapterTitle
+                    book.durChapterIndex = it.durChapterIndex
+                    book.durChapterPos = it.durChapterPos
+                    book.durChapterTitle = it.durChapterTitle
             }
             book.save()
         }.onSuccess {
@@ -242,7 +242,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     fun upEditBook() {
-        bookData.postValue(IntentData.get<Book>("nowBook"))
+        bookData.postValue(IntentData.book as? Book)
     }
 
     private fun changeToLocalBook(localBook: Book): Book {

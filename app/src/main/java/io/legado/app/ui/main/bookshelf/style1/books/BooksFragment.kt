@@ -284,7 +284,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            IntentData.put("nowBook", book.copy())
+            IntentData.book = book.copy()
         }
     }
 

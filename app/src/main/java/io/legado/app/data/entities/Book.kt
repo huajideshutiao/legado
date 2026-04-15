@@ -42,13 +42,13 @@ data class Book(
     override var bookUrl: String = "",
     // 目录页Url (toc=table of Contents)
     @ColumnInfo(defaultValue = "")
-    var tocUrl: String = "",
+    override var tocUrl: String = "",
     // 书源URL(默认BookType.local)
     @ColumnInfo(defaultValue = BookType.localTag)
-    var origin: String = BookType.localTag,
+    override var origin: String = BookType.localTag,
     //书源名称 or 本地书籍文件名
     @ColumnInfo(defaultValue = "")
-    var originName: String = "",
+    override var originName: String = "",
     // 书籍名称(书源获取)
     @ColumnInfo(defaultValue = "")
     override var name: String = "",
@@ -60,23 +60,23 @@ data class Book(
     // 分类信息(用户修改)
     var customTag: String? = null,
     // 封面Url(书源获取)
-    var coverUrl: String? = null,
+    override var coverUrl: String? = null,
     // 封面Url(用户修改)
     var customCoverUrl: String? = null,
     // 简介内容(书源获取)
-    var intro: String? = null,
+    override var intro: String? = null,
     // 简介内容(用户修改)
     var customIntro: String? = null,
     // 自定义字符集名称(仅适用于本地书籍)
     var charset: String? = null,
     // 类型,详见BookType
     @ColumnInfo(defaultValue = "0")
-    var type: Int = BookType.text,
+    override var type: Int = BookType.text,
     // 自定义分组索引号
     @ColumnInfo(defaultValue = "0")
     var group: Long = 0,
     // 最新章节标题
-    var latestChapterTitle: String? = null,
+    override var latestChapterTitle: String? = null,
     // 最新章节标题更新时间
     @ColumnInfo(defaultValue = "0")
     var latestChapterTime: Long = System.currentTimeMillis(),
@@ -110,7 +110,7 @@ data class Book(
     var order: Int = 0,
     //书源排序
     @ColumnInfo(defaultValue = "0")
-    var originOrder: Int = 0,
+    override var originOrder: Int = 0,
     // 自定义书籍变量信息(用于书源规则检索书籍信息)
     override var variable: String? = null,
     //阅读设置

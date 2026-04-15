@@ -11,6 +11,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -76,9 +77,8 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     fun initReadBookConfig() {
-        val book = IntentData.get<Book>("nowBook") ?: appDb.bookDao.lastReadBook ?: return
-        IntentData.put("nowBook", book)
-        ReadBook.upReadBookConfig(book)
+        val book = IntentData.book ?: appDb.bookDao.lastReadBook ?: return
+        ReadBook.upReadBookConfig(if (book is SearchBook) book.toBook() else book as Book)
     }
 
     /**
@@ -86,7 +86,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val book = IntentData.get<Book>("nowBook") ?: ReadBook.book
+            val book = IntentData.book ?: ReadBook.book
             if (book != null) {
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
                 upBook(book)

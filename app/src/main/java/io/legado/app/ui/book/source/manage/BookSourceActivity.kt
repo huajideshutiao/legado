@@ -688,7 +688,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun edit(bookSource: BookSourcePart) {
         startActivity<BookSourceEditActivity> {
-            IntentData.put("nowSource", bookSource.getBookSource())
+            IntentData.source = bookSource.getBookSource()
         }
     }
 

@@ -18,6 +18,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.contains
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.config.AppConfig

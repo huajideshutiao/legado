@@ -29,7 +29,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     val resolutions = MutableLiveData<List<VideoResolution>>()
     var currentResolutionIndex = 0
     var position: Long = 0L
-    override var curBook: Book? = IntentData.get<Book>("nowBook")
+    override var curBook: Book? = null
 
     override fun onUpSource(book: Book) {
         curBookSource = book.getBookSource()
@@ -37,11 +37,10 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
 
     fun initData() {
         execute {
-            val curBook = curBook ?: return@execute
-            position = curBook.durChapterPos.toLong()
-            upBook(curBook)
+            upBook(IntentData.book ?: return@execute)
+            position = curBook!!.durChapterPos.toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
-            initChapter(chapterList!![curBook.durChapterIndex])
+            initChapter(chapterList!![curBook!!.durChapterIndex])
         }
     }
 

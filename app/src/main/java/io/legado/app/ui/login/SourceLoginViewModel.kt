@@ -15,7 +15,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
 
     fun initData(success: (bookSource: BaseSource) -> Unit, error: () -> Unit) {
         execute {
-            source = IntentData.get<BaseSource>("nowSource")
+            source = (IntentData.source as? BaseSource)
             headerMap = runScriptWithContext {
                 source?.getHeaderMap(true) ?: emptyMap()
             }

@@ -123,8 +123,8 @@ class AudioPlayActivity :
             }
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
-                IntentData.put("nowBook", AudioPlay.book)
-                IntentData.put("nowChapter", AudioPlay.durChapter)
+                IntentData.book = AudioPlay.book
+                IntentData.chapter = AudioPlay.durChapter
                 it.showLoginDialog(this)
             }
 
@@ -136,7 +136,7 @@ class AudioPlayActivity :
                 AudioPlay.bookSource
             )
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
-                IntentData.put("nowSource", it)
+                IntentData.source = it
                 sourceEditResult.launch {}
             }
 
@@ -213,8 +213,8 @@ class AudioPlayActivity :
             }
         })
         binding.ivChapter.setOnClickListener {
-            IntentData.put("nowBook", AudioPlay.book)
-            IntentData.put("nowChapterList", AudioPlay.chapterList)
+            IntentData.book = AudioPlay.book
+            IntentData.chapterList = AudioPlay.chapterList
             tocActivityResult.launch("")
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {

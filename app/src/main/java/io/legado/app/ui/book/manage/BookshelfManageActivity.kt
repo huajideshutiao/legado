@@ -562,7 +562,7 @@ class BookshelfManageActivity :
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
-            IntentData.put("nowBook", book)
+            IntentData.book = book
         }
     }
 

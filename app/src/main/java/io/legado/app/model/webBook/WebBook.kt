@@ -119,7 +119,7 @@ object WebBook {
             bookUrl.matches(source.bookUrlPattern!!.toRegex())
         }
         try {
-            IntentData.put("nowSource", source)
+            IntentData.source = source
             val book = Book(
                 bookUrl = bookUrl,
                 type = source!!.getBookType(),

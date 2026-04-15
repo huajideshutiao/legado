@@ -204,7 +204,7 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_edit -> {
                 viewModel.getBook()?.let {
-                    IntentData.put("nowBook", it)
+                    IntentData.book = it
                     infoEditResult.launch {}
                 }
             }
@@ -236,7 +236,7 @@ class BookInfoActivity :
             R.id.menu_refresh -> refreshBook()
 
             R.id.menu_login -> viewModel.curBookSource?.let {
-                IntentData.put("nowBook", viewModel.bookData.value)
+                IntentData.book = viewModel.bookData.value
                 it.showLoginDialog(this)
             }
 
@@ -436,7 +436,7 @@ class BookInfoActivity :
                         it.textView.text = tmp[0]
                         if (tmp.size > 1) {
                             it.root.onClick {
-                                IntentData.put("nowSource", viewModel.curBookSource)
+                                IntentData.source = viewModel.curBookSource
                                 startActivity<ExploreShowActivity> {
                                     putExtra("exploreName", tmp[0])
                                     putExtra("exploreUrl", tmp[1])
@@ -583,8 +583,8 @@ class BookInfoActivity :
                 return@setOnClickListener
             }
             viewModel.getBook()?.let {
-                IntentData.put("nowBook", it)
-                IntentData.put("nowChapterList", viewModel.chapterListData.value)
+                IntentData.book = it
+                IntentData.chapterList = viewModel.chapterListData.value
                 tocActivityResult.launch(it.bookUrl)
             }
         }
@@ -717,7 +717,7 @@ class BookInfoActivity :
     }
 
     private fun readBook(book: Book) {
-        IntentData.put("nowChapterList", viewModel.chapterListData.value)
+        IntentData.chapterList = viewModel.chapterListData.value
         if (!viewModel.inBookshelf) {
             book.addType(BookType.notShelf)
             startReadActivity(book)
@@ -729,8 +729,8 @@ class BookInfoActivity :
     }
 
     private fun startReadActivity(book: Book) {
-        IntentData.put("nowBook", book)
-        IntentData.put("nowChapterList", viewModel.chapterListData.value)
+        IntentData.book = book
+        IntentData.chapterList = viewModel.chapterListData.value
         readBookResult.launch(
             Intent(
                 this, when {

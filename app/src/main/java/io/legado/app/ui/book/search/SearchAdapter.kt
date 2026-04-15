@@ -9,10 +9,11 @@ import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.constant.BookType
-import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -77,15 +78,15 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.toBook().apply {
-                    if (!binding.ivInBookshelf.isVisible)addType(BookType.notShelf)
+                callBack.showBookInfo(it.apply {
+                    if (!binding.ivInBookshelf.isVisible)type = type or BookType.notShelf
                 })
             }
         }
         binding.root.setOnLongClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.toBook().apply {
-                    if (!binding.ivInBookshelf.isVisible)addType(BookType.notShelf)
+                callBack.showBookInfo(it.apply {
+                    if (!binding.ivInBookshelf.isVisible)type = type or BookType.notShelf
                 }, "")
             }
             true
@@ -165,6 +166,6 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         /**
          * 显示书籍详情
          */
-        fun showBookInfo(book: Book, type : String = "click")
+        fun showBookInfo(book: BaseBook, type: String = "click")
     }
 }

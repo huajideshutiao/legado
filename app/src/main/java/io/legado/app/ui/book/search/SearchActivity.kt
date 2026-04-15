@@ -22,7 +22,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
@@ -472,15 +472,15 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: Book, type : String) {
+    override fun showBookInfo(book: BaseBook, type: String) {
         searchView.clearFocus()
-        IntentData.put("nowBook", book)
         if (type == "click" && AppConfig.devFeat) {
             startActivityForBook(book)
         }
         else startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
+            IntentData.book = book
         }
     }
 

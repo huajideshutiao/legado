@@ -187,7 +187,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun openExplore(source: BookSource, title: String, exploreUrl: String?) {
         if (exploreUrl.isNullOrBlank()) return
-        IntentData.put("nowSource", source)
+        IntentData.source = source
         startActivity<ExploreShowActivity> {
             putExtra("exploreName", title)
             putExtra("exploreUrl", exploreUrl)

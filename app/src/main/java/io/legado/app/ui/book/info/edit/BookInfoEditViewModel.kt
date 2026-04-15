@@ -13,7 +13,7 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
     var book: Book? = null
 
     fun loadBook() {
-        book = IntentData.get<Book>("nowBook")
+        book = IntentData.book as? Book
     }
 
     fun saveBook(book: Book, bookUrl: String?, success: (() -> Unit)?) {

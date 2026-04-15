@@ -20,6 +20,15 @@ interface BaseBook : RuleDataInterface {
     var infoHtml: String?
     var tocHtml: String?
 
+    var origin: String
+    var originName: String
+    var type: Int
+    var coverUrl: String?
+    var intro: String?
+    var latestChapterTitle: String?
+    var tocUrl: String
+    var originOrder: Int
+
     override fun putVariable(key: String, value: String?): Boolean {
         if (super.putVariable(key, value)) {
             variable = GSON.toJson(variableMap)

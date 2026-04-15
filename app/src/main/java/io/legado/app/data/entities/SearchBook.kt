@@ -31,22 +31,22 @@ data class SearchBook(
     @PrimaryKey
     override var bookUrl: String = "",
     /** 书源 */
-    var origin: String = "",
-    var originName: String = "",
+    override var origin: String = "",
+    override var originName: String = "",
     /** BookType */
-    var type: Int = BookType.text,
+    override var type: Int = BookType.text,
     override var name: String = "",
     override var author: String = "",
     override var kind: String? = null,
-    var coverUrl: String? = null,
-    var intro: String? = null,
+    override var coverUrl: String? = null,
+    override var intro: String? = null,
     override var wordCount: String? = null,
-    var latestChapterTitle: String? = null,
+    override var latestChapterTitle: String? = null,
     /** 目录页Url (toc=table of Contents) */
-    var tocUrl: String = "",
+    override var tocUrl: String = "",
     var time: Long = System.currentTimeMillis(),
     override var variable: String? = null,
-    var originOrder: Int = 0,
+    override var originOrder: Int = 0,
     var chapterWordCountText: String? = null,
     @ColumnInfo(defaultValue = "-1")
     var chapterWordCount: Int = -1,
@@ -104,15 +104,6 @@ data class SearchBook(
         }
     }
 
-    fun releaseHtmlData() {
-        infoHtml = null
-        tocHtml = null
-    }
-
-    fun primaryStr(): String {
-        return origin + bookUrl
-    }
-
     fun sameBookTypeLocal(bookType: Int): Boolean {
         return type and BookType.allBookTypeLocal == bookType and BookType.allBookTypeLocal
     }
@@ -135,17 +126,5 @@ data class SearchBook(
     ).apply {
         this.infoHtml = this@SearchBook.infoHtml
         this.tocHtml = this@SearchBook.tocHtml
-    }
-
-    fun contains(query : String?): Boolean {
-        if (query.isNullOrBlank()) return true
-        val q = query.trim()
-
-        if (name.contains(q)) return true
-        if (author.contains(q)) return true
-        intro?.let { if (it.contains(q)) return true }
-        kind?.let { if (it.contains(q)) return true }
-
-        return false
     }
 }

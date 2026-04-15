@@ -10,8 +10,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BaseSource
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
@@ -44,9 +42,9 @@ import splitties.views.onClick
 class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
-    private val source by lazy { IntentData.get<BaseSource>("nowSource") }
-    private val book by lazy { IntentData.get<Book>("nowBook") }
-    private val chapter by lazy { IntentData.get<BookChapter>("nowChapter") }
+    private val source by lazy { (IntentData.source as? BaseSource) }
+    private val book by lazy { IntentData.book }
+    private val chapter by lazy { IntentData.chapter }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = source ?: return

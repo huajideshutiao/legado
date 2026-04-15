@@ -66,7 +66,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         execute {
             exploreUrl = intent.getStringExtra("exploreUrl")
             if (bookSource == null) {
-                bookSource = IntentData.get<BookSource>("nowSource")
+                bookSource = (IntentData.source as? BookSource)
             }
             sourceReadyLiveData.postValue(Unit)
             explore()

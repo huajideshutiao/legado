@@ -25,7 +25,7 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
 
     fun initBook(success: () -> Unit) {
         execute {
-            book = IntentData.get<Book>("nowBook")
+            book = IntentData.book as Book
             book?.let {
                 contentProcessor = ContentProcessor.get(it.name, it.origin)
             }

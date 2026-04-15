@@ -34,14 +34,14 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
             val book =
-                (if (intent.action != "activity") IntentData.get<Book>("nowBook") else book)
+                (if (intent.action != "activity") IntentData.book else book)
                     ?: return@execute
             upBook(book)
             withContext(Dispatchers.Main){
                 AudioPlay.chapterList = chapterListData.value
             }
-            if (AudioPlay.book?.bookUrl == book.bookUrl) upData(book)
-            else resetData(book)
+            if (AudioPlay.book?.bookUrl == book.bookUrl) upData(curBook!!)
+            else resetData(curBook!!)
             titleData.postValue(book.name)
             if (status == Status.STOP) loadOrUpPlayUrl()
         }.onFinally {

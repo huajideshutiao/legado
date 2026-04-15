@@ -10,10 +10,12 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
@@ -72,6 +74,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      */
     abstract var curBook: Book?
     open var inBookshelf: Boolean = false
+    var isSearchBook: Boolean = false
     open var curBookSource: BookSource? = null
         protected set
     val chapterListData = MutableLiveData<List<BookChapter>>()
@@ -102,19 +105,22 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      */
     protected open fun getTextEnabledSources() = appDb.bookSourceDao.allTextEnabledPart
 
-    protected suspend fun upBook(book: Book) {
-        curBookSource = IntentData.get<BookSource>("nowSource")
+    protected suspend fun upBook(book: BaseBook) {
+        var book = if (book is SearchBook) {
+            isSearchBook = true
+            book.toBook()
+        } else book as Book
+        curBookSource = (IntentData.source as? BookSource)
             ?: if (book.isLocal) null else book.getBookSource()
         inBookshelf = !book.isNotShelf
         curBook = book
-        var book = book
-        if (inBookshelf && book.tocUrl.isEmpty()) book =
+        if (inBookshelf && isSearchBook) book =
             appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(book.name, book.author)
                     ?: book
         if (book.tocUrl.isEmpty()) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
-            val tmp = IntentData.get<List<BookChapter>>("nowChapterList")
+            val tmp = IntentData.chapterList
             when {
                 tmp != null && tmp[0].bookUrl == book.bookUrl -> {
                     curBook = book
@@ -152,22 +158,24 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             }
             try {
                 getBookInfoAwait(bookSource, book, canReName)
-                val dbBook = appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(
-                    book.name, book.author
-                )
-                if (dbBook != null && dbBook.origin == book.origin) {
-                    /**
-                     * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
-                     * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
-                     * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
-                     */
-                    dbBook.updateTo(book)
-                    inBookshelf = true
-                } else {
-                    book.addType(BookType.notShelf)
-                    inBookshelf = false
+                if (isSearchBook) {
+                    val dbBook = appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(
+                        book.name, book.author
+                    )
+                    if (dbBook != null && dbBook.origin == book.origin) {
+                        /**
+                         * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
+                         * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
+                         * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
+                         */
+                        dbBook.updateTo(book)
+                        inBookshelf = true
+                    } else {
+                        book.addType(BookType.notShelf)
+                        inBookshelf = false
+                    }
                 }
-                if (inBookshelf)book.save()
+                if (inBookshelf) book.save()
                 if (book.isWebFile) {
                     loadWebFile(book)
                     curBook = book

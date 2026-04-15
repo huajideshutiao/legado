@@ -28,8 +28,8 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var searchKey: String? = null
 
     fun initBook() {
-        IntentData.get<Book>("nowBook")?.let {
-            bookData.postValue(it)
+        IntentData.book?.let {
+            bookData.postValue(it as Book)
             bookUrl = it.bookUrl
         }
     }

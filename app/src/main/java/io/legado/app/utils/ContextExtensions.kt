@@ -38,7 +38,9 @@ import androidx.preference.PreferenceManager
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.constant.AppConst
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.isAudio
@@ -65,9 +67,11 @@ inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() 
 }
 
 fun Context.startActivityForBook(
-    book: Book,
+    book: BaseBook,
     configIntent: Intent.() -> Unit = {},
 ) {
+    IntentData.book = book
+    val book = if (book is SearchBook)book.toBook() else book as Book
     val cls = when {
         book.isAudio -> AudioPlayActivity::class.java
         book.isVideo -> VideoPlayActivity::class.java
@@ -76,7 +80,6 @@ fun Context.startActivityForBook(
     }
     val intent = Intent(this, cls)
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    IntentData.put("nowBook", book)
     intent.apply(configIntent)
     startActivity(intent)
 }

@@ -500,8 +500,8 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
 
             R.id.menu_catalog -> {
-                IntentData.put("nowBook", ReadManga.book)
-                IntentData.put("nowChapterList", ReadManga.chapterList)
+                IntentData.book = ReadManga.book
+                IntentData.chapterList = ReadManga.chapterList
                 tocActivity.launch("")
             }
 
@@ -644,7 +644,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
-                IntentData.put("nowBook", it)
+                IntentData.book = it
             }
         }
     }

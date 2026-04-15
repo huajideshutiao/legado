@@ -35,15 +35,15 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.min
 
-val Book.isVideo: Boolean
+val BaseBook.isVideo: Boolean
     get() = isType(BookType.video)
-val Book.isAudio: Boolean
+val BaseBook.isAudio: Boolean
     get() = isType(BookType.audio)
 
-val Book.isImage: Boolean
+val BaseBook.isImage: Boolean
     get() = isType(BookType.image)
 
-val Book.isLocal: Boolean
+val BaseBook.isLocal: Boolean
     get() {
         if (type == 0) {
             return origin == BookType.localTag || origin.startsWith(BookType.webDavTag)
@@ -51,39 +51,39 @@ val Book.isLocal: Boolean
         return isType(BookType.local)
     }
 
-val Book.isLocalTxt: Boolean
+val BaseBook.isLocalTxt: Boolean
     get() = isLocal && originName.endsWith(".txt", true)
 
-val Book.isEpub: Boolean
+val BaseBook.isEpub: Boolean
     get() = isLocal && originName.endsWith(".epub", true)
 
-val Book.isUmd: Boolean
+val BaseBook.isUmd: Boolean
     get() = isLocal && originName.endsWith(".umd", true)
 
-val Book.isPdf: Boolean
+val BaseBook.isPdf: Boolean
     get() = isLocal && originName.endsWith(".pdf", true)
 
-val Book.isMobi: Boolean
+val BaseBook.isMobi: Boolean
     get() = isLocal && (originName.endsWith(".mobi", true) ||
             originName.endsWith(".azw3", true) ||
             originName.endsWith(".azw", true))
 
-val Book.isOnLineTxt: Boolean
+val BaseBook.isOnLineTxt: Boolean
     get() = !isLocal && isType(BookType.text)
 
-val Book.isWebFile: Boolean
+val BaseBook.isWebFile: Boolean
     get() = isType(BookType.webFile)
 
-val Book.isUpError: Boolean
+val BaseBook.isUpError: Boolean
     get() = isType(BookType.updateError)
 
-val Book.isArchive: Boolean
+val BaseBook.isArchive: Boolean
     get() = isType(BookType.archive)
 
-val Book.isNotShelf: Boolean
+val BaseBook.isNotShelf: Boolean
     get() = isType(BookType.notShelf)
 
-val Book.archiveName: String
+val BaseBook.archiveName: String
     get() {
         if (!isArchive) throw NoStackTraceException("Book is not deCompressed from archive")
         // local_book::archive.rar
@@ -91,7 +91,7 @@ val Book.archiveName: String
         return origin.substringAfter("::").substringAfterLast("/")
     }
 
-fun Book.contains(word: String?): Boolean {
+fun BaseBook.contains(word: String?): Boolean {
     if (word.isNullOrEmpty()) {
         return true
     }
@@ -188,41 +188,41 @@ fun Book.removeLocalUriCache() {
     localUriCache.remove(bookUrl)
 }
 
-fun Book.getRemoteUrl(): String? {
+fun BaseBook.getRemoteUrl(): String? {
     if (origin.startsWith(BookType.webDavTag)) {
         return origin.substring(BookType.webDavTag.length)
     }
     return null
 }
 
-fun Book.setType(@BookType.Type vararg types: Int) {
+fun BaseBook.setType(@BookType.Type vararg types: Int) {
     type = 0
     addType(*types)
 }
 
-fun Book.addType(@BookType.Type vararg types: Int) {
+fun BaseBook.addType(@BookType.Type vararg types: Int) {
     types.forEach {
         type = type or it
     }
 }
 
-fun Book.removeType(@BookType.Type vararg types: Int) {
+fun BaseBook.removeType(@BookType.Type vararg types: Int) {
     types.forEach {
         type = type and it.inv()
     }
 }
 
-fun Book.removeAllBookType() {
+fun BaseBook.removeAllBookType() {
     removeType(BookType.allBookType)
 }
 
-fun Book.clearType() {
+fun BaseBook.clearType() {
     type = 0
 }
 
-fun Book.isType(@BookType.Type bookType: Int): Boolean = type and bookType > 0
+fun BaseBook.isType(@BookType.Type bookType: Int): Boolean = type and bookType > 0
 
-fun Book.upType() {
+fun BaseBook.upType() {
     if (type < 8) {
         type = when (type) {
             BookSourceType.video -> BookType.video
@@ -256,7 +256,7 @@ fun Book.update() {
     appDb.bookDao.update(this)
 }
 
-fun Book.primaryStr(): String {
+fun BaseBook.primaryStr(): String {
     return origin + bookUrl
 }
 
@@ -299,12 +299,12 @@ fun Book.isLocalModified(): Boolean {
     return isLocal && LocalBook.getLastModified(this).getOrDefault(0L) > latestChapterTime
 }
 
-fun Book.releaseHtmlData() {
+fun BaseBook.releaseHtmlData() {
     infoHtml = null
     tocHtml = null
 }
 
-fun Book.isSameNameAuthor(other: Any?): Boolean {
+fun BaseBook.isSameNameAuthor(other: Any?): Boolean {
     if (other is BaseBook) {
         return name == other.name && author == other.author
     }
