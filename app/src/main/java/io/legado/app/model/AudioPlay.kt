@@ -160,6 +160,14 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
+    fun refreshChapter() {
+        durChapter?.let { chapter ->
+            chapter.resourceUrl = null
+            durPlayUrl = ""
+            loadPlayUrl()
+        }
+    }
+
     private fun getCoverUrl(
         bookSource: BookSource,
         book: Book,
@@ -274,11 +282,15 @@ object AudioPlay : CoroutineScope by MainScope() {
                 getCoverUrl(bookSource, book, chapter)
                 callback?.let { getLrcData(bookSource, book, chapter) }
                 Coroutine.async(this) {
-                    getContentAwait(bookSource, book, chapter, needSave = false)
+                    chapter.resourceUrl ?: getContentAwait(bookSource, book, chapter, needSave = false)
                 }.onSuccess { content ->
                     if (content.isEmpty()) {
                         appCtx.toastOnUi("未获取到资源链接")
                     } else {
+                        if (chapter.resourceUrl != content) {
+                            chapter.resourceUrl = content
+                            if (inBookshelf) appDb.bookChapterDao.update(chapter)
+                        }
                         contentLoadFinish(chapter, content)
                     }
                 }.onError {

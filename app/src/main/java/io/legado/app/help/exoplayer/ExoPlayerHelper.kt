@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import com.google.gson.reflect.TypeToken
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.GSON
@@ -68,6 +69,7 @@ object ExoPlayerHelper {
                 DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
             ).setDataSourceFactory(resolvingDataSource)
                 .setLiveTargetOffsetMs(5000)
+                .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(2))
         ).build()
     }
 

@@ -125,6 +125,8 @@ class AudioPlayService : BaseService(),
     private var cover: Bitmap =
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
 
+    private var hasRefreshedOnPlayError = false
+
     override fun onCreate() {
         super.onCreate()
         isRun = true
@@ -345,6 +347,7 @@ class AudioPlayService : BaseService(),
             }
 
             Player.STATE_READY -> {
+                hasRefreshedOnPlayError = false
                 AudioPlay.upLoading(false)
                 if (exoPlayer.playWhenReady) {
                     AudioPlay.status = Status.PLAY
@@ -386,6 +389,11 @@ class AudioPlayService : BaseService(),
      * 播放错误事件
      */
     override fun onPlayerError(error: PlaybackException) {
+        if (!hasRefreshedOnPlayError) {
+            hasRefreshedOnPlayError = true
+            AudioPlay.refreshChapter()
+            return
+        }
         super.onPlayerError(error)
         AudioPlay.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
