@@ -23,6 +23,10 @@ def name = "legado"
 def version = "3." + releaseTime()
 def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
 
+room {
+    schemaDirectory "$projectDir/schemas"
+}
+
 android {
     compileSdk = compile_sdk_version
     namespace = 'io.legado.app'
@@ -119,7 +123,7 @@ android {
         }
     }
 
-    android.applicationVariants.configureEach { variant ->
+    applicationVariants.configureEach { variant ->
         variant.outputs.configureEach { output ->
             def abi = output.getFilter("ABI")
             // 简写架构名称
@@ -136,9 +140,6 @@ android {
     }
 
 
-    room {
-        schemaDirectory "$projectDir/schemas"
-    }
     // 设定Room的KSP参数
     ksp {
         arg("room.incremental", "true")
