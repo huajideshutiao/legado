@@ -296,13 +296,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         autoCompleteTokenizer = KeywordTokenizer()
         setTokenizer(autoCompleteTokenizer)
-        autoCompleteAdapter = AutoCompleteAdapter(context).apply {
-            textProvider = {
-                val start = kotlin.math.max(0, selectionStart - 3000)
-                val end = kotlin.math.min(text.length, selectionStart + 3000)
-                text.subSequence(start, end).toString()
-            }
-        }
+        autoCompleteAdapter = AutoCompleteAdapter(context)
         setAdapter(autoCompleteAdapter)
         threshold = 1
         dropDownWidth = 150 * displayDensity.toInt()
@@ -361,16 +355,38 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         return super.onKeyDown(keyCode, event)
     }
 
+    private var performFilterRunnable: Runnable? = null
+
     override fun performFiltering(text: CharSequence, keyCode: Int) {
         if (autoCompleteAdapter != null && autoCompleteTokenizer != null) {
-            val end = if (text.isNotEmpty()) minOf(selectionStart, text.length) else 0
-            val tokenStart = if (end > 0) autoCompleteTokenizer!!.findTokenStart(text, end) else 0
-            val constraint = if (tokenStart <= end && text.isNotEmpty()) {
-                text.subSequence(tokenStart, end)
-            } else {
-                ""
+            performFilterRunnable?.let { removeCallbacks(it) }
+            val currentRunnable = Runnable {
+                val currentText = editableText ?: return@Runnable
+                val cursor = selectionStart
+                if (cursor >= 0) {
+                    var start = kotlin.math.max(0, currentText.lastIndexOf('\n', cursor - 1) + 1)
+                    start = kotlin.math.max(start, cursor - 500)
+                    var lineEnd = currentText.indexOf('\n', cursor)
+                    if (lineEnd == -1) lineEnd = currentText.length
+                    lineEnd = kotlin.math.min(lineEnd, cursor + 500)
+                    if (start > lineEnd) start = lineEnd
+                    autoCompleteAdapter?.currentLineText =
+                        currentText.subSequence(start, lineEnd).toString()
+                }
+
+                val end =
+                    if (currentText.isNotEmpty()) minOf(selectionStart, currentText.length) else 0
+                val tokenStart =
+                    if (end > 0) autoCompleteTokenizer!!.findTokenStart(currentText, end) else 0
+                val constraint = if (tokenStart <= end && currentText.isNotEmpty()) {
+                    currentText.subSequence(tokenStart, end)
+                } else {
+                    ""
+                }
+                autoCompleteAdapter?.filter?.filter(constraint)
             }
-            autoCompleteAdapter?.filter?.filter(constraint)
+            performFilterRunnable = currentRunnable
+            postDelayed(currentRunnable, 200)
         } else {
             super.performFiltering(text, keyCode)
         }
@@ -1357,13 +1373,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun setAutoCompletions(completions: Map<String, List<String>>) {
         if (autoCompleteAdapter == null) {
-            autoCompleteAdapter = AutoCompleteAdapter(context, completions).apply {
-                textProvider = {
-                    val start = kotlin.math.max(0, selectionStart - 3000)
-                    val end = kotlin.math.min(text.length, selectionStart + 3000)
-                    text.subSequence(start, end).toString()
-                }
-            }
+            autoCompleteAdapter = AutoCompleteAdapter(context, completions)
             if (autoCompleteTokenizer == null) {
                 autoCompleteTokenizer = KeywordTokenizer()
                 setTokenizer(autoCompleteTokenizer)

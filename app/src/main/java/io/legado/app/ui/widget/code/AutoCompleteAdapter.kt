@@ -17,7 +17,7 @@ class AutoCompleteAdapter(
 
     private val inflater = LayoutInflater.from(context)
     var completions: Map<String, List<String>?> = emptyMap()
-    var textProvider: (() -> CharSequence)? = null
+    var currentLineText: String = ""
     private var filteredResults: List<String> = emptyList()
     private var originalInput: String = ""
     private val filter = CompletionFilter()
@@ -68,7 +68,8 @@ class AutoCompleteAdapter(
             addedItems: HashSet<String>
         ) {
             try {
-                textProvider?.invoke()?.toString()?.let { text ->
+                val text = currentLineText
+                if (text.isNotEmpty()) {
                     val matcher = wordPattern.matcher(text)
                     while (matcher.find()) {
                         val word = matcher.group()
@@ -151,7 +152,7 @@ class AutoCompleteAdapter(
     }
 
     companion object {
-        private val wordPattern = java.util.regex.Pattern.compile("\\b[a-zA-Z_]\\w*\\b")
+        private val wordPattern = java.util.regex.Pattern.compile("\\b[a-zA-Z_]\\w{0,29}\\b")
 
         val defaultCompletions: Map<String, List<String>?> = mapOf(
             "*." to listOf(
