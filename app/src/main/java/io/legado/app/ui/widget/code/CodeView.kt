@@ -121,15 +121,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var currentHighlightRange = Pair(-1, -1)
     private val visibleRect = Rect()
 
-    private val updateVisibleSpansRunnable = Runnable {
-        updateVisibleSpans()
-    }
-
     private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
-        if (!getLocalVisibleRect(visibleRect)) {
-            removeCallbacks(updateVisibleSpansRunnable)
-            return@OnScrollChangedListener
-        }
+        if (!getLocalVisibleRect(visibleRect)) return@OnScrollChangedListener
 
         val layout = layout ?: return@OnScrollChangedListener
         val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
@@ -145,8 +138,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             return@OnScrollChangedListener
         }
 
-        removeCallbacks(updateVisibleSpansRunnable)
-        post(updateVisibleSpansRunnable)
+        updateVisibleSpans()
     }
 
     private val highlightRunnable = Runnable {
@@ -185,7 +177,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         super.onDetachedFromWindow()
         viewTreeObserver.removeOnScrollChangedListener(scrollChangedListener)
         removeCallbacks(highlightRunnable)
-        removeCallbacks(updateVisibleSpansRunnable)
         highlightJob?.cancel()
         // 移除幽灵锚点，防止内存/视图泄漏
         cursorAnchor?.let { anchor ->
@@ -233,18 +224,22 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 var startIndex = allSyntaxSpans.size
                 while (low <= high) {
                     val mid = (low + high) ushr 1
-                    if (allSyntaxSpans[mid].end > start) {
+                    if (allSyntaxSpans[mid].start >= start) {
                         startIndex = mid
                         high = mid - 1
                     } else {
                         low = mid + 1
                     }
                 }
+                for (i in startIndex - 1 downTo 0) {
+                    val span = allSyntaxSpans[i]
+                    if (span.end > start) {
+                        span.end = kotlin.math.max(start, span.end + offset)
+                    }
+                }
                 for (i in startIndex until allSyntaxSpans.size) {
                     val span = allSyntaxSpans[i]
-                    if (span.start >= start) {
-                        span.start = kotlin.math.max(start, span.start + offset)
-                    }
+                    span.start = kotlin.math.max(start, span.start + offset)
                     if (span.end > start) {
                         span.end = kotlin.math.max(start, span.end + offset)
                     }
@@ -363,6 +358,15 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val currentRunnable = Runnable {
                 val currentText = editableText ?: return@Runnable
                 val cursor = selectionStart
+
+                if (cursor >= 0 && cursor < currentText.length) {
+                    val charAfter = currentText[cursor]
+                    if (charAfter.isLetterOrDigit() || charAfter == '_') {
+                        dismissDropDown()
+                        return@Runnable
+                    }
+                }
+
                 if (cursor >= 0) {
                     var start = kotlin.math.max(0, currentText.lastIndexOf('\n', cursor - 1) + 1)
                     start = kotlin.math.max(start, cursor - 500)
@@ -717,22 +721,29 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
 
-        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点 (基于 end 严格单调递增性质)
+        // 2. 二分查找当前区域在 allSyntaxSpans 中的起点
         var low = 0
         var high = allSyntaxSpans.size - 1
-        var startIndex = 0
+        var startIndex = allSyntaxSpans.size
         while (low <= high) {
             val mid = (low + high) ushr 1
-            if (allSyntaxSpans[mid].end <= renderStartOffset) {
-                low = mid + 1
-                startIndex = low
-            } else {
+            if (allSyntaxSpans[mid].start >= renderStartOffset) {
+                startIndex = mid
                 high = mid - 1
+            } else {
+                low = mid + 1
+            }
+        }
+
+        var actualStartIndex = startIndex
+        for (i in startIndex - 1 downTo 0) {
+            if (allSyntaxSpans[i].end > renderStartOffset) {
+                actualStartIndex = i
             }
         }
 
         // 3. 增量更新：遍历并添加新进入视野的 Span
-        for (i in startIndex until allSyntaxSpans.size) {
+        for (i in actualStartIndex until allSyntaxSpans.size) {
             val span = allSyntaxSpans[i]
             if (span.start >= renderEndOffset) break
 
