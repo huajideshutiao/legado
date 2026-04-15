@@ -123,6 +123,8 @@ class BookInfoActivity :
     private val readBookResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
+        viewModel.curBook = viewModel.curBook
+        upLoading(false, listOf(BookChapter()))
         when (it.resultCode) {
             RESULT_OK -> {
                 viewModel.inBookshelf = true
