@@ -390,7 +390,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 autoCompleteAdapter?.filter?.filter(constraint)
             }
             performFilterRunnable = currentRunnable
-            postDelayed(currentRunnable, 200)
+            postDelayed(currentRunnable, 150)
         } else {
             super.performFiltering(text, keyCode)
         }
@@ -418,13 +418,17 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
             val insertText = prefixBeforeDot + displayText
 
+            val beforeLen = editable.length
             editable.replace(tokenStart, tokenEnd, insertText)
+            val addedLen = editable.length - beforeLen + (tokenEnd - tokenStart)
 
-            val newCursorPos = tokenStart + insertText.length
-            if (displayText.endsWith("()")) {
-                setSelection(newCursorPos - 1)
-            } else {
-                setSelection(newCursorPos)
+            if (!insertText.contains("#in")) {
+                val newCursorPos = tokenStart + addedLen
+                if (displayText.endsWith("()")) {
+                    setSelection(newCursorPos - 1)
+                } else {
+                    setSelection(newCursorPos)
+                }
             }
         } else {
             super.replaceText(text)

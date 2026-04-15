@@ -156,9 +156,41 @@ class AutoCompleteAdapter(
 
         val defaultCompletions: Map<String, List<String>?> = mapOf(
             "*." to listOf(
-                "length","slice()","split()","replace()","substring()","indexOf()","includes()","map()","forEach()","join()","push()","toString()","match()"
+                "map()",
+                "forEach()",
+                "toString()",
+                "test()",
+                "forEach(i=>{#in})",
+                //array
+                "entries()",
+                "keys()",
+                "values()",
+                "length",
+                "join()",
+                "push()",
+                //string
+                "charAt()",
+                "charCodeAt()",
+                "endsWith()",
+                "includes()",
+                "indexOf()",
+                "lastIndexOf()",
+                "match()",
+                "repeat()",
+                "replace()",
+                "replaceAll()",
+                "slice()",
+                "split()",
+                "startsWith()",
+                "trim()",
+                "parseInt()",
+                ""
             ),
 //            "" to listOf(""),
+            //js常用方法
+            "JSON." to listOf("parse()", "stringify()"),
+            "Date." to listOf("now()", "parse()"),
+            //"Object." to listOf("entries()","keys()","values()"),
             "java." to listOf(
                 // Network
                 "ajax()","ajaxAll()","get()","post()",
