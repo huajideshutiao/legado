@@ -106,7 +106,6 @@ object ReadBook : CoroutineScope by MainScope() {
             readRecord.bookName = book.name
             readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
-        chapterList = IntentData.get<List<BookChapter>>("nowChapterList")
         if (chapterList?.get(0)?.bookUrl != book.bookUrl){
             chapterList = null
         }

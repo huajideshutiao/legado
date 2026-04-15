@@ -105,7 +105,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
         withContext(Dispatchers.Main) {
-            IntentData.put("nowChapterList", chapterListData.value)
+            ReadBook.chapterList = chapterListData.value
         }
         ReadBook.initData(book)
         isInitFinish = true

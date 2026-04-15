@@ -86,7 +86,6 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun upData(book: Book) {
         if (durChapterIndex != book.durChapterIndex) {
             AudioPlay.book = book
-            chapterList = IntentData.get<List<BookChapter>>("nowChapterList")
             if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
                 chapterList = null
             }
@@ -121,7 +120,6 @@ object AudioPlay : CoroutineScope by MainScope() {
         stop()
         status = Status.STOP
         AudioPlay.book = book
-        chapterList = IntentData.get<List<BookChapter>>("nowChapterList")
         if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
             chapterList = null
         }

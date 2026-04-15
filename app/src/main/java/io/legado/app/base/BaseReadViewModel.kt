@@ -242,7 +242,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         changeSourceCoroutine = execute {
             curBookSource = source
             curBook?.migrateTo(book, toc)
-            IntentData.put("nowChapterList", toc)
             if (inBookshelf) {
                 book.removeType(BookType.updateError)
                 curBook?.delete()

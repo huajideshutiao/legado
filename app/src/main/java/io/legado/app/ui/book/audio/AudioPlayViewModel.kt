@@ -10,6 +10,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
 import io.legado.app.model.AudioPlay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AudioPlayViewModel(application: Application) : BaseReadViewModel(application) {
     val titleData = MutableLiveData<String>()
@@ -35,6 +37,9 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
                 (if (intent.action != "activity") IntentData.get<Book>("nowBook") else book)
                     ?: return@execute
             upBook(book)
+            withContext(Dispatchers.Main){
+                AudioPlay.chapterList = chapterListData.value
+            }
             if (AudioPlay.book?.bookUrl == book.bookUrl) upData(book)
             else resetData(book)
             titleData.postValue(book.name)
