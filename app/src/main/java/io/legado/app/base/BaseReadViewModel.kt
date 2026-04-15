@@ -25,6 +25,7 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadBook
@@ -106,6 +107,10 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             ?: if (book.isLocal) null else book.getBookSource()
         inBookshelf = !book.isNotShelf
         curBook = book
+        var book = book
+        if (inBookshelf && book.tocUrl.isEmpty()) book =
+            appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(book.name, book.author)
+                    ?: book
         if (book.tocUrl.isEmpty()) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
@@ -134,7 +139,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     suspend fun loadBookInfo(
         book: Book, canReName: Boolean = true, runPreUpdateJs: Boolean = true
     ) {
-        var book = book
         if (book.isLocal) {
             val tmp = book.copy()
             LocalBook.upBookInfo(book)
@@ -147,7 +151,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 return
             }
             try {
-                if (!inBookshelf) getBookInfoAwait(bookSource, book, canReName)
+                getBookInfoAwait(bookSource, book, canReName)
                 val dbBook = appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(
                     book.name, book.author
                 )
@@ -157,13 +161,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                      * 此时 book 的数据会与数据库中的不同，需要更新 #3652 #4619
                      * book 加载详情后虽然书名作者相同，但是又可能不是数据库中(书源不同)的那本书 #3149
                      */
-                    book = dbBook
+                    dbBook.updateTo(book)
                     inBookshelf = true
                 } else {
-                    if (inBookshelf) getBookInfoAwait(bookSource, book, canReName)
                     book.addType(BookType.notShelf)
                     inBookshelf = false
                 }
+                if (inBookshelf)book.save()
                 if (book.isWebFile) {
                     loadWebFile(book)
                     curBook = book
@@ -185,7 +189,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 LocalBook.getChapterList(book).let {
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
-                    IntentData.put("nowChapterList", it)
                     if (inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
                     ReadBook.onChapterListUpdated(book)
                     curBook = book
@@ -202,16 +205,8 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             }
             val oldBook = book.copy()
             try {
-                var isFromWeb = false
-                var tmp =
-                    if (inBookshelf) appDb.bookChapterDao.getChapterList(book.bookUrl) else emptyList()
-                if (tmp.isEmpty()) {
-                    tmp = getChapterListAwait(
-                        bookSource, book, runPreUpdateJs
-                    ).getOrThrow()
-                    isFromWeb = true
-                }
-                if (inBookshelf && isFromWeb) {
+                val tmp = getChapterListAwait(bookSource, book, runPreUpdateJs).getOrThrow()
+                if (inBookshelf) {
                     appDb.bookDao.replace(oldBook, book)
                     /**
                      * runPreUpdateJs 有可能会修改 book 的 bookUrl
@@ -219,7 +214,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     if (oldBook.bookUrl != book.bookUrl) {
                         BookHelp.updateCacheFolder(oldBook, book)
                     }
-                    appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                     appDb.bookChapterDao.insert(*tmp.toTypedArray())
                 }
                 curBook = book
