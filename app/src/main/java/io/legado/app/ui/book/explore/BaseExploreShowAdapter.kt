@@ -7,7 +7,6 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 
@@ -15,7 +14,7 @@ import io.legado.app.help.book.addType
 abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val callBack: CallBack) :
     RecyclerAdapter<SearchBook, VB>(context) {
     override fun registerListener(holder: ItemViewHolder, binding: VB) {
-        val tmp = getItem(holder.layoutPosition)?.toBook()?.apply {
+        val tmp = getItem(holder.layoutPosition)?.apply {
                 if (bookUrl.contains("::")||!callBack.isInBookshelf(this))
                     addType(BookType.notShelf)
             } ?: return
@@ -47,6 +46,6 @@ abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val ca
          */
         fun isInBookshelf(book: BaseBook): Boolean
 
-        fun showBookInfo(book: Book, longClick: Boolean = false)
+        fun showBookInfo(book: BaseBook, longClick: Boolean = false)
     }
 }

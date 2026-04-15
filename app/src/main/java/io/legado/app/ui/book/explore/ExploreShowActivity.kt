@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
@@ -151,7 +150,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         return viewModel.isInBookShelf(book)
     }
 
-    override fun showBookInfo(book: Book, longClick: Boolean) {
+    override fun showBookInfo(book: BaseBook, longClick: Boolean) {
         if (book.bookUrl.contains("::")) {
             val tmp = book.bookUrl.split("::")
             IntentData.source = viewModel.bookSource

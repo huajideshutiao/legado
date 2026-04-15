@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.os.Looper
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseReadViewModel
@@ -76,28 +77,25 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
         ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
     }
 
-    fun initReadBookConfig() {
-        val book = IntentData.book ?: appDb.bookDao.lastReadBook ?: return
-        ReadBook.upReadBookConfig(if (book is SearchBook) book.toBook() else book as Book)
-    }
-
     /**
      * 初始化
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
-        execute {
-            val book = IntentData.book ?: ReadBook.book
-            if (book != null) {
+        val book = IntentData.book ?: appDb.bookDao.lastReadBook ?: ReadBook.book ?: return
+        ReadBook.upReadBookConfig(if (book is SearchBook) book.toBook() else book as Book)
+        Looper.myQueue().addIdleHandler {
+            execute {
                 ReadBook.chapterChanged = intent.getBooleanExtra("chapterChanged", false)
                 upBook(book)
                 initBook(curBook!!)
-            } else ReadBook.upMsg(context.getString(R.string.no_book))
-        }.onSuccess {
-            success?.invoke()
-        }.onError {
-            val msg = "初始化数据失败\n${it.localizedMessage}"
-            ReadBook.upMsg(msg)
-            AppLog.put(msg, it)
+            }.onSuccess {
+                success?.invoke()
+            }.onError {
+                val msg = "初始化数据失败\n${it.localizedMessage}"
+                ReadBook.upMsg(msg)
+                AppLog.put(msg, it)
+            }
+            false
         }
         //.onFinally { ReadBook.saveRead() }
     }

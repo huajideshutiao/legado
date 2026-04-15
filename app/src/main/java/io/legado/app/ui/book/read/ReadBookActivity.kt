@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
-import android.os.Looper
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.Menu
@@ -287,11 +286,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             finish()
         }
-        viewModel.initReadBookConfig()
-        Looper.myQueue().addIdleHandler {
-            viewModel.initData(intent)
-            false
-        }
+        viewModel.initData(intent)
         justInitData = true
     }
 
