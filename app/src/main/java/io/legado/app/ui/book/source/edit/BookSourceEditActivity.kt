@@ -8,7 +8,7 @@ import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.tabs.TabLayout
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookSourceType
@@ -32,7 +32,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.qrcode.QrCodeResult
+
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -47,7 +47,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.share
-import io.legado.app.utils.shareWithQr
+
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -72,12 +72,6 @@ class BookSourceEditActivity :
     private val contentEntities: ArrayList<EditEntity> = ArrayList()
 
     //    private val reviewEntities: ArrayList<EditEntity> = ArrayList()
-    private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
-        it ?: return@registerForActivityResult
-        viewModel.importSource(it) { source ->
-            upSourceView(source)
-        }
-    }
     private val selectDoc = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             if (uri.isContentScheme()) {
@@ -132,13 +126,7 @@ class BookSourceEditActivity :
             R.id.menu_auto_complete -> viewModel.autoComplete = !viewModel.autoComplete
             R.id.menu_copy_source -> sendToClip(GSON.toJson(getSource()))
             R.id.menu_paste_source -> viewModel.pasteSource { upSourceView(it) }
-            R.id.menu_qr_code_camera -> qrCodeResult.launch()
             R.id.menu_share_str -> share(GSON.toJson(getSource()))
-            R.id.menu_share_qr -> shareWithQr(
-                GSON.toJson(getSource()),
-                getString(R.string.share_book_source),
-                ErrorCorrectionLevel.L
-            )
 
             R.id.menu_help -> showHelp("ruleHelp")
             R.id.menu_login -> viewModel.save(getSource()) { source ->

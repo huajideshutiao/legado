@@ -35,7 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BaseBook
@@ -283,34 +283,7 @@ fun Context.share(file: File, type: String = "text/*") {
     )
 }
 
-@SuppressLint("SetWorldReadable")
-fun Context.shareWithQr(
-    text: String,
-    title: String = getString(R.string.share),
-    errorCorrectionLevel: ErrorCorrectionLevel = ErrorCorrectionLevel.H,
-) {
-    val bitmap = QRCodeUtils.createQRCode(text, errorCorrectionLevel = errorCorrectionLevel)
-    if (bitmap == null) {
-        toastOnUi(R.string.text_too_long_qr_error)
-    } else {
-        try {
-            val file = File(externalCacheDir, "qr.png")
-            val fOut = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fOut)
-            fOut.flush()
-            fOut.close()
-            file.setReadable(true, false)
-            val contentUri = FileProvider.getUriForFile(this, AppConst.authority, file)
-            val intent = Intent(Intent.ACTION_SEND)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.putExtra(Intent.EXTRA_STREAM, contentUri)
-            intent.type = "image/png"
-            startActivity(Intent.createChooser(intent, title))
-        } catch (e: Exception) {
-            toastOnUi(e.localizedMessage ?: "ERROR")
-        }
-    }
-}
+
 
 fun Context.sendToClip(text: String) {
     val clipData = ClipData.newPlainText(null, text)

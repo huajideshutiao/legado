@@ -16,7 +16,7 @@ import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.ui.qrcode.QrCodeResult
+
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.launch
@@ -38,11 +38,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
-    private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
-        it?.let {
-            startSearch(it)
-        }
-    }
+
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initRecyclerView()
@@ -195,7 +191,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_scan -> qrCodeResult.launch()
+
             R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
             R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))
             R.id.menu_toc_src -> showDialogFragment(TextDialog("html", viewModel.tocSrc))

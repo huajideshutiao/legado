@@ -22,7 +22,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportRssSourceDialog
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.qrcode.QrCodeResult
+
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
@@ -69,10 +69,7 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
     private var sourceFlowJob: Job? = null
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
-    private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
-        it ?: return@registerForActivityResult
-        showDialogFragment(ImportRssSourceDialog(it))
-    }
+
     private val importDoc = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             showDialogFragment(ImportRssSourceDialog(uri.toString()))
@@ -112,7 +109,6 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             }
 
             R.id.menu_import_onLine -> showImportDialog()
-            R.id.menu_import_qr -> qrCodeResult.launch()
             R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
             R.id.menu_import_default -> viewModel.importDefault()
             R.id.menu_enabled_group -> {

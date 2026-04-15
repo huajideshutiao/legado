@@ -52,15 +52,7 @@
         android:title="@string/set_source_variable"
         app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_qr_code_camera"
-        android:title="@string/import_by_qr_code"
-        app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_share_qr"
-        android:title="@string/qr_share"
-        app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_share_str"
