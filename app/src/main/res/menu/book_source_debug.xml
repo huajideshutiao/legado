@@ -4,11 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="AlwaysShowAction">
 
-    <item
-        android:id="@+id/menu_scan"
-        android:icon="@drawable/ic_scan"
-        android:title="@string/scan_qr_code"
-        app:showAsAction="always" />
+
 
     <item
         android:id="@+id/menu_search_src"

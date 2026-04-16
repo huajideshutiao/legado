@@ -277,9 +277,7 @@ dependencies {
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
 
-    //二维码
-    //noinspection GradleDependency
-    implementation(libs.zxing.lite)
+
 
     //颜色选择
     implementation(libs.colorpicker)

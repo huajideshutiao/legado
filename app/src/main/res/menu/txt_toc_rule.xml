@@ -22,11 +22,7 @@
         android:icon="@drawable/ic_import"
         app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_import_qr"
-        android:icon="@drawable/ic_import"
-        android:title="@string/import_by_qr_code"
-        app:showAsAction="never" />
+
 
     <item
         android:id="@+id/menu_import_default"

@@ -176,10 +176,7 @@
             android:launchMode="singleTask" /> <!-- 授权界面 -->
         <activity
             android:name=".lib.permission.PermissionActivity"
-            android:theme="@style/Activity.Permission" /> <!-- 二维码扫描 -->
-        <activity
-            android:name=".ui.qrcode.QrCodeActivity"
-            android:launchMode="singleTask" /> <!-- 规则订阅 -->
+            android:theme="@style/Activity.Permission" /> <!-- 规则订阅 -->
         <activity
             android:name=".ui.rss.subscription.RuleSubActivity"
             android:launchMode="singleTask" /> <!-- 书源编辑 -->
