@@ -2,7 +2,6 @@ package io.legado.app.help.http
 
 import android.annotation.SuppressLint
 import android.net.http.SslError
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AndroidRuntimeException

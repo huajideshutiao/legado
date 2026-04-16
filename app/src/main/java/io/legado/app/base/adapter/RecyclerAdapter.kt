@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.util.size
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -15,7 +16,6 @@ import io.legado.app.utils.withTimeoutOrNullAsync
 import kotlinx.coroutines.ensureActive
 import splitties.views.onLongClick
 import java.util.Collections
-import androidx.core.util.size
 
 /**
  * Created by Invincible on 2017/11/24.

@@ -65,6 +65,5 @@ interface ScriptEngine {
 
     fun setBindings(bindings: Bindings?, scope: Int)
 
-    companion object {
-    }
+    companion object
 }

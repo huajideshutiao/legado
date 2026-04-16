@@ -13,7 +13,6 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSearchScopeBinding
 import io.legado.app.databinding.ItemCheckBoxBinding

@@ -57,7 +57,6 @@ import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
-import kotlin.text.contains
 
 @Suppress("MemberVisibilityCanBePrivate")
 open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(application) {

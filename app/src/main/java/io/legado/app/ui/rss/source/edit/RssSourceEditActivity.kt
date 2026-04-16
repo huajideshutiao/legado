@@ -6,7 +6,6 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import com.google.android.material.tabs.TabLayout
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.RssSource
@@ -18,7 +17,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
@@ -28,13 +26,11 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isTrue
-import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.share
-import io.legado.app.utils.shareWithQr
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -56,13 +52,6 @@ class RssSourceEditActivity :
                 sendText(uri.toString())
             } else {
                 sendText(uri.path.toString())
-            }
-        }
-    }
-    private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
-        it?.let {
-            viewModel.importSource(it) { source: RssSource ->
-                upSourceView(source)
             }
         }
     }
@@ -135,15 +124,8 @@ class RssSourceEditActivity :
             R.id.menu_clear_cookie -> viewModel.clearCookie(getRssSource().sourceUrl)
             R.id.menu_auto_complete -> viewModel.autoComplete = !viewModel.autoComplete
             R.id.menu_copy_source -> sendToClip(GSON.toJson(getRssSource()))
-            R.id.menu_qr_code_camera -> qrCodeResult.launch()
             R.id.menu_paste_source -> viewModel.pasteSource { upSourceView(it) }
             R.id.menu_share_str -> share(GSON.toJson(getRssSource()))
-            R.id.menu_share_qr -> shareWithQr(
-                GSON.toJson(getRssSource()),
-                getString(R.string.share_rss_source),
-                ErrorCorrectionLevel.L
-            )
-
             R.id.menu_help -> showHelp("ruleHelp")
         }
         return super.onCompatOptionsItemSelected(item)

@@ -28,11 +28,13 @@ import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.menu.MenuPopupHelper
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.record
 import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.get
+import androidx.core.view.isVisible
 import androidx.core.view.marginBottom
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
@@ -45,8 +47,6 @@ import splitties.systemservices.inputMethodManager
 import splitties.views.bottomPadding
 import splitties.views.topPadding
 import java.lang.reflect.Field
-import androidx.core.view.isVisible
-import androidx.core.graphics.createBitmap
 
 
 private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {

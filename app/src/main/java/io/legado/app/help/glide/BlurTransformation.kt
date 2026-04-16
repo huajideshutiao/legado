@@ -1,11 +1,11 @@
 package io.legado.app.help.glide
 
 import android.graphics.Bitmap
+import androidx.core.graphics.scale
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import io.legado.app.utils.stackBlur
 import java.security.MessageDigest
-import androidx.core.graphics.scale
 
 class FastBlurTransformation(
     private val maxShortSide: Int = 400

@@ -9,6 +9,7 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.core.net.toUri
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.isAbsUrl
@@ -16,7 +17,6 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
-import androidx.core.net.toUri
 
 class TextActionMenu(private val context: Context, private val callBack: CallBack) {
 

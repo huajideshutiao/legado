@@ -9,7 +9,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
@@ -30,7 +29,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.createFileIfNotExist
@@ -65,7 +63,6 @@ import me.ag2s.epublib.domain.TOCReference
 import me.ag2s.epublib.epub.EpubWriter
 import me.ag2s.epublib.epub.EpubWriterProcessor
 import me.ag2s.epublib.util.ResourceUtil
-import org.jsoup.Jsoup
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.nio.charset.Charset

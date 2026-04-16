@@ -26,7 +26,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.file.HandleFileContract
-
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
@@ -36,7 +35,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.launch
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess

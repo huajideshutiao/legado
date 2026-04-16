@@ -21,7 +21,6 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.net.ConnectivityManager
 import android.net.Uri
@@ -35,7 +34,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
-
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BaseBook
@@ -56,7 +54,6 @@ import splitties.systemservices.clipboardManager
 import splitties.systemservices.connectivityManager
 import splitties.systemservices.uiModeManager
 import java.io.File
-import java.io.FileOutputStream
 import kotlin.system.exitProcess
 
 inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() -> Unit = {}) {

@@ -20,7 +20,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.association.ImportDictRuleDialog
 import io.legado.app.ui.file.HandleFileContract
-
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -28,8 +27,6 @@ import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.launch
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess

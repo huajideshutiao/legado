@@ -35,7 +35,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadManga
 import io.legado.app.receiver.NetworkChangedListener

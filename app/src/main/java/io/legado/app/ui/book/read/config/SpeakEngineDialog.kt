@@ -36,7 +36,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment

@@ -12,8 +12,6 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
-import io.legado.app.help.book.addType
-import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible

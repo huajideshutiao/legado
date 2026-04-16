@@ -143,7 +143,7 @@ class MangaAdapter(private val context: Context) :
         }
     }
 
-    inner class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
+    class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun onBind(item: ReaderLoading) {
             val message = item.mMessage
