@@ -12,6 +12,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
@@ -137,7 +138,7 @@ object BookContent {
             }
         }
         var contentStr = contentList.joinToString("\n")
-        if (!book.isImage && !book.isVideo && !book.isAudio) contentStr =
+        if (!book.isImage && !book.isVideo && !book.isAudio && !book.isRss) contentStr =
             HtmlFormatter.formatKeepImg(contentStr, redirectUrl)
         //全文替换
         val replaceRegex = contentRule.replaceRegex

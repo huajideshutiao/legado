@@ -24,6 +24,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -116,7 +117,11 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         curBook = book
         if (inBookshelf && isSearchBook) book =
             appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(book.name, book.author)
-                    ?: book
+                ?: book
+        if (book.isRss) {
+            book.tocUrl = book.bookUrl
+            book.bookUrl = "data:"
+        }
         if (book.tocUrl.isEmpty()) {
             loadBookInfo(book, runPreUpdateJs = inBookshelf)
         } else {
