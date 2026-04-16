@@ -54,10 +54,6 @@ object ImageUtils {
         }.getOrNull()
     }
 
-    fun skipDecode(source: BaseSource?, isCover: Boolean): Boolean {
-        return getRuleJs(source, isCover).isNullOrBlank()
-    }
-
     private fun getRuleJs(
         source: BaseSource?, isCover: Boolean
     ): String? {

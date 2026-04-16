@@ -53,15 +53,15 @@ class MultiDiskCacheFactory(
 class LegadoGlideModule : AppGlideModule() {
 
     override fun registerComponents(context: Context, glide: Glide, registry: Registry) {
+        registry.prepend(
+            MangaModel::class.java,
+            InputStream::class.java,
+            MangaModelLoader.Factory()
+        )
         registry.replace(
             GlideUrl::class.java,
             InputStream::class.java,
             OkHttpModeLoaderFactory
-        )
-        registry.prepend(
-            String::class.java,
-            InputStream::class.java,
-            LegadoDataUrlLoader.Factory()
         )
         registry.prepend(
             String::class.java,

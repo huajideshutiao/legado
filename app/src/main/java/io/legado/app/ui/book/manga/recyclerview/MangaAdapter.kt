@@ -12,7 +12,6 @@ import androidx.core.util.size
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.bumptech.glide.Glide
@@ -23,6 +22,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter.Companion.TYPE_FOOTER_VIEW
 import io.legado.app.databinding.ItemBookMangaEdgeBinding
 import io.legado.app.databinding.ItemBookMangaPageBinding
+import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.EpaperTransformation
@@ -39,7 +39,6 @@ class MangaAdapter(private val context: Context) :
     private lateinit var mConfig: MangaColorFilterConfig
     private var mTransformation: BitmapTransformation? = null
     private var currentMangaEInkThreshold = 0
-    private var recyclerView: RecyclerView? = null
 
     companion object {
         private const val LOADING_VIEW = 0
@@ -90,10 +89,7 @@ class MangaAdapter(private val context: Context) :
 
     //全部替换数据
     fun submitList(contents: List<Any>, runnable: Runnable? = null) {
-        mDiffer.submitList(contents) {
-            runnable?.run()
-            cancelOutOfBoundsJobs()
-        }
+        mDiffer.submitList(contents, runnable)
     }
 
     inner class PageViewHolder(binding: ItemBookMangaPageBinding) :
@@ -232,7 +228,9 @@ class MangaAdapter(private val context: Context) :
 
     override fun getPreloadRequestBuilder(item: Any): RequestBuilder<*>? {
         if (item is MangaPage) {
-            MangaVH.preloadImage(item.mImageUrl)
+            return Glide.with(context)
+                .load(MangaModel(item.mImageUrl))
+                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
         }
         return null
     }
@@ -268,42 +266,5 @@ class MangaAdapter(private val context: Context) :
             null
         }
         notifyItemRangeChanged(0, itemCount)
-    }
-
-    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
-        super.onAttachedToRecyclerView(recyclerView)
-        this.recyclerView = recyclerView
-        recyclerView.addOnScrollListener(scrollListener)
-    }
-
-    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
-        super.onDetachedFromRecyclerView(recyclerView)
-        recyclerView.removeOnScrollListener(scrollListener)
-        this.recyclerView = null
-    }
-
-    private val scrollListener = object : RecyclerView.OnScrollListener() {
-        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-            super.onScrolled(recyclerView, dx, dy)
-            cancelOutOfBoundsJobs()
-        }
-    }
-
-    private fun cancelOutOfBoundsJobs() {
-        val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager ?: return
-        val first = layoutManager.findFirstVisibleItemPosition()
-        val last = layoutManager.findLastVisibleItemPosition()
-        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return
-        val preDownloadNum = io.legado.app.help.config.AppConfig.mangaPreDownloadNum
-        val start = kotlin.math.max(0, first - preDownloadNum)
-        val end = kotlin.math.min(itemCount - 1, last + preDownloadNum)
-        val validUrls = mutableSetOf<String>()
-        for (i in start..end) {
-            val item = getItem(i)
-            if (item is MangaPage) {
-                validUrls.add(item.mImageUrl)
-            }
-        }
-        MangaVH.cancelJobsOutside(validUrls)
     }
 }

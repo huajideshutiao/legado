@@ -49,7 +49,6 @@ import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.recyclerview.MangaAdapter
 import io.legado.app.ui.book.manga.recyclerview.MangaLayoutManager
-import io.legado.app.ui.book.manga.recyclerview.MangaVH
 import io.legado.app.ui.book.manga.recyclerview.ScrollTimer
 import io.legado.app.ui.book.read.MangaMenu
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
@@ -416,7 +415,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
     }
 
     override fun onDestroy() {
-        MangaVH.cancelAllPreload()
         ReadManga.unregister(this)
         super.onDestroy()
     }
@@ -795,7 +793,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
     }
 
     override fun finish() {
-        MangaVH.cancelAllPreload()
         val book = ReadManga.book ?: return super.finish()
 
         if (ReadManga.inBookshelf) {

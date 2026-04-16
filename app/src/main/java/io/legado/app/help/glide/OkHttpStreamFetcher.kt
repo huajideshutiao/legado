@@ -9,13 +9,12 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.util.ContentLengthInputStream
 import com.script.rhino.runScriptWithContext
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.help.http.okHttpClientManga
 import io.legado.app.help.source.SourceHelp
-import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isWifiConnect
@@ -35,13 +34,11 @@ import java.io.InputStream
 class OkHttpStreamFetcher(
     private val url: GlideUrl,
     private val options: Options,
-) :
-    DataFetcher<InputStream>, okhttp3.Callback {
+) : DataFetcher<InputStream>, okhttp3.Callback {
     private var stream: InputStream? = null
     private var responseBody: ResponseBody? = null
     private var callback: DataFetcher.DataCallback<in InputStream>? = null
     private var source: BaseSource? = null
-    private val manga = options.get(OkHttpModelLoader.mangaOption) == true
     private val coroutineContext = SupervisorJob()
     private val coroutineScope = CoroutineScope(coroutineContext)
     private lateinit var analyzedUrl: GlideUrl
@@ -69,20 +66,14 @@ class OkHttpStreamFetcher(
         }
 
         analyzedUrl = AnalyzeUrl(
-            url.toString(),
-            source = source,
-            coroutineContext = coroutineContext
+            url.toString(), source = source, coroutineContext = coroutineContext
         ).getGlideUrl()
 
         val requestBuilder = Request.Builder().url(analyzedUrl.toStringUrl())
         requestBuilder.addHeaders(analyzedUrl.headers)
         val request: Request = requestBuilder.build()
         this.callback = callback
-        call = if (manga) {
-            okHttpClientManga.newCall(request)
-        } else {
-            okHttpClient.newCall(request)
-        }
+        call = okHttpClient.newCall(request)
         call?.enqueue(this)
     }
 
@@ -115,32 +106,23 @@ class OkHttpStreamFetcher(
     override fun onResponse(call: Call, response: Response) {
         responseBody = response.body
         if (!response.isSuccessful) {
-            if (!manga) {
-                failUrl.add(url.toStringUrl())
-            }
+            failUrl.add(url.toStringUrl())
             callback?.onLoadFailed(HttpException(response.message, response.code))
             return
         }
-        if (ImageUtils.skipDecode(source, !manga)) {
+        if (when (source) {
+                is BookSource -> (source as BookSource).coverDecodeJs
+                else -> null
+            }.isNullOrBlank()
+        ) {
             onStreamReady(responseBody!!.byteStream())
             return
         }
         Coroutine.async(coroutineScope, executeContext = IO) {
             val decodeResult = runScriptWithContext(coroutineContext) {
-                if (manga) {
-                    ImageUtils.decode(
-                        url.toString(),
-                        responseBody!!.byteStream(),
-                        isCover = false,
-                        source,
-                        ReadManga.book
-                    )
-                } else {
-                    ImageUtils.decode(
-                        url.toString(), responseBody!!.byteStream(),
-                        isCover = true, source
-                    )
-                }
+                ImageUtils.decode(
+                    url.toString(), responseBody!!.byteStream(), true, source
+                )
             }
             onStreamReady(decodeResult)
         }
@@ -148,9 +130,7 @@ class OkHttpStreamFetcher(
 
     private fun onStreamReady(inputStream: InputStream?) {
         if (inputStream == null) {
-            if (!manga) {
-                failUrl.add(url.toStringUrl())
-            }
+            failUrl.add(url.toStringUrl())
             callback?.onLoadFailed(NoStackTraceException("封面二次解密失败"))
         } else {
             val contentLength: Long =

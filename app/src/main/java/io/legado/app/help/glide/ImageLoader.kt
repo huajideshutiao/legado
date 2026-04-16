@@ -8,12 +8,10 @@ import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.RequestManager
-import com.bumptech.glide.load.Transformation
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.signature.ObjectKey
 import com.script.rhino.runScriptWithContext
+import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelp.writeImage
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -25,7 +23,6 @@ import kotlin.coroutines.CoroutineContext
 
 //https://bumptech.github.io/glide/doc/generatedapi.html
 //Instead of GlideApp, use com.bumptech.Glide
-@Suppress("unused")
 object ImageLoader {
 
     /**
@@ -66,55 +63,10 @@ object ImageLoader {
         }.diskCacheStrategy(DiskCacheStrategy.DATA)
     }
 
-    /**
-     * 加载漫画图片
-     */
-    fun loadManga(
-        context: Context,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-        transformation: Transformation<Bitmap>? = null,
-    ): RequestBuilder<Drawable> {
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-            .set(OkHttpModelLoader.mangaOption, true)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        return load(context, path)
-            .apply(options)
-            .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
-            .diskCacheStrategy(DiskCacheStrategy.DATA)
-            .skipMemoryCache(true).let {
-                if (transformation != null) {
-                    it.transform(transformation)
-                } else {
-                    it
-                }
-            }
-    }
-
-    fun preloadManga(
-        context: Context,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-    ): RequestBuilder<File?> {
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-            .set(OkHttpModelLoader.mangaOption, true)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        return Glide.with(context)
-            .downloadOnly()
-            .apply(options)
-            .load(path)
-    }
-
     suspend fun loadManga(imageUrl: String, coroutineContext: CoroutineContext): Any? {
         val book = ReadManga.book
-        if (book != null && io.legado.app.help.book.BookHelp.isImageExist(book, imageUrl)) {
-            return io.legado.app.help.book.BookHelp.getImage(book, imageUrl)
+        if (book != null && BookHelp.isImageExist(book, imageUrl)) {
+            return BookHelp.getImage(book, imageUrl)
         }
         val analyzeUrl = AnalyzeUrl(
             imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
