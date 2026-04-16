@@ -19,6 +19,14 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     private val services: MutableList<WeakReference<BaseService>> = arrayListOf()
     private var appFinishedListener: (() -> Unit)? = null
 
+    init {
+        // 注册应用退出监听器，释放资源
+        setOnAppFinishedListener {
+            // 释放CbzFile资源
+            io.legado.app.model.localBook.CbzFile.clear()
+        }
+    }
+
     fun activitySize(): Int {
         return activities.size
     }
