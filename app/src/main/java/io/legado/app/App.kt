@@ -25,7 +25,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.rule.BookInfoRule
 import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.data.entities.rule.ExploreRule
@@ -224,7 +223,6 @@ class App : Application() {
     private fun initRhino() {
         RhinoScriptEngine
         RhinoWrapFactory.register(BookSource::class.java, NativeBaseSource.factory)
-        RhinoWrapFactory.register(RssSource::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(HttpTTS::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(ExploreRule::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(SearchRule::class.java, ReadOnlyJavaObject.factory)

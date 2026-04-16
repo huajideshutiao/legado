@@ -141,7 +141,19 @@ object WebBook {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
             }
-            if (book.bookUrl == book.tocUrl && !book.tocHtml.isNullOrEmpty()) {
+            val tocRule = bookSource.getTocRule()
+            val isSingleChapter = tocRule.chapterList.isNullOrBlank()
+            if (isSingleChapter) {
+                Debug.log(bookSource.bookSourceUrl, "⇒目录规则为空,作为单章节书籍处理")
+                val chapterList = arrayListOf(
+                    BookChapter(
+                        bookUrl = book.bookUrl,
+                        title = "共一章",
+                        url = book.tocUrl
+                    )
+                )
+                return@runCatching BookChapterList.updateBook(bookSource, book, chapterList)
+            } else if (book.bookUrl == book.tocUrl && !book.tocHtml.isNullOrEmpty()) {
                 BookChapterList.analyzeChapterList(
                     bookSource = bookSource,
                     book = book,

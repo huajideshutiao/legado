@@ -7,13 +7,9 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.RssArticle
-import io.legado.app.data.entities.RssSource
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.source.sortUrls
-import io.legado.app.model.rss.Rss
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
@@ -114,54 +110,6 @@ object Debug {
             val printTime = debugTimeFormat.format(Date(spendingTime))
             debugMessageMap[sourceUrl] = "$printTime $state"
         }
-    }
-
-    suspend fun startDebug(scope: CoroutineScope, rssSource: RssSource) {
-        cancelDebug()
-        debugSource = rssSource.sourceUrl
-        log(debugSource, "︾开始解析")
-        val sort = rssSource.sortUrls().first()
-        Rss.getArticles(scope, sort.first, sort.second, rssSource, 1)
-            .onSuccess {
-                if (it.first.isEmpty()) {
-                    log(debugSource, "⇒列表页解析成功，为空")
-                    log(debugSource, "︽解析完成", state = 1000)
-                } else {
-                    val ruleContent = rssSource.ruleContent
-                    if (!rssSource.ruleArticles.isNullOrBlank() && rssSource.ruleDescription.isNullOrBlank()) {
-                        log(debugSource, "︽列表页解析完成")
-                        log(debugSource, showTime = false)
-                        if (ruleContent.isNullOrEmpty()) {
-                            log(debugSource, "⇒内容规则为空，默认获取整个网页", state = 1000)
-                        } else {
-                            rssContentDebug(scope, it.first[0], ruleContent, rssSource)
-                        }
-                    } else {
-                        log(debugSource, "⇒存在描述规则，不解析内容页")
-                        log(debugSource, "︽解析完成", state = 1000)
-                    }
-                }
-            }
-            .onError {
-                log(debugSource, it.stackTraceStr, state = -1)
-            }
-    }
-
-    private fun rssContentDebug(
-        scope: CoroutineScope,
-        rssArticle: RssArticle,
-        ruleContent: String,
-        rssSource: RssSource
-    ) {
-        log(debugSource, "︾开始解析内容页")
-        Rss.getContent(scope, rssArticle, ruleContent, rssSource)
-            .onSuccess {
-                log(debugSource, it)
-                log(debugSource, "︽内容页解析完成", state = 1000)
-            }
-            .onError {
-                log(debugSource, it.stackTraceStr, state = -1)
-            }
     }
 
     fun startDebug(scope: CoroutineScope, bookSource: BookSource, key: String) {

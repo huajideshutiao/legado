@@ -241,7 +241,7 @@
             android:name=".ui.rss.article.RssSortActivity"
             android:launchMode="singleTop" /> <!-- RSS阅读 -->
         <activity
-            android:name=".ui.rss.read.ReadRssActivity"
+            android:name=".ui.book.rss.ReadRssActivity"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true"
             android:launchMode="singleTop" /> <!-- 导入书籍 -->

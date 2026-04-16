@@ -6,6 +6,7 @@
         <item>圖片</item>
         <item>資料</item>
         <item>视频</item>
+        <item>訂閱</item>
     </string-array>
 
     <string-array name="group_style">

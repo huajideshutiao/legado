@@ -16,7 +16,7 @@ object RuleBigDataHelp {
     private val bookData = FileUtils.createFolderIfNotExist(ruleDataDir, "book")
     private val rssData = FileUtils.createFolderIfNotExist(ruleDataDir, "rss")
 
-    suspend fun clearInvalid() {
+    suspend     fun clearInvalid() {
         withContext(IO) {
             bookData.listFiles()?.forEach {
                 if (it.isFile) {
@@ -28,21 +28,6 @@ object RuleBigDataHelp {
                     } else {
                         val bookUrl = bookUrlFile.readText()
                         if (!appDb.bookDao.has(bookUrl)) {
-                            FileUtils.delete(it)
-                        }
-                    }
-                }
-            }
-            rssData.listFiles()?.forEach {
-                if (it.isFile) {
-                    FileUtils.delete(it)
-                } else {
-                    val originFile = it.getFile("origin.txt")
-                    if (!originFile.exists()) {
-                        FileUtils.delete(it)
-                    } else {
-                        val origin = originFile.readText()
-                        if (!appDb.rssSourceDao.has(origin)) {
                             FileUtils.delete(it)
                         }
                     }

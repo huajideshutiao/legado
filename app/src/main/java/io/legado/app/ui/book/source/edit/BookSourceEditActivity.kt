@@ -233,6 +233,7 @@ class BookSourceEditActivity :
             binding.cbIsEnableDangerousApi.isChecked = it.enableDangerousApi ?: false
             binding.spType.setSelection(
                 when (it.bookSourceType) {
+                    BookSourceType.rss -> 5
                     BookSourceType.video -> 4
                     BookSourceType.file -> 3
                     BookSourceType.image -> 2
@@ -364,6 +365,7 @@ class BookSourceEditActivity :
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
         source.enableDangerousApi = binding.cbIsEnableDangerousApi.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
+            5 -> BookSourceType.rss
             4 -> BookSourceType.video
             3 -> BookSourceType.file
             2 -> BookSourceType.image

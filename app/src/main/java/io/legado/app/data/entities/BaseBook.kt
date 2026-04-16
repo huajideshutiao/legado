@@ -47,7 +47,6 @@ interface BaseBook : RuleDataInterface {
     fun showBookVariableDialog(activity: AppCompatActivity, source: BaseSource?) {
         val sourceComment = when (source) {
             is BookSource -> source.variableComment
-            is RssSource -> source.variableComment
             else -> return
         }
         val defaultComment = """书籍变量可在js中通过book.getVariable("custom")获取"""

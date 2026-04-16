@@ -158,13 +158,18 @@ class BackstageWebView(
             return super.shouldOverrideUrlLoading(view, request)
         }
 
-        override fun onPageFinished(view: WebView, url: String) {
-            setCookie(url)
+        override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+            super.onPageStarted(view, url, favicon)
             if (runnable == null) {
                 runnable = EvalJsRunnable(view, url, getJs())
             }
             mHandler.removeCallbacks(runnable!!)
             mHandler.postDelayed(runnable!!, delayTime)
+        }
+
+        override fun onPageFinished(view: WebView, url: String) {
+            super.onPageFinished(view, url)
+            setCookie(url)
         }
 
         @SuppressLint("WebViewClientOnReceivedSslError")
@@ -289,12 +294,17 @@ class BackstageWebView(
             }
         }
 
-        override fun onPageFinished(webView: WebView, url: String) {
-            setCookie(url)
+        override fun onPageStarted(webView: WebView, url: String, favicon: android.graphics.Bitmap?) {
+            super.onPageStarted(webView, url, favicon)
             if (!javaScript.isNullOrEmpty()) {
                 val runnable = LoadJsRunnable(webView, javaScript)
                 mHandler.postDelayed(runnable, delayTime)
             }
+        }
+
+        override fun onPageFinished(webView: WebView, url: String) {
+            super.onPageFinished(webView, url)
+            setCookie(url)
         }
 
         @SuppressLint("WebViewClientOnReceivedSslError")

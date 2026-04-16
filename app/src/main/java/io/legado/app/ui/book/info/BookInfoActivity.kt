@@ -36,6 +36,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
@@ -61,6 +62,7 @@ import io.legado.app.ui.book.info.edit.BookInfoEditActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
+import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
@@ -734,9 +736,10 @@ class BookInfoActivity :
         readBookResult.launch(
             Intent(
                 this, when {
-                    book.isVideo -> VideoPlayActivity::class.java
-                    !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
                     book.isAudio -> AudioPlayActivity::class.java
+                    book.isVideo -> VideoPlayActivity::class.java
+                    book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+                    book.isRss -> ReadRssActivity::class.java
                     else -> ReadBookActivity::class.java
                 }
             ).putExtra("chapterChanged", chapterChanged)

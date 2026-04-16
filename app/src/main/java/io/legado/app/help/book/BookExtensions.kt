@@ -74,6 +74,9 @@ val BaseBook.isOnLineTxt: Boolean
 val BaseBook.isWebFile: Boolean
     get() = isType(BookType.webFile)
 
+val BaseBook.isRss: Boolean
+    get() = isType(BookType.rss)
+
 val BaseBook.isUpError: Boolean
     get() = isType(BookType.updateError)
 

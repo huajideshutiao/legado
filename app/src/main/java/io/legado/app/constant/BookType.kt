@@ -50,17 +50,22 @@ object BookType {
 
     const val video = 0b1000_0000_0000
 
+    /**
+     * 4096 订阅
+     */
+    const val rss = 0b10000_0000_0000
+
     @Target(AnnotationTarget.VALUE_PARAMETER)
     @Retention(AnnotationRetention.SOURCE)
-    @IntDef(text, updateError, audio, image, webFile, local, archive, notShelf, video)
+    @IntDef(text, updateError, audio, image, webFile, local, archive, notShelf, video, rss)
     annotation class Type
 
     /**
      * 所有可以从书源转换的书籍类型
      */
-    const val allBookType = text or image or audio or webFile or video
+    const val allBookType = text or image or audio or webFile or video or rss
 
-    const val allBookTypeLocal = text or image or audio or webFile or local or video
+    const val allBookTypeLocal = text or image or audio or webFile or local or video or rss
 
     /**
      * 本地书籍书源标志

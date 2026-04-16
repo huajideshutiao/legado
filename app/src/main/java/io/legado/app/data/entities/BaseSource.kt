@@ -296,13 +296,9 @@ interface BaseSource : JsExtensions {
     }
 
     fun showSourceVariableDialog(activity: AppCompatActivity) {
-        if (this !is BookSource && this !is RssSource) return
+        if (this !is BookSource) return
         val suffix = "源变量可在js中通过source.getVariable()获取"
-        val comment = when (this) {
-            is BookSource -> variableComment
-            is RssSource -> variableComment
-            else -> null
-        }.takeIf { it.isNullOrBlank() }?.let { "$it\n$suffix" } ?: suffix
+        val comment = variableComment.takeIf { it.isNullOrBlank() }?.let { "$it\n$suffix" } ?: suffix
         val variable = getVariable()
         activity.showDialogFragment(
             VariableDialog(

@@ -21,6 +21,7 @@ data class ContentRule(
     var payAction: String? = null,    //购买操作,js或者包含{{js}}的url
     var lrcRule : String? = null, //lrc文件获取
     var musicCover : String? = null, //音乐封面
+    var shouldOverrideUrlLoading: String? = null, // 拦截网页内的跳转, 用于订阅源迁移为书源后
 ) : Parcelable {
 
 

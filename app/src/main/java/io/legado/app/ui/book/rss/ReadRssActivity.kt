@@ -1,4 +1,4 @@
-package io.legado.app.ui.rss.read
+package io.legado.app.ui.book.rss
 
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
@@ -16,12 +16,12 @@ import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
@@ -31,20 +31,22 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
-import io.legado.app.data.entities.RssSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityRssReadBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.http.CookieManager
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.Download
 import io.legado.app.ui.association.OnLineImportActivity
+import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.rss.favorites.RssFavoritesDialog
+import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.ACache
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isTrue
@@ -55,8 +57,6 @@ import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.share
-import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
@@ -67,15 +67,12 @@ import kotlinx.coroutines.launch
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.Jsoup
 import splitties.views.bottomPadding
-import java.io.ByteArrayInputStream
 import java.net.URLDecoder
-import java.util.regex.PatternSyntaxException
 
 /**
  * rss阅读界面
  */
-class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>(),
-    RssFavoritesDialog.Callback {
+class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>() {
 
     override val binding by viewBinding(ActivityRssReadBinding::inflate)
     override val viewModel by viewModels<ReadRssViewModel>()
@@ -91,18 +88,19 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
     private val rssJsExtensions by lazy { RssJsExtensions(this) }
 
-    fun getSource(): RssSource? {
-        return viewModel.rssSource
+    fun getSource(): BookSource? {
+        return viewModel.curBookSource
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        viewModel.initData()
+        binding.webView.settings.javaScriptEnabled = true
         viewModel.upStarMenuData.observe(this) { upStarMenu() }
         viewModel.upTtsMenuData.observe(this) { upTtsMenu(it) }
-        binding.titleBar.title = intent.getStringExtra("title")
+        binding.titleBar.title = viewModel.curBook?.name
         initView()
         initWebView()
         initLiveData()
-        viewModel.initData(intent)
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) {
                 customWebViewCallback?.onCustomViewHidden()
@@ -147,7 +145,8 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible = !viewModel.rssSource?.loginUrl.isNullOrBlank()
+        menu.findItem(R.id.menu_login)?.isVisible =
+            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -158,44 +157,50 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             }
 
             R.id.menu_rss_star -> {
-                viewModel.addFavorite()
-                viewModel.rssArticle?.let {
-                    showDialogFragment(RssFavoritesDialog(it))
+                if (viewModel.inBookshelf) {
+                    if (LocalConfig.bookInfoDeleteAlert) {
+                        alert(
+                            titleResource = R.string.draw, messageResource = R.string.sure_del
+                        ) {
+                            yesButton {
+                                viewModel.delBook {
+                                    setResult(RESULT_DELETED)
+                                    finish()
+                                }
+                            }
+                            noButton()
+                        }
+                    } else {
+                        viewModel.delBook {
+                            setResult(RESULT_DELETED)
+                            finish()
+                        }
+                    }
+                } else {
+                    viewModel.addToBookshelf {
+                        setResult(RESULT_OK)
+                        item.setIcon(R.drawable.ic_star)
+                        item.setTitle(R.string.in_favorites)
+                    }
                 }
             }
 
             R.id.menu_share_it -> {
                 binding.webView.url?.let {
                     share(it)
-                } ?: viewModel.rssArticle?.let {
-                    share(it.link)
+                } ?: viewModel.curBook?.let {
+                    share(it.tocUrl)
                 } ?: toastOnUi(R.string.null_url)
             }
 
             R.id.menu_aloud -> readAloud()
-            R.id.menu_login -> viewModel.rssSource?.showLoginDialog(this)
+            R.id.menu_login -> viewModel.curBookSource?.showLoginDialog(this)
 
             R.id.menu_browser_open -> binding.webView.url?.let {
                 openUrl(it)
             } ?: toastOnUi("url null")
         }
         return super.onCompatOptionsItemSelected(item)
-    }
-
-    override fun updateFavorite(title: String?, group: String?) {
-        viewModel.rssArticle?.let {
-            if (title != null) {
-                it.title = title
-            }
-            if (group != null) {
-                it.group = group
-            }
-        }
-        viewModel.updateFavorite()
-    }
-
-    override fun deleteFavorite() {
-        viewModel.delFavorite()
     }
 
     @JavascriptInterface
@@ -263,7 +268,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         if (path.isNullOrEmpty()) {
             selectSaveFolder(webPic)
         } else {
-            viewModel.saveImage(webPic, Uri.parse(path))
+            viewModel.saveImage(webPic, path.toUri())
         }
     }
 
@@ -279,42 +284,23 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
     private fun initLiveData() {
-        viewModel.contentLiveData.observe(this) { content ->
-            viewModel.rssArticle?.let {
-                upJavaScriptEnable()
-                val url = NetworkUtils.getAbsoluteURL(it.origin, it.link)
-                val html = viewModel.clHtml(content)
-                binding.webView.settings.userAgentString =
-                    viewModel.headerMap[AppConst.UA_NAME] ?: AppConfig.userAgent
-                if (viewModel.rssSource?.loadWithBaseUrl == true) {
-                    binding.webView
-                        .loadDataWithBaseURL(url, html, "text/html", "utf-8", url)//不想用baseUrl进else
-                } else {
-                    binding.webView
-                        .loadDataWithBaseURL(null, html, "text/html;charset=utf-8", "utf-8", url)
-                }
-            }
+        viewModel.contentLiveData.observe(this) { (url, html) ->
+            binding.webView.settings.userAgentString =
+                viewModel.UA ?: AppConfig.userAgent
+            binding.webView
+                .loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
         }
         viewModel.urlLiveData.observe(this) {
-            upJavaScriptEnable()
             CookieManager.applyToWebView(it.url)
             binding.webView.settings.userAgentString = it.getUserAgent()
             binding.webView.loadUrl(it.url, it.headerMap)
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun upJavaScriptEnable() {
-        if (viewModel.rssSource?.enableJs == true) {
-            binding.webView.settings.javaScriptEnabled = true
-        }
-    }
-
     private fun upStarMenu() {
-        starMenuItem?.isVisible = viewModel.rssArticle != null
-        if (viewModel.rssStar != null) {
+        starMenuItem?.isVisible = viewModel.curBook != null
+        if (viewModel.inBookshelf) {
             starMenuItem?.setIcon(R.drawable.ic_star)
             starMenuItem?.setTitle(R.string.in_favorites)
         } else {
@@ -398,48 +384,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
         override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-            return shouldOverrideUrlLoading(Uri.parse(url))
-        }
-
-        /**
-         * 如果有黑名单,黑名单匹配返回空白,
-         * 没有黑名单再判断白名单,在白名单中的才通过,
-         * 都没有不做处理
-         */
-        override fun shouldInterceptRequest(
-            view: WebView,
-            request: WebResourceRequest
-        ): WebResourceResponse? {
-            val url = request.url.toString()
-            val source = viewModel.rssSource ?: return super.shouldInterceptRequest(view, request)
-            val blacklist = source.contentBlacklist?.splitNotBlank(",")
-            if (!blacklist.isNullOrEmpty()) {
-                blacklist.forEach {
-                    try {
-                        if (url.startsWith(it) || url.matches(it.toRegex())) {
-                            return createEmptyResource()
-                        }
-                    } catch (e: PatternSyntaxException) {
-                        AppLog.put("黑名单规则正则语法错误 源名称:${source.sourceName} 正则:$it", e)
-                    }
-                }
-            } else {
-                val whitelist = source.contentWhitelist?.splitNotBlank(",")
-                if (!whitelist.isNullOrEmpty()) {
-                    whitelist.forEach {
-                        try {
-                            if (url.startsWith(it) || url.matches(it.toRegex())) {
-                                return super.shouldInterceptRequest(view, request)
-                            }
-                        } catch (e: PatternSyntaxException) {
-                            val msg = "白名单规则正则语法错误 源名称:${source.sourceName} 正则:$it"
-                            AppLog.put(msg, e)
-                        }
-                    }
-                    return createEmptyResource()
-                }
-            }
-            return super.shouldInterceptRequest(view, request)
+            return shouldOverrideUrlLoading(url.toUri())
         }
 
         override fun onPageFinished(view: WebView, url: String) {
@@ -456,27 +401,19 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
             }
-            viewModel.rssSource?.injectJs?.let {
+            viewModel.curBookSource?.ruleContent?.webJs?.let {
                 if (it.isNotBlank()) {
                     view.evaluateJavascript(it, null)
                 }
             }
         }
 
-        private fun createEmptyResource(): WebResourceResponse {
-            return WebResourceResponse(
-                "text/plain",
-                "utf-8",
-                ByteArrayInputStream("".toByteArray())
-            )
-        }
-
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
-            val source = viewModel.rssSource
-            val js = source?.shouldOverrideUrlLoading
+            val source = viewModel.curBookSource
+            val js = source?.ruleContent?.shouldOverrideUrlLoading
             if (!js.isNullOrBlank()) {
                 val t = SystemClock.uptimeMillis()
-                val result = kotlin.runCatching {
+                val result = runCatching {
                     runScriptWithContext(lifecycleScope.coroutineContext) {
                         source.evalJS(js) {
                             put("java", rssJsExtensions)

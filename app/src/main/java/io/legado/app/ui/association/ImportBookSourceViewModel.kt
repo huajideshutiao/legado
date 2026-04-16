@@ -1,7 +1,6 @@
 package io.legado.app.ui.association
 
 import android.app.Application
-import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import com.jayway.jsonpath.JsonPath
 import io.legado.app.R
@@ -12,6 +11,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.OldRssSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
@@ -28,6 +28,7 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
 import io.legado.app.utils.splitNotBlank
+import androidx.core.net.toUri
 
 
 class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
@@ -133,46 +134,51 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
             val mText = text.trim()
             when {
                 mText.isJsonObject() -> {
-                    kotlin.runCatching {
-                        val json = JsonPath.parse(mText)
-                        json.read<List<String>>("$.sourceUrls")
-                    }.onSuccess { listUrl ->
-                        listUrl.forEach {
-                            importSourceUrl(it)
-                        }
-                    }.onFailure {
-                        GSON.fromJsonObject<BookSource>(mText).getOrThrow().let {
-                            if (it.bookSourceUrl.isEmpty()) {
-                                throw NoStackTraceException("不是书源")
+                    if (mText.contains("sourceUrls")) {
+                        kotlin.runCatching {
+                            val json = JsonPath.parse(mText)
+                            json.read<List<String>>("$.sourceUrls")
+                        }.onSuccess { listUrl ->
+                            listUrl.forEach {
+                                importSourceUrl(it)
                             }
-                            allSources.add(it)
                         }
+                    } else if (mText.contains("BookSourceUrl")) {
+                        allSources.add(GSON.fromJsonObject<BookSource>(mText).getOrElse {
+                            throw NoStackTraceException("不是书源")
+                        })
+                    } else if (mText.contains("sourceUrl")) {
+                        allSources.add(GSON.fromJsonObject<OldRssSource>(mText).getOrElse {
+                            throw NoStackTraceException("不是书源")
+                        }.toBookSource())
+                    } else {
+                        throw NoStackTraceException("不是书源")
                     }
                 }
 
-                mText.isJsonArray() -> GSON.fromJsonArray<BookSource>(mText).getOrThrow()
-                    .let { items ->
-                        val source = items.firstOrNull() ?: return@let
-                        if (source.bookSourceUrl.isEmpty()) {
+                mText.isJsonArray() -> {
+                    if (mText.contains("BookSourceUrl")) {
+                        allSources.addAll(GSON.fromJsonArray<BookSource>(mText).getOrElse {
                             throw NoStackTraceException("不是书源")
-                        }
-                        allSources.addAll(items)
+                        })
+                    } else if (mText.contains("sourceUrl")) {
+                        allSources.addAll(GSON.fromJsonArray<OldRssSource>(mText).getOrElse {
+                            throw NoStackTraceException("不是书源")
+                        }.map { it.toBookSource() })
+                    } else {
+                        throw NoStackTraceException("不是书源")
                     }
+                }
 
                 mText.isAbsUrl() -> {
                     importSourceUrl(mText)
                 }
 
                 mText.isUri() -> {
-                    val uri = Uri.parse(mText)
+                    val uri = mText.toUri()
                     uri.inputStream(context).getOrThrow().use { inputS ->
-                        GSON.fromJsonArray<BookSource>(inputS).getOrThrow().let {
-                            val source = it.firstOrNull() ?: return@let
-                            if (source.bookSourceUrl.isEmpty()) {
-                                throw NoStackTraceException("不是书源")
-                            }
-                            allSources.addAll(it)
-                        }
+                        val json = inputS.readBytes().toString(Charsets.UTF_8)
+                        importFromJson(json)
                     }
                 }
 
@@ -195,13 +201,40 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 url(url)
             }
         }.decompressed().byteStream().use {
-            GSON.fromJsonArray<BookSource>(it).getOrThrow().let { list ->
-                val source = list.firstOrNull() ?: return@let
-                if (source.bookSourceUrl.isEmpty()) {
+            val json = it.readBytes().toString(Charsets.UTF_8)
+            importFromJson(json)
+        }
+    }
+
+    private fun importFromJson(json: String) {
+        when {
+            json.isJsonObject() -> {
+                if (json.contains("BookSourceUrl")) {
+                    allSources.add(GSON.fromJsonObject<BookSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    })
+                } else if (json.contains("sourceUrl")) {
+                    allSources.add(GSON.fromJsonObject<OldRssSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    }.toBookSource())
+                } else {
                     throw NoStackTraceException("不是书源")
                 }
-                allSources.addAll(list)
             }
+            json.isJsonArray() -> {
+                if (json.contains("BookSourceUrl")) {
+                    allSources.addAll(GSON.fromJsonArray<BookSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    })
+                } else if (json.contains("sourceUrl")) {
+                    allSources.addAll(GSON.fromJsonArray<OldRssSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    }.map { it.toBookSource() })
+                } else {
+                    throw NoStackTraceException("不是书源")
+                }
+            }
+            else -> throw NoStackTraceException("不是书源")
         }
     }
 

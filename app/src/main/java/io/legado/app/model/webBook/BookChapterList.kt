@@ -119,6 +119,11 @@ object BookChapterList {
         if (!reverse) {
             chapterList.reverse()
         }
+        return updateBook(bookSource, book, chapterList)
+    }
+
+    suspend fun updateBook(bookSource: BookSource, book: Book, chapterList: List<BookChapter>): List<BookChapter> {
+        val tocRule = bookSource.getTocRule()
         currentCoroutineContext().ensureActive()
         //去重
         val lh = LinkedHashSet(chapterList)

@@ -161,7 +161,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                 upPreferenceSummary(key, getPrefString(key))
             }
 
-            PreferKey.showDiscovery, PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
+            PreferKey.showDiscovery -> postEvent(EventBus.NOTIFY_MAIN, true)
 
             PreferKey.sourceEditMaxLine -> {
                 upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())

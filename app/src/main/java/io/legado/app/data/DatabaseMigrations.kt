@@ -20,7 +20,7 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_76_77
+            migration_76_77, migration_79_80
         )
     }
 
@@ -416,6 +416,131 @@ object DatabaseMigrations {
             // 3. 删除旧表并重命名
             db.execSQL("DROP TABLE `chapters`")
             db.execSQL("ALTER TABLE `chapters_new` RENAME TO `chapters`")
+        }
+    }
+
+    private val migration_79_80 = object : Migration(79, 80) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Convert RssSource to BookSource
+            db.query("SELECT * FROM rssSources").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val sourceUrl = cursor.getString(cursor.getColumnIndexOrThrow("sourceUrl"))
+                    val sourceName = cursor.getString(cursor.getColumnIndexOrThrow("sourceName"))
+                    val sourceGroup = cursor.getString(cursor.getColumnIndexOrThrow("sourceGroup"))
+                    val sourceComment = cursor.getString(cursor.getColumnIndexOrThrow("sourceComment"))
+                    val customOrder = cursor.getInt(cursor.getColumnIndexOrThrow("customOrder"))
+                    val enabled = cursor.getInt(cursor.getColumnIndexOrThrow("enabled"))
+                    val jsLib = cursor.getString(cursor.getColumnIndexOrThrow("jsLib"))
+                    val enabledCookieJar = cursor.getInt(cursor.getColumnIndexOrThrow("enabledCookieJar"))
+                    val enableDangerousApi = cursor.getInt(cursor.getColumnIndexOrThrow("enableDangerousApi"))
+                    val concurrentRate = cursor.getString(cursor.getColumnIndexOrThrow("concurrentRate"))
+                    val header = cursor.getString(cursor.getColumnIndexOrThrow("header"))
+                    val loginUrl = cursor.getString(cursor.getColumnIndexOrThrow("loginUrl"))
+                    val loginUi = cursor.getString(cursor.getColumnIndexOrThrow("loginUi"))
+                    val loginCheckJs = cursor.getString(cursor.getColumnIndexOrThrow("loginCheckJs"))
+                    val coverDecodeJs = cursor.getString(cursor.getColumnIndexOrThrow("coverDecodeJs"))
+                    val variableComment = cursor.getString(cursor.getColumnIndexOrThrow("variableComment"))
+                    val lastUpdateTime = cursor.getLong(cursor.getColumnIndexOrThrow("lastUpdateTime"))
+                    val sortUrl = cursor.getString(cursor.getColumnIndexOrThrow("sortUrl"))
+                    val articleStyle = cursor.getInt(cursor.getColumnIndexOrThrow("articleStyle"))
+
+                    val ruleArticles = cursor.getString(cursor.getColumnIndexOrThrow("ruleArticles")) ?: ""
+                    val ruleTitle = cursor.getString(cursor.getColumnIndexOrThrow("ruleTitle")) ?: ""
+                    val rulePubDate = cursor.getString(cursor.getColumnIndexOrThrow("rulePubDate")) ?: ""
+                    val ruleDescription = cursor.getString(cursor.getColumnIndexOrThrow("ruleDescription")) ?: ""
+                    val ruleImage = cursor.getString(cursor.getColumnIndexOrThrow("ruleImage")) ?: ""
+                    val ruleLink = cursor.getString(cursor.getColumnIndexOrThrow("ruleLink")) ?: ""
+                    val ruleContentStr = cursor.getString(cursor.getColumnIndexOrThrow("ruleContent")) ?: ""
+                    val style = cursor.getString(cursor.getColumnIndexOrThrow("style")) ?: ""
+                    val injectJs = cursor.getString(cursor.getColumnIndexOrThrow("injectJs")) ?: ""
+                    val shouldOverrideUrlLoading = cursor.getString(cursor.getColumnIndexOrThrow("shouldOverrideUrlLoading")) ?: ""
+
+                    val ruleExplore = io.legado.app.data.entities.rule.ExploreRule(
+                        bookList = ruleArticles,
+                        name = ruleTitle,
+                        author = rulePubDate,
+                        intro = ruleDescription,
+                        coverUrl = ruleImage,
+                        bookUrl = ruleLink
+                    )
+                    val ruleContent = io.legado.app.data.entities.rule.ContentRule(
+                        content = ruleContentStr,
+                        webJs = (if (style.isNotEmpty()) "var style = document.createElement('style');\nstyle.innerHTML = \"${org.apache.commons.text.StringEscapeUtils.escapeEcmaScript(style)}\";\ndocument.head.appendChild(style);\n" else "") + injectJs,
+                        shouldOverrideUrlLoading = shouldOverrideUrlLoading
+                    )
+
+                    val cv = android.content.ContentValues()
+                    cv.put("bookSourceUrl", sourceUrl)
+                    cv.put("bookSourceName", sourceName)
+                    cv.put("bookSourceGroup", sourceGroup)
+                    cv.put("bookSourceType", BookSourceType.rss)
+                    cv.put("bookSourceComment", sourceComment)
+                    cv.put("customOrder", customOrder)
+                    cv.put("enabled", enabled)
+                    cv.put("enabledExplore", 1)
+                    cv.put("jsLib", jsLib)
+                    cv.put("enabledCookieJar", enabledCookieJar)
+                    cv.put("enableDangerousApi", enableDangerousApi)
+                    cv.put("concurrentRate", concurrentRate)
+                    cv.put("header", header)
+                    cv.put("loginUrl", loginUrl)
+                    cv.put("loginUi", loginUi)
+                    cv.put("loginCheckJs", loginCheckJs)
+                    cv.put("coverDecodeJs", coverDecodeJs)
+                    cv.put("variableComment", variableComment)
+                    cv.put("lastUpdateTime", lastUpdateTime)
+                    cv.put("respondTime", 180000L)
+                    cv.put("weight", 0)
+                    cv.put("exploreUrl", sortUrl)
+                    cv.put("exploreStyle", articleStyle)
+                    cv.put("ruleExplore", io.legado.app.utils.GSON.toJson(ruleExplore))
+                    cv.put("ruleContent", io.legado.app.utils.GSON.toJson(ruleContent))
+
+                    db.insert("book_sources", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, cv)
+                }
+            }
+
+            // 2. Migrate RssStar to Books
+            db.query("SELECT * FROM rssStars").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val link = cursor.getString(cursor.getColumnIndexOrThrow("link"))
+                    val origin = cursor.getString(cursor.getColumnIndexOrThrow("origin"))
+                    val title = cursor.getString(cursor.getColumnIndexOrThrow("title"))
+                    val pubDate = cursor.getString(cursor.getColumnIndexOrThrow("pubDate"))
+                    val description = cursor.getString(cursor.getColumnIndexOrThrow("description"))
+                    val image = cursor.getString(cursor.getColumnIndexOrThrow("image"))
+                    val starTime = cursor.getLong(cursor.getColumnIndexOrThrow("starTime"))
+                    val order = cursor.getInt(cursor.getColumnIndexOrThrow("order"))
+                    val group = cursor.getString(cursor.getColumnIndexOrThrow("group"))
+                    val variable = cursor.getString(cursor.getColumnIndexOrThrow("variable"))
+
+                    val cv = android.content.ContentValues()
+                    cv.put("bookUrl", "data:;base64,,{\"type\":\"\"}")
+                    cv.put("tocUrl", link)
+                    cv.put("origin", origin)
+                    cv.put("originName", "RSS")
+                    cv.put("name", title ?: "")
+                    cv.put("author", pubDate ?: "")
+                    cv.put("coverUrl", image)
+                    cv.put("intro", description)
+                    cv.put("type", BookType.rss)
+                    cv.put("durChapterTime", starTime)
+                    cv.put("lastCheckTime", starTime)
+                    cv.put("latestChapterTime", starTime)
+                    cv.put("`order`", order)
+                    cv.put("variable", variable)
+                    cv.put("`group`", 0)
+                    cv.put("customTag", group)
+
+                    db.insert("books", android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE, cv)
+                }
+            }
+
+            // 3. Drop tables
+            db.execSQL("DROP TABLE IF EXISTS rssSources")
+            db.execSQL("DROP TABLE IF EXISTS rssArticles")
+            db.execSQL("DROP TABLE IF EXISTS rssStars")
+            db.execSQL("DROP TABLE IF EXISTS rssReadRecords")
         }
     }
 

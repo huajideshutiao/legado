@@ -19,11 +19,13 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.dialog.TextDialog
 
@@ -99,7 +101,8 @@ fun Fragment.startActivityForBook(
     val cls = when {
         book.isAudio -> AudioPlayActivity::class.java
         book.isVideo -> VideoPlayActivity::class.java
-        !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+        book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+        book.isRss -> ReadRssActivity::class.java
         else -> ReadBookActivity::class.java
     }
     val intent = Intent(requireActivity(), cls)

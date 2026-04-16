@@ -22,11 +22,8 @@ class OnLineImportActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.successLive.observe(this) {
             when (it.first) {
-                "bookSource" -> showDialogFragment(
+                "bookSource", "rssSource" -> showDialogFragment(
                     ImportBookSourceDialog(it.second, true)
-                )
-                "rssSource" -> showDialogFragment(
-                    ImportRssSourceDialog(it.second, true)
                 )
                 "replaceRule" -> showDialogFragment(
                     ImportReplaceRuleDialog(it.second, true)
@@ -55,12 +52,8 @@ class OnLineImportActivity :
                 return
             }
             when (it.path) {
-                "/bookSource" -> showDialogFragment(
+                "/bookSource", "/rssSource" -> showDialogFragment(
                     ImportBookSourceDialog(url, true)
-                )
-
-                "/rssSource" -> showDialogFragment(
-                    ImportRssSourceDialog(url, true)
                 )
 
                 "/replaceRule" -> showDialogFragment(
@@ -85,11 +78,8 @@ class OnLineImportActivity :
                     AddToBookshelfDialog(url, true)
                 )
                 "/importonline" -> when (it.host) {
-                    "booksource" -> showDialogFragment(
+                    "booksource", "rsssource" -> showDialogFragment(
                         ImportBookSourceDialog(url, true)
-                    )
-                    "rsssource" -> showDialogFragment(
-                        ImportRssSourceDialog(url, true)
                     )
                     "replace" -> showDialogFragment(
                         ImportReplaceRuleDialog(url, true)

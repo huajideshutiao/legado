@@ -17,7 +17,9 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.file.HandleFileContract
@@ -100,9 +102,11 @@ class BookInfoEditActivity :
         tieBookAuthor.setText(book.author)
         spType.setSelection(
             when {
+                book.isRss -> 5
+                book.isVideo -> 4
+                book.isWebFile -> 3
                 book.isImage -> 2
                 book.isAudio -> 1
-                book.isVideo -> 4
                 else -> 0
             }
         )
@@ -125,12 +129,14 @@ class BookInfoEditActivity :
         book.author = tieBookAuthor.text?.toString() ?: ""
         val local = if (book.isLocal) BookType.local else 0
         val bookType = when (spType.selectedItemPosition) {
+            5 -> BookType.rss or local
             4 -> BookType.video or local
+            3 -> BookType.webFile or local
             2 -> BookType.image or local
             1 -> BookType.audio or local
             else -> BookType.text or local
         }
-        book.removeType(BookType.local, BookType.image, BookType.audio, BookType.text, BookType.video)
+        book.removeType(BookType.local, BookType.image, BookType.audio, BookType.text, BookType.video, BookType.webFile, BookType.rss)
         book.addType(bookType)
         val customCoverUrl = tieCoverUrl.text?.toString()
         book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl

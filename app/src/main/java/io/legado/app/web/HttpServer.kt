@@ -6,7 +6,6 @@ import io.legado.app.api.ReturnData
 import io.legado.app.api.controller.BookController
 import io.legado.app.api.controller.BookSourceController
 import io.legado.app.api.controller.ReplaceRuleController
-import io.legado.app.api.controller.RssSourceController
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.service.WebService
 import io.legado.app.utils.GSON
@@ -60,9 +59,6 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                             "/saveBookProgress" -> BookController.saveBookProgress(postData)
                             "/addLocalBook" -> BookController.addLocalBook(session.parameters, files)
                             "/saveReadConfig" -> BookController.saveWebReadConfig(postData)
-                            "/saveRssSource" -> RssSourceController.saveSource(postData)
-                            "/saveRssSources" -> RssSourceController.saveSources(postData)
-                            "/deleteRssSources" -> RssSourceController.deleteSources(postData)
                             "/saveReplaceRule" -> ReplaceRuleController.saveRule(postData)
                             "/deleteReplaceRule" -> ReplaceRuleController.delete(postData)
                             "/testReplaceRule" -> ReplaceRuleController.testRule(postData)
@@ -85,8 +81,6 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                         "/cover" -> BookController.getCover(parameters)
                         "/image" -> BookController.getImg(parameters)
                         "/getReadConfig" -> BookController.getWebReadConfig()
-                        "/getRssSource" -> RssSourceController.getSource(parameters)
-                        "/getRssSources" -> RssSourceController.sources
                         "/getReplaceRules" -> ReplaceRuleController.allRules
                         else -> null
                     }

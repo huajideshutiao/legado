@@ -1,4 +1,4 @@
-package io.legado.app.ui.rss.read
+package io.legado.app.ui.browser
 
 import android.content.Context
 import android.util.AttributeSet
