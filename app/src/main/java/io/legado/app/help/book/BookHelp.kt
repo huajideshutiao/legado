@@ -313,6 +313,27 @@ object BookHelp {
      */
     @Throws(IOException::class, FileNotFoundException::class)
     fun getBookPFD(book: Book): ParcelFileDescriptor? {
+        val webDavUrl = book.getRemoteUrl()
+        if (webDavUrl != null) {
+            val webdav = kotlin.runCatching {
+                io.legado.app.lib.webdav.WebDav.fromPath(webDavUrl)
+            }.getOrElse {
+                io.legado.app.help.AppWebDav.authorization?.let { auth ->
+                    io.legado.app.lib.webdav.WebDav(webDavUrl, auth)
+                } ?: throw io.legado.app.lib.webdav.WebDavException("Unexpected defaultBookWebDav")
+            }
+            val size = kotlinx.coroutines.runBlocking { webdav.getWebDavFile()?.size } ?: 0L
+            val storageManager =
+                appCtx.getSystemService(android.os.storage.StorageManager::class.java)
+            val handlerThread = android.os.HandlerThread("WebDavPfd")
+            handlerThread.start()
+            val handler = android.os.Handler(handlerThread.looper)
+            return storageManager?.openProxyFileDescriptor(
+                ParcelFileDescriptor.MODE_READ_ONLY,
+                io.legado.app.lib.webdav.WebDavPfdCallback(webdav, size, handlerThread),
+                handler
+            )
+        }
         val uri = book.getLocalUri()
         return if (uri.isContentScheme()) {
             appCtx.contentResolver.openFileDescriptor(uri, "r")

@@ -408,7 +408,25 @@ class BookInfoActivity :
             var kinds = book.getKindList()
             if (book.isLocal) {
                 withContext(IO) {
-                    val size = FileDoc.fromFile(book.bookUrl).size
+                    val size = if (book.bookUrl.startsWith(
+                            "http://",
+                            true
+                        ) || book.bookUrl.startsWith("https://", true)
+                    ) {
+                        0L
+                    } else if (book.bookUrl.startsWith(
+                            "davs://",
+                            true
+                        ) || book.bookUrl.startsWith("dav://", true)
+                    ) {
+                        0L
+                    } else {
+                        try {
+                            FileDoc.fromFile(book.bookUrl).size
+                        } catch (_: Exception) {
+                            0L
+                        }
+                    }
                     if (size > 0) {
                         kinds = kinds.toMutableList()
                         kinds.add(ConvertUtils.formatFileSize(size))

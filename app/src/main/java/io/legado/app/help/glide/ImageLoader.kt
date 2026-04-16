@@ -13,6 +13,7 @@ import com.bumptech.glide.signature.ObjectKey
 import com.script.rhino.runScriptWithContext
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelp.writeImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ImageUtils
@@ -67,6 +68,11 @@ object ImageLoader {
         val book = ReadManga.book
         if (book != null && BookHelp.isImageExist(book, imageUrl)) {
             return BookHelp.getImage(book, imageUrl)
+        }
+        if (book?.isLocal == true) {
+            val file =
+                io.legado.app.model.ImageProvider.cacheImage(book, imageUrl, ReadManga.bookSource)
+            return if (file.exists()) file else null
         }
         val analyzeUrl = AnalyzeUrl(
             imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext

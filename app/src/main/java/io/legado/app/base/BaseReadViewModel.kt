@@ -22,6 +22,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isRss
@@ -32,6 +33,7 @@ import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadManga
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
@@ -203,7 +205,11 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
                     if (inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
-                    ReadBook.onChapterListUpdated(book)
+                    if (book.isImage) {
+                        ReadManga.onChapterListUpdated(book)
+                    } else {
+                        ReadBook.onChapterListUpdated(book)
+                    }
                     curBook = book
                     chapterListData.postValue(it)
                 }

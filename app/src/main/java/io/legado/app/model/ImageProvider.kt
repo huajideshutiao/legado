@@ -10,13 +10,11 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isCbz
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.localBook.EpubFile
-import io.legado.app.model.localBook.MobiFile
-import io.legado.app.model.localBook.PdfFile
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
@@ -130,9 +128,10 @@ object ImageProvider {
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
                 val inputStream = when {
-                    book.isEpub -> EpubFile.getImage(book, src)
-                    book.isPdf -> PdfFile.getImage(book, src)
-                    book.isMobi -> MobiFile.getImage(book, src)
+                    book.isEpub -> io.legado.app.model.localBook.EpubFile.getImage(book, src)
+                    book.isPdf -> io.legado.app.model.localBook.PdfFile.getImage(book, src)
+                    book.isMobi -> io.legado.app.model.localBook.MobiFile.getImage(book, src)
+                    book.isCbz -> io.legado.app.model.localBook.CbzFile.getImage(book, src)
                     else -> {
                         BookHelp.saveImage(bookSource, book, src)
                         null

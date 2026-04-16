@@ -82,7 +82,7 @@ open class WebDav(
 
 
     private val url: URL = URL(CustomUrl(path).getUrl())
-    private val httpUrl: String? by lazy {
+    val httpUrl: String? by lazy {
         val raw = url.toString()
             .replace("davs://", "https://")
             .replace("dav://", "http://")
@@ -90,7 +90,7 @@ open class WebDav(
             raw.toHttpUrl().toString()
         }.getOrNull()
     }
-    private val webDavClient by lazy {
+    val webDavClient by lazy {
         val authInterceptor = Interceptor { chain ->
             var request = chain.request()
             if (request.url.host.equals(host, true)) {

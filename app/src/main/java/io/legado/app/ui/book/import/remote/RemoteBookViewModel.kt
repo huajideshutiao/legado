@@ -6,6 +6,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
@@ -136,12 +137,38 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
             val bookWebDav = remoteBookWebDav
                 ?: throw NoStackTraceException("没有配置webDav")
             remoteBooks.forEach { remoteBook ->
-                val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)
-                LocalBook.importFiles(downloadBookUri).forEach { book ->
-                    book.origin = BookType.webDavTag + CustomUrl(remoteBook.path)
+                if (remoteBook.filename.endsWith(".cbz", true)) {
+                    val origin = BookType.webDavTag + CustomUrl(remoteBook.path)
                         .putAttribute("serverID", bookWebDav.serverID)
                         .toString()
-                    book.save()
+                    var book = appDb.bookDao.getBook(origin)
+                    if (book == null) {
+                        book = Book(
+                            type = BookType.image or BookType.local,
+                            bookUrl = origin,
+                            name = remoteBook.filename.substringBeforeLast("."),
+                            author = "",
+                            originName = remoteBook.filename,
+                            latestChapterTime = remoteBook.lastModify,
+                            order = appDb.bookDao.minOrder - 1,
+                            origin = origin
+                        )
+                        LocalBook.upBookInfo(book)
+                        appDb.bookDao.insert(book)
+                    } else {
+                        LocalBook.deleteBook(book, false)
+                        LocalBook.upBookInfo(book)
+                        book.latestChapterTime = 0
+                        appDb.bookChapterDao.delByBook(origin)
+                    }
+                } else {
+                    val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)
+                    LocalBook.importFiles(downloadBookUri).forEach { book ->
+                        book.origin = BookType.webDavTag + CustomUrl(remoteBook.path)
+                            .putAttribute("serverID", bookWebDav.serverID)
+                            .toString()
+                        book.save()
+                    }
                 }
                 remoteBook.isOnBookShelf = true
             }
