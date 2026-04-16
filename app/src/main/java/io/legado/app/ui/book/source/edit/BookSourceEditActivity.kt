@@ -132,6 +132,7 @@ class BookSourceEditActivity :
             R.id.menu_set_source_variable -> viewModel.save(getSource()) { source ->
                 source.showSourceVariableDialog(this)
             }
+
             R.id.menu_search -> viewModel.save(getSource()) { source ->
                 startActivity<SearchActivity> {
                     putExtra("searchScope", SearchScope(source).toString())
@@ -345,6 +346,13 @@ class BookSourceEditActivity :
             add(EditEntity("content", cr.content, R.string.rule_book_content))
             add(EditEntity("title", cr.title, R.string.rule_chapter_name))
             add(EditEntity("nextContentUrl", cr.nextContentUrl, R.string.rule_next_content))
+            add(
+                EditEntity(
+                    "shouldOverrideUrlLoading",
+                    cr.shouldOverrideUrlLoading,
+                    R.string.rule_should_override_url_loading
+                )
+            )
             add(EditEntity("webJs", cr.webJs, R.string.rule_web_js))
             add(EditEntity("sourceRegex", cr.sourceRegex, R.string.rule_source_regex))
             add(EditEntity("replaceRegex", cr.replaceRegex, R.string.rule_replace_regex))
@@ -402,29 +410,14 @@ class BookSourceEditActivity :
                 "searchUrl" -> source.searchUrl = it.value
                 "checkKeyWord" -> searchRule.checkKeyWord = it.value
                 "bookList" -> searchRule.bookList = it.value
-                "name" -> searchRule.name =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "author" -> searchRule.author =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "kind" -> searchRule.kind =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "intro" -> searchRule.intro =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "wordCount" -> searchRule.wordCount =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "lastChapter" -> searchRule.lastChapter =
-                    viewModel.ruleComplete(it.value, searchRule.bookList)
-
-                "coverUrl" -> searchRule.coverUrl =
-                    viewModel.ruleComplete(it.value, searchRule.bookList, 3)
-
-                "bookUrl" -> searchRule.bookUrl =
-                    viewModel.ruleComplete(it.value, searchRule.bookList, 2)
+                "name" -> searchRule.name = it.value
+                "author" -> searchRule.author = it.value
+                "kind" -> searchRule.kind = it.value
+                "intro" -> searchRule.intro = it.value
+                "wordCount" -> searchRule.wordCount = it.value
+                "lastChapter" -> searchRule.lastChapter = it.value
+                "coverUrl" -> searchRule.coverUrl = it.value
+                "bookUrl" -> searchRule.bookUrl = it.value
             }
         }
         exploreEntities.forEach {
@@ -432,60 +425,30 @@ class BookSourceEditActivity :
             when (it.key) {
                 "exploreUrl" -> source.exploreUrl = it.value
                 "bookList" -> exploreRule.bookList = it.value
-                "name" -> exploreRule.name =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "author" -> exploreRule.author =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "kind" -> exploreRule.kind =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "intro" -> exploreRule.intro =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "wordCount" -> exploreRule.wordCount =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "lastChapter" -> exploreRule.lastChapter =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList)
-
-                "coverUrl" -> exploreRule.coverUrl =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList, 3)
-
-                "bookUrl" -> exploreRule.bookUrl =
-                    viewModel.ruleComplete(it.value, exploreRule.bookList, 2)
+                "name" -> exploreRule.name = it.value
+                "author" -> exploreRule.author = it.value
+                "kind" -> exploreRule.kind = it.value
+                "intro" -> exploreRule.intro = it.value
+                "wordCount" -> exploreRule.wordCount = it.value
+                "lastChapter" -> exploreRule.lastChapter = it.value
+                "coverUrl" -> exploreRule.coverUrl = it.value
+                "bookUrl" -> exploreRule.bookUrl = it.value
             }
         }
         infoEntities.forEach {
             it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
                 "init" -> bookInfoRule.init = it.value
-                "name" -> bookInfoRule.name = viewModel.ruleComplete(it.value, bookInfoRule.init)
-                "author" -> bookInfoRule.author =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-                "kind" -> bookInfoRule.kind =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-                "intro" -> bookInfoRule.intro =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-                "wordCount" -> bookInfoRule.wordCount =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-                "lastChapter" -> bookInfoRule.lastChapter =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
-
-                "coverUrl" -> bookInfoRule.coverUrl =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init, 3)
-
-                "tocUrl" -> bookInfoRule.tocUrl =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init, 2)
-
+                "name" -> bookInfoRule.name = it.value
+                "author" -> bookInfoRule.author = it.value
+                "kind" -> bookInfoRule.kind = it.value
+                "intro" -> bookInfoRule.intro = it.value
+                "wordCount" -> bookInfoRule.wordCount = it.value
+                "lastChapter" -> bookInfoRule.lastChapter = it.value
+                "coverUrl" -> bookInfoRule.coverUrl = it.value
+                "tocUrl" -> bookInfoRule.tocUrl = it.value
                 "canReName" -> bookInfoRule.canReName = it.value
-                "downloadUrls" -> bookInfoRule.downloadUrls =
-                    viewModel.ruleComplete(it.value, bookInfoRule.init)
+                "downloadUrls" -> bookInfoRule.downloadUrls = it.value
             }
         }
         tocEntities.forEach {
@@ -493,29 +456,23 @@ class BookSourceEditActivity :
             when (it.key) {
                 "preUpdateJs" -> tocRule.preUpdateJs = it.value
                 "chapterList" -> tocRule.chapterList = it.value
-                "chapterName" -> tocRule.chapterName =
-                    viewModel.ruleComplete(it.value, tocRule.chapterList)
-
-                "chapterUrl" -> tocRule.chapterUrl =
-                    viewModel.ruleComplete(it.value, tocRule.chapterList, 2)
-
+                "chapterName" -> tocRule.chapterName = it.value
+                "chapterUrl" -> tocRule.chapterUrl = it.value
                 "formatJs" -> tocRule.formatJs = it.value
                 "isVolume" -> tocRule.isVolume = it.value
                 "updateTime" -> tocRule.updateTime = it.value
                 "isVip" -> tocRule.isVip = it.value
                 "isPay" -> tocRule.isPay = it.value
-                "nextTocUrl" -> tocRule.nextTocUrl =
-                    viewModel.ruleComplete(it.value, tocRule.chapterList, 2)
+                "nextTocUrl" -> tocRule.nextTocUrl = it.value
             }
         }
         contentEntities.forEach {
             it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "content" -> contentRule.content = viewModel.ruleComplete(it.value)
-                "title" -> contentRule.title = viewModel.ruleComplete(it.value)
-                "nextContentUrl" -> contentRule.nextContentUrl =
-                    viewModel.ruleComplete(it.value, type = 2)
-
+                "content" -> contentRule.content = it.value
+                "title" -> contentRule.title = it.value
+                "nextContentUrl" -> contentRule.nextContentUrl = it.value
+                "shouldOverrideUrlLoading" -> contentRule.shouldOverrideUrlLoading = it.value
                 "webJs" -> contentRule.webJs = it.value
                 "sourceRegex" -> contentRule.sourceRegex = it.value
                 "replaceRegex" -> contentRule.replaceRegex = it.value

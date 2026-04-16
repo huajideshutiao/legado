@@ -8,7 +8,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
-import io.legado.app.help.RuleComplete
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.newCallStrResponse
@@ -139,13 +138,6 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
         execute {
             CookieStore.removeCookie(url)
         }
-    }
-
-    fun ruleComplete(rule: String?, preRule: String? = null, type: Int = 1): String? {
-        if (autoComplete) {
-            return RuleComplete.autoComplete(rule, preRule, type)
-        }
-        return rule
     }
 
 }

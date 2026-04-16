@@ -105,15 +105,31 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         }
 
         CoroutineScope(Dispatchers.Main).launch {
-            val result = deferred.await()
-            if (mImage.tag == imageUrl) {
-                displayImageResult(
-                    imageUrl,
-                    result.getOrNull(),
-                    isHorizontal,
-                    isLastImage,
-                    transformation
-                )
+            try {
+                val result = deferred.await()
+                if (mImage.tag == imageUrl) {
+                    displayImageResult(
+                        imageUrl,
+                        result.getOrNull(),
+                        isHorizontal,
+                        isLastImage,
+                        transformation
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                if (mImage.tag == imageUrl) {
+                    loadImageWithRetry(imageUrl, isHorizontal, isLastImage, transformation)
+                }
+            } catch (e: Exception) {
+                if (mImage.tag == imageUrl) {
+                    displayImageResult(
+                        imageUrl,
+                        null,
+                        isHorizontal,
+                        isLastImage,
+                        transformation
+                    )
+                }
             }
         }
     }

@@ -437,6 +437,7 @@
     <string name="pre_update_js">Js before update(preUpdateJs)</string>
     <string name="rule_book_content">Content(content)</string>
     <string name="rule_next_content">Next content url(nextContentUrl)</string>
+    <string name="rule_should_override_url_loading">Intercept web request(shouldOverrideUrlLoading)</string>
     <string name="rule_web_js">Web view js(webJs)</string>
     <string name="rule_source_regex">Source regex(sourceRegex)</string>
     <string name="rule_replace_regex">Replace regex(replaceRegex)</string>
