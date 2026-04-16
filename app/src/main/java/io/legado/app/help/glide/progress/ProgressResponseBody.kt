@@ -36,10 +36,15 @@ class ProgressResponseBody internal constructor(private val url: String, private
             @Throws(IOException::class)
             override fun read(sink: Buffer, byteCount: Long): Long {
                 val bytesRead = super.read(sink, byteCount)
-                totalBytesRead += if (bytesRead == -1L) 0 else bytesRead
-                if (internalProgressListener != null && lastTotalBytesRead != totalBytesRead) {
+                if (bytesRead != -1L) {
+                    totalBytesRead += bytesRead
+                }
+                if (internalProgressListener != null && (lastTotalBytesRead != totalBytesRead || bytesRead == -1L)) {
                     lastTotalBytesRead = totalBytesRead
-                    mainThreadHandler.post { internalProgressListener.onProgress(url, totalBytesRead, contentLength()) }
+                    mainThreadHandler.post {
+                        val total = if (bytesRead == -1L) totalBytesRead else contentLength()
+                        internalProgressListener.onProgress(url, totalBytesRead, total)
+                    }
                 }
                 return bytesRead
             }

@@ -99,7 +99,7 @@ private fun createOkHttpClient(): OkHttpClient {
             }
 
             val networkResponse = chain.proceed(request)
-            val url = request.url.toString()
+            val url = request.tag(String::class.java) ?: request.url.toString()
             val progressResponse = networkResponse.newBuilder()
                 .body(ProgressResponseBody(url, LISTENER, networkResponse.body))
                 .build()

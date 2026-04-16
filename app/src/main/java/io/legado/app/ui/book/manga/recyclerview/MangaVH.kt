@@ -63,9 +63,13 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         mRetry?.isGone = true
         mProgress.isVisible = true
         ProgressManager.removeListener(imageUrl)
-        ProgressManager.addListener(imageUrl) { _, percentage, _, _ ->
+        ProgressManager.addListener(imageUrl) { _, percentage, bytesRead, _ ->
             @SuppressLint("SetTextI18n")
-            mProgress.text = "$percentage%"
+            if (percentage >= 0) {
+                mProgress.text = "$percentage%"
+            } else {
+                mProgress.text = io.legado.app.utils.ConvertUtils.formatFileSize(bytesRead)
+            }
         }
 
         Glide.with(context)

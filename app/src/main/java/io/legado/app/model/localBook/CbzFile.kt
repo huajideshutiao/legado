@@ -26,10 +26,11 @@ class CbzFile(var book: Book) {
         @Synchronized
         private fun getEFile(book: Book): CbzFile {
             if (eFile == null || eFile?.book?.bookUrl != book.bookUrl) {
+                eFile?.close()
                 eFile = CbzFile(book)
-                return eFile!!
+            } else {
+                eFile?.book = book
             }
-            eFile?.book = book
             return eFile!!
         }
 
@@ -53,59 +54,80 @@ class CbzFile(var book: Book) {
             getEFile(book).upBookInfo()
         }
 
+        @Synchronized
         fun clear() {
+            eFile?.close()
             eFile = null
         }
     }
 
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var zipFile: AndroidZipFile? = null
-        get() {
-            if (field == null || fileDescriptor == null) {
-                field = readZip()
-            }
-            return field
-        }
-
     private var imageEntries: List<AndroidZipEntry>? = null
 
-    init {
-        upBookCover(true)
-    }
+    /**
+     * 初始化 Zip 文件，确保只加载一次
+     */
+    private fun initZipFile(): AndroidZipFile? {
+        val currentZip = zipFile
+        if (currentZip != null) return currentZip
 
-    private fun readZip(): AndroidZipFile? {
-        return kotlin.runCatching {
-            BookHelp.getBookPFD(book)?.let {
-                fileDescriptor = it
-                val zf = AndroidZipFile(it, book.originName)
+        return synchronized(this) {
+            if (zipFile != null) return zipFile
 
-                val entries = mutableListOf<AndroidZipEntry>()
-                val enumeration = zf.entries()
-                while (enumeration.hasMoreElements()) {
-                    val entry = enumeration.nextElement()
-                    if (!entry.isDirectory) {
-                        val name = entry.name.lowercase()
-                        if (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                            name.endsWith(".png") || name.endsWith(".webp") ||
-                            name.endsWith(".gif")
-                        ) {
-                            entries.add(entry)
+            kotlin.runCatching {
+                BookHelp.getBookPFD(book)?.let { pfd ->
+                    fileDescriptor = pfd
+                    val zf = AndroidZipFile(pfd, book.originName)
+                    val entries = mutableListOf<AndroidZipEntry>()
+                    val enumeration = zf.entries()
+                    while (enumeration.hasMoreElements()) {
+                        val entry = enumeration.nextElement()
+                        if (!entry.isDirectory) {
+                            val name = entry.name.lowercase()
+                            if (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
+                                name.endsWith(".png") || name.endsWith(".webp") ||
+                                name.endsWith(".gif")
+                            ) {
+                                entries.add(entry)
+                            }
                         }
                     }
+                    entries.sortWith(compareBy(AlphanumComparator) { it.name })
+                    imageEntries = entries
+                    zipFile = zf
+                    zf
                 }
+            }.onFailure {
+                AppLog.put("读取Cbz文件失败\n${it.localizedMessage}", it)
+                it.printOnDebug()
+                close() // 失败时立即清理句柄
+            }.getOrNull()
+        }
+    }
 
-                entries.sortWith(compareBy(AlphanumComparator) { it.name })
-                imageEntries = entries
-                zf
-            }
-        }.onFailure {
-            AppLog.put("读取Cbz文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
-        }.getOrNull()
+    fun close() {
+        // 使用局部变量防止在检查 null 时触发任何 Getter（虽然现在已经移除了 Getter）
+        val zf = zipFile
+        val pfd = fileDescriptor
+        zipFile = null
+        fileDescriptor = null
+        imageEntries = null
+
+        try {
+            zf?.close()
+            pfd?.close()
+        } catch (e: Exception) {
+            e.printOnDebug()
+        }
     }
 
     private fun upBookCover(fastCheck: Boolean = false) {
-        val zf = zipFile ?: return
+        if (fastCheck && !book.coverUrl.isNullOrEmpty() && File(book.coverUrl!!).exists()) {
+            return
+        }
+
+        val zf = initZipFile() ?: return
         val entries = imageEntries ?: return
         if (entries.isEmpty()) return
 
@@ -113,17 +135,17 @@ class CbzFile(var book: Book) {
             if (book.coverUrl.isNullOrEmpty()) {
                 book.coverUrl = LocalBook.getCoverPath(book)
             }
-            if (fastCheck && File(book.coverUrl!!).exists()) {
-                return
-            }
             val coverEntry = entries.first()
             zf.getInputStream(coverEntry)?.use { input ->
                 val cover = BitmapFactory.decodeStream(input)
-                val out = FileOutputStream(FileUtils.createFileIfNotExist(book.coverUrl!!))
-                cover.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                out.flush()
-                out.close()
-            } ?: AppLog.putDebug("Cbz: 封面获取为空. path: ${book.bookUrl}")
+                if (cover != null) {
+                    val out = FileOutputStream(FileUtils.createFileIfNotExist(book.coverUrl!!))
+                    cover.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                    out.flush()
+                    out.close()
+                    cover.recycle()
+                }
+            }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
             e.printOnDebug()
@@ -131,10 +153,9 @@ class CbzFile(var book: Book) {
     }
 
     private fun upBookInfo() {
-        val zf = zipFile ?: return
-        val entries = imageEntries ?: return
-
-        upBookCover()
+        upBookCover(true)
+        val zf = initZipFile() ?: return
+        
         var name = book.name
         var author = book.author
         var intro = book.intro
@@ -150,9 +171,11 @@ class CbzFile(var book: Book) {
                     doc.selectFirst("Summary")?.text()?.takeIf { it.isNotBlank() }
                         ?.let { intro = it }
                 }
-            } else if (name.isBlank()) {
-                name = book.originName.substringBeforeLast(".")
             }
+        }
+
+        if (name.isBlank()) {
+            name = book.originName.substringBeforeLast(".")
         }
 
         book.name = name
@@ -162,23 +185,23 @@ class CbzFile(var book: Book) {
 
     private fun getChapterList(): ArrayList<BookChapter> {
         val list = ArrayList<BookChapter>()
-        val zf = zipFile ?: return list
+        initZipFile() // 确保数据已加载
         val entries = imageEntries ?: return list
 
         // Group images by their folder path
         val grouped = entries.groupBy {
-            val parent = it.name.substringBeforeLast("/", "")
-            parent
+            it.name.substringBeforeLast("/", "")
         }
 
         var index = 0
-        for ((folder, chapterEntries) in grouped) {
+        val sortedKeys = grouped.keys.sortedWith(AlphanumComparator)
+        for (folder in sortedKeys) {
             val title = if (folder.isEmpty()) "正文" else folder.substringAfterLast("/")
             val chapter = BookChapter(
                 bookUrl = book.bookUrl,
                 title = title,
                 index = index++,
-                url = folder // use folder as chapter URL to identify it
+                url = folder
             )
             list.add(chapter)
         }
@@ -187,13 +210,12 @@ class CbzFile(var book: Book) {
     }
 
     private fun getContent(chapter: BookChapter): String? {
-        val zf = zipFile ?: return null
+        initZipFile() ?: return null
         val entries = imageEntries ?: return null
 
         val chapterFolder = chapter.url
         val chapterImages = entries.filter {
-            val parent = it.name.substringBeforeLast("/", "")
-            parent == chapterFolder
+            it.name.substringBeforeLast("/", "") == chapterFolder
         }
 
         val html = StringBuilder()
@@ -205,7 +227,7 @@ class CbzFile(var book: Book) {
     }
 
     private fun getImage(href: String): InputStream? {
-        val zf = zipFile ?: return null
+        val zf = initZipFile() ?: return null
         return kotlin.runCatching {
             val entry = zf.getEntry(href.removePrefix("/"))
             if (entry != null) {

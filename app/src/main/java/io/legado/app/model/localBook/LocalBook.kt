@@ -280,6 +280,17 @@ object LocalBook {
         }
     }
 
+    fun getImage(book: Book, href: String): InputStream? {
+        return when {
+            book.isEpub -> EpubFile.getImage(book, href)
+            book.isCbz -> CbzFile.getImage(book, href)
+            book.isMobi -> MobiFile.getImage(book, href)
+            book.isPdf -> PdfFile.getImage(book, href)
+            book.isUmd -> UmdFile.getImage(book, href)
+            else -> null
+        }
+    }
+
     /* 导入压缩包内的书籍 */
     fun importArchiveFile(
         archiveFileUri: Uri,

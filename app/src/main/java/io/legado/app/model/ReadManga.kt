@@ -80,7 +80,7 @@ object ReadManga : CoroutineScope by MainScope() {
             readRecord.bookName = book.name
             readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
-        if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
+        if (chapterList?.getOrNull(0)?.bookUrl != book.bookUrl) {
             chapterList = null
         }
         chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)

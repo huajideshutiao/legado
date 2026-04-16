@@ -153,13 +153,19 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                             order = appDb.bookDao.minOrder - 1,
                             origin = origin
                         )
-                        LocalBook.upBookInfo(book)
                         appDb.bookDao.insert(book)
+                        LocalBook.upBookInfo(book)
+                        val chapters = LocalBook.getChapterList(book)
+                        appDb.bookChapterDao.insert(*chapters.toTypedArray())
+                        appDb.bookDao.update(book)
                     } else {
                         LocalBook.deleteBook(book, false)
                         LocalBook.upBookInfo(book)
+                        val chapters = LocalBook.getChapterList(book)
                         book.latestChapterTime = 0
                         appDb.bookChapterDao.delByBook(origin)
+                        appDb.bookChapterDao.insert(*chapters.toTypedArray())
+                        appDb.bookDao.update(book)
                     }
                 } else {
                     val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)

@@ -155,7 +155,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         if (book.isLocal) {
             val tmp = book.copy()
             LocalBook.upBookInfo(book)
-            if (tmp.tocUrl != book.tocUrl) loadChapterList(book)
+            if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) loadChapterList(book)
             else curBook = book
         } else {
             val bookSource = curBookSource ?: let {
@@ -186,7 +186,11 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 if (book.isWebFile) {
                     loadWebFile(book)
                     curBook = book
-                } else loadChapterList(book, runPreUpdateJs)
+                } else if (book.isLocal) {
+                    loadChapterList(book, runPreUpdateJs)
+                } else {
+                    loadChapterList(book, runPreUpdateJs)
+                }
             } catch (e: Throwable) {
                 AppLog.put("获取书籍信息失败\n${e.localizedMessage}", e)
                 context.toastOnUi(R.string.error_get_book_info)

@@ -446,7 +446,7 @@ public class AndroidZipFile implements ZipConstants {
                 seek(pfd, filepos);
                 int count = PfdHelper.read(pfd, b, off, len);
                 if (count > 0)
-                    filepos += len;
+                    filepos += count;
                 return count;
             }
         }

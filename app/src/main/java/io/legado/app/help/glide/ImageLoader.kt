@@ -14,6 +14,7 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelp.writeImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ImageUtils
@@ -78,6 +79,8 @@ object ImageLoader {
             imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
         )
         val bytes = analyzeUrl.getByteArrayAwait()
+        ProgressManager.getProgressListener(imageUrl)
+            ?.invoke(true, 100, bytes.size.toLong(), bytes.size.toLong())
         return runScriptWithContext {
             ImageUtils.decode(
                 imageUrl, bytes, isCover = false, ReadManga.bookSource, ReadManga.book

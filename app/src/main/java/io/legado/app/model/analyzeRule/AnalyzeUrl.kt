@@ -492,6 +492,7 @@ class AnalyzeUrl(
         try {
             getClient().newCallResponse(retry) {
                 addHeaders(headerMap)
+                tag(String::class.java, mUrl)
                 configureRequest()
             }
         } finally {
