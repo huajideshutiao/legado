@@ -57,15 +57,20 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
+        //if (mImage.tag == imageUrl && mRetry?.isVisible != true) return
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
         mProgress.isVisible = true
         ProgressManager.removeListener(imageUrl)
-        ProgressManager.addListener(imageUrl) { _, percentage, _, _ ->
+        ProgressManager.addListener(imageUrl) { _, percentage, bytesRead, totalBytes ->
             if (mImage.tag == imageUrl) {
                 @SuppressLint("SetTextI18n")
-                mProgress.text = "$percentage%"
+                mProgress.text = if (totalBytes > 0) {
+                    "$percentage%"
+                } else {
+                    "${bytesRead / 1024}kb"
+                }
             }
         }
         mImage.tag = imageUrl

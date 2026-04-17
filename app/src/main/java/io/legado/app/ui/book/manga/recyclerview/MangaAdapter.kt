@@ -197,8 +197,7 @@ class MangaAdapter(private val context: Context) :
                 }
                 Glide.with(context).clear(vh.binding.image)
                 if (vh.binding.image.tag is String) {
-                    val imageUrl = vh.binding.image.tag as String
-                    ProgressManager.removeListener(imageUrl)
+                    ProgressManager.removeListener(vh.binding.image.tag as String)
                 }
             }
         }

@@ -82,8 +82,12 @@ object ImageLoader {
             ImageUtils.decode(
                 imageUrl, bytes, isCover = false, ReadManga.bookSource, ReadManga.book
             )
-        }?.apply {
-            writeImage(ReadManga.book!!, imageUrl, this)
+        }?.also { decodedBytes ->
+            // 异步写入图片文件，不影响立即返回结果
+            val bookSnapshot = book ?: return@also
+            io.legado.app.help.coroutine.Coroutine.async {
+                writeImage(bookSnapshot, imageUrl, decodedBytes)
+            }
         }
     }
 }

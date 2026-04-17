@@ -54,6 +54,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.Buffer
 import java.io.InputStream
 import java.net.URLEncoder
 import java.nio.charset.Charset
@@ -524,8 +525,12 @@ class AnalyzeUrl(
     /**
      * 访问网站,返回ByteArray
      */
-    suspend fun getByteArrayAwait(): ByteArray =
-        getByteArrayIfDataUri() ?: getResponseAwait().body.bytes()
+    suspend fun getByteArrayAwait(): ByteArray = getByteArrayIfDataUri() ?: getResponseAwait().use {
+        val source = it.body.source()
+        val buffer = Buffer()
+        source.readAll(buffer)
+        buffer.readByteArray()
+    }
 
     fun getByteArray(): ByteArray = runBlocking(coroutineContext) { getByteArrayAwait() }
 

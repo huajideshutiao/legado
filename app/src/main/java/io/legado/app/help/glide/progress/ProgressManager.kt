@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ProgressManager {
     private val listenersMap = ConcurrentHashMap<String, OnProgressListener>()
+    private val lastBytesReadMap = ConcurrentHashMap<String, Long>()
 
     val LISTENER = object : ProgressResponseBody.InternalProgressListener {
         override fun onProgress(
@@ -17,15 +18,24 @@ object ProgressManager {
             totalBytes: Long,
             isComplete: Boolean
         ) {
-            getProgressListener(url)?.let {
-                val percentage = when {
-                    isComplete -> 100
-                    totalBytes == -1L -> 0
-                    else -> (bytesRead * 1f / totalBytes * 100f).toInt().coerceIn(0, 100)
-                }
-                it.invoke(isComplete, percentage, bytesRead, totalBytes)
+            val key = getUrlNoOption(url)
+            val lastBytesRead = lastBytesReadMap[key] ?: -1L
+            if (isComplete || bytesRead > lastBytesRead) {
                 if (isComplete) {
-                    removeListener(url)
+                    lastBytesReadMap.remove(key)
+                } else {
+                    lastBytesReadMap[key] = bytesRead
+                }
+                getProgressListener(url)?.let {
+                    val percentage = when {
+                        isComplete -> 100
+                        totalBytes <= 0L -> 0
+                        else -> (bytesRead * 1f / totalBytes * 100f).toInt().coerceIn(0, 100)
+                    }
+                    it.invoke(isComplete, percentage, bytesRead, totalBytes)
+                    if (isComplete) {
+                        removeListener(url)
+                    }
                 }
             }
         }
@@ -33,16 +43,17 @@ object ProgressManager {
 
     fun addListener(url: String, listener: OnProgressListener) {
         if (url.isNotEmpty()) {
-            val url = getUrlNoOption(url)
-            listenersMap[url] = listener
-            listener.invoke(false, 0, 0, 0)
+            val key = getUrlNoOption(url)
+            listenersMap[key] = listener
+            lastBytesReadMap[key] = -1L
         }
     }
 
     fun removeListener(url: String) {
         if (url.isNotEmpty()) {
-            val url = getUrlNoOption(url)
-            listenersMap.remove(url)
+            val key = getUrlNoOption(url)
+            listenersMap.remove(key)
+            lastBytesReadMap.remove(key)
         }
     }
 
@@ -50,11 +61,11 @@ object ProgressManager {
         return if (url.isEmpty() || listenersMap.isEmpty()) {
             null
         } else {
-            listenersMap[url]
+            listenersMap[getUrlNoOption(url)]
         }
     }
 
-    private fun getUrlNoOption(url: String): String {
+    fun getUrlNoOption(url: String): String {
         val urlMatcher = AnalyzeUrl.paramPattern.matcher(url)
         return if (urlMatcher.find()) {
             url.take(urlMatcher.start())

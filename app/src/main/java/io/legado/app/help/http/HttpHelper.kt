@@ -3,6 +3,7 @@ package io.legado.app.help.http
 import io.legado.app.constant.AppConst
 import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.help.glide.progress.ProgressManager.LISTENER
 import io.legado.app.help.glide.progress.ProgressResponseBody
 import io.legado.app.help.http.CookieManager.cookieJarHeader
@@ -76,7 +77,7 @@ private fun createOkHttpClient(): OkHttpClient {
         .followSslRedirects(true)
         .addInterceptor(OkHttpExceptionInterceptor)
         .addInterceptor { chain ->
-            val request = chain.request()
+            var request = chain.request()
             val builder = request.newBuilder()
             if (request.header(AppConst.UA_NAME) == null) {
                 builder.addHeader(AppConst.UA_NAME, AppConfig.userAgent)
@@ -86,23 +87,25 @@ private fun createOkHttpClient(): OkHttpClient {
             builder.addHeader("Keep-Alive", "300")
             builder.addHeader("Connection", "Keep-Alive")
             builder.addHeader("Cache-Control", "no-cache")
-            chain.proceed(builder.build())
-        }
-        .addNetworkInterceptor { chain ->
-            var request = chain.request()
-            val enableCookieJar = request.header(cookieJarHeader) != null
 
+            val enableCookieJar = request.header(cookieJarHeader) != null
             if (enableCookieJar) {
-                val requestBuilder = request.newBuilder()
-                requestBuilder.removeHeader(cookieJarHeader)
-                request = CookieManager.loadRequest(requestBuilder.build())
+                builder.removeHeader(cookieJarHeader)
+                request = CookieManager.loadRequest(builder.build())
+            } else {
+                request = builder.build()
             }
 
-            val networkResponse = chain.proceed(request)
+            val response = chain.proceed(request)
             val url = request.tag(String::class.java) ?: request.url.toString()
-            val progressResponse = networkResponse.newBuilder()
-                .body(ProgressResponseBody(url, LISTENER, networkResponse.body))
-                .build()
+            val responseBody = response.body
+            val progressResponse = if (ProgressManager.getProgressListener(url) != null) {
+                response.newBuilder()
+                    .body(ProgressResponseBody(url, LISTENER, responseBody))
+                    .build()
+            } else {
+                response
+            }
 
             if (enableCookieJar) {
                 CookieManager.saveResponse(progressResponse)
