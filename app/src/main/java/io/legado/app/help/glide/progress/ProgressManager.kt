@@ -18,7 +18,7 @@ object ProgressManager {
                 } else {
                     (bytesRead * 1f / totalBytes * 100f).toInt().coerceIn(0, 100)
                 }
-                val isComplete = totalBytes > 0 && bytesRead >= totalBytes
+                val isComplete = totalBytes in 1..bytesRead
                 it.invoke(isComplete, percentage, bytesRead, totalBytes)
                 if (isComplete) {
                     removeListener(url)

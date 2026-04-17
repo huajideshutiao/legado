@@ -57,21 +57,18 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
-        mImage.tag = imageUrl
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
         mProgress.isVisible = true
         ProgressManager.removeListener(imageUrl)
-        ProgressManager.addListener(imageUrl) { _, percentage, bytesRead, _ ->
-            @SuppressLint("SetTextI18n")
-            if (percentage >= 0) {
+        ProgressManager.addListener(imageUrl) { _, percentage, _, _ ->
+            if (mImage.tag == imageUrl) {
+                @SuppressLint("SetTextI18n")
                 mProgress.text = "$percentage%"
-            } else {
-                mProgress.text = io.legado.app.utils.ConvertUtils.formatFileSize(bytesRead)
             }
         }
-
+        mImage.tag = imageUrl
         Glide.with(context)
             .asBitmap()
             .load(MangaModel(imageUrl))

@@ -71,6 +71,7 @@ class OkHttpStreamFetcher(
 
         val requestBuilder = Request.Builder().url(analyzedUrl.toStringUrl())
         requestBuilder.addHeaders(analyzedUrl.headers)
+        requestBuilder.tag(String::class.java, url.toString())
         val request: Request = requestBuilder.build()
         this.callback = callback
         call = okHttpClient.newCall(request)
