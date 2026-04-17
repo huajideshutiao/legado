@@ -17,6 +17,7 @@ class WebDavPfdCallback(
 
     override fun onRead(offset: Long, size: Int, data: ByteArray): Int {
         if (offset >= this.size) return 0
+
         val end = minOf(this.size - 1, offset + size - 1)
         val range = "bytes=$offset-$end"
 
@@ -41,7 +42,7 @@ class WebDavPfdCallback(
                 bytesRead += read
             }
             return bytesRead
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             throw ErrnoException("onRead", OsConstants.EIO)
         }
     }

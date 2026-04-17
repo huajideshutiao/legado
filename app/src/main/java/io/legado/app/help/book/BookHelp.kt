@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -313,8 +314,8 @@ object BookHelp {
      */
     @Throws(IOException::class, FileNotFoundException::class)
     fun getBookPFD(book: Book): ParcelFileDescriptor? {
-        val webDavUrl = book.getRemoteUrl()
-        if (webDavUrl != null) {
+        if (book.bookUrl.startsWith(BookType.webDavTag)) {
+            val webDavUrl = book.getRemoteUrl()!!
             val webdav = kotlin.runCatching {
                 io.legado.app.lib.webdav.WebDav.fromPath(webDavUrl)
             }.getOrElse {

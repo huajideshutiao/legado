@@ -16,6 +16,7 @@ import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.runBlocking
+import androidx.core.net.toUri
 
 class RemoteBookWebDav(
     val rootBookUrl: String,
@@ -68,7 +69,7 @@ class RemoteBookWebDav(
 
     override suspend fun upload(book: Book) {
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
-        val localBookUri = Uri.parse(book.bookUrl)
+        val localBookUri = book.bookUrl.toUri()
         val putUrl = "$rootBookUrl${book.originName}"
         val webDav = WebDav(putUrl, authorization)
         if (localBookUri.isContentScheme()) {

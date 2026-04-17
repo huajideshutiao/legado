@@ -186,8 +186,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 if (book.isWebFile) {
                     loadWebFile(book)
                     curBook = book
-                } else if (book.isLocal) {
-                    loadChapterList(book, runPreUpdateJs)
                 } else {
                     loadChapterList(book, runPreUpdateJs)
                 }

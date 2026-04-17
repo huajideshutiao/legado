@@ -47,6 +47,10 @@ class UmdFile(var book: Book) {
         override fun upBookInfo(book: Book) {
             return getUFile(book).upBookInfo()
         }
+
+        fun clear() {
+            uFile = null
+        }
     }
 
 
@@ -64,8 +68,13 @@ class UmdFile(var book: Book) {
     }
 
     private fun readUmd(): UmdBook? {
-        val input = LocalBook.getBookInputStream(book)
-        return UmdReader().read(input)
+        kotlin.runCatching {
+            val input = LocalBook.getBookInputStream(book)
+            return UmdReader().read(input)
+        }.onFailure {
+            it.printOnDebug()
+        }
+        return null
     }
 
     private fun upBookCover(fastCheck: Boolean = false) {

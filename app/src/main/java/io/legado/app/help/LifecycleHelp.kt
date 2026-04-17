@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import io.legado.app.base.BaseService
+import io.legado.app.model.localBook.*
 import io.legado.app.utils.LogUtils
 import java.lang.ref.WeakReference
 
@@ -18,6 +19,16 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     private val activities: MutableList<WeakReference<Activity>> = arrayListOf()
     private val services: MutableList<WeakReference<BaseService>> = arrayListOf()
     private var appFinishedListener: (() -> Unit)? = null
+
+    init {
+        setOnAppFinishedListener {
+            CbzFile.clear()
+            EpubFile.clear()
+            MobiFile.clear()
+            PdfFile.clear()
+            UmdFile.clear()
+        }
+    }
 
     fun activitySize(): Int {
         return activities.size

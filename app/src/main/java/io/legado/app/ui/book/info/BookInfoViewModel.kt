@@ -3,7 +3,6 @@ package io.legado.app.ui.book.info
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.MutableLiveData
-import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
@@ -25,10 +24,7 @@ import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.ArchiveUtils
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
-import io.legado.app.utils.externalFiles
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -59,7 +55,6 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun refreshBook(book: Book) {
         executeLazy(executeContext = IO) {
             if (book.isLocal) {
-                book.tocUrl = ""
                 book.getRemoteUrl()?.let {
                     val bookWebDav = AppWebDav.defaultBookWebDav
                         ?: throw NoStackTraceException("webDav没有配置")
@@ -275,41 +270,6 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         // 压缩包形式的txt epub umd pdf文件
         val isSupportDecompress: Boolean = AppPattern.archiveFileRegex.matches(name)
 
-    }
-
-    /**
-     * Cache cover image to local covers folder.
-     * If coverUrl is a remote URL, download it and save to covers folder,
-     * then update customCoverUrl to the local file path.
-     */
-    fun cacheCover(book: Book) {
-        val coverUrl = book.getDisplayCover() ?: return
-        // Skip if already a local file path (starts with /)
-        if (coverUrl.startsWith("/")) return
-        // Skip if content URI
-        if (coverUrl.startsWith("content://")) return
-        execute {
-            val coverFile = Glide.with(context)
-                .asFile()
-                .load(coverUrl)
-                .submit()
-                .get()
-            coverFile?.let { file ->
-                val fileName = MD5Utils.md5Encode16(book.bookUrl) + ".jpg"
-                val targetFile = FileUtils.createFileIfNotExist(
-                    context.externalFiles,
-                    "covers",
-                    fileName
-                )
-                file.copyTo(targetFile, overwrite = true)
-                book.customCoverUrl = targetFile.absolutePath
-                if (inBookshelf) {
-                    appDb.bookDao.update(book)
-                }
-            }
-        }.onError {
-            AppLog.put("缓存封面失败\n${it.localizedMessage}", it)
-        }
     }
 
 }

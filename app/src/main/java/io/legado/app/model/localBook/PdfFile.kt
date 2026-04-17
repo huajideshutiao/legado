@@ -33,6 +33,7 @@ class PdfFile(var book: Book) {
         @Synchronized
         private fun getPFile(book: Book): PdfFile {
             if (pFile == null || pFile?.book?.bookUrl != book.bookUrl) {
+                pFile?.closePdf()
                 pFile = PdfFile(book)
                 return pFile!!
             }
@@ -60,6 +61,11 @@ class PdfFile(var book: Book) {
             return getPFile(book).getImage(href)
         }
 
+        fun clear() {
+            pFile?.closePdf()
+            pFile = null
+        }
+
     }
 
     /**
@@ -85,17 +91,21 @@ class PdfFile(var book: Book) {
      * @return
      */
     private fun readPdf(): PdfRenderer? {
-        val uri = book.getLocalUri()
-        if (uri.isContentScheme()) {
-            fileDescriptor = appCtx.contentResolver.openFileDescriptor(uri, "r")?.also {
-                pdfRenderer = PdfRenderer(it)
+        kotlin.runCatching {
+            val uri = book.getLocalUri()
+            if (uri.isContentScheme()) {
+                fileDescriptor = appCtx.contentResolver.openFileDescriptor(uri, "r")?.also {
+                    pdfRenderer = PdfRenderer(it)
+                }
+            } else {
+                fileDescriptor =
+                    ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
+                        ?.also {
+                            pdfRenderer = PdfRenderer(it)
+                        }
             }
-        } else {
-            fileDescriptor =
-                ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
-                    ?.also {
-                        pdfRenderer = PdfRenderer(it)
-                    }
+        }.onFailure {
+            it.printOnDebug()
         }
         return pdfRenderer
     }
@@ -104,9 +114,11 @@ class PdfFile(var book: Book) {
      * 关闭pdf文件
      *
      */
-    private fun closePdf() {
+    fun closePdf() {
         pdfRenderer?.close()
         fileDescriptor?.close()
+        pdfRenderer = null
+        fileDescriptor = null
     }
 
 

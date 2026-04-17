@@ -67,14 +67,12 @@ object HtmlFormatter {
 
                         is Element if child.tagName() == "img" -> {
                             val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
-                            img.attr(
-                                "src",
-                                when {
-                                    child.hasAttr("data-src") -> child.absUrl("data-src")
-                                    child.hasAttr("data-original") -> child.absUrl("data-original")
-                                    else -> child.absUrl("src")
-                                }
-                            )
+                            val src = when {
+                                child.hasAttr("data-src") -> child.absUrl("data-src").ifEmpty { child.attr("data-src") }
+                                child.hasAttr("data-original") -> child.absUrl("data-original").ifEmpty { child.attr("data-original") }
+                                else -> child.absUrl("src").ifEmpty { child.attr("src") }
+                            }
+                            img.attr("src", src)
                             child.attribute("style")?.let { img.attr("style", it.value) }
                             child.attribute("onclick")?.let { img.attr("onclick", it.value) }
                             str.append(img.outerHtml())

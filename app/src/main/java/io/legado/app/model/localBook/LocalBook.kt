@@ -37,6 +37,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -61,6 +62,7 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
+import androidx.core.net.toUri
 
 /**
  * 书籍文件导入 目录正文解析
@@ -78,25 +80,24 @@ object LocalBook {
     @Throws(FileNotFoundException::class, SecurityException::class)
     fun getBookInputStream(book: Book): InputStream {
         val uri = book.getLocalUri()
-        val inputStream = uri.inputStream(appCtx).getOrNull()
-            ?: let {
-                book.removeLocalUriCache()
-                val localArchiveUri = book.getArchiveUri()
-                val webDavUrl = book.getRemoteUrl()
-                if (localArchiveUri != null) {
-                    // 重新导入对应的压缩包
-                    importArchiveFile(localArchiveUri, book.originName) {
-                        it.contains(book.originName)
-                    }.firstOrNull()?.let {
-                        getBookInputStream(it)
-                    }
-                } else if (webDavUrl != null && downloadRemoteBook(book)) {
-                    // 下载远程链接
-                    getBookInputStream(book)
-                } else {
-                    null
+        val inputStream = uri.inputStream(appCtx).getOrNull() ?: let {
+            book.removeLocalUriCache()
+            val localArchiveUri = book.getArchiveUri()
+            val webDavUrl = book.getRemoteUrl()
+            if (localArchiveUri != null) {
+                // 重新导入对应的压缩包
+                importArchiveFile(localArchiveUri, book.originName) {
+                    it.contains(book.originName)
+                }.firstOrNull()?.let {
+                    getBookInputStream(it)
                 }
+            } else if (webDavUrl != null && downloadRemoteBook(book)) {
+                // 下载远程链接
+                getBookInputStream(book)
+            } else {
+                null
             }
+        }
         if (inputStream != null) return inputStream
         book.removeLocalUriCache()
         throw FileNotFoundException("${uri.path} 文件不存在")
@@ -104,7 +105,7 @@ object LocalBook {
 
     fun getLastModified(book: Book): Result<Long> {
         return kotlin.runCatching {
-            val uri = Uri.parse(book.bookUrl)
+            val uri = book.bookUrl.toUri()
             if (uri.isContentScheme()) {
                 return@runCatching DocumentFile.fromSingleUri(appCtx, uri)!!.lastModified()
             }
@@ -119,29 +120,12 @@ object LocalBook {
     @Throws(TocEmptyException::class)
     fun getChapterList(book: Book): ArrayList<BookChapter> {
         val chapters = when {
-            book.isEpub -> {
-                EpubFile.getChapterList(book)
-            }
-
-            book.isUmd -> {
-                UmdFile.getChapterList(book)
-            }
-
-            book.isPdf -> {
-                PdfFile.getChapterList(book)
-            }
-
-            book.isMobi -> {
-                MobiFile.getChapterList(book)
-            }
-
-            book.isCbz -> {
-                CbzFile.getChapterList(book)
-            }
-
-            else -> {
-                TextFile.getChapterList(book)
-            }
+            book.isEpub -> EpubFile.getChapterList(book)
+            book.isUmd -> UmdFile.getChapterList(book)
+            book.isPdf -> PdfFile.getChapterList(book)
+            book.isMobi -> MobiFile.getChapterList(book)
+            book.isCbz -> CbzFile.getChapterList(book)
+            else -> TextFile.getChapterList(book)
         }
         if (chapters.isEmpty()) {
             throw TocEmptyException(appCtx.getString(R.string.chapter_list_empty))
@@ -167,29 +151,12 @@ object LocalBook {
     fun getContent(book: Book, chapter: BookChapter): String? {
         var content = try {
             when {
-                book.isEpub -> {
-                    EpubFile.getContent(book, chapter)
-                }
-
-                book.isUmd -> {
-                    UmdFile.getContent(book, chapter)
-                }
-
-                book.isPdf -> {
-                    PdfFile.getContent(book, chapter)
-                }
-
-                book.isMobi -> {
-                    MobiFile.getContent(book, chapter)
-                }
-
-                book.isCbz -> {
-                    CbzFile.getContent(book, chapter)
-                }
-
-                else -> {
-                    TextFile.getContent(book, chapter)
-                }
+                book.isEpub -> EpubFile.getContent(book, chapter)
+                book.isUmd ->UmdFile.getContent(book, chapter)
+                book.isPdf -> PdfFile.getContent(book, chapter)
+                book.isMobi ->MobiFile.getContent(book, chapter)
+                book.isCbz -> CbzFile.getContent(book, chapter)
+                else ->TextFile.getContent(book, chapter)
             }
         } catch (e: Exception) {
             e.printOnDebug()
@@ -217,9 +184,7 @@ object LocalBook {
 
     private fun getCoverPath(bookUrl: String): String {
         return FileUtils.getPath(
-            appCtx.externalFiles,
-            "covers",
-            "${MD5Utils.md5Encode16(bookUrl)}.jpg"
+            appCtx.externalFiles, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg"
         )
     }
 
@@ -242,8 +207,7 @@ object LocalBook {
         //updateTime变量不要修改,否则会导致读取不到缓存
         val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
             if (size == 0L) throw EmptyFileException("Unexpected empty File")
-
-            bookUrl = toString()
+            bookUrl = this.toString()
         }
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
@@ -266,6 +230,46 @@ object LocalBook {
             book.latestChapterTime = 0
             //已有书籍说明是更新,删除原有目录
             appDb.bookChapterDao.delByBook(bookUrl)
+        }
+        return book
+    }
+
+    /**
+     * 导入远程图片书籍(cbz等)
+     */
+    suspend fun importImageBook(
+        remoteBook: RemoteBook,
+        origin: String,
+        downloadAction: suspend () -> Uri
+    ): Book {
+        val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
+        else downloadAction().toString()
+        var book = appDb.bookDao.getBook(bookUrl = bookUrl)
+        if (book == null) {
+            book = Book(
+                type = BookType.image or BookType.local,
+                bookUrl = bookUrl,
+                name = remoteBook.filename.substringBeforeLast("."),
+                author = "",
+                originName = remoteBook.filename,
+                latestChapterTime = remoteBook.lastModify,
+                order = appDb.bookDao.minOrder - 1,
+                origin = origin
+            )
+            upBookInfo(book)
+            appDb.bookDao.insert(book)
+            val chapters = getChapterList(book)
+            appDb.bookChapterDao.insert(*chapters.toTypedArray<BookChapter>())
+        } else {
+            deleteBook(book, false)
+            book.origin = origin
+            book.originName = remoteBook.filename
+            book.latestChapterTime = remoteBook.lastModify
+            upBookInfo(book)
+            appDb.bookDao.update(book)
+            appDb.bookChapterDao.delByBook(bookUrl = bookUrl)
+            val chapters = getChapterList(book)
+            appDb.bookChapterDao.insert(*chapters.toTypedArray<BookChapter>())
         }
         return book
     }
@@ -293,9 +297,7 @@ object LocalBook {
 
     /* 导入压缩包内的书籍 */
     fun importArchiveFile(
-        archiveFileUri: Uri,
-        saveFileName: String? = null,
-        filter: ((String) -> Boolean)? = null
+        archiveFileUri: Uri, saveFileName: String? = null, filter: ((String) -> Boolean)? = null
     ): List<Book> {
         val archiveFileDoc = FileDoc.fromUri(archiveFileUri, false)
         val files = ArchiveUtils.deCompress(archiveFileDoc, filter = filter)
@@ -322,8 +324,7 @@ object LocalBook {
             books.addAll(
                 importArchiveFile(uri) {
                     it.matches(AppPattern.bookFileRegex)
-                }
-            )
+                })
         } else {
             books.add(importFile(uri))
         }
@@ -370,8 +371,7 @@ object LocalBook {
                     bindings["src"] = tempFileName
                     eval(js, bindings)
                 }.toString()
-                val bookMess = GSON.fromJsonObject<HashMap<String, String>>(jsonStr)
-                    .getOrThrow()
+                val bookMess = GSON.fromJsonObject<HashMap<String, String>>(jsonStr).getOrThrow()
                 name = bookMess["name"] ?: ""
                 author = bookMess["author"]?.takeIf { it.length != tempFileName.length } ?: ""
             } catch (e: Exception) {
@@ -403,7 +403,7 @@ object LocalBook {
             }
             if (deleteOriginal) {
                 if (book.bookUrl.isContentScheme()) {
-                    val uri = Uri.parse(book.bookUrl)
+                    val uri = book.bookUrl.toUri()
                     DocumentFile.fromSingleUri(appCtx, uri)?.delete()
                 } else {
                     FileUtils.delete(book.bookUrl)
@@ -420,18 +420,15 @@ object LocalBook {
         fileName: String,
         source: BaseSource? = null,
     ): Uri {
-        AppConfig.defaultBookTreeUri
-            ?: throw NoBooksDirException()
+        AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
         val inputStream = when {
             str.isAbsUrl() -> AnalyzeUrl(
-                str, source = source, callTimeout = 0,
-                coroutineContext = currentCoroutineContext()
+                str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
             ).getInputStreamAwait()
 
             str.isDataUrl() -> ByteArrayInputStream(
                 Base64.decode(
-                    str.substringAfter("base64,"),
-                    Base64.DEFAULT
+                    str.substringAfter("base64,"), Base64.DEFAULT
                 )
             )
 
@@ -442,13 +439,12 @@ object LocalBook {
 
     @Throws(SecurityException::class)
     fun saveBookFile(
-        inputStream: InputStream,
-        fileName: String
+        inputStream: InputStream, fileName: String
     ): Uri {
         inputStream.use {
             val defaultBookTreeUri = AppConfig.defaultBookTreeUri
             if (defaultBookTreeUri.isNullOrBlank()) throw NoBooksDirException()
-            val treeUri = Uri.parse(defaultBookTreeUri)
+            val treeUri = defaultBookTreeUri.toUri()
             return if (treeUri.isContentScheme()) {
                 val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
                 var doc = treeDoc!!.findFile(fileName)
@@ -500,8 +496,7 @@ object LocalBook {
         val webDavUrl = localBook.getRemoteUrl()
         if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
         try {
-            AppConfig.defaultBookTreeUri
-                ?: throw NoBooksDirException()
+            AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
             // 兼容旧版链接
             val webdav: WebDav = kotlin.runCatching {
                 WebDav.fromPath(webDavUrl)

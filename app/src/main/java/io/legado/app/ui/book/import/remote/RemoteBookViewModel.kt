@@ -6,7 +6,6 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
@@ -59,8 +58,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     trySend(list)
                 } else {
                     trySend(
-                        list.filter { it.filename.contains(key) }
-                    )
+                        list.filter { it.filename.contains(key) })
                 }
             }
         }
@@ -70,8 +68,9 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         }
     }.map { list ->
         if (sortAscending) when (sortKey) {
-            RemoteBookSort.Name -> list.sortedWith(compareBy<RemoteBook> { !it.isDir }
-                    then compareBy(AlphanumComparator) { it.filename })
+            RemoteBookSort.Name -> list.sortedWith(compareBy<RemoteBook> { !it.isDir } then compareBy(
+                AlphanumComparator
+            ) { it.filename })
 
             else -> list.sortedWith(compareBy({ !it.isDir }, { it.lastModify }))
         } else when (sortKey) {
@@ -105,8 +104,8 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                 return@execute
             }
             isDefaultWebdav = true
-            remoteBookWebDav = AppWebDav.defaultBookWebDav
-                ?: throw NoStackTraceException("webDav没有配置")
+            remoteBookWebDav =
+                AppWebDav.defaultBookWebDav ?: throw NoStackTraceException("webDav没有配置")
         }.onError {
             context.toastOnUi("初始化webDav出错:${it.localizedMessage}")
         }.onSuccess {
@@ -116,8 +115,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
 
     fun loadRemoteBookList(path: String?, loadCallback: (loading: Boolean) -> Unit) {
         executeLazy {
-            val bookWebDav = remoteBookWebDav
-                ?: throw NoStackTraceException("没有配置webDav")
+            val bookWebDav = remoteBookWebDav ?: throw NoStackTraceException("没有配置webDav")
             dataCallback?.clear()
             val url = path ?: bookWebDav.rootBookUrl
             val bookList = bookWebDav.getRemoteBookList(url)
@@ -134,45 +132,20 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
 
     fun addToBookshelf(remoteBooks: HashSet<RemoteBook>, finally: () -> Unit) {
         execute {
-            val bookWebDav = remoteBookWebDav
-                ?: throw NoStackTraceException("没有配置webDav")
+            val bookWebDav = remoteBookWebDav ?: throw NoStackTraceException("没有配置webDav")
             remoteBooks.forEach { remoteBook ->
+                val origin = BookType.webDavTag + CustomUrl(remoteBook.path).putAttribute(
+                    "serverID",
+                    bookWebDav.serverID
+                ).toString()
                 if (remoteBook.filename.endsWith(".cbz", true)) {
-                    val origin = BookType.webDavTag + CustomUrl(remoteBook.path)
-                        .putAttribute("serverID", bookWebDav.serverID)
-                        .toString()
-                    var book = appDb.bookDao.getBook(origin)
-                    if (book == null) {
-                        book = Book(
-                            type = BookType.image or BookType.local,
-                            bookUrl = origin,
-                            name = remoteBook.filename.substringBeforeLast("."),
-                            author = "",
-                            originName = remoteBook.filename,
-                            latestChapterTime = remoteBook.lastModify,
-                            order = appDb.bookDao.minOrder - 1,
-                            origin = origin
-                        )
-                        appDb.bookDao.insert(book)
-                        LocalBook.upBookInfo(book)
-                        val chapters = LocalBook.getChapterList(book)
-                        appDb.bookChapterDao.insert(*chapters.toTypedArray())
-                        appDb.bookDao.update(book)
-                    } else {
-                        LocalBook.deleteBook(book, false)
-                        LocalBook.upBookInfo(book)
-                        val chapters = LocalBook.getChapterList(book)
-                        book.latestChapterTime = 0
-                        appDb.bookChapterDao.delByBook(origin)
-                        appDb.bookChapterDao.insert(*chapters.toTypedArray())
-                        appDb.bookDao.update(book)
+                    LocalBook.importImageBook(remoteBook, origin) {
+                        bookWebDav.downloadRemoteBook(remoteBook)
                     }
                 } else {
                     val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)
                     LocalBook.importFiles(downloadBookUri).forEach { book ->
-                        book.origin = BookType.webDavTag + CustomUrl(remoteBook.path)
-                            .putAttribute("serverID", bookWebDav.serverID)
-                            .toString()
+                        book.origin = origin
                         book.save()
                     }
                 }
