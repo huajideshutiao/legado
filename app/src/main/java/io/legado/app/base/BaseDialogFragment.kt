@@ -38,6 +38,7 @@ abstract class BaseDialogFragment(
 
     override fun onStart() {
         super.onStart()
+        dialog?.window?.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
         if (adaptationSoftKeyboard) {
             dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
         } else if (AppConfig.isEInkMode) {
