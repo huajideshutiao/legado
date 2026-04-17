@@ -143,7 +143,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                                 importSourceUrl(it)
                             }
                         }
-                    } else if (mText.contains("BookSourceUrl")) {
+                    } else if (mText.contains("bookSourceUrl")) {
                         allSources.add(GSON.fromJsonObject<BookSource>(mText).getOrElse {
                             throw NoStackTraceException("不是书源")
                         })
@@ -157,7 +157,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 }
 
                 mText.isJsonArray() -> {
-                    if (mText.contains("BookSourceUrl")) {
+                    if (mText.contains("bookSourceUrl")) {
                         allSources.addAll(GSON.fromJsonArray<BookSource>(mText).getOrElse {
                             throw NoStackTraceException("不是书源")
                         })
@@ -209,7 +209,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
     private fun importFromJson(json: String) {
         when {
             json.isJsonObject() -> {
-                if (json.contains("BookSourceUrl")) {
+                if (json.contains("bookSourceUrl")) {
                     allSources.add(GSON.fromJsonObject<BookSource>(json).getOrElse {
                         throw NoStackTraceException("不是书源")
                     })
@@ -222,7 +222,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 }
             }
             json.isJsonArray() -> {
-                if (json.contains("BookSourceUrl")) {
+                if (json.contains("bookSourceUrl")) {
                     allSources.addAll(GSON.fromJsonArray<BookSource>(json).getOrElse {
                         throw NoStackTraceException("不是书源")
                     })
