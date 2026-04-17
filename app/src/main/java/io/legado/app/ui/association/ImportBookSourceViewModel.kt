@@ -1,6 +1,7 @@
 package io.legado.app.ui.association
 
 import android.app.Application
+import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
 import com.jayway.jsonpath.JsonPath
 import io.legado.app.R
@@ -28,7 +29,6 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
 import io.legado.app.utils.splitNotBlank
-import androidx.core.net.toUri
 
 
 class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
@@ -43,46 +43,15 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
     val newSourceStatus = arrayListOf<Boolean>()
     val updateSourceStatus = arrayListOf<Boolean>()
 
-    val isSelectAll: Boolean
-        get() {
-            selectStatus.forEach {
-                if (!it) {
-                    return false
-                }
-            }
-            return true
-        }
+    val isSelectAll: Boolean get() = selectStatus.all { it }
 
     val isSelectAllNew: Boolean
-        get() {
-            newSourceStatus.forEachIndexed { index, b ->
-                if (b && !selectStatus[index]) {
-                    return false
-                }
-            }
-            return true
-        }
+        get() = newSourceStatus.indices.all { !newSourceStatus[it] || selectStatus[it] }
 
     val isSelectAllUpdate: Boolean
-        get() {
-            updateSourceStatus.forEachIndexed { index, b ->
-                if (b && !selectStatus[index]) {
-                    return false
-                }
-            }
-            return true
-        }
+        get() = updateSourceStatus.indices.all { !updateSourceStatus[it] || selectStatus[it] }
 
-    val selectCount: Int
-        get() {
-            var count = 0
-            selectStatus.forEach {
-                if (it) {
-                    count++
-                }
-            }
-            return count
-        }
+    val selectCount: Int get() = selectStatus.count { it }
 
     fun importSelect(finally: () -> Unit) {
         execute {
@@ -95,12 +64,8 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 if (b) {
                     val source = allSources[index]
                     checkSources[index]?.let {
-                        if (keepName) {
-                            source.bookSourceName = it.bookSourceName
-                        }
-                        if (keepGroup) {
-                            source.bookSourceGroup = it.bookSourceGroup
-                        }
+                        if (keepName) source.bookSourceName = it.bookSourceName
+                        if (keepGroup) source.bookSourceGroup = it.bookSourceGroup
                         if (keepEnable) {
                             source.enabled = it.enabled
                             source.enabledExplore = it.enabledExplore
@@ -108,15 +73,15 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                         source.customOrder = it.customOrder
                     }
                     if (!group.isNullOrEmpty()) {
-                        if (isAddGroup) {
+                        source.bookSourceGroup = if (isAddGroup) {
                             val groups = linkedSetOf<String>()
                             source.bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.let {
                                 groups.addAll(it)
                             }
                             groups.add(group)
-                            source.bookSourceGroup = groups.joinToString(",")
+                            groups.joinToString(",")
                         } else {
-                            source.bookSourceGroup = group
+                            group
                         }
                     }
                     selectSource.add(source)
@@ -133,55 +98,18 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
         execute {
             val mText = text.trim()
             when {
-                mText.isJsonObject() -> {
-                    if (mText.contains("sourceUrls")) {
-                        kotlin.runCatching {
-                            val json = JsonPath.parse(mText)
-                            json.read<List<String>>("$.sourceUrls")
-                        }.onSuccess { listUrl ->
-                            listUrl.forEach {
-                                importSourceUrl(it)
-                            }
-                        }
-                    } else if (mText.contains("bookSourceUrl")) {
-                        allSources.add(GSON.fromJsonObject<BookSource>(mText).getOrElse {
-                            throw NoStackTraceException("不是书源")
-                        })
-                    } else if (mText.contains("sourceUrl")) {
-                        allSources.add(GSON.fromJsonObject<OldRssSource>(mText).getOrElse {
-                            throw NoStackTraceException("不是书源")
-                        }.toBookSource())
-                    } else {
-                        throw NoStackTraceException("不是书源")
+                mText.isAbsUrl() -> importSourceUrl(mText)
+                mText.isUri() -> mText.toUri().inputStream(context).getOrThrow().use {
+                    importFromJson(it.readBytes().toString(Charsets.UTF_8))
+                }
+
+                mText.isJsonObject() && mText.contains("sourceUrls") -> {
+                    JsonPath.parse(mText).read<List<String>>("$.sourceUrls").forEach {
+                        importSourceUrl(it)
                     }
                 }
 
-                mText.isJsonArray() -> {
-                    if (mText.contains("bookSourceUrl")) {
-                        allSources.addAll(GSON.fromJsonArray<BookSource>(mText).getOrElse {
-                            throw NoStackTraceException("不是书源")
-                        })
-                    } else if (mText.contains("sourceUrl")) {
-                        allSources.addAll(GSON.fromJsonArray<OldRssSource>(mText).getOrElse {
-                            throw NoStackTraceException("不是书源")
-                        }.map { it.toBookSource() })
-                    } else {
-                        throw NoStackTraceException("不是书源")
-                    }
-                }
-
-                mText.isAbsUrl() -> {
-                    importSourceUrl(mText)
-                }
-
-                mText.isUri() -> {
-                    val uri = mText.toUri()
-                    uri.inputStream(context).getOrThrow().use { inputS ->
-                        val json = inputS.readBytes().toString(Charsets.UTF_8)
-                        importFromJson(json)
-                    }
-                }
-
+                mText.isJsonObject() || mText.isJsonArray() -> importFromJson(mText)
                 else -> throw NoStackTraceException(context.getString(R.string.wrong_format))
             }
         }.onError {
@@ -207,31 +135,29 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
     }
 
     private fun importFromJson(json: String) {
+        val isArray = json.isJsonArray()
         when {
-            json.isJsonObject() -> {
-                if (json.contains("bookSourceUrl")) {
-                    allSources.add(GSON.fromJsonObject<BookSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    })
-                } else if (json.contains("sourceUrl")) {
-                    allSources.add(GSON.fromJsonObject<OldRssSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    }.toBookSource())
-                } else {
-                    throw NoStackTraceException("不是书源")
-                }
-            }
-            json.isJsonArray() -> {
-                if (json.contains("bookSourceUrl")) {
+            json.contains("bookSourceUrl") -> {
+                if (isArray) {
                     allSources.addAll(GSON.fromJsonArray<BookSource>(json).getOrElse {
                         throw NoStackTraceException("不是书源")
                     })
-                } else if (json.contains("sourceUrl")) {
+                } else {
+                    allSources.add(GSON.fromJsonObject<BookSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    })
+                }
+            }
+
+            json.contains("sourceUrl") -> {
+                if (isArray) {
                     allSources.addAll(GSON.fromJsonArray<OldRssSource>(json).getOrElse {
                         throw NoStackTraceException("不是书源")
                     }.map { it.toBookSource() })
                 } else {
-                    throw NoStackTraceException("不是书源")
+                    allSources.add(GSON.fromJsonObject<OldRssSource>(json).getOrElse {
+                        throw NoStackTraceException("不是书源")
+                    }.toBookSource())
                 }
             }
             else -> throw NoStackTraceException("不是书源")
