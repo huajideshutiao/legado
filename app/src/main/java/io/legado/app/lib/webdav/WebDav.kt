@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -30,6 +31,7 @@ import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.net.MalformedURLException
 import java.net.URL
@@ -452,6 +454,35 @@ open class WebDav(
                 )
             }
             throw WebDavException(message ?: "未知错误 code:${response.code}")
+        }
+    }
+
+    @Throws(IOException::class)
+    fun readRange(offset: Long, length: Int, fileSize: Long = -1): ByteArray {
+        if (length <= 0) return ByteArray(0)
+        if (fileSize > 0 && offset >= fileSize) return ByteArray(0)
+
+        val end = if (fileSize > 0) {
+            minOf(fileSize - 1, offset + length - 1)
+        } else {
+            offset + length - 1
+        }
+        val range = "bytes=$offset-$end"
+
+        val url = httpUrl ?: throw IOException("Invalid WebDAV URL")
+        val request = Request.Builder()
+            .url(url)
+            .header("Range", range)
+            .build()
+
+        webDavClient.newCall(request).execute().use { response ->
+            if (response.code == 200) {
+                throw IOException("Server does not support Range requests")
+            }
+            if (!response.isSuccessful) {
+                throw IOException("HTTP request failed: ${response.code}")
+            }
+            return response.body.bytes()
         }
     }
 

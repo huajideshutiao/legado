@@ -1,6 +1,7 @@
 package io.legado.app.model.remote
 
 import android.net.Uri
+import androidx.core.net.toUri
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.constant.BookType
@@ -16,7 +17,6 @@ import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.runBlocking
-import androidx.core.net.toUri
 
 class RemoteBookWebDav(
     val rootBookUrl: String,
@@ -86,6 +86,10 @@ class RemoteBookWebDav(
     override suspend fun delete(remoteBookUrl: String) {
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
         WebDav(remoteBookUrl, authorization).delete()
+    }
+
+    fun getWebDav(path: String): WebDav {
+        return WebDav(path, authorization)
     }
 
 }

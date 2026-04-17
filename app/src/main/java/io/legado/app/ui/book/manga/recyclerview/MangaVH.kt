@@ -57,7 +57,6 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
     ) {
-        //if (mImage.tag == imageUrl && mRetry?.isVisible != true) return
         mFlProgress.isVisible = true
         mLoading.isVisible = true
         mRetry?.isGone = true
@@ -77,7 +76,6 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         Glide.with(context)
             .asBitmap()
             .load(MangaModel(imageUrl))
-            .override(context.resources.displayMetrics.widthPixels, Target.SIZE_ORIGINAL)
             .diskCacheStrategy(DiskCacheStrategy.NONE)
             .apply { transformation?.let { transform(it) } }
             .listener(object : RequestListener<Bitmap> {

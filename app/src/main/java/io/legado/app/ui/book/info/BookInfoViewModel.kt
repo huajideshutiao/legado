@@ -17,6 +17,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
@@ -54,7 +55,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun refreshBook(book: Book) {
         executeLazy(executeContext = IO) {
-            if (book.isLocal) {
+            if (book.isLocal && !book.isImage) {
                 book.getRemoteUrl()?.let {
                     val bookWebDav = AppWebDav.defaultBookWebDav
                         ?: throw NoStackTraceException("webDav没有配置")
@@ -206,9 +207,9 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
                 book.order = appDb.bookDao.minOrder - 1
             }
             appDb.bookDao.getBook(book.name, book.author)?.let {
-                    book.durChapterIndex = it.durChapterIndex
-                    book.durChapterPos = it.durChapterPos
-                    book.durChapterTitle = it.durChapterTitle
+                book.durChapterIndex = it.durChapterIndex
+                book.durChapterPos = it.durChapterPos
+                book.durChapterTitle = it.durChapterTitle
             }
             book.save()
         }.onSuccess {

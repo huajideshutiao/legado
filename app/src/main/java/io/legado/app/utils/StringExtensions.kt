@@ -7,6 +7,7 @@ import android.icu.text.Collator
 import android.icu.util.ULocale
 import android.net.Uri
 import android.text.Editable
+import androidx.core.net.toUri
 import cn.hutool.core.net.URLEncodeUtil
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.dataUriRegex
@@ -25,7 +26,7 @@ fun String?.isFilePath(): Boolean = this?.startsWith("/storage") == true
 fun String.toEditable(): Editable = Editable.Factory.getInstance().newEditable(this)
 
 fun String.parseToUri(): Uri {
-    return if (isUri()) Uri.parse(this) else {
+    return if (isUri()) this.toUri() else {
         Uri.fromFile(File(this))
     }
 }

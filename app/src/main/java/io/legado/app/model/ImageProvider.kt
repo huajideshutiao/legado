@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
@@ -123,7 +124,7 @@ object ImageProvider {
         return withContext(IO) {
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
-                val inputStream = io.legado.app.model.localBook.LocalBook.getImage(book, src)
+                val inputStream = LocalBook.getImage(book, src)
                     ?: let {
                         BookHelp.saveImage(bookSource, book, src)
                         null

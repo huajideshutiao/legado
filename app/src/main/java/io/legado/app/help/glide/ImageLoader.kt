@@ -14,10 +14,13 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelp.writeImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
+import io.legado.app.utils.isUri
 import io.legado.app.utils.lifecycle
 import java.io.File
 import kotlin.coroutines.CoroutineContext
@@ -70,8 +73,8 @@ object ImageLoader {
             return BookHelp.getImage(book, imageUrl)
         }
         if (book?.isLocal == true) {
-            val file =
-                io.legado.app.model.ImageProvider.cacheImage(book, imageUrl, ReadManga.bookSource)
+            if (book.bookUrl.isUri()) return LocalBook.getImage(book, imageUrl)
+            val file = ImageProvider.cacheImage(book, imageUrl, ReadManga.bookSource)
             return if (file.exists()) file else null
         }
         val analyzeUrl = AnalyzeUrl(

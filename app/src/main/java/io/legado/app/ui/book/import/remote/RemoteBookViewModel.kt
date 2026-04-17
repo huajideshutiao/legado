@@ -8,19 +8,24 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.Authorization
+import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.CustomUrl
+import io.legado.app.model.localBook.CbzFile
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
+import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import me.ag2s.epublib.util.zip.AndroidZipEntry
 import java.util.Collections
 
 class RemoteBookViewModel(application: Application) : BaseViewModel(application) {
@@ -142,6 +147,32 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     LocalBook.importImageBook(remoteBook, origin) {
                         bookWebDav.downloadRemoteBook(remoteBook)
                     }
+                } else if (ArchiveUtils.isArchive(remoteBook.filename)) {
+                    val webDav = bookWebDav.getWebDav(remoteBook.path)
+                    val fileSize = runCatching {
+                        webDav.getWebDavFile()?.size ?: 0L
+                    }.getOrDefault(0L)
+
+                    val txtEntry = findTxtEntryInRemoteZip(webDav, remoteBook.filename, fileSize)
+                    if (txtEntry != null) {
+                        val remoteZip = txtEntry.first
+                        val entry = txtEntry.second
+                        try {
+                            val inputStream = remoteZip.getInputStream(entry)
+                            val uri = LocalBook.saveBookFile(inputStream, entry.name)
+                            LocalBook.importFile(uri).apply {
+                                this.origin = origin
+                                this.addType(BookType.archive)
+                                this.save()
+                            }
+                        } finally {
+                            remoteZip.close()
+                        }
+                    } else {
+                        LocalBook.importImageBook(remoteBook, origin) {
+                            bookWebDav.downloadRemoteBook(remoteBook)
+                        }
+                    }
                 } else {
                     val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)
                     LocalBook.importFiles(downloadBookUri).forEach { book ->
@@ -159,6 +190,29 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
             }
         }.onFinally {
             finally.invoke()
+        }
+    }
+
+    private fun findTxtEntryInRemoteZip(
+        webDav: WebDav,
+        name: String,
+        fileSize: Long
+    ): Pair<CbzFile.RemoteZipFile, AndroidZipEntry>? {
+        if (fileSize <= 0) return null
+        return try {
+            val remoteZip = CbzFile.RemoteZipFile(webDav, name, fileSize)
+            val enumeration = remoteZip.entries()
+            while (enumeration.hasMoreElements()) {
+                val entry = enumeration.nextElement()
+                if (!entry.isDirectory && entry.name.lowercase().endsWith(".txt")) {
+                    return Pair(remoteZip, entry)
+                }
+            }
+            remoteZip.close()
+            null
+        } catch (e: Exception) {
+            AppLog.put("检查远程zip内容失败: ${e.localizedMessage}", e)
+            null
         }
     }
 

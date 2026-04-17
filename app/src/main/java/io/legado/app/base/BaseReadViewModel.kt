@@ -155,8 +155,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         if (book.isLocal) {
             val tmp = book.copy()
             LocalBook.upBookInfo(book)
-            if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) loadChapterList(book)
-            else curBook = book
+            if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) {
+                loadChapterList(book)
+            } else {
+                curBook = book
+                val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl)
+                chapterListData.postValue(chapterList)
+            }
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())
@@ -216,6 +221,8 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     chapterListData.postValue(it)
                 }
             } catch (e: Throwable) {
+                chapterListData.postValue(emptyList())
+                AppLog.put("LoadTocError:${e.localizedMessage}", e)
                 context.toastOnUi("LoadTocError:${e.localizedMessage}")
             }
         } else {
