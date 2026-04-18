@@ -23,7 +23,7 @@
 
         <ProgressBar
             android:id="@+id/loading"
-            style="@style/Widget.Material3.CircularProgressIndicator.Small"
+            style="@style/Widget.Material3.CircularProgressIndicator"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
@@ -31,9 +31,9 @@
             android:indeterminateTint="@color/white"
             android:progressTint="@color/white"
             app:indicatorColor="@color/white"
-            app:indicatorSize="36dp"
+            app:indicatorSize="48dp"
             app:trackCornerRadius="99dp"
-            app:trackThickness="3dp" />
+            app:trackThickness="4dp" />
 
 
         <Button

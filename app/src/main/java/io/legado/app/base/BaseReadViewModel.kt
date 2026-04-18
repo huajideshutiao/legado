@@ -375,7 +375,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         val book = curBook ?: return
         execute {
             val image = BookHelp.getImage(book, src)
-            FileUtils.saveImage(image, uri)
+            if (image.exists()) {
+                FileUtils.saveImage(image, uri)
+            } else if (book.isLocal) {
+                LocalBook.getImage(book, src)?.use { input ->
+                    FileUtils.saveImage(input, uri, ".${BookHelp.getImageSuffix(src)}")
+                }
+            }
         }.onError {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
             context.toastOnUi("保存图片出错\n${it.localizedMessage}")

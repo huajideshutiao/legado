@@ -12,18 +12,15 @@ import io.legado.app.help.coroutine.Coroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import java.io.ByteArrayInputStream
-import java.io.File
-import java.io.FileInputStream
-import java.io.InputStream
+import java.nio.ByteBuffer
 
-class MangaModelLoader : ModelLoader<MangaModel, InputStream> {
+class MangaModelLoader : ModelLoader<MangaModel, ByteBuffer> {
     override fun buildLoadData(
         model: MangaModel,
         width: Int,
         height: Int,
         options: Options
-    ): ModelLoader.LoadData<InputStream> {
+    ): ModelLoader.LoadData<ByteBuffer> {
         return ModelLoader.LoadData(ObjectKey(model.url), MangaDataFetcher(model))
     }
 
@@ -31,8 +28,8 @@ class MangaModelLoader : ModelLoader<MangaModel, InputStream> {
         return true
     }
 
-    class Factory : ModelLoaderFactory<MangaModel, InputStream> {
-        override fun build(multiFactory: MultiModelLoaderFactory): ModelLoader<MangaModel, InputStream> {
+    class Factory : ModelLoaderFactory<MangaModel, ByteBuffer> {
+        override fun build(multiFactory: MultiModelLoaderFactory): ModelLoader<MangaModel, ByteBuffer> {
             return MangaModelLoader()
         }
 
@@ -40,37 +37,18 @@ class MangaModelLoader : ModelLoader<MangaModel, InputStream> {
     }
 }
 
-class MangaDataFetcher(private val model: MangaModel) : DataFetcher<InputStream> {
+class MangaDataFetcher(private val model: MangaModel) : DataFetcher<ByteBuffer> {
     private val coroutineContext = SupervisorJob()
     private val coroutineScope = CoroutineScope(coroutineContext)
-    private var stream: InputStream? = null
 
-    override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in InputStream>) {
+    override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in ByteBuffer>) {
         Coroutine.async(coroutineScope, Dispatchers.IO) {
             try {
-                when (val result = ImageLoader.loadManga(model.url, coroutineContext)) {
-                    is ByteArray -> {
-                        stream = ByteArrayInputStream(result)
-                        callback.onDataReady(stream)
-                    }
-
-                    is File -> {
-                        stream = FileInputStream(result)
-                        callback.onDataReady(stream)
-                    }
-
-                    is InputStream -> {
-                        stream = result
-                        callback.onDataReady(stream)
-                    }
-
-                    null -> {
-                        callback.onLoadFailed(Exception("Load manga returned null"))
-                    }
-
-                    else -> {
-                        callback.onLoadFailed(Exception("Unknown result type: ${result::class.java}"))
-                    }
+                val result = ImageLoader.loadManga(model.url, coroutineContext)
+                if (result != null) {
+                    callback.onDataReady(ByteBuffer.wrap(result))
+                } else {
+                    callback.onLoadFailed(Exception("Load manga returned null"))
                 }
             } catch (e: Exception) {
                 callback.onLoadFailed(e)
@@ -79,21 +57,18 @@ class MangaDataFetcher(private val model: MangaModel) : DataFetcher<InputStream>
     }
 
     override fun cleanup() {
-        runCatching {
-            stream?.close()
-        }
     }
 
     override fun cancel() {
         coroutineContext.cancel()
     }
 
-    override fun getDataClass(): Class<InputStream> {
-        return InputStream::class.java
+    override fun getDataClass(): Class<ByteBuffer> {
+        return ByteBuffer::class.java
     }
 
     override fun getDataSource(): DataSource {
-        return DataSource.REMOTE
+        return DataSource.LOCAL
     }
 }
 

@@ -12,7 +12,6 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
 import com.script.rhino.runScriptWithContext
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.BookHelp.writeImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadManga
@@ -22,6 +21,7 @@ import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.isUri
 import io.legado.app.utils.lifecycle
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 
@@ -67,29 +67,30 @@ object ImageLoader {
         }.diskCacheStrategy(DiskCacheStrategy.DATA)
     }
 
-    suspend fun loadManga(imageUrl: String, coroutineContext: CoroutineContext): Any? {
-        val book = ReadManga.book
-        if (book != null && BookHelp.isImageExist(book, imageUrl)) {
-            return BookHelp.getImage(book, imageUrl)
+    suspend fun loadManga(imageUrl: String, coroutineContext: CoroutineContext): ByteArray? {
+        val book = ReadManga.book ?: return null
+        if (BookHelp.isImageExist(book, imageUrl)) {
+            return BookHelp.getImage(book, imageUrl).readBytes()
         }
-        if (book?.isLocal == true) {
-            if (book.bookUrl.isUri()) return LocalBook.getImage(book, imageUrl)
+        if (book.isLocal) {
+            if (book.bookUrl.isUri() || book.bookUrl.isFilePath()) {
+                return LocalBook.getImage(book, imageUrl)?.use { it.readBytes() }
+            }
             val file = ImageProvider.cacheImage(book, imageUrl, ReadManga.bookSource)
-            return if (file.exists()) file else null
+            return if (file.exists()) file.readBytes() else null
         }
         val analyzeUrl = AnalyzeUrl(
             imageUrl, source = ReadManga.bookSource, coroutineContext = coroutineContext
         )
         val bytes = analyzeUrl.getByteArrayAwait()
-        return runScriptWithContext {
+        val decodedBytes = runScriptWithContext {
             ImageUtils.decode(
-                imageUrl, bytes, isCover = false, ReadManga.bookSource, ReadManga.book
+                imageUrl, bytes, isCover = false, ReadManga.bookSource, book
             )
-        }?.also { decodedBytes ->
-            // 异步写入图片文件，不影响立即返回结果
-            val bookSnapshot = book ?: return@also
-            io.legado.app.help.coroutine.Coroutine.async {
-                writeImage(bookSnapshot, imageUrl, decodedBytes)
+        } ?: return null
+        return decodedBytes.also {
+            kotlinx.coroutines.CoroutineScope(coroutineContext).launch {
+                BookHelp.writeImage(book, imageUrl, it)
             }
         }
     }

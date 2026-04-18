@@ -51,14 +51,14 @@
 
             <ProgressBar
                 android:id="@+id/pb_loading"
-                style="@style/Widget.Material3.CircularProgressIndicator.Small"
+                style="@style/Widget.Material3.CircularProgressIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:indeterminate="true"
                 app:indicatorColor="@color/white"
-                app:indicatorSize="36dp"
+                app:indicatorSize="48dp"
                 app:trackCornerRadius="99dp"
-                app:trackThickness="3dp" />
+                app:trackThickness="4dp" />
 
             <TextView
                 android:id="@+id/tv_loading_message"

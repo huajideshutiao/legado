@@ -23,6 +23,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 
@@ -50,7 +51,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         mFlProgress = flProgress
     }
 
-    @SuppressLint("CheckResult")
+    @SuppressLint("CheckResult", "DefaultLocale")
     fun loadImageWithRetry(
         imageUrl: String,
         isHorizontal: Boolean,
@@ -68,7 +69,12 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                 mProgress.text = if (totalBytes > 0) {
                     "$percentage%"
                 } else {
-                    "${bytesRead / 1024}kb"
+                    val kb = bytesRead / 1024.0
+                    if (kb >= 1024) {
+                        String.format("%.1fMB", kb / 1024)
+                    } else {
+                        "${kb.toInt()}KB"
+                    }
                 }
             }
         }
@@ -76,6 +82,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         Glide.with(context)
             .asBitmap()
             .load(MangaModel(imageUrl))
+            .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
             .diskCacheStrategy(DiskCacheStrategy.NONE)
             .apply { transformation?.let { transform(it) } }
             .listener(object : RequestListener<Bitmap> {

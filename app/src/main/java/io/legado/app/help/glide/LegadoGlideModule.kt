@@ -17,6 +17,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.FileUtils.createFolderIfNotExist
 import java.io.File
 import java.io.InputStream
+import java.nio.ByteBuffer
 
 class MultiDiskCacheFactory(
     context: Context,
@@ -55,7 +56,7 @@ class LegadoGlideModule : AppGlideModule() {
     override fun registerComponents(context: Context, glide: Glide, registry: Registry) {
         registry.prepend(
             MangaModel::class.java,
-            InputStream::class.java,
+            ByteBuffer::class.java,
             MangaModelLoader.Factory()
         )
         registry.replace(

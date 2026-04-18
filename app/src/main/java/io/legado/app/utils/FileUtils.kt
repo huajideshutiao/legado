@@ -733,6 +733,18 @@ object FileUtils {
         return true
     }
 
+    fun saveImage(inputStream: InputStream, dirUri: Uri, ext: String = ".jpg"): Boolean {
+        val name = "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}$ext"
+        val fileDoc = FileDoc.fromDir(dirUri)
+        val picFile = fileDoc.createFileIfNotExist(name)
+        inputStream.use { input ->
+            picFile.openOutputStream().getOrThrow().use { output ->
+                input.copyTo(output)
+            }
+        }
+        return true
+    }
+
     /**
      * 将图片URL或Base64数据转换为ByteArray
      * @param data 图片URL或Base64数据
