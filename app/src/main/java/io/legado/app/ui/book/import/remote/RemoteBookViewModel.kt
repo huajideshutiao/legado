@@ -143,41 +143,53 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     "serverID",
                     bookWebDav.serverID
                 ).toString()
-                if (remoteBook.filename.endsWith(".cbz", true)) {
-                    LocalBook.importImageBook(remoteBook, origin) {
-                        bookWebDav.downloadRemoteBook(remoteBook)
+                when {
+                    remoteBook.filename.endsWith(".cbz", true) -> {
+                        val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
+                        else bookWebDav.downloadRemoteBook(remoteBook).toString()
+                        LocalBook.importImageBook(
+                            bookUrl = bookUrl,
+                            name = remoteBook.filename,
+                            originName = remoteBook.filename,
+                            lastModified = remoteBook.lastModify,
+                            origin = origin
+                        )
                     }
-                } else if (ArchiveUtils.isArchive(remoteBook.filename)) {
-                    val webDav = bookWebDav.getWebDav(remoteBook.path)
-                    val fileSize = runCatching {
-                        webDav.getWebDavFile()?.size ?: 0L
-                    }.getOrDefault(0L)
 
-                    val txtEntry = findTxtEntryInRemoteZip(webDav, remoteBook.filename, fileSize)
-                    if (txtEntry != null) {
-                        val remoteZip = txtEntry.first
-                        val entry = txtEntry.second
-                        try {
+                    ArchiveUtils.isArchive(remoteBook.filename) -> {
+                        val webDav = bookWebDav.getWebDav(remoteBook.path)
+                        val fileSize =
+                            runCatching { webDav.getWebDavFile()?.size ?: 0L }.getOrDefault(0L)
+                        findTxtEntryInRemoteZip(
+                            webDav,
+                            remoteBook.filename,
+                            fileSize
+                        )?.use { (remoteZip, entry) ->
                             val inputStream = remoteZip.getInputStream(entry)
                             val uri = LocalBook.saveBookFile(inputStream, entry.name)
                             LocalBook.importFile(uri).apply {
                                 this.origin = origin
-                                this.addType(BookType.archive)
-                                this.save()
+                                addType(BookType.archive)
+                                save()
                             }
-                        } finally {
-                            remoteZip.close()
-                        }
-                    } else {
-                        LocalBook.importImageBook(remoteBook, origin) {
-                            bookWebDav.downloadRemoteBook(remoteBook)
+                        } ?: run {
+                            val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
+                            else bookWebDav.downloadRemoteBook(remoteBook).toString()
+                            LocalBook.importImageBook(
+                                bookUrl = bookUrl,
+                                name = remoteBook.filename,
+                                originName = remoteBook.filename,
+                                lastModified = remoteBook.lastModify,
+                                origin = origin
+                            )
                         }
                     }
-                } else {
-                    val downloadBookUri = bookWebDav.downloadRemoteBook(remoteBook)
-                    LocalBook.importFiles(downloadBookUri).forEach { book ->
-                        book.origin = origin
-                        book.save()
+
+                    else -> bookWebDav.downloadRemoteBook(remoteBook).let { uri ->
+                        LocalBook.importFiles(uri).forEach { book ->
+                            book.origin = origin
+                            book.save()
+                        }
                     }
                 }
                 remoteBook.isOnBookShelf = true
@@ -189,7 +201,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                 permissionDenialLiveData.postValue(1)
             }
         }.onFinally {
-            finally.invoke()
+            finally()
         }
     }
 
@@ -197,22 +209,31 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         webDav: WebDav,
         name: String,
         fileSize: Long
-    ): Pair<CbzFile.RemoteZipFile, AndroidZipEntry>? {
+    ): RemoteZipEntry? {
         if (fileSize <= 0) return null
+        val remoteZip = CbzFile.RemoteZipFile(webDav, name, fileSize)
         return try {
-            val remoteZip = CbzFile.RemoteZipFile(webDav, name, fileSize)
-            val enumeration = remoteZip.entries()
-            while (enumeration.hasMoreElements()) {
-                val entry = enumeration.nextElement()
-                if (!entry.isDirectory && entry.name.lowercase().endsWith(".txt")) {
-                    return Pair(remoteZip, entry)
+            remoteZip.entries().asSequence()
+                .find { !it.isDirectory && it.name.endsWith(".txt", true) }
+                ?.let { RemoteZipEntry(remoteZip, it) }
+                ?: let {
+                    remoteZip.close()
+                    null
                 }
-            }
+        } catch (_: Exception) {
             remoteZip.close()
             null
-        } catch (e: Exception) {
-            AppLog.put("检查远程zip内容失败: ${e.localizedMessage}", e)
-            null
+        }
+    }
+
+    private class RemoteZipEntry(
+        val remoteZip: CbzFile.RemoteZipFile,
+        val entry: AndroidZipEntry
+    ) : AutoCloseable {
+        operator fun component1() = remoteZip
+        operator fun component2() = entry
+        override fun close() {
+            remoteZip.close()
         }
     }
 

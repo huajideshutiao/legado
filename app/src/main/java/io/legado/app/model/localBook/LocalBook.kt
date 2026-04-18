@@ -38,7 +38,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -229,25 +228,22 @@ object LocalBook {
         return book
     }
 
-    /**
-     * 导入远程图片书籍(cbz等)
-     */
-    suspend fun importImageBook(
-        remoteBook: RemoteBook,
-        origin: String,
-        downloadAction: suspend () -> Uri
+    fun importImageBook(
+        bookUrl: String,
+        name: String,
+        originName: String,
+        lastModified: Long,
+        origin: String = ""
     ): Book {
-        val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
-        else downloadAction().toString()
         var book = appDb.bookDao.getBook(bookUrl = bookUrl)
         if (book == null) {
             book = Book(
                 type = BookType.image or BookType.local,
                 bookUrl = bookUrl,
-                name = remoteBook.filename.substringBeforeLast("."),
+                name = name.substringBeforeLast("."),
                 author = "",
-                originName = remoteBook.filename,
-                latestChapterTime = remoteBook.lastModify,
+                originName = originName,
+                latestChapterTime = lastModified,
                 order = appDb.bookDao.minOrder - 1,
                 origin = origin
             )
@@ -256,8 +252,8 @@ object LocalBook {
         } else {
             deleteBook(book, false)
             book.origin = origin
-            book.originName = remoteBook.filename
-            book.latestChapterTime = remoteBook.lastModify
+            book.originName = originName
+            book.latestChapterTime = lastModified
             upBookInfo(book)
             appDb.bookDao.update(book)
         }
