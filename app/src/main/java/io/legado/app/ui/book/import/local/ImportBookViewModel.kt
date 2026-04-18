@@ -1,13 +1,19 @@
 package io.legado.app.ui.book.import.local
 
 import android.app.Application
+import android.net.Uri
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
+import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
+import io.legado.app.model.localBook.CbzFile
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.AlphanumComparator
+import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.delete
 import io.legado.app.utils.getPrefInt
@@ -92,17 +98,59 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
 
     fun addToBookshelf(bookList: HashSet<ImportBook>, finally: () -> Unit) {
         execute {
-            val fileUris = bookList.map {
-                it.file.uri
+            bookList.forEach { importBook ->
+                val fileDoc = importBook.file
+                val fileName = fileDoc.name
+                if (fileName.endsWith(".cbz", true)) {
+                    importLocalImageBook(fileDoc)
+                } else if (ArchiveUtils.isArchive(fileName)) {
+                    val hasTxt = hasTxtInArchive(fileDoc.uri)
+                    if (hasTxt) {
+                        LocalBook.importArchiveFile(fileDoc.uri) {
+                            it.matches(bookFileRegex)
+                        }
+                    } else {
+                        importLocalImageBook(fileDoc)
+                    }
+                } else {
+                    LocalBook.importFile(fileDoc.uri)
+                }
+                importBook.isOnBookShelf = true
             }
-            LocalBook.importFiles(fileUris)
         }.onError {
-            context.toastOnUi("添加书架失败，请尝试重新选择文件夹")
-            AppLog.put("添加书架失败\n${it.localizedMessage}", it)
-        }.onSuccess {
-            context.toastOnUi("添加书架成功")
+            AppLog.put("导入出错\n${it.localizedMessage}", it)
+            context.toastOnUi("导入出错\n${it.localizedMessage}")
         }.onFinally {
             finally.invoke()
+        }
+    }
+
+    private fun hasTxtInArchive(uri: Uri): Boolean {
+        val names = ArchiveUtils.getArchiveFilesName(uri)
+        return names.any { it.lowercase().endsWith(".txt") }
+    }
+
+    private fun importLocalImageBook(fileDoc: FileDoc) {
+        val bookUrl = fileDoc.toString()
+        var book = appDb.bookDao.getBook(bookUrl = bookUrl)
+        if (book == null) {
+            book = Book(
+                type = BookType.image or BookType.local,
+                bookUrl = bookUrl,
+                name = fileDoc.name.substringBeforeLast("."),
+                author = "",
+                originName = fileDoc.name,
+                latestChapterTime = fileDoc.lastModified,
+                order = appDb.bookDao.minOrder - 1
+            )
+            CbzFile.upBookInfo(book)
+            appDb.bookDao.insert(book)
+        } else {
+            LocalBook.deleteBook(book, false)
+            book.originName = fileDoc.name
+            book.latestChapterTime = fileDoc.lastModified
+            CbzFile.upBookInfo(book)
+            appDb.bookDao.update(book)
         }
     }
 

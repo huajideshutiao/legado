@@ -2,6 +2,7 @@ package io.legado.app.model.localBook
 
 import android.net.Uri
 import android.util.Base64
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.script.ScriptBindings
 import com.script.rhino.RhinoScriptEngine
@@ -62,7 +63,6 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
-import androidx.core.net.toUri
 
 /**
  * 书籍文件导入 目录正文解析
@@ -76,6 +76,15 @@ object LocalBook {
         Pattern.compile("(^)(.+) 作者：(.+)$"),
         Pattern.compile("(^)(.+) by (.+)$")
     )
+
+    private fun Book.getHandler(): BaseLocalBookParse = when {
+        isEpub -> EpubFile
+        isUmd -> UmdFile
+        isPdf -> PdfFile
+        isMobi -> MobiFile
+        isCbz -> CbzFile
+        else -> TextFile
+    }
 
     @Throws(FileNotFoundException::class, SecurityException::class)
     fun getBookInputStream(book: Book): InputStream {
@@ -119,14 +128,7 @@ object LocalBook {
 
     @Throws(TocEmptyException::class)
     fun getChapterList(book: Book): ArrayList<BookChapter> {
-        val chapters = when {
-            book.isEpub -> EpubFile.getChapterList(book)
-            book.isUmd -> UmdFile.getChapterList(book)
-            book.isPdf -> PdfFile.getChapterList(book)
-            book.isMobi -> MobiFile.getChapterList(book)
-            book.isCbz -> CbzFile.getChapterList(book)
-            else -> TextFile.getChapterList(book)
-        }
+        val chapters = book.getHandler().getChapterList(book)
         if (chapters.isEmpty()) {
             throw TocEmptyException(appCtx.getString(R.string.chapter_list_empty))
         }
@@ -150,14 +152,7 @@ object LocalBook {
 
     fun getContent(book: Book, chapter: BookChapter): String? {
         var content = try {
-            when {
-                book.isEpub -> EpubFile.getContent(book, chapter)
-                book.isUmd ->UmdFile.getContent(book, chapter)
-                book.isPdf -> PdfFile.getContent(book, chapter)
-                book.isMobi ->MobiFile.getContent(book, chapter)
-                book.isCbz -> CbzFile.getContent(book, chapter)
-                else ->TextFile.getContent(book, chapter)
-            }
+            book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
             e.printOnDebug()
             AppLog.put("获取本地书籍内容失败\n${e.localizedMessage}", e)
@@ -207,7 +202,7 @@ object LocalBook {
         //updateTime变量不要修改,否则会导致读取不到缓存
         val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
             if (size == 0L) throw EmptyFileException("Unexpected empty File")
-            bookUrl = this.toString()
+            bookUrl = toString()
         }
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
@@ -258,8 +253,6 @@ object LocalBook {
             )
             upBookInfo(book)
             appDb.bookDao.insert(book)
-            val chapters = getChapterList(book)
-            appDb.bookChapterDao.insert(*chapters.toTypedArray<BookChapter>())
         } else {
             deleteBook(book, false)
             book.origin = origin
@@ -267,32 +260,16 @@ object LocalBook {
             book.latestChapterTime = remoteBook.lastModify
             upBookInfo(book)
             appDb.bookDao.update(book)
-            appDb.bookChapterDao.delByBook(bookUrl = bookUrl)
-            val chapters = getChapterList(book)
-            appDb.bookChapterDao.insert(*chapters.toTypedArray<BookChapter>())
         }
         return book
     }
 
     fun upBookInfo(book: Book) {
-        when {
-            book.isEpub -> EpubFile.upBookInfo(book)
-            book.isUmd -> UmdFile.upBookInfo(book)
-            book.isPdf -> PdfFile.upBookInfo(book)
-            book.isMobi -> MobiFile.upBookInfo(book)
-            book.isCbz -> CbzFile.upBookInfo(book)
-        }
+        book.getHandler().upBookInfo(book)
     }
 
     fun getImage(book: Book, href: String): InputStream? {
-        return when {
-            book.isEpub -> EpubFile.getImage(book, href)
-            book.isCbz -> CbzFile.getImage(book, href)
-            book.isMobi -> MobiFile.getImage(book, href)
-            book.isPdf -> PdfFile.getImage(book, href)
-            book.isUmd -> UmdFile.getImage(book, href)
-            else -> null
-        }
+        return book.getHandler().getImage(book, href)
     }
 
     /* 导入压缩包内的书籍 */
@@ -318,38 +295,11 @@ object LocalBook {
 
     /* 批量导入 支持自动导入压缩包的支持书籍 */
     fun importFiles(uri: Uri): List<Book> {
-        val books = mutableListOf<Book>()
         val fileDoc = FileDoc.fromUri(uri, false)
-        if (ArchiveUtils.isArchive(fileDoc.name)) {
-            books.addAll(
-                importArchiveFile(uri) {
-                    it.matches(AppPattern.bookFileRegex)
-                })
+        return if (ArchiveUtils.isArchive(fileDoc.name)) {
+            importArchiveFile(uri) { it.matches(AppPattern.bookFileRegex) }
         } else {
-            books.add(importFile(uri))
-        }
-        return books
-    }
-
-    fun importFiles(uris: List<Uri>) {
-        var errorCount = 0
-        uris.forEach { uri ->
-            val fileDoc = FileDoc.fromUri(uri, false)
-            kotlin.runCatching {
-                if (ArchiveUtils.isArchive(fileDoc.name)) {
-                    importArchiveFile(uri) {
-                        it.matches(AppPattern.bookFileRegex)
-                    }
-                } else {
-                    importFile(uri)
-                }
-            }.onFailure {
-                AppLog.put("ImportFile Error:\nFile $fileDoc\n${it.localizedMessage}", it)
-                errorCount += 1
-            }
-        }
-        if (errorCount == uris.size) {
-            throw NoStackTraceException("ImportFiles Error:\nAll input files occur error")
+            listOf(importFile(uri))
         }
     }
 
@@ -492,7 +442,7 @@ object LocalBook {
     }
 
     //下载book对应的远程文件 并更新Book
-    private fun downloadRemoteBook(localBook: Book): Boolean {
+    fun downloadRemoteBook(localBook: Book): Boolean {
         val webDavUrl = localBook.getRemoteUrl()
         if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
         try {

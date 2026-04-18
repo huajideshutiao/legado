@@ -14,8 +14,8 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.HtmlFormatter
-import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.runBlocking
 import me.ag2s.epublib.util.zip.AndroidZipEntry
 import me.ag2s.epublib.util.zip.AndroidZipFile
@@ -28,8 +28,8 @@ import org.jsoup.parser.Parser
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 import java.io.InputStream
+import java.util.Collections
 import java.util.Enumeration
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
@@ -44,478 +44,374 @@ class CbzFile(var book: Book) {
         fun close()
     }
 
+    data class CbzImageEntry(
+        val name: String,
+        val size: Long,
+        val compressedSize: Long,
+        val method: Int,
+        val entryOffset: Int = 0
+    )
+
+    data class CbzImageCache(
+        val entries: List<CbzImageEntry>, val eocdOffset: Long = 0, val centralOffset: Long = 0
+    )
+
     companion object : BaseLocalBookParse {
         private var eFile: CbzFile? = null
 
         @Synchronized
-        private fun getEFile(book: Book): CbzFile {
-            if (eFile == null || eFile?.book?.bookUrl != book.bookUrl) {
+        private fun getEFile(book: Book) =
+            (eFile?.takeIf { it.book.bookUrl == book.bookUrl } ?: run {
                 eFile?.close()
-                eFile = CbzFile(book)
-                return eFile!!
-            }
-            eFile?.book = book
-            return eFile!!
-        }
+                CbzFile(book).also { eFile = it }
+            }).apply { this.book = book }
+
+        override fun getChapterList(book: Book) = getEFile(book).getChapterList()
+
+        override fun getContent(book: Book, chapter: BookChapter) =
+            getEFile(book).getContent(chapter)
 
         @Synchronized
-        override fun getChapterList(book: Book): ArrayList<BookChapter> {
-            return getEFile(book).getChapterList()
-        }
+        override fun upBookInfo(book: Book) = getEFile(book).upBookInfo()
 
-        @Synchronized
-        override fun getContent(book: Book, chapter: BookChapter): String? {
-            return getEFile(book).getContent(chapter)
-        }
-
-        @Synchronized
-        override fun getImage(book: Book, href: String): InputStream? {
-            return getEFile(book).getImage(href)
-        }
-
-        @Synchronized
-        override fun upBookInfo(book: Book) {
-            getEFile(book).upBookInfo()
-        }
+        override fun getImage(book: Book, href: String) =
+            getEFile(book).zipFile?.run { getEntry(href)?.let { getInputStream(it) } }
 
         fun clear() {
-            eFile?.close()
-            eFile = null
+            eFile?.close(); eFile = null
         }
     }
 
+    @Volatile
     private var fileDescriptor: ParcelFileDescriptor? = null
+
+    @Volatile
     private var zipFile: ZipFileWrapper? = null
-        get() {
-            if (field == null) {
-                field = openZipFile()
-            }
-            return field
-        }
-    private var imageEntries: List<AndroidZipEntry>? = null
-        get() {
-            if (field == null) {
-                val entries = mutableListOf<AndroidZipEntry>()
-                zipFile?.let { zf ->
-                    try {
-                        val enumeration = zf.entries()
-                        while (enumeration.hasMoreElements()) {
-                            val entry = enumeration.nextElement()
-                            if (!entry.isDirectory) {
-                                val name = entry.name.lowercase()
-                                if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(
-                                        ".png"
-                                    ) || name.endsWith(
-                                        ".webp"
-                                    ) || name.endsWith(".gif")
-                                ) {
-                                    entries.add(entry)
-                                }
-                            }
-                        }
-                        entries.sortWith(compareBy(AlphanumComparator) { it.name })
-                    } catch (e: Exception) {
-                        AppLog.put("读取Cbz图片列表失败\n${e.localizedMessage}", e)
-                    }
-                }
-                field = entries
-            }
-            return field
-        }
-
-    private fun openZipFile(): ZipFileWrapper? {
-        return kotlin.runCatching {
-            if (book.bookUrl.startsWith(BookType.webDavTag)) {
-                val webDavUrl = book.getRemoteUrl() ?: throw WebDavException("Remote URL not found")
-                val webdav = kotlin.runCatching {
-                    WebDav.fromPath(webDavUrl)
-                }.getOrElse {
-                    AppWebDav.authorization?.let { auth ->
-                        WebDav(webDavUrl, auth)
-                    } ?: throw WebDavException("Unexpected defaultBookWebDav")
-                }
-                val size = runBlocking { webdav.getWebDavFile()?.size } ?: 0L
-
-                val cachedData = book.variable?.takeIf { it.startsWith("cbz:") }?.substring(4)
-                if (cachedData != null) {
-                    val parts = cachedData.split(",")
-                    if (parts.size == 2) {
-                        val eocdOff = parts[0].toLongOrNull() ?: 0L
-                        val centralOff = parts[1].toLongOrNull() ?: 0L
-                        val count = book.wordCount?.toIntOrNull() ?: 0
-                        if (eocdOff > 0 && centralOff > 0 && count > 0) {
-                            return@runCatching RemoteZipFile(
-                                webdav,
-                                book.originName,
-                                size,
-                                eocdOff,
-                                centralOff,
-                                count
+        get() = field ?: synchronized(this) {
+            field ?: runCatching {
+                if (book.bookUrl.startsWith(BookType.webDavTag)) {
+                    val url = book.getRemoteUrl() ?: throw WebDavException("Remote URL not found")
+                    val webdav = runCatching { WebDav.fromPath(url) }.getOrElse {
+                        AppWebDav.authorization?.let {
+                            WebDav(
+                                url, it
                             )
+                        } ?: throw WebDavException("No Auth")
+                    }
+                    var eocd = 0L
+                    var central = 0L
+                    var size = 0L
+                    book.variable?.takeIf { it.startsWith("cbz:") }?.substring(4)?.split(",")
+                        ?.let { p ->
+                            eocd = p.getOrNull(0)?.toLongOrNull() ?: 0L
+                            central = p.getOrNull(1)?.toLongOrNull() ?: 0L
+                            size = p.getOrNull(2)?.toLongOrNull() ?: 0L
                         }
+                    if (size <= 0) {
+                        size = runBlocking { webdav.getWebDavFile()?.size } ?: 0L
+                    }
+                    val count = book.wordCount?.toIntOrNull() ?: 0
+                    if (eocd > 0 && central > 0 && count > 0) return@runCatching RemoteZipFile(
+                        webdav, book.originName, size, eocd, central, count
+                    )
+                    RemoteZipFile(webdav, book.originName, size)
+                } else BookHelp.getBookPFD(book)
+                    ?.let { fileDescriptor = it; AndroidZipFileWrapper(it, book.originName) }
+            }.onFailure { AppLog.put("读取Cbz文件失败\n${it.localizedMessage}", it) }.getOrNull()
+                .also { field = it }
+        }
+
+    @Volatile
+    private var imageEntries: List<AndroidZipEntry>? = null
+        get() = field ?: synchronized(this) {
+            field ?: run {
+                val cacheFile = File(BookHelp.cachePath, "${book.getFolderName()}/cbz_images.json")
+                val cache = runCatching {
+                    if (cacheFile.exists()) GSON.fromJsonObject<CbzImageCache>(cacheFile.readText())
+                        .getOrNull() else null
+                }.getOrNull()
+                cache?.let {
+                    (zipFile as? RemoteZipFile)?.restore(
+                        it.eocdOffset, it.centralOffset, it.entries
+                    )
+                }
+                val res = cache?.entries?.map { e ->
+                    val nameBytes = e.name.toByteArray()
+                    AndroidZipEntry(
+                        e.name, nameBytes.size
+                    ).apply { setSize(e.size); setCompressedSize(e.compressedSize); setMethod(e.method) }
+                } ?: zipFile?.run {
+                    runCatching {
+                        val exts = setOf("jpg", "jpeg", "png", "webp", "gif")
+                        entries().asSequence().filter {
+                            !it.isDirectory && it.name.substringAfterLast(".").lowercase() in exts
+                        }.sortedWith(compareBy(AlphanumComparator) { it.name }).toList()
+                    }.onFailure { AppLog.put("读取Cbz图片列表失败\n${it.localizedMessage}", it) }
+                        .getOrNull()
+                }?.also { entries ->
+                    val rzf = zipFile as? RemoteZipFile
+                    val newCache = CbzImageCache(
+                        entries = entries.map {
+                            CbzImageEntry(
+                                it.name,
+                                it.size,
+                                it.compressedSize,
+                                it.method,
+                                rzf?.getEntryOffset(it.name) ?: 0
+                            )
+                        },
+                        eocdOffset = rzf?.eocdOffset ?: 0,
+                        centralOffset = rzf?.centralOffset ?: 0
+                    )
+                    runCatching {
+                        cacheFile.parentFile?.mkdirs(); cacheFile.writeText(
+                        GSON.toJson(
+                            newCache
+                        )
+                    )
                     }
                 }
-
-                RemoteZipFile(webdav, book.originName, size)
-            } else {
-                BookHelp.getBookPFD(book)?.let { pfd ->
-                    fileDescriptor = pfd
-                    AndroidZipFileWrapper(pfd, book.originName)
+                res?.also {
+                    imageEntriesByChapter =
+                        it.groupBy { entry -> entry.name.substringBeforeLast("/", "") }
+                    field = it
                 }
             }
-        }.onFailure {
-            AppLog.put("读取Cbz文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
-        }.getOrNull()
-    }
+        }
+
+    private var imageEntriesByChapter: Map<String, List<AndroidZipEntry>>? = null
 
     fun close() {
-        zipFile?.close()
-        fileDescriptor?.close()
-        zipFile = null
-        fileDescriptor = null
-        imageEntries = null
+        zipFile?.close(); fileDescriptor?.close(); zipFile = null; fileDescriptor =
+            null; imageEntries = null; imageEntriesByChapter = null
     }
 
     private fun upBookInfo() {
-        if (zipFile == null) {
-            eFile = null
-            book.intro = "书籍导入异常"
-            return
+        val zf = zipFile ?: run { eFile = null; book.intro = "书籍导入异常"; return }
+        if (book.coverUrl.isNullOrEmpty()) book.coverUrl = LocalBook.getCoverPath(book)
+        if (book.name.isBlank()) book.name = book.originName.substringBeforeLast(".")
+        val rzf = zf as? RemoteZipFile
+        rzf?.preload()
+        if (rzf != null) {
+            book.variable =
+                "cbz:${rzf.eocdOffset},${rzf.centralOffset},${rzf.fileSize}"
         }
-
-        val zf = zipFile!!
-
-        if (book.coverUrl.isNullOrEmpty()) {
-            book.coverUrl = LocalBook.getCoverPath(book)
-        }
-
-        if (!File(book.coverUrl!!).exists()) {
-            imageEntries?.firstOrNull()?.let { entry ->
+        book.wordCount = "${imageEntries?.size ?: 0}页"
+        if (!File(book.coverUrl!!).exists()) imageEntries?.firstOrNull()?.let { entry ->
+            runCatching {
                 zf.getInputStream(entry).use { input ->
-                    val cover = BitmapFactory.decodeStream(input)
-                    if (cover != null) {
-                        val out = FileOutputStream(FileUtils.createFileIfNotExist(book.coverUrl!!))
-                        cover.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                        out.flush()
-                        out.close()
+                    BitmapFactory.decodeStream(input)?.let { cover ->
+                        FileOutputStream(FileUtils.createFileIfNotExist(book.coverUrl!!)).use {
+                            cover.compress(
+                                Bitmap.CompressFormat.JPEG, 90, it
+                            )
+                        }
                         cover.recycle()
                     }
                 }
             }
         }
-
-        var name = book.name
-        var author = book.author
-        var intro = book.intro
-
-        kotlin.runCatching {
-            zf.getEntry("ComicInfo.xml")?.let { comicInfoEntry ->
-                zf.getInputStream(comicInfoEntry).use { input ->
+        zf.getEntry("ComicInfo.xml")?.let { entry ->
+            runCatching {
+                zf.getInputStream(entry).use { input ->
                     val doc = Jsoup.parse(input, "UTF-8", "", Parser.xmlParser())
-                    doc.selectFirst("Title")?.text()?.takeIf { it.isNotBlank() }
-                        ?.let { name = it }
-                    doc.selectFirst("Writer")?.text()?.takeIf { it.isNotBlank() }
-                        ?.let { author = it }
-                    doc.selectFirst("Summary")?.text()?.takeIf { it.isNotBlank() }
-                        ?.let { intro = it }
+                    doc.selectFirst("Title")?.text()?.takeUnless { it.isBlank() }
+                        ?.let { book.name = it }
+                    doc.selectFirst("Writer")?.text()?.takeUnless { it.isBlank() }
+                        ?.let { book.author = it }
+                    doc.selectFirst("Summary")?.text()?.takeUnless { it.isBlank() }
+                        ?.let { book.intro = it }
                 }
             }
-        }
-
-        if (name.isBlank()) {
-            name = book.originName.substringBeforeLast(".")
-        }
-
-        book.name = name
-        book.author = author
-        book.intro = intro
-
-        if (zf is RemoteZipFile) {
-            zf.preloadAndCache(book)
         }
     }
 
     private fun getChapterList(): ArrayList<BookChapter> {
-        val list = ArrayList<BookChapter>()
-        val entries = imageEntries ?: return list
-
-        val grouped = entries.groupBy {
-            val name = it.name
-            if (name.contains("/")) name.substringBeforeLast("/") else ""
-        }
-
-        if (grouped.size <= 1) {
-            val chapter = BookChapter(
+        val chapters = imageEntriesByChapter ?: imageEntries?.let { imageEntriesByChapter }
+        ?: return arrayListOf()
+        book.totalChapterNum = chapters.size
+        return chapters.keys.sortedWith(AlphanumComparator).mapIndexedTo(ArrayList()) { i, f ->
+            BookChapter(
+                url = f,
+                title = f.substringAfterLast("/").takeIf { it.isNotEmpty() } ?: "正文",
                 bookUrl = book.bookUrl,
-                title = "正文",
-                index = 0,
-                url = grouped.keys.firstOrNull() ?: ""
-            )
-            list.add(chapter)
-        } else {
-            var index = 0
-            val sortedKeys = grouped.keys.sortedWith(AlphanumComparator)
-            for (folder in sortedKeys) {
-                val title = if (folder.isEmpty()) "正文" else folder.substringAfterLast("/")
-                val chapter = BookChapter(
-                    bookUrl = book.bookUrl, title = title, index = index++, url = folder
-                )
-                list.add(chapter)
+                index = i)
             }
-        }
-
-        return list
     }
 
     private fun getContent(chapter: BookChapter): String? {
-        val entries = imageEntries ?: return null
-        val chapterFolder = chapter.url
-        val chapterImages = entries.filter {
-            val name = it.name
-            val folder = if (name.contains("/")) name.substringBeforeLast("/") else ""
-            folder == chapterFolder
-        }
-
-        val html = StringBuilder()
-        for (img in chapterImages) {
-            html.append("<img src=\"${img.name}\" />\n")
-        }
-
-        return HtmlFormatter.formatKeepImg(html.toString())
-    }
-
-    private fun getImage(href: String): InputStream? {
-        return zipFile?.let { zf ->
-            zf.getEntry(href)?.let { entry ->
-                zf.getInputStream(entry)
-            }
-        }
+        val chapters = imageEntriesByChapter ?: imageEntries?.let { imageEntriesByChapter }
+        return chapters?.get(chapter.url)?.joinToString("") { "<img src=\"${it.name}\"/>" }
     }
 
     protected fun finalize() {
         close()
     }
 
-    private class AndroidZipFileWrapper(
-        pfd: ParcelFileDescriptor, name: String
-    ) : ZipFileWrapper {
-
-        private val zipFile = AndroidZipFile(pfd, name)
-
-        override fun getEntry(name: String): AndroidZipEntry? = zipFile.getEntry(name)
-
-        override fun getInputStream(entry: AndroidZipEntry): InputStream =
-            zipFile.getInputStream(entry)
-
-        override fun entries(): Enumeration<out AndroidZipEntry> = zipFile.entries()
-
-        override fun close() = zipFile.close()
+    private class AndroidZipFileWrapper(pfd: ParcelFileDescriptor, name: String) : ZipFileWrapper {
+        private val zf = AndroidZipFile(pfd, name)
+        override fun getEntry(name: String): AndroidZipEntry? = zf.getEntry(name)
+        override fun getInputStream(entry: AndroidZipEntry) = zf.getInputStream(entry)
+        override fun entries() = zf.entries()
+        override fun close() = zf.close()
     }
 
     internal class RemoteZipFile(
-        private val webDav: WebDav, private val name: String, private val fileSize: Long
+        private val webDav: WebDav, private val name: String, val fileSize: Long
     ) : ZipFileWrapper {
-
-        private data class EntryMetadata(
+        internal data class EntryMetadata(
             val entry: AndroidZipEntry, val entryOffset: Int, var dataOffset: Long? = null
         )
 
         private var entriesMetadata: HashMap<String, EntryMetadata>? = null
         private var closed = false
-        private var eocdOffset: Long = 0
-        private var centralOffset: Long = 0
-        private var entryCount: Int = 0
+        var eocdOffset = 0L; private set
+        var centralOffset = 0L; private set
+        var entryCount = 0; private set
 
         constructor(
-            webDav: WebDav,
-            name: String,
-            fileSize: Long,
-            cachedEocdOffset: Long,
-            cachedCentralOffset: Long,
-            cachedEntryCount: Int
+            webDav: WebDav, name: String, fileSize: Long, eocd: Long, central: Long, count: Int
         ) : this(webDav, name, fileSize) {
-            eocdOffset = cachedEocdOffset
-            centralOffset = cachedCentralOffset
-            entryCount = cachedEntryCount
+            eocdOffset = eocd; centralOffset = central; entryCount = count
         }
 
         @Synchronized
-        @Throws(IOException::class)
-        private fun readEntries() {
-            if (eocdOffset == 0L || centralOffset == 0L || entryCount == 0) {
-                val searchSize = if (fileSize > 0) {
-                    minOf(fileSize, 65536L + ZipConstants.ENDHDR).toInt()
-                } else {
-                    (65536L + ZipConstants.ENDHDR).toInt()
-                }
-                val searchStart = if (fileSize > 0) fileSize - searchSize else 0L
-                val searchData = webDav.readRange(searchStart, searchSize, fileSize)
-
-                var endSigPos = -1
-                for (i in searchData.size - ZipConstants.ENDHDR downTo 0) {
-                    if (readLeInt(searchData, i) == ZipConstants.ENDSIG) {
-                        endSigPos = i
-                        break
-                    }
-                }
-
-                if (endSigPos < 0) {
-                    throw ZipException("central directory not found, probably not a zip file: $name")
-                }
-
-                eocdOffset = searchStart + endSigPos
-                entryCount = readLeShort(searchData, endSigPos + ZipConstants.ENDTOT)
-                centralOffset = readLeInt(searchData, endSigPos + ZipConstants.ENDOFF).toLong()
+        private fun getMeta(): HashMap<String, EntryMetadata> {
+            if (closed) throw IllegalStateException("Closed: $name")
+            entriesMetadata?.let { return it }
+            if (eocdOffset == 0L) {
+                val sSize = if (fileSize > 0) minOf(fileSize, 65600L).toInt() else 65600
+                val data =
+                    webDav.readRange(if (fileSize > 0) fileSize - sSize else 0L, sSize, fileSize)
+                val pos = (data.size - ZipConstants.ENDHDR downTo 0).firstOrNull {
+                    readLeInt(
+                        data, it
+                    ) == ZipConstants.ENDSIG
+                } ?: throw ZipException("No EOCD: $name")
+                eocdOffset = (if (fileSize > 0) fileSize - sSize else 0L) + pos
+                entryCount = readLeShort(data, pos + ZipConstants.ENDTOT)
+                centralOffset = readLeInt(data, pos + ZipConstants.ENDOFF).toLong()
             }
-
-            entriesMetadata = HashMap(entryCount + entryCount / 2)
-
-            val centralDir =
+            val dir =
                 webDav.readRange(centralOffset, (eocdOffset - centralOffset).toInt(), fileSize)
-            var cenPos = 0
-
-            repeat(entryCount) {
-                if (cenPos + ZipConstants.CENHDR > centralDir.size) {
-                    throw ZipException("Invalid central directory")
+            var p = 0
+            return HashMap<String, EntryMetadata>(entryCount * 2).also { map ->
+                repeat(entryCount) {
+                    if (readLeInt(
+                            dir, p
+                        ) != ZipConstants.CENSIG
+                    ) throw ZipException("Wrong Central Sig")
+                    val nLen = readLeShort(dir, p + ZipConstants.CENNAM)
+                    val eLen = readLeShort(dir, p + ZipConstants.CENEXT)
+                    val cLen = readLeShort(dir, p + ZipConstants.CENCOM)
+                    val entryName = String(dir, p + ZipConstants.CENHDR, nLen)
+                    map[entryName] = EntryMetadata(AndroidZipEntry(entryName, nLen).apply {
+                        setMethod(readLeShort(dir, p + ZipConstants.CENHOW)); setCrc(
+                        readLeInt(
+                            dir, p + ZipConstants.CENCRC
+                        ).toLong() and 0xffffffffL
+                    )
+                        setSize(
+                            readLeInt(
+                                dir, p + ZipConstants.CENLEN
+                            ).toLong() and 0xffffffffL
+                        ); setCompressedSize(
+                        readLeInt(
+                            dir, p + ZipConstants.CENSIZ
+                        ).toLong() and 0xffffffffL
+                    )
+                        setTime(readLeInt(dir, p + ZipConstants.CENTIM).toLong())
+                        if (eLen > 0) setExtra(
+                            dir.copyOfRange(
+                                p + ZipConstants.CENHDR + nLen,
+                                p + ZipConstants.CENHDR + nLen + eLen
+                            )
+                        )
+                    }, readLeInt(dir, p + ZipConstants.CENOFF))
+                    p += ZipConstants.CENHDR + nLen + eLen + cLen
                 }
-
-                if (readLeInt(centralDir, cenPos) != ZipConstants.CENSIG) {
-                    throw ZipException("Wrong Central Directory signature: $name")
-                }
-
-                val method = readLeShort(centralDir, cenPos + ZipConstants.CENHOW)
-                val dostime = readLeInt(centralDir, cenPos + ZipConstants.CENTIM)
-                val crc = readLeInt(centralDir, cenPos + ZipConstants.CENCRC)
-                val csize = readLeInt(centralDir, cenPos + ZipConstants.CENSIZ)
-                val size = readLeInt(centralDir, cenPos + ZipConstants.CENLEN)
-                val nameLen = readLeShort(centralDir, cenPos + ZipConstants.CENNAM)
-                val extraLen = readLeShort(centralDir, cenPos + ZipConstants.CENEXT)
-                val commentLen = readLeShort(centralDir, cenPos + ZipConstants.CENCOM)
-                val offset = readLeInt(centralDir, cenPos + ZipConstants.CENOFF)
-
-                val entryStart = cenPos + ZipConstants.CENHDR
-                if (entryStart + nameLen > centralDir.size) {
-                    throw ZipException("Invalid entry name")
-                }
-
-                val entryName = String(centralDir, entryStart, nameLen)
-
-                val entry = AndroidZipEntry(entryName, nameLen)
-                entry.setMethod(method)
-                entry.setCrc(crc.toLong() and 0xffffffffL)
-                entry.setSize(size.toLong() and 0xffffffffL)
-                entry.setCompressedSize(csize.toLong() and 0xffffffffL)
-                entry.setTime(dostime.toLong())
-
-                if (extraLen > 0) {
-                    val extraStart = entryStart + nameLen
-                    if (extraStart + extraLen <= centralDir.size) {
-                        val extra = ByteArray(extraLen)
-                        System.arraycopy(centralDir, extraStart, extra, 0, extraLen)
-                        entry.setExtra(extra)
-                    }
-                }
-
-                if (commentLen > 0) {
-                    val commentStart = entryStart + nameLen + extraLen
-                    if (commentStart + commentLen <= centralDir.size) {
-                        entry.setComment(String(centralDir, commentStart, commentLen))
-                    }
-                }
-
-                entriesMetadata!![entryName] = EntryMetadata(entry, offset)
-
-                cenPos += ZipConstants.CENHDR + nameLen + extraLen + commentLen
+                entriesMetadata = map
             }
         }
 
-        @Throws(IOException::class)
-        override fun close() {
-            closed = true
-            entriesMetadata = null
+        override fun getEntry(name: String) = getMeta()[name]?.entry?.clone() as? AndroidZipEntry
+        fun getEntryOffset(name: String) = getMeta()[name]?.entryOffset
+        fun preload() {
+            getMeta()
         }
 
-        override fun entries(): Enumeration<out AndroidZipEntry> {
-            return ZipEntryEnumeration(getEntriesMetadata().values.map { it.entry }.iterator())
-        }
-
-        @Synchronized
-        @Throws(IOException::class)
-        private fun getEntriesMetadata(): HashMap<String, EntryMetadata> {
-            if (closed) {
-                throw IllegalStateException("RemoteZipFile has closed: $name")
-            }
-
+        fun restore(eocd: Long, central: Long, es: List<CbzImageEntry>) {
+            eocdOffset = eocd; centralOffset = central
             if (entriesMetadata == null) {
-                readEntries()
+                entriesMetadata = HashMap<String, EntryMetadata>(es.size * 2).apply {
+                    es.forEach { e ->
+                        val nameBytes = e.name.toByteArray()
+                        put(
+                            e.name, EntryMetadata(
+                                AndroidZipEntry(
+                                    e.name, nameBytes.size
+                                ).apply {
+                                    setSize(e.size); setCompressedSize(e.compressedSize); setMethod(
+                                    e.method
+                                )
+                                }, e.entryOffset
+                            )
+                        )
+                    }
+                }
+                entryCount = es.size
             }
-
-            return entriesMetadata!!
         }
 
-        override fun getEntry(name: String): AndroidZipEntry? {
-            return getEntriesMetadata()[name]?.entry?.clone() as? AndroidZipEntry
+        override fun entries() =
+            Collections.enumeration(getMeta().values.map { it.entry.clone() as AndroidZipEntry })
+
+        override fun close() {
+            closed = true; entriesMetadata = null
         }
 
-        @Throws(IOException::class)
-        private fun getDataOffset(entry: AndroidZipEntry): Long {
-            val metadata = getEntriesMetadata()[entry.name]
-                ?: throw ZipException("Entry not found: ${entry.name}")
-
-            metadata.dataOffset?.let { return it }
-
-            val entryOffset = metadata.entryOffset.toLong()
-            val locBuf = webDav.readRange(entryOffset, ZipConstants.LOCHDR, fileSize)
-
-            if (readLeInt(locBuf, 0) != ZipConstants.LOCSIG) {
-                throw ZipException("Wrong Local header signature: $name")
-            }
-
-            if (entry.method != readLeShort(locBuf, ZipConstants.LOCHOW)) {
-                throw ZipException("Compression method mismatch: $name")
-            }
-
-            if (entry.nameLen != readLeShort(locBuf, ZipConstants.LOCNAM)) {
-                throw ZipException("file name length mismatch: $name")
-            }
-
-            val extraLen = entry.nameLen + readLeShort(locBuf, ZipConstants.LOCEXT)
-            val dataOffset = entryOffset + ZipConstants.LOCHDR + extraLen
-            metadata.dataOffset = dataOffset
-            return dataOffset
-        }
-
-        @Throws(IOException::class)
         override fun getInputStream(entry: AndroidZipEntry): InputStream {
-            val metadata =
-                getEntriesMetadata()[entry.name] ?: throw NoSuchElementException(entry.name)
+            val m = getMeta()[entry.name] ?: throw NoSuchElementException(entry.name)
+            val cSize = m.entry.compressedSize.takeIf { it <= Int.MAX_VALUE }?.toInt()
+                ?: throw ZipException("Too large")
 
-            val start = getDataOffset(metadata.entry)
-            val compressedSize = metadata.entry.compressedSize
-            if (compressedSize > Int.MAX_VALUE) {
-                throw ZipException("Entry too large: ${entry.name} ($compressedSize bytes)")
+            val bis = m.dataOffset?.let { dOff ->
+                // 如果偏移已知，直接 1 RTT 读取完整数据
+                ByteArrayInputStream(webDav.readRange(dOff, cSize, fileSize))
+            } ?: run {
+                // 偏移未知，执行乐观读取 (Dry Run)
+                val extraLenGuess = m.entry.extra?.size ?: 0
+                // 多读 128 字节冗余量，应对可能的 Local Header Extra Field 长度差异
+                val totalToRead = ZipConstants.LOCHDR + entry.nameLen + extraLenGuess + cSize + 128
+                val fullData = webDav.readRange(m.entryOffset.toLong(), totalToRead, fileSize)
+
+                if (fullData.size < ZipConstants.LOCHDR) throw ZipException("Read Header Error")
+
+                val realExtraLen = readLeShort(fullData, ZipConstants.LOCEXT)
+                val realDataOff = ZipConstants.LOCHDR + entry.nameLen + realExtraLen
+                m.dataOffset = m.entryOffset.toLong() + realDataOff
+
+                val dataInBuffer = fullData.size - realDataOff
+                if (dataInBuffer >= cSize) {
+                    // 情况 A: 乐观命中，1 RTT 搞定
+                    ByteArrayInputStream(fullData, realDataOff, cSize)
+                } else {
+                    // 情况 B: 没读全，补齐剩余部分 (第 2 个 RTT)
+                    val missing = cSize - maxOf(0, dataInBuffer)
+                    val rest =
+                        webDav.readRange(m.entryOffset.toLong() + fullData.size, missing, fileSize)
+                    val combined = ByteArray(cSize)
+                    if (dataInBuffer > 0) {
+                        System.arraycopy(fullData, realDataOff, combined, 0, dataInBuffer)
+                    }
+                    System.arraycopy(rest, 0, combined, maxOf(0, dataInBuffer), rest.size)
+                    ByteArrayInputStream(combined)
+                }
             }
-            val data = webDav.readRange(start, compressedSize.toInt(), fileSize)
-            val `is`: InputStream = ByteArrayInputStream(data)
-            return when (metadata.entry.method) {
-                ZipOutputStream.STORED -> `is`
-                ZipOutputStream.DEFLATED -> InflaterInputStream(`is`, Inflater(true))
-                else -> throw ZipException("Unknown compression method ${metadata.entry.method}")
-            }
-        }
 
-        private class ZipEntryEnumeration(
-            private val elements: Iterator<AndroidZipEntry>
-        ) : Enumeration<AndroidZipEntry> {
-            override fun hasMoreElements() = elements.hasNext()
-            override fun nextElement(): AndroidZipEntry = elements.next().clone() as AndroidZipEntry
-        }
-
-        fun preloadAndCache(book: Book) {
-            getEntriesMetadata()
-            book.variable = "cbz:$eocdOffset,$centralOffset"
-            book.wordCount = entryCount.toString()
+            return if (m.entry.method == ZipOutputStream.DEFLATED) {
+                InflaterInputStream(bis, Inflater(true))
+            } else bis
         }
     }
 }
