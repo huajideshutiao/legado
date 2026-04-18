@@ -13,7 +13,7 @@ import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.analyzeRule.CustomUrl
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.runBlocking
@@ -63,7 +63,7 @@ class RemoteBookWebDav(
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
         val webdav = WebDav(remoteBook.path, authorization)
         return webdav.downloadInputStream().let { inputStream ->
-            LocalBook.saveBookFile(inputStream, remoteBook.filename)
+            FileBook.saveBookFile(inputStream, remoteBook.filename)
         }
     }
 

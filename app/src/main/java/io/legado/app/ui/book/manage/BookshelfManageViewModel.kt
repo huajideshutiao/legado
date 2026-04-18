@@ -16,7 +16,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -65,7 +65,7 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
             appDb.bookDao.delete(*books.toTypedArray())
             books.forEach {
                 if (it.isLocal) {
-                    LocalBook.deleteBook(it, deleteOriginal)
+                    FileBook.deleteBook(it, deleteOriginal)
                 }
             }
         }

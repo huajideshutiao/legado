@@ -13,8 +13,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.CustomUrl
-import io.legado.app.model.localBook.CbzFile
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.CbzFile
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
@@ -147,7 +147,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     remoteBook.filename.endsWith(".cbz", true) -> {
                         val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
                         else bookWebDav.downloadRemoteBook(remoteBook).toString()
-                        LocalBook.importImageBook(
+                        FileBook.importImageBook(
                             bookUrl = bookUrl,
                             name = remoteBook.filename,
                             originName = remoteBook.filename,
@@ -166,8 +166,8 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                             fileSize
                         )?.use { (remoteZip, entry) ->
                             val inputStream = remoteZip.getInputStream(entry)
-                            val uri = LocalBook.saveBookFile(inputStream, entry.name)
-                            LocalBook.importFile(uri).apply {
+                            val uri = FileBook.saveBookFile(inputStream, entry.name)
+                            FileBook.importFile(uri).apply {
                                 this.origin = origin
                                 addType(BookType.archive)
                                 save()
@@ -175,7 +175,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                         } ?: run {
                             val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
                             else bookWebDav.downloadRemoteBook(remoteBook).toString()
-                            LocalBook.importImageBook(
+                            FileBook.importImageBook(
                                 bookUrl = bookUrl,
                                 name = remoteBook.filename,
                                 originName = remoteBook.filename,
@@ -186,7 +186,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     }
 
                     else -> bookWebDav.downloadRemoteBook(remoteBook).let { uri ->
-                        LocalBook.importFiles(uri).forEach { book ->
+                        FileBook.importFiles(uri).forEach { book ->
                             book.origin = origin
                             book.save()
                         }

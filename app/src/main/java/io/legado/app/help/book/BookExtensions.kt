@@ -17,7 +17,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -305,7 +305,7 @@ fun Book.getBookSource(): BookSource? {
 }
 
 fun Book.isLocalModified(): Boolean {
-    return isLocal && LocalBook.getLastModified(this).getOrDefault(0L) > latestChapterTime
+    return isLocal && FileBook.getLastModified(this).getOrDefault(0L) > latestChapterTime
 }
 
 fun BaseBook.releaseHtmlData() {

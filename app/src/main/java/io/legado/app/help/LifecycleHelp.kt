@@ -4,7 +4,11 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import io.legado.app.base.BaseService
-import io.legado.app.model.localBook.*
+import io.legado.app.model.fileBook.CbzFile
+import io.legado.app.model.fileBook.EpubFile
+import io.legado.app.model.fileBook.MobiFile
+import io.legado.app.model.fileBook.PdfFile
+import io.legado.app.model.fileBook.UmdFile
 import io.legado.app.utils.LogUtils
 import java.lang.ref.WeakReference
 

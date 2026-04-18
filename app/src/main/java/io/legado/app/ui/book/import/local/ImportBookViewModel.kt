@@ -6,7 +6,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.constant.PreferKey
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -97,7 +97,7 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                 val fileDoc = importBook.file
                 val fileName = fileDoc.name
                 if (fileName.endsWith(".cbz", true)) {
-                    LocalBook.importImageBook(
+                    FileBook.importImageBook(
                         bookUrl = fileDoc.toString(),
                         name = fileDoc.name,
                         originName = fileDoc.name,
@@ -107,11 +107,11 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                     val names = ArchiveUtils.getArchiveFilesName(fileDoc.uri)
                     val hasTxt = names.any { it.lowercase().endsWith(".txt") }
                     if (hasTxt) {
-                        LocalBook.importArchiveFile(fileDoc.uri) {
+                        FileBook.importArchiveFile(fileDoc.uri) {
                             it.matches(bookFileRegex)
                         }
                     } else {
-                        LocalBook.importImageBook(
+                        FileBook.importImageBook(
                             bookUrl = fileDoc.toString(),
                             name = fileDoc.name,
                             originName = fileDoc.name,
@@ -119,7 +119,7 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                         )
                     }
                 } else {
-                    LocalBook.importFile(fileDoc.uri)
+                    FileBook.importFile(fileDoc.uri)
                 }
                 importBook.isOnBookShelf = true
             }

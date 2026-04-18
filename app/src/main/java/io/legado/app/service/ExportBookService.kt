@@ -23,7 +23,7 @@ import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -215,7 +215,7 @@ class ExportBookService : BaseService() {
             return
         }
         kotlin.runCatching {
-            LocalBook.getChapterList(book)
+            FileBook.getChapterList(book)
         }.onSuccess {
             appDb.bookChapterDao.delByBook(book.bookUrl)
             appDb.bookChapterDao.insert(*it.toTypedArray())

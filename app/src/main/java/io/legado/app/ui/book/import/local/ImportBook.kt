@@ -1,13 +1,13 @@
 package io.legado.app.ui.book.import.local
 
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.data.appDb
 import io.legado.app.utils.FileDoc
 
 data class ImportBook(
     val file: FileDoc,
     val isUpDir: Boolean = false,
     val isFileManageMode: Boolean = false,
-    var isOnBookShelf: Boolean = if (isFileManageMode || isUpDir || file.isDir) false else LocalBook.isOnBookShelf(
+    var isOnBookShelf: Boolean = if (isFileManageMode || isUpDir || file.isDir) false else appDb.bookDao.hasFile(
         file.name
     )
 ) {

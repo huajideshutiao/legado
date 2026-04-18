@@ -14,7 +14,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
@@ -295,7 +295,7 @@ object BookHelp {
             val doc = DocumentFile.fromSingleUri(appCtx, uri)
                 ?: throw IOException("文件不存在")
             if (!file.exists() || doc.lastModified() > book.latestChapterTime) {
-                LocalBook.getBookInputStream(book).use { inputStream ->
+                FileBook.getBookInputStream(book).use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
@@ -433,7 +433,7 @@ object BookHelp {
             return string
         }
         if (book.isLocal) {
-            val string = LocalBook.getContent(book, bookChapter)
+            val string = FileBook.getContent(book, bookChapter)
             if (string != null && book.isEpub) {
                 saveText(book, bookChapter, string)
             }

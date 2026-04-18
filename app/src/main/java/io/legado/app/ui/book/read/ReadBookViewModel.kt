@@ -21,7 +21,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -135,7 +135,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
 
     private fun checkLocalBookFileExist(book: Book): Boolean {
         try {
-            LocalBook.getBookInputStream(book)
+            FileBook.getBookInputStream(book)
             return true
         } catch (e: Throwable) {
             ReadBook.upMsg("打开本地书籍出错: ${e.localizedMessage}")
@@ -160,7 +160,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     private suspend fun loadChapterListAwait(book: Book): Boolean {
         if (book.isLocal) {
             kotlin.runCatching {
-                LocalBook.getChapterList(book).let {
+                FileBook.getChapterList(book).let {
                     appDb.bookChapterDao.delByBook(book.bookUrl)
                     appDb.bookChapterDao.insert(*it.toTypedArray())
                     appDb.bookDao.update(book)

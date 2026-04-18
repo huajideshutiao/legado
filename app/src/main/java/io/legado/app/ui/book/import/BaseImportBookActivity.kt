@@ -13,7 +13,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -121,7 +121,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         fileName: String,
         onSuccess: (Book) -> Unit
     ) {
-        LocalBook.importArchiveFile(fileDoc.uri, fileName) {
+        FileBook.importArchiveFile(fileDoc.uri, fileName) {
             it.contains(fileName)
         }.firstOrNull()?.run {
             onSuccess.invoke(this)

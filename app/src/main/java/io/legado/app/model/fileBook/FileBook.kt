@@ -1,7 +1,6 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import android.net.Uri
-import android.util.Base64
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.script.ScriptBindings
@@ -23,8 +22,6 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
-import io.legado.app.help.book.getArchiveUri
-import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isCbz
@@ -32,7 +29,6 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isUmd
-import io.legado.app.help.book.removeLocalUriCache
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
@@ -46,16 +42,12 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
-import io.legado.app.utils.inputStream
-import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
@@ -67,7 +59,7 @@ import java.util.regex.Pattern
  * 书籍文件导入 目录正文解析
  * 支持在线文件(txt epub umd 压缩文件 本地文件
  */
-object LocalBook {
+object FileBook : BaseLocalBookParse {
 
     private val nameAuthorPatterns = arrayOf(
         Pattern.compile("(.*?)《([^《》]+)》.*?作者：(.*)"),
@@ -85,48 +77,8 @@ object LocalBook {
         else -> TextFile
     }
 
-    @Throws(FileNotFoundException::class, SecurityException::class)
-    fun getBookInputStream(book: Book): InputStream {
-        val uri = book.getLocalUri()
-        val inputStream = uri.inputStream(appCtx).getOrNull() ?: let {
-            book.removeLocalUriCache()
-            val localArchiveUri = book.getArchiveUri()
-            val webDavUrl = book.getRemoteUrl()
-            if (localArchiveUri != null) {
-                // 重新导入对应的压缩包
-                importArchiveFile(localArchiveUri, book.originName) {
-                    it.contains(book.originName)
-                }.firstOrNull()?.let {
-                    getBookInputStream(it)
-                }
-            } else if (webDavUrl != null && downloadRemoteBook(book)) {
-                // 下载远程链接
-                getBookInputStream(book)
-            } else {
-                null
-            }
-        }
-        if (inputStream != null) return inputStream
-        book.removeLocalUriCache()
-        throw FileNotFoundException("${uri.path} 文件不存在")
-    }
-
-    fun getLastModified(book: Book): Result<Long> {
-        return kotlin.runCatching {
-            val uri = book.bookUrl.toUri()
-            if (uri.isContentScheme()) {
-                return@runCatching DocumentFile.fromSingleUri(appCtx, uri)!!.lastModified()
-            }
-            val file = File(uri.path!!)
-            if (file.exists()) {
-                return@runCatching file.lastModified()
-            }
-            throw FileNotFoundException("${uri.path} 文件不存在")
-        }
-    }
-
     @Throws(TocEmptyException::class)
-    fun getChapterList(book: Book): ArrayList<BookChapter> {
+    override fun getChapterList(book: Book): ArrayList<BookChapter> {
         val chapters = book.getHandler().getChapterList(book)
         if (chapters.isEmpty()) {
             throw TocEmptyException(appCtx.getString(R.string.chapter_list_empty))
@@ -149,7 +101,7 @@ object LocalBook {
         return list
     }
 
-    fun getContent(book: Book, chapter: BookChapter): String? {
+    override fun getContent(book: Book, chapter: BookChapter): String? {
         var content = try {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
@@ -172,15 +124,9 @@ object LocalBook {
         return content
     }
 
-    fun getCoverPath(book: Book): String {
-        return getCoverPath(book.bookUrl)
-    }
+    fun getCoverPath(bookUrl: String) =
+        FileUtils.getPath(appCtx.externalFiles, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg")
 
-    private fun getCoverPath(bookUrl: String): String {
-        return FileUtils.getPath(
-            appCtx.externalFiles, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg"
-        )
-    }
 
     /**
      * 下载在线的文件并自动导入到阅读（txt umd epub)
@@ -201,7 +147,7 @@ object LocalBook {
         //updateTime变量不要修改,否则会导致读取不到缓存
         val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
             if (size == 0L) throw EmptyFileException("Unexpected empty File")
-            bookUrl = toString()
+            bookUrl = this.toString()
         }
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
@@ -229,11 +175,7 @@ object LocalBook {
     }
 
     fun importImageBook(
-        bookUrl: String,
-        name: String,
-        originName: String,
-        lastModified: Long,
-        origin: String = ""
+        bookUrl: String, name: String, originName: String, lastModified: Long, origin: String = ""
     ): Book {
         var book = appDb.bookDao.getBook(bookUrl = bookUrl)
         if (book == null) {
@@ -260,13 +202,8 @@ object LocalBook {
         return book
     }
 
-    fun upBookInfo(book: Book) {
-        book.getHandler().upBookInfo(book)
-    }
-
-    fun getImage(book: Book, href: String): InputStream? {
-        return book.getHandler().getImage(book, href)
-    }
+    override fun upBookInfo(book: Book) = book.getHandler().upBookInfo(book)
+    override fun getImage(book: Book, href: String) = book.getHandler().getImage(book, href)
 
     /* 导入压缩包内的书籍 */
     fun importArchiveFile(
@@ -367,20 +304,11 @@ object LocalBook {
         source: BaseSource? = null,
     ): Uri {
         AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
-        val inputStream = when {
-            str.isAbsUrl() -> AnalyzeUrl(
+        return saveBookFile(
+            AnalyzeUrl(
                 str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
-            ).getInputStreamAwait()
-
-            str.isDataUrl() -> ByteArrayInputStream(
-                Base64.decode(
-                    str.substringAfter("base64,"), Base64.DEFAULT
-                )
-            )
-
-            else -> throw NoStackTraceException("在线导入书籍支持http/https/DataURL")
-        }
-        return saveBookFile(inputStream, fileName)
+            ).getInputStreamAwait(), fileName
+        )
     }
 
     @Throws(SecurityException::class)
@@ -417,12 +345,6 @@ object LocalBook {
                 }
             }
         }
-    }
-
-    fun isOnBookShelf(
-        fileName: String
-    ): Boolean {
-        return appDb.bookDao.hasFile(fileName)
     }
 
     //文件类书源 合并在线书籍信息 在线 > 本地

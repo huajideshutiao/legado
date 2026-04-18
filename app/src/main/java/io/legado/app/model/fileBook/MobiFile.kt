@@ -1,4 +1,4 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -272,7 +272,7 @@ class MobiFile(var book: Book) {
         try {
             mobiBook?.let {
                 if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
+                    book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
                 if (fastCheck && File(book.coverUrl!!).exists()) {
                     return

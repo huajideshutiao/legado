@@ -1,4 +1,4 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -200,7 +200,7 @@ class PdfFile(var book: Book) {
         try {
             pdfRenderer?.let { renderer ->
                 if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
+                    book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
                 if (fastCheck && File(book.coverUrl!!).exists()) {
                     return

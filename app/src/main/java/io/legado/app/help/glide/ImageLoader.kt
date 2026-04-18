@@ -16,7 +16,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.isUri
@@ -74,7 +74,7 @@ object ImageLoader {
         }
         if (book.isLocal) {
             if (book.bookUrl.isUri() || book.bookUrl.isFilePath()) {
-                return LocalBook.getImage(book, imageUrl)?.use { it.readBytes() }
+                return FileBook.getImage(book, imageUrl)?.use { it.readBytes() }
             }
             val file = ImageProvider.cacheImage(book, imageUrl, ReadManga.bookSource)
             return if (file.exists()) file.readBytes() else null

@@ -34,7 +34,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
@@ -154,7 +154,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     ) {
         if (book.isLocal) {
             val tmp = book.copy()
-            LocalBook.upBookInfo(book)
+            FileBook.upBookInfo(book)
             if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) {
                 loadChapterList(book)
             } else {
@@ -208,7 +208,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     ) {
         if (book.isLocal) {
             try {
-                LocalBook.getChapterList(book).let {
+                FileBook.getChapterList(book).let {
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
                     if (inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
@@ -378,7 +378,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             if (image.exists()) {
                 FileUtils.saveImage(image, uri)
             } else if (book.isLocal) {
-                LocalBook.getImage(book, src)?.use { input ->
+                FileBook.getImage(book, src)?.use { input ->
                     FileUtils.saveImage(input, uri, ".${BookHelp.getImageSuffix(src)}")
                 }
             }
@@ -445,7 +445,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 }
                 inBookshelf = false
                 if (it.isLocal) {
-                    LocalBook.deleteBook(it, deleteOriginal)
+                    FileBook.deleteBook(it, deleteOriginal)
                 }
             }
         }.onSuccess {

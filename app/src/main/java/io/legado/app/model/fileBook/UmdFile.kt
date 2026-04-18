@@ -1,4 +1,4 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -63,7 +63,7 @@ class UmdFile(var book: Book) {
 
     private fun readUmd(): UmdBook? {
         kotlin.runCatching {
-            val input = LocalBook.getBookInputStream(book)
+            val input = FileBook.getBookInputStream(book)
             return UmdReader().read(input)
         }.onFailure {
             it.printOnDebug()
@@ -75,7 +75,7 @@ class UmdFile(var book: Book) {
         try {
             umdBook?.let {
                 if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
+                    book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
                 if (fastCheck && File(book.coverUrl!!).exists()) {
                     return

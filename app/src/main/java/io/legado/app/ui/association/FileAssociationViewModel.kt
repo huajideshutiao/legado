@@ -7,7 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.entities.Book
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.isContentScheme
@@ -66,7 +66,7 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     }
 
     fun importBook(uri: Uri) {
-        val book = LocalBook.importFile(uri)
+        val book = FileBook.importFile(uri)
         openBookLiveData.postValue(book)
     }
 }

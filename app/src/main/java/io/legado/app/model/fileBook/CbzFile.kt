@@ -1,4 +1,4 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -188,7 +188,7 @@ class CbzFile(var book: Book) {
 
     private fun upBookInfo() {
         val zf = zipFile ?: run { eFile = null; book.intro = "书籍导入异常"; return }
-        if (book.coverUrl.isNullOrEmpty()) book.coverUrl = LocalBook.getCoverPath(book)
+        if (book.coverUrl.isNullOrEmpty()) book.coverUrl = FileBook.getCoverPath(book.bookUrl)
         if (book.name.isBlank()) book.name = book.originName.substringBeforeLast(".")
         val rzf = zf as? RemoteZipFile
         rzf?.preload()

@@ -1,4 +1,4 @@
-package io.legado.app.model.localBook
+package io.legado.app.model.fileBook
 
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -83,7 +83,7 @@ class TextFile(private var book: Book) {
     fun getChapterList(): ArrayList<BookChapter> {
         val modified = book.isLocalModified()
         if (book.charset == null || book.tocUrl.isBlank() || modified) {
-            LocalBook.getBookInputStream(book).use { bis ->
+            FileBook.getBookInputStream(book).use { bis ->
                 val buffer = ByteArray(bufferSize)
                 val length = bis.read(buffer)
                 if (length == -1) throw EmptyFileException("Unexpected Empty Txt File")
@@ -111,7 +111,7 @@ class TextFile(private var book: Book) {
         val start = chapter.start!!
         val end = chapter.end!!
         if (txtBuffer == null || start > bufferEnd || end < bufferStart) {
-            LocalBook.getBookInputStream(book).use { bis ->
+            FileBook.getBookInputStream(book).use { bis ->
                 bufferStart = txtBufferSize * (start / txtBufferSize)
                 txtBuffer = ByteArray(min(txtBufferSize, bis.available() - bufferStart.toInt()))
                 bufferEnd = bufferStart + txtBuffer!!.size
@@ -126,7 +126,7 @@ class TextFile(private var book: Book) {
         @Suppress("ConvertTwoComparisonsToRangeCheck")
         if (start < bufferEnd && end > bufferEnd || start < bufferStart && end > bufferStart) {
             /** 章节内容在缓冲区交界处 */
-            LocalBook.getBookInputStream(book).use { bis ->
+            FileBook.getBookInputStream(book).use { bis ->
                 bis.skip(start)
                 bis.read(buffer)
             }
@@ -154,7 +154,7 @@ class TextFile(private var book: Book) {
         }
         val toc = arrayListOf<BookChapter>()
         var bookWordCount = 0
-        LocalBook.getBookInputStream(book).use { bis ->
+        FileBook.getBookInputStream(book).use { bis ->
             var blockContent: String
             //加载章节
             var curOffset: Long = 0
@@ -342,7 +342,7 @@ class TextFile(private var book: Book) {
     ): Pair<ArrayList<BookChapter>, Int> {
         val toc = arrayListOf<BookChapter>()
         var bookWordCount = 0
-        LocalBook.getBookInputStream(book).use { bis ->
+        FileBook.getBookInputStream(book).use { bis ->
             //block的个数
             var blockPos = 0
             //加载章节

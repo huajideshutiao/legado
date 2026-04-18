@@ -23,7 +23,7 @@ import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
@@ -124,14 +124,14 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         execute {
             waitDialogData.postValue(true)
             if (webFile.isSupported) {
-                val book = LocalBook.importFileOnLine(
+                val book = FileBook.importFileOnLine(
                     webFile.url,
                     bookData.value!!.getExportFileName(webFile.suffix),
                     curBookSource
                 )
                 changeToLocalBook(book)
             } else {
-                LocalBook.saveBookFile(
+                FileBook.saveBookFile(
                     webFile.url,
                     bookData.value!!.getExportFileName(webFile.suffix),
                     curBookSource
@@ -174,7 +174,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     ) {
         execute {
             val suffix = archiveEntryName.substringAfterLast(".")
-            LocalBook.importArchiveFile(
+            FileBook.importArchiveFile(
                 archiveFileUri,
                 bookData.value!!.getExportFileName(suffix)
             ) {
@@ -227,7 +227,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun downloadToLocal(book: Book) {
         execute {
-            if (!LocalBook.downloadRemoteBook(book)) {
+            if (!FileBook.downloadRemoteBook(book)) {
                 throw Exception("下载失败，请检查网络或WebDav配置")
             }
         }.onSuccess {
@@ -260,7 +260,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     private fun changeToLocalBook(localBook: Book): Book {
-        return LocalBook.mergeBook(localBook, bookData.value).let {
+        return FileBook.mergeBook(localBook, bookData.value).let {
             execute { loadChapterList(it) }
             inBookshelf = true
             it
