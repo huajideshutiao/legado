@@ -3,10 +3,8 @@ package io.legado.app.model.fileBook
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.ParcelFileDescriptor
-import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import android.util.Log
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -207,9 +205,7 @@ class CbzFile(var book: Book) {
 
         val res = if (cache != null) {
             (zipFile as? RemoteZipFile)?.restore(
-                cache.eocdOffset,
-                cache.centralOffset,
-                cache.entries
+                cache.eocdOffset, cache.centralOffset, cache.entries
             )
             cache.entries.map { it.toCbzEntry() }
         } else {
@@ -242,9 +238,7 @@ class CbzFile(var book: Book) {
                     it.method,
                     rzf?.getEntryOffset(it.name) ?: 0
                 )
-            },
-            eocdOffset = rzf?.eocdOffset ?: 0,
-            centralOffset = rzf?.centralOffset ?: 0
+            }, eocdOffset = rzf?.eocdOffset ?: 0, centralOffset = rzf?.centralOffset ?: 0
         )
         runCatching {
             cacheFile.parentFile?.mkdirs()
@@ -255,10 +249,8 @@ class CbzFile(var book: Book) {
     }
 
     private fun getZipCharset(): Charset {
-        val charsetName = book.charset ?: imageEntries?.asSequence()
-            ?.map { it.name }
-            ?.filter { it.any { c -> c.code > 127 } }
-            ?.take(5)?.joinToString("")
+        val charsetName = book.charset ?: imageEntries?.asSequence()?.map { it.name }
+            ?.filter { it.any { c -> c.code > 127 } }?.take(5)?.joinToString("")
             ?.takeIf { it.isNotEmpty() }
             ?.let { EncodingDetect.getEncode(it.toByteArray(Charsets.ISO_8859_1)) }
 
@@ -282,6 +274,7 @@ class CbzFile(var book: Book) {
         if (book.charset.isNullOrEmpty()) book.charset = getZipCharset().name()
 
         (zf as? RemoteZipFile)?.apply {
+            imageEntries
             preload()
             book.variable = "cbz:$eocdOffset,$centralOffset,$fileSize"
         }
@@ -340,14 +333,11 @@ class CbzFile(var book: Book) {
             } else f
 
             BookChapter(
-                url = f,
-                title = if (displayTitle.isNotEmpty()) try {
+                url = f, title = if (displayTitle.isNotEmpty()) try {
                     String(displayTitle.toByteArray(Charsets.ISO_8859_1), charset)
                 } catch (_: Exception) {
                     displayTitle
-                } else "正文",
-                bookUrl = book.bookUrl,
-                index = i
+                } else "正文", bookUrl = book.bookUrl, index = i
             )
         }
     }
@@ -369,54 +359,29 @@ class CbzFile(var book: Book) {
         }
 
         override fun getEntry(name: String): CbzEntry? {
-            return try {
-                getZipFile().getEntry(name)?.let {
-                    CbzEntry(
-                        it.name,
-                        it.isDirectory,
-                        it.size,
-                        it.compressedSize,
-                        it.method,
-                        it.time
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(javaClass.name, "getEntry error", e)
-                null
+            return getZipFile().getEntry(name)?.let {
+                CbzEntry(
+                    it.name, it.isDirectory, it.size, it.compressedSize, it.method, it.time
+                )
             }
         }
 
         override fun getInputStream(entry: CbzEntry): InputStream? {
-            return try {
-                getZipFile().let { zf ->
-                    zf.getEntry(entry.name)?.let { zEntry ->
-                        zf.getInputStream(zEntry)
-                    }
+            return getZipFile().let { zf ->
+                zf.getEntry(entry.name)?.let { zEntry ->
+                    zf.getInputStream(zEntry)
                 }
-            } catch (e: Exception) {
-                Log.e(javaClass.name, "getInputStream error", e)
-                null
             }
         }
 
         override fun entries(): Enumeration<out CbzEntry> {
-            return try {
-                val entries = getZipFile().entries()
-                Collections.enumeration(entries.asSequence().map {
-                    CbzEntry(
-                        it.name,
-                        it.isDirectory,
-                        it.size,
-                        it.compressedSize,
-                        it.method,
-                        it.time
-                    )
-                }.toList())
-            } catch (e: Exception) {
-                Log.e(javaClass.name, "entries error", e)
-                Collections.enumeration(emptyList())
-            }
+            return Collections.enumeration(getZipFile().entries().asSequence().map {
+                CbzEntry(
+                    it.name, it.isDirectory, it.size, it.compressedSize, it.method, it.time
+                )
+            }.toList())
         }
+
 
         override fun close() {
             zipFile?.close()
@@ -428,38 +393,16 @@ class CbzFile(var book: Book) {
     private class ContentZipWrapper(private val pfd: ParcelFileDescriptor) : ZipFileWrapper {
         private var entriesMap: HashMap<String, CbzEntry>? = null
 
-        private fun seek(pos: Long) {
-            try {
-                Os.lseek(pfd.fileDescriptor, pos, OsConstants.SEEK_SET)
-            } catch (e: ErrnoException) {
-                throw IOException(e)
-            }
-        }
+        private fun seek(pos: Long) = Os.lseek(pfd.fileDescriptor, pos, OsConstants.SEEK_SET)
 
-        private fun currentPosition(): Long {
-            return try {
-                Os.lseek(pfd.fileDescriptor, 0, OsConstants.SEEK_CUR)
-            } catch (e: ErrnoException) {
-                throw IOException(e)
-            }
-        }
+        private fun currentPosition() = Os.lseek(pfd.fileDescriptor, 0, OsConstants.SEEK_CUR)
 
-        private fun length(): Long {
-            return try {
-                Os.fstat(pfd.fileDescriptor).st_size
-            } catch (e: ErrnoException) {
-                throw IOException(e)
-            }
-        }
+        private fun length() = Os.fstat(pfd.fileDescriptor).st_size
 
         private fun readFully(b: ByteArray, off: Int = 0, len: Int = b.size) {
             var n = 0
             while (n < len) {
-                val count = try {
-                    Os.read(pfd.fileDescriptor, b, off + n, len - n)
-                } catch (e: ErrnoException) {
-                    throw IOException(e)
-                }
+                val count = Os.read(pfd.fileDescriptor, b, off + n, len - n)
                 if (count < 0) throw EOFException()
                 n += count
             }
@@ -488,8 +431,10 @@ class CbzFile(var book: Book) {
 
             repeat(count) {
                 readFully(ebs)
-                if (readLeInt(ebs, 0) != ZipConstants.CENSIG.toInt())
-                    throw ZipException("Wrong Central Directory signature")
+                if (readLeInt(
+                        ebs, 0
+                    ) != ZipConstants.CENSIG.toInt()
+                ) throw ZipException("Wrong Central Directory signature")
 
                 val method = readLeShort(ebs, ZipConstants.CENHOW)
                 val dostime = readLeInt(ebs, ZipConstants.CENTIM)
@@ -529,13 +474,7 @@ class CbzFile(var book: Book) {
 
         private val entryOffsets = HashMap<String, Int>()
 
-        override fun getEntry(name: String): CbzEntry? {
-            return try {
-                readEntries()[name]
-            } catch (_: Exception) {
-                null
-            }
-        }
+        override fun getEntry(name: String) = readEntries()[name]
 
         override fun getInputStream(entry: CbzEntry): InputStream? {
             return try {
@@ -546,8 +485,10 @@ class CbzFile(var book: Book) {
                     val locBuf = ByteArray(ZipConstants.LOCHDR)
                     readFully(locBuf)
 
-                    if (readLeInt(locBuf, 0) != ZipConstants.LOCSIG.toInt())
-                        throw ZipException("Wrong Local header signature")
+                    if (readLeInt(
+                            locBuf, 0
+                        ) != ZipConstants.LOCSIG.toInt()
+                    ) throw ZipException("Wrong Local header signature")
 
                     val nameLen = readLeShort(locBuf, ZipConstants.LOCNAM)
                     val extraLen = readLeShort(locBuf, ZipConstants.LOCEXT)
@@ -567,36 +508,22 @@ class CbzFile(var book: Book) {
             }
         }
 
-        override fun entries(): Enumeration<out CbzEntry> {
-            return try {
-                Collections.enumeration(readEntries().values)
-            } catch (_: Exception) {
-                Collections.enumeration(emptyList())
-            }
-        }
+        override fun entries() = Collections.enumeration(readEntries().values)
 
-        override fun close() {
-            // pfd 由外部管理
-        }
+        override fun close() {}
 
         private class PartialInputStream(
-            private val pfd: ParcelFileDescriptor,
-            private var filepos: Long,
-            private val end: Long
+            private val pfd: ParcelFileDescriptor, private var filepos: Long, private val end: Long
         ) : InputStream() {
             override fun available(): Int = minOf((end - filepos).toInt(), Int.MAX_VALUE)
 
             override fun read(): Int {
                 if (filepos >= end) return -1
                 return synchronized(pfd) {
-                    try {
-                        Os.lseek(pfd.fileDescriptor, filepos++, OsConstants.SEEK_SET)
-                        val b = ByteArray(1)
-                        val count = Os.read(pfd.fileDescriptor, b, 0, 1)
-                        if (count < 0) -1 else b[0].toInt() and 0xff
-                    } catch (e: ErrnoException) {
-                        throw IOException(e)
-                    }
+                    Os.lseek(pfd.fileDescriptor, filepos++, OsConstants.SEEK_SET)
+                    val b = ByteArray(1)
+                    val count = Os.read(pfd.fileDescriptor, b, 0, 1)
+                    if (count < 0) -1 else b[0].toInt() and 0xff
                 }
             }
 
@@ -607,14 +534,10 @@ class CbzFile(var book: Book) {
                     length = (end - filepos).toInt()
                 }
                 return synchronized(pfd) {
-                    try {
-                        Os.lseek(pfd.fileDescriptor, filepos, OsConstants.SEEK_SET)
-                        val count = Os.read(pfd.fileDescriptor, b, off, length)
-                        if (count > 0) filepos += count
-                        count
-                    } catch (e: ErrnoException) {
-                        throw IOException(e)
-                    }
+                    Os.lseek(pfd.fileDescriptor, filepos, OsConstants.SEEK_SET)
+                    val count = Os.read(pfd.fileDescriptor, b, off, length)
+                    if (count > 0) filepos += count
+                    count
                 }
             }
 
@@ -637,17 +560,12 @@ class CbzFile(var book: Book) {
         }
 
         override fun getInputStream(entry: CbzEntry): InputStream? {
-            return try {
-                val dupPfd = pfd.dup()
-                Os.lseek(dupPfd.fileDescriptor, 0, OsConstants.SEEK_SET)
-                val data = ParcelFileDescriptor.AutoCloseInputStream(dupPfd).use {
-                    LibArchiveUtils.getByteArrayContent(it, entry.name)
-                }
-                data?.let { ByteArrayInputStream(it) }
-            } catch (e: Exception) {
-                AppLog.put("LocalArchiveWrapper getInputStream Error: ${e.localizedMessage}", e)
-                null
+            val dupPfd = pfd.dup()
+            Os.lseek(dupPfd.fileDescriptor, 0, OsConstants.SEEK_SET)
+            val data = ParcelFileDescriptor.AutoCloseInputStream(dupPfd).use {
+                LibArchiveUtils.getByteArrayContent(it, entry.name)
             }
+            return data?.let { ByteArrayInputStream(it) }
         }
 
         override fun entries(): Enumeration<out CbzEntry> {
@@ -657,8 +575,7 @@ class CbzFile(var book: Book) {
             return Collections.enumeration(cbzEntries)
         }
 
-        override fun close() {
-        }
+        override fun close() {}
     }
 
     internal class RemoteZipFile(
@@ -700,8 +617,10 @@ class CbzFile(var book: Book) {
             var p = 0
             return HashMap<String, EntryMetadata>(entryCount * 2).also { map ->
                 repeat(entryCount) {
-                    if (readLeInt(dir, p) != ZipConstants.CENSIG.toInt())
-                        throw IOException("Wrong Central Sig")
+                    if (readLeInt(
+                            dir, p
+                        ) != ZipConstants.CENSIG.toInt()
+                    ) throw IOException("Wrong Central Sig")
                     val nLen = readLeShort(dir, p + ZipConstants.CENNAM)
                     val eLen = readLeShort(dir, p + ZipConstants.CENEXT)
                     val cLen = readLeShort(dir, p + ZipConstants.CENCOM)
@@ -714,8 +633,7 @@ class CbzFile(var book: Book) {
                             method = readLeShort(dir, p + ZipConstants.CENHOW),
                             size = readLeInt(dir, p + ZipConstants.CENLEN).toLong() and 0xffffffffL,
                             compressedSize = readLeInt(
-                                dir,
-                                p + ZipConstants.CENSIZ
+                                dir, p + ZipConstants.CENSIZ
                             ).toLong() and 0xffffffffL,
                             time = readLeInt(dir, p + ZipConstants.CENTIM).toLong()
                         ), readLeInt(dir, p + ZipConstants.CENOFF)
@@ -728,20 +646,17 @@ class CbzFile(var book: Book) {
 
         override fun getEntry(name: String) = getMeta()[name]?.entry
         fun getEntryOffset(name: String) = getMeta()[name]?.entryOffset
-        fun preload() {
-            getMeta()
-        }
+        fun preload() = getMeta()
+
 
         fun restore(eocd: Long, central: Long, es: List<CbzImageEntry>) {
             eocdOffset = eocd; centralOffset = central
-            if (entriesMetadata == null) {
-                entriesMetadata = HashMap<String, EntryMetadata>(es.size * 2).apply {
-                    es.forEach { e ->
-                        put(e.name, EntryMetadata(e.toCbzEntry(), e.entryOffset))
-                    }
+            entriesMetadata = HashMap<String, EntryMetadata>(es.size * 2).apply {
+                es.forEach { e ->
+                    put(e.name, EntryMetadata(e.toCbzEntry(), e.entryOffset))
                 }
-                entryCount = es.size
             }
+            entryCount = es.size
         }
 
         override fun entries() = Collections.enumeration(getMeta().values.map { it.entry })
@@ -752,8 +667,10 @@ class CbzFile(var book: Book) {
 
         override fun getInputStream(entry: CbzEntry): InputStream? {
             val m = getMeta()[entry.name] ?: throw NoSuchElementException(entry.name)
-            val cSize = m.entry.compressedSize.takeIf { it <= Int.MAX_VALUE }?.toInt()
-                ?: throw IOException("Too large")
+            val cSize =
+                m.entry.compressedSize.takeIf { it <= Int.MAX_VALUE }?.toInt() ?: throw IOException(
+                    "Too large"
+                )
 
             val bis = m.dataOffset?.let { dOff ->
                 ByteArrayInputStream(webDav.readRange(dOff, cSize, fileSize))
@@ -773,8 +690,7 @@ class CbzFile(var book: Book) {
                     ByteArrayInputStream(fullData, realDataOff, cSize)
                 } else {
                     val missing = cSize - maxOf(0, dataInBuffer)
-                    val rest =
-                        webDav.readRange(entryOffset + fullData.size, missing, fileSize)
+                    val rest = webDav.readRange(entryOffset + fullData.size, missing, fileSize)
                     val combined = ByteArray(cSize)
                     if (dataInBuffer > 0) {
                         System.arraycopy(fullData, realDataOff, combined, 0, dataInBuffer)

@@ -113,8 +113,10 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         execute {
             val bookWebDav = remoteBookWebDav ?: throw NoStackTraceException("没有配置webDav")
             remoteBooks.forEach { remoteBook ->
-                val origin = BookType.webDavTag + CustomUrl(remoteBook.path)
-                    .putAttribute("serverID", bookWebDav.serverID).toString()
+                val origin = BookType.webDavTag + CustomUrl(remoteBook.path).putAttribute(
+                    "serverID",
+                    bookWebDav.serverID
+                ).toString()
 
                 val importAsImage: suspend () -> Unit = {
                     val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
@@ -136,12 +138,10 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                             bookWebDav.getWebDav(remoteBook.path),
                             remoteBook.filename,
                             remoteBook.size
-                        )
-                            ?.use { (remoteZip, entry) ->
+                        )?.use { (remoteZip, entry) ->
                                 val uri = FileBook.saveBookFile(
                                     remoteZip.getInputStream(entry)
-                                        ?: throw NoStackTraceException("获取流失败"),
-                                    entry.name
+                                        ?: throw NoStackTraceException("获取流失败"), entry.name
                                 )
                                 FileBook.importFile(uri).apply {
                                     this.origin = origin
@@ -173,29 +173,21 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
     }
 
     private fun findTxtEntryInRemoteZip(
-        webDav: WebDav,
-        name: String,
-        fileSize: Long
+        webDav: WebDav, name: String, fileSize: Long
     ): RemoteZipEntry? {
         if (fileSize <= 0) return null
         val remoteZip = CbzFile.RemoteZipFile(webDav, name, fileSize)
         return try {
             remoteZip.entries().asSequence()
-                .find { !it.isDirectory && it.name.endsWith(".txt", true) }
+                .find { !it.isDirectory && AppPattern.bookFileRegex.matches(it.name.lowercase()) }
                 ?.let { RemoteZipEntry(remoteZip, it) }
-                ?: let {
-                    remoteZip.close()
-                    null
-                }
-        } catch (_: Exception) {
+        } finally {
             remoteZip.close()
-            null
         }
     }
 
     private class RemoteZipEntry(
-        val remoteZip: CbzFile.RemoteZipFile,
-        val entry: CbzFile.CbzEntry
+        val remoteZip: CbzFile.RemoteZipFile, val entry: CbzFile.CbzEntry
     ) : AutoCloseable {
         operator fun component1() = remoteZip
         operator fun component2() = entry
