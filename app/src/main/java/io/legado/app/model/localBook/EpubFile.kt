@@ -47,17 +47,14 @@ class EpubFile(var book: Book) {
             return eFile!!
         }
 
-        @Synchronized
         override fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getEFile(book).getChapterList()
         }
 
-        @Synchronized
         override fun getContent(book: Book, chapter: BookChapter): String? {
             return getEFile(book).getContent(chapter)
         }
 
-        @Synchronized
         override fun getImage(
             book: Book,
             href: String
@@ -77,23 +74,19 @@ class EpubFile(var book: Book) {
 
     private var mCharset: Charset = Charset.defaultCharset()
 
-    /**
-     *持有引用，避免被回收
-     */
+    @Volatile
     private var fileDescriptor: ParcelFileDescriptor? = null
+
+    @Volatile
     private var epubBook: EpubBook? = null
-        get() {
-            if (field == null || fileDescriptor == null) {
-                field = readEpub()
-            }
-            return field
+        get() = field ?: synchronized(this) {
+            field ?: readEpub().also { field = it }
         }
+
+    @Volatile
     private var epubBookContents: List<Resource>? = null
-        get() {
-            if (field == null || fileDescriptor == null) {
-                field = epubBook?.contents
-            }
-            return field
+        get() = field ?: synchronized(this) {
+            field ?: epubBook?.contents?.also { field = it }
         }
 
     init {

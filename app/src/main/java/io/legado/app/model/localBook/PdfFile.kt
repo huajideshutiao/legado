@@ -46,17 +46,14 @@ class PdfFile(var book: Book) {
             getPFile(book).upBookInfo()
         }
 
-        @Synchronized
         override fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getPFile(book).getChapterList()
         }
 
-        @Synchronized
         override fun getContent(book: Book, chapter: BookChapter): String? {
             return getPFile(book).getContent(chapter)
         }
 
-        @Synchronized
         override fun getImage(book: Book, href: String): InputStream? {
             return getPFile(book).getImage(href)
         }
@@ -68,17 +65,13 @@ class PdfFile(var book: Book) {
 
     }
 
-    /**
-     *持有引用，避免被回收
-     */
+    @Volatile
     private var fileDescriptor: ParcelFileDescriptor? = null
+
+    @Volatile
     private var pdfRenderer: PdfRenderer? = null
-        get() {
-            if (field != null && fileDescriptor != null) {
-                return field
-            }
-            field = readPdf()
-            return field
+        get() = field ?: synchronized(this) {
+            field ?: readPdf().also { field = it }
         }
 
     init {
@@ -167,12 +160,12 @@ class PdfFile(var book: Book) {
 
 
     private fun getImage(href: String): InputStream? {
-        if (pdfRenderer == null) {
-            return null
-        }
+        val renderer = pdfRenderer ?: return null
         return try {
             val index = href.toInt()
-            val bitmap = openPdfPage(pdfRenderer!!, index)
+            val bitmap = synchronized(renderer) {
+                openPdfPage(renderer, index)
+            }
             if (bitmap != null) {
                 BitmapUtils.toInputStream(bitmap)
             } else {
@@ -180,7 +173,7 @@ class PdfFile(var book: Book) {
             }
 
         } catch (_: Exception) {
-            return null
+            null
         }
     }
 

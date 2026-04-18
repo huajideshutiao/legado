@@ -37,17 +37,14 @@ class MobiFile(var book: Book) {
             return mFile!!
         }
 
-        @Synchronized
         override fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getMFile(book).getChapterList()
         }
 
-        @Synchronized
         override fun getContent(book: Book, chapter: BookChapter): String? {
             return getMFile(book).getContent(chapter)
         }
 
-        @Synchronized
         override fun getImage(book: Book, href: String): InputStream? {
             return getMFile(book).getImage(href)
         }
@@ -62,13 +59,13 @@ class MobiFile(var book: Book) {
         }
     }
 
+    @Volatile
     private var fileDescriptor: ParcelFileDescriptor? = null
+
+    @Volatile
     private var mobiBook: MobiBook? = null
-        get() {
-            if (field == null || fileDescriptor == null) {
-                field = readMobi()
-            }
-            return field
+        get() = field ?: synchronized(this) {
+            field ?: readMobi().also { field = it }
         }
 
     init {

@@ -13,6 +13,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.Utf8BomUtils
 import java.io.FileNotFoundException
+import java.io.InputStream
 import java.nio.charset.Charset
 import java.util.regex.Matcher
 import java.util.regex.Pattern
@@ -22,7 +23,7 @@ import kotlin.math.min
 class TextFile(private var book: Book) {
 
     @Suppress("ConstPropertyName")
-    companion object {
+    companion object : BaseLocalBookParse {
         private val padRegex = "^[\\n\\s]+".toRegex()
         private const val txtBufferSize = 8 * 1024 * 1024
         private var textFile: TextFile? = null
@@ -37,16 +38,20 @@ class TextFile(private var book: Book) {
             return textFile!!
         }
 
+        override fun upBookInfo(book: Book) {}
+
         @Throws(FileNotFoundException::class)
-        fun getChapterList(book: Book): ArrayList<BookChapter> {
+        override fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getTextFile(book).getChapterList()
         }
 
         @Synchronized
         @Throws(FileNotFoundException::class)
-        fun getContent(book: Book, bookChapter: BookChapter): String {
-            return getTextFile(book).getContent(bookChapter)
+        override fun getContent(book: Book, chapter: BookChapter): String {
+            return getTextFile(book).getContent(chapter)
         }
+
+        override fun getImage(book: Book, href: String): InputStream? = null
 
         fun clear() {
             textFile = null

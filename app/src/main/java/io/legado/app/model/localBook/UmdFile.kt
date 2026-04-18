@@ -24,17 +24,14 @@ class UmdFile(var book: Book) {
             return uFile!!
         }
 
-        @Synchronized
         override fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getUFile(book).getChapterList()
         }
 
-        @Synchronized
         override fun getContent(book: Book, chapter: BookChapter): String? {
             return getUFile(book).getContent(chapter)
         }
 
-        @Synchronized
         override fun getImage(
             book: Book,
             href: String
@@ -54,13 +51,10 @@ class UmdFile(var book: Book) {
     }
 
 
+    @Volatile
     private var umdBook: UmdBook? = null
-        get() {
-            if (field != null) {
-                return field
-            }
-            field = readUmd()
-            return field
+        get() = field ?: synchronized(this) {
+            field ?: readUmd().also { field = it }
         }
 
     init {
