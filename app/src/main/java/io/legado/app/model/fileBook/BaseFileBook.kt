@@ -21,7 +21,7 @@ import java.io.InputStream
  *companion object interface
  *see EpubFile.kt
  */
-interface BaseLocalBookParse {
+interface BaseFileBook {
 
     fun upBookInfo(book: Book)
 

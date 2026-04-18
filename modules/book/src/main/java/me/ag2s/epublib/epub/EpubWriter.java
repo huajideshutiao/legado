@@ -167,7 +167,7 @@ public class EpubWriter {
     private void writeMimeType(ZipOutputStream resultStream) throws IOException {
         ZipEntry mimetypeZipEntry = new ZipEntry("mimetype");
         mimetypeZipEntry.setMethod(ZipEntry.STORED);
-        byte[] mimetypeBytes = MediaTypes.EPUB.name().getBytes();
+        byte[] mimetypeBytes = MediaTypes.EPUB.getName().getBytes();
         mimetypeZipEntry.setSize(mimetypeBytes.length);
         mimetypeZipEntry.setCrc(calculateCrc(mimetypeBytes));
         resultStream.putNextEntry(mimetypeZipEntry);
@@ -189,7 +189,7 @@ public class EpubWriter {
     }
 
     String getNcxMediaType() {
-        return MediaTypes.NCX.name();
+        return MediaTypes.NCX.getName();
     }
 
 

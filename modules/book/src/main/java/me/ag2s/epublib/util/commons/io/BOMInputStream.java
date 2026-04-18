@@ -229,14 +229,14 @@ public class BOMInputStream extends ProxyInputStream {
     }
 
     /**
-     * Return the BOM charset Name - {@link ByteOrderMark#charsetName()}.
+     * Return the BOM charset Name - {@link ByteOrderMark#getCharsetName()}.
      *
      * @return The BOM charset Name or null if no BOM found
      * @throws IOException if an error reading the first bytes of the stream occurs
      */
     public String getBOMCharsetName() throws IOException {
         getBOM();
-        return byteOrderMark == null ? null : byteOrderMark.charsetName();
+        return byteOrderMark == null ? null : byteOrderMark.getCharsetName();
     }
 
     /**

@@ -32,7 +32,7 @@ import java.nio.charset.Charset
 
 class EpubFile(var book: Book) {
 
-    companion object : BaseLocalBookParse {
+    companion object : BaseFileBook {
         private var eFile: EpubFile? = null
 
         @Synchronized

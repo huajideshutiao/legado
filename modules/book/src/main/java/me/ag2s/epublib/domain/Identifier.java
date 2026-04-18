@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
 import java.util.UUID;
@@ -16,7 +15,6 @@ import me.ag2s.epublib.util.StringUtil;
  */
 public class Identifier implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 955949951416391810L;
 
     @SuppressWarnings("unused")
@@ -128,8 +126,8 @@ public class Identifier implements Serializable {
     @Override
     public String toString() {
         if (StringUtil.isBlank(scheme)) {
-            return value;
+            return "" + value;
         }
-        return scheme + ":" + value;
+        return "" + scheme + ":" + value;
     }
 }

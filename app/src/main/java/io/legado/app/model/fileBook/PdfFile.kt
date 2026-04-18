@@ -22,7 +22,7 @@ import kotlin.math.ceil
 
 
 class PdfFile(var book: Book) {
-    companion object : BaseLocalBookParse {
+    companion object : BaseFileBook {
         private var pFile: PdfFile? = null
 
         /**

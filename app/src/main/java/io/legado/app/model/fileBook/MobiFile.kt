@@ -22,7 +22,7 @@ import java.io.InputStream
 
 class MobiFile(var book: Book) {
 
-    companion object : BaseLocalBookParse {
+    companion object : BaseFileBook {
         private var mFile: MobiFile? = null
         private val xmlDeclarationRegex = "<\\?xml[^>]*>".toRegex()
         private val doctypeDeclarationRegex = "<!DOCTYPE[^>]*>".toRegex()

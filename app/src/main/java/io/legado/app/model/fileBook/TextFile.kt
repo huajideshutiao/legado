@@ -23,7 +23,7 @@ import kotlin.math.min
 class TextFile(private var book: Book) {
 
     @Suppress("ConstPropertyName")
-    companion object : BaseLocalBookParse {
+    companion object : BaseFileBook {
         private val padRegex = "^[\\n\\s]+".toRegex()
         private const val txtBufferSize = 8 * 1024 * 1024
         private var textFile: TextFile? = null

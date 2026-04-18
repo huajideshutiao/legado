@@ -5,7 +5,6 @@ import android.util.Log;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Serial;
 
 import me.ag2s.epublib.util.IOUtil;
 
@@ -15,7 +14,6 @@ import me.ag2s.epublib.util.IOUtil;
  */
 public class LazyResource extends Resource {
 
-    @Serial
     private static final long serialVersionUID = 5089400472352002866L;
     private final String TAG = getClass().getName();
 
@@ -71,6 +69,15 @@ public class LazyResource extends Resource {
         } else {
             return resourceProvider.getResourceStream(this.originalHref);
         }
+    }
+
+    /**
+     * Initializes the resource by loading its data into memory.
+     *
+     * @throws IOException IOException
+     */
+    public void initialize() throws IOException {
+        getData();
     }
 
     /**

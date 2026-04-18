@@ -77,7 +77,7 @@ class CbzFile(var book: Book) {
         val entries: List<CbzImageEntry>, val eocdOffset: Long = 0, val centralOffset: Long = 0
     )
 
-    companion object : BaseLocalBookParse {
+    companion object : BaseFileBook {
         private var eFile: CbzFile? = null
 
         @Synchronized

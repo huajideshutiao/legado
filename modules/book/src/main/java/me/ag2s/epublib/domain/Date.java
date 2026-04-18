@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
@@ -16,7 +15,6 @@ import me.ag2s.epublib.epub.PackageDocumentBase;
  */
 public class Date implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 7533866830395120136L;
 
     public enum Event {
@@ -108,7 +106,7 @@ public class Date implements Serializable {
         if (event == null) {
             return dateString;
         }
-        return event + ":" + dateString;
+        return "" + event + ":" + dateString;
     }
 }
 

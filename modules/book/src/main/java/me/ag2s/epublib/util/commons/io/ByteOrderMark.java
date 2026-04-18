@@ -17,9 +17,7 @@ package me.ag2s.epublib.util.commons.io;
  * limitations under the License.
  */
 
-import java.io.Serial;
 import java.io.Serializable;
-import java.nio.charset.Charset;
 import java.util.Locale;
 
 /**
@@ -31,9 +29,8 @@ import java.util.Locale;
  * (Non-Normative)</a>
  * @since 2.0
  */
-public record ByteOrderMark(String charsetName, int... bytes) implements Serializable {
+public class ByteOrderMark implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 1L;
 
     /**
@@ -74,6 +71,9 @@ public record ByteOrderMark(String charsetName, int... bytes) implements Seriali
     @SuppressWarnings("unused")
     public static final char UTF_BOM = '\uFEFF';
 
+    private final String charsetName;
+    private final int[] bytes;
+
     /**
      * Construct a new BOM.
      *
@@ -97,12 +97,11 @@ public record ByteOrderMark(String charsetName, int... bytes) implements Seriali
     }
 
     /**
-     * Return the name of the {@link Charset} the BOM represents.
+     * Return the name of the {@link java.nio.charset.Charset} the BOM represents.
      *
      * @return the character set name
      */
-    @Override
-    public String charsetName() {
+    public String getCharsetName() {
         return charsetName;
     }
 
@@ -147,9 +146,10 @@ public record ByteOrderMark(String charsetName, int... bytes) implements Seriali
      */
     @Override
     public boolean equals(final Object obj) {
-        if (!(obj instanceof ByteOrderMark bom)) {
+        if (!(obj instanceof ByteOrderMark)) {
             return false;
         }
+        final ByteOrderMark bom = (ByteOrderMark) obj;
         if (bytes.length != bom.length()) {
             return false;
         }
@@ -165,7 +165,7 @@ public record ByteOrderMark(String charsetName, int... bytes) implements Seriali
      * Return the hashcode for this BOM.
      *
      * @return the hashcode for this BOM.
-     * @see Object#hashCode()
+     * @see java.lang.Object#hashCode()
      */
     @Override
     public int hashCode() {

@@ -1,7 +1,6 @@
 package me.ag2s.epublib.domain;
 
 
-import java.io.Serial;
 import java.io.Serializable;
 
 import me.ag2s.epublib.util.StringUtil;
@@ -13,11 +12,10 @@ import me.ag2s.epublib.util.StringUtil;
  */
 public class Author implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 6663408501416574200L;
 
-    private final String firstname;
-    private final String lastname;
+    private String firstname;
+    private String lastname;
     private Relator relator = Relator.AUTHOR;
 
     public Author(String singleName) {
@@ -33,8 +31,16 @@ public class Author implements Serializable {
         return firstname;
     }
 
+    public void setFirstname(String firstname) {
+        this.firstname = firstname;
+    }
+
     public String getLastname() {
         return lastname;
+    }
+
+    public void setLastname(String lastname) {
+        this.lastname = lastname;
     }
 
 
@@ -49,9 +55,10 @@ public class Author implements Serializable {
     }
 
     public boolean equals(Object authorObject) {
-        if (!(authorObject instanceof Author other)) {
+        if (!(authorObject instanceof Author)) {
             return false;
         }
+        Author other = (Author) authorObject;
         return StringUtil.equals(firstname, other.firstname)
                 && StringUtil.equals(lastname, other.lastname);
     }
@@ -75,4 +82,7 @@ public class Author implements Serializable {
     }
 
 
+    public void setRelator(Relator relator) {
+        this.relator = relator;
+    }
 }

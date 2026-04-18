@@ -4,7 +4,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
-import java.io.Serial;
 import java.io.Serializable;
 
 import me.ag2s.epublib.Constants;
@@ -20,7 +19,6 @@ import me.ag2s.epublib.util.commons.io.XmlStreamReader;
  */
 public class Resource implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 1043946707835004037L;
     private String id;
     private String title;

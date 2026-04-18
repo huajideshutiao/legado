@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,7 +17,6 @@ import me.ag2s.epublib.util.StringUtil;
  */
 public class Spine implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 3878483958947357246L;
     private Resource tocResource;
     private List<SpineReference> spineReferences;

@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -15,7 +14,6 @@ import java.util.List;
 public class TOCReference extends TitledResourceReference
         implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = 5787958246077042456L;
     private List<TOCReference> children;
     private static final Comparator<TOCReference> COMPARATOR_BY_TITLE_IGNORE_CASE = (tocReference1, tocReference2) -> String.CASE_INSENSITIVE_ORDER.compare(tocReference1.getTitle(), tocReference2.getTitle());

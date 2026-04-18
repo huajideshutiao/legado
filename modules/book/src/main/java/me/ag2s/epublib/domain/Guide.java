@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,6 @@ public class Guide implements Serializable {
     /**
      *
      */
-    @Serial
     private static final long serialVersionUID = -6256645339915751189L;
 
     public static final String DEFAULT_COVER_TITLE = GuideReference.COVER;

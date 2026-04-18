@@ -9,6 +9,7 @@ public class ThrowableUtils {
 
     public static @NonNull
     IOException rethrowAsIOException(Throwable throwable) throws IOException {
-        throw new IOException(throwable.getMessage(), throwable);
+        IOException newException = new IOException(throwable.getMessage(), throwable);
+        throw newException;
     }
 }

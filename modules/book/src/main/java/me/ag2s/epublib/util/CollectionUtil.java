@@ -8,23 +8,29 @@ import java.util.List;
 public class CollectionUtil {
 
     /**
-         * Wraps an Enumeration around an Iterator
-         *
-         * @param <T>
-         * @author paul.siegmann
-         */
-        private record IteratorEnumerationAdapter<T>(Iterator<T> iterator) implements Enumeration<T> {
+     * Wraps an Enumeration around an Iterator
+     *
+     * @param <T>
+     * @author paul.siegmann
+     */
+    private static class IteratorEnumerationAdapter<T> implements Enumeration<T> {
+
+        private final Iterator<T> iterator;
+
+        public IteratorEnumerationAdapter(Iterator<T> iter) {
+            this.iterator = iter;
+        }
 
         @Override
-            public boolean hasMoreElements() {
-                return iterator.hasNext();
-            }
-
-            @Override
-            public T nextElement() {
-                return iterator.next();
-            }
+        public boolean hasMoreElements() {
+            return iterator.hasNext();
         }
+
+        @Override
+        public T nextElement() {
+            return iterator.next();
+        }
+    }
 
     /**
      * Creates an Enumeration out of the given Iterator.

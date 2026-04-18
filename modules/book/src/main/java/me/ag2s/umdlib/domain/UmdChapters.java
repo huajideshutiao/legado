@@ -1,6 +1,7 @@
 package me.ag2s.umdlib.domain;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,8 +28,12 @@ public class UmdChapters {
     }
 
     private final List<byte[]> titles = new ArrayList<>();
-    public final List<Integer> contentLengths = new ArrayList<>();
-    public final ByteArrayOutputStream contents = new ByteArrayOutputStream();
+    public List<Integer> contentLengths = new ArrayList<>();
+    public ByteArrayOutputStream contents = new ByteArrayOutputStream();
+
+    public void addTitle(String s) {
+        titles.add(UmdUtils.stringToUnicodeBytes(s));
+    }
 
     public void addTitle(byte[] s) {
         titles.add(s);
@@ -36,6 +41,10 @@ public class UmdChapters {
 
     public void addContentLength(Integer integer) {
         contentLengths.add(integer);
+    }
+
+    public int getContentLength(int index) {
+        return contentLengths.get(index);
     }
 
     public byte[] getContent(int index) {
@@ -117,8 +126,8 @@ public class UmdChapters {
 
         // write each package of content
         int startPos = 0;
-        int len;
-        int left;
+        int len = 0;
+        int left = 0;
         int chunkCnt = 0;
         ByteArrayOutputStream bos = new ByteArrayOutputStream(DEFAULT_CHUNK_INIT_SIZE + 256);
         List<byte[]> chunkRbList = new ArrayList<>();
@@ -170,6 +179,27 @@ public class UmdChapters {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void addFile(File f, String title) throws IOException {
+        byte[] temp = UmdUtils.readFile(f);
+        String s = new String(temp);
+        addChapter(title, s);
+    }
+
+    public void addFile(File f) throws IOException {
+        String s = f.getName();
+        int idx = s.lastIndexOf('.');
+        if (idx >= 0) {
+            s = s.substring(0, idx);
+        }
+        addFile(f, s);
+    }
+
+    public void clearChapters() {
+        titles.clear();
+        contentLengths.clear();
+        contents.reset();
     }
 
     public int getTotalContentLen() {

@@ -2,7 +2,7 @@
 
 package me.ag2s.epublib.util.zip;
 
-public interface ZipConstants {
+interface ZipConstants {
     /* The local file header */
     int LOCHDR = 30;
     int LOCSIG = 'P' | ('K' << 8) | (3 << 16) | (4 << 24);

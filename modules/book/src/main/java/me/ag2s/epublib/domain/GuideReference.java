@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 
 import me.ag2s.epublib.util.StringUtil;
@@ -15,7 +14,6 @@ import me.ag2s.epublib.util.StringUtil;
 public class GuideReference extends TitledResourceReference
         implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = -316179702440631834L;
 
     /**

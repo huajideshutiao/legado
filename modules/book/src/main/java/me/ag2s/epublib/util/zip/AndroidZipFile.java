@@ -64,8 +64,10 @@ public class AndroidZipFile implements ZipConstants {
      * Opens a Zip file with the given name for reading.
      *
      * @throws IOException  if a i/o error occured.
+     * @throws ZipException if the file doesn't contain a valid zip
+     *                      archive.
      */
-    public AndroidZipFile(@NonNull ParcelFileDescriptor pfd, String name) throws IOException {
+    public AndroidZipFile(@NonNull ParcelFileDescriptor pfd, String name) throws ZipException, IOException {
         this.pfd = pfd;
         this.name = name;
     }
@@ -74,13 +76,32 @@ public class AndroidZipFile implements ZipConstants {
      * Opens a Zip file reading the given File.
      *
      * @throws IOException  if a i/o error occured.
+     * @throws ZipException if the file doesn't contain a valid zip
+     *                      archive.
      */
-    public AndroidZipFile(File file) throws IOException {
+    public AndroidZipFile(File file) throws ZipException, IOException {
         this.pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
         this.name = file.getPath();
     }
 
-    //    public AndroidZipFile(File file, int mode) throws ZipException, IOException {
+    /**
+     * Opens a Zip file reading the given File in the given mode.
+     * <p>
+     * If the OPEN_DELETE mode is specified, the zip file will be deleted at
+     * some time moment after it is opened. It will be deleted before the zip
+     * file is closed or the Virtual Machine exits.
+     * <p>
+     * The contents of the zip file will be accessible until it is closed.
+     * <p>
+     * The OPEN_DELETE mode is currently unimplemented in this library
+     *
+     * @param mode Must be one of OPEN_READ or OPEN_READ | OPEN_DELETE
+     * @throws IOException  if a i/o error occured.
+     * @throws ZipException if the file doesn't contain a valid zip
+     *                      archive.
+     * @since JDK1.3
+     */
+//    public AndroidZipFile(File file, int mode) throws ZipException, IOException {
 //        if ((mode & OPEN_DELETE) != 0) {
 //            throw new IllegalArgumentException
 //                    ("OPEN_DELETE mode not supported yet in net.sf.jazzlib.AndroidZipFile");
@@ -99,12 +120,12 @@ public class AndroidZipFile implements ZipConstants {
      * @throws IOException  if a i/o error occured.
      * @throws EOFException if the file ends prematurely
      */
-    private int readLeShort(DataInput di, byte[] b) throws IOException {
+    private final int readLeShort(DataInput di, byte[] b) throws IOException {
         di.readFully(b, 0, 2);
         return (b[0] & 0xff) | (b[1] & 0xff) << 8;
     }
 
-    private int readLeShort(ParcelFileDescriptor pfd, byte[] b) throws IOException {
+    private final int readLeShort(ParcelFileDescriptor pfd, byte[] b) throws IOException {
         PfdHelper.readFully(pfd, b, 0, 2);//di.readFully(b, 0, 2);
         return (b[0] & 0xff) | (b[1] & 0xff) << 8;
     }
@@ -119,13 +140,13 @@ public class AndroidZipFile implements ZipConstants {
      * @throws IOException  if a i/o error occured.
      * @throws EOFException if the file ends prematurely
      */
-    private int readLeInt(DataInput di, byte[] b) throws IOException {
+    private final int readLeInt(DataInput di, byte[] b) throws IOException {
         di.readFully(b, 0, 4);
         return ((b[0] & 0xff) | (b[1] & 0xff) << 8)
                 | ((b[2] & 0xff) | (b[3] & 0xff) << 8) << 16;
     }
 
-    private int readLeInt(ParcelFileDescriptor pfd, byte[] b) throws IOException {
+    private final int readLeInt(ParcelFileDescriptor pfd, byte[] b) throws IOException {
         PfdHelper.readFully(pfd, b, 0, 4);//di.readFully(b, 0, 4);
         return ((b[0] & 0xff) | (b[1] & 0xff) << 8)
                 | ((b[2] & 0xff) | (b[3] & 0xff) << 8) << 16;
@@ -140,7 +161,7 @@ public class AndroidZipFile implements ZipConstants {
      * @param off the offset to read from.
      * @return The value read.
      */
-    private int readLeShort(byte[] b, int off) {
+    private final int readLeShort(byte[] b, int off) {
         return (b[off] & 0xff) | (b[off + 1] & 0xff) << 8;
     }
 
@@ -152,7 +173,7 @@ public class AndroidZipFile implements ZipConstants {
      * @param off the offset to read from.
      * @return The value read.
      */
-    private int readLeInt(byte[] b, int off) {
+    private final int readLeInt(byte[] b, int off) {
         return ((b[off] & 0xff) | (b[off + 1] & 0xff) << 8)
                 | ((b[off + 2] & 0xff) | (b[off + 3] & 0xff) << 8) << 16;
     }
@@ -369,11 +390,14 @@ public class AndroidZipFile implements ZipConstants {
         int method = zipEntry.getMethod();
         InputStream is = new BufferedInputStream(new PartialInputStream
                 (pfd, start, zipEntry.getCompressedSize()));
-        return switch (method) {
-            case ZipOutputStream.STORED -> is;
-            case ZipOutputStream.DEFLATED -> new InflaterInputStream(is, new Inflater(true));
-            default -> throw new ZipException("Unknown compression method " + method);
-        };
+        switch (method) {
+            case ZipOutputStream.STORED:
+                return is;
+            case ZipOutputStream.DEFLATED:
+                return new InflaterInputStream(is, new Inflater(true));
+            default:
+                throw new ZipException("Unknown compression method " + method);
+        }
     }
 
     /**
@@ -394,25 +418,28 @@ public class AndroidZipFile implements ZipConstants {
         }
     }
 
-    private record ZipEntryEnumeration(
-            Iterator<AndroidZipEntry> elements) implements Enumeration<AndroidZipEntry> {
+    private static class ZipEntryEnumeration implements Enumeration<AndroidZipEntry> {
+        private final Iterator<AndroidZipEntry> elements;
+
+        public ZipEntryEnumeration(Iterator<AndroidZipEntry> elements) {
+            this.elements = elements;
+        }
 
         public boolean hasMoreElements() {
-                return elements.hasNext();
-            }
-
-            public AndroidZipEntry nextElement() {
-                /* We return a clone, just to be safe that the user doesn't
-                 * change the entry.
-                 */
-                return (AndroidZipEntry) (elements.next()).clone();
-            }
+            return elements.hasNext();
         }
+
+        public AndroidZipEntry nextElement() {
+            /* We return a clone, just to be safe that the user doesn't
+             * change the entry.
+             */
+            return (AndroidZipEntry) (elements.next()).clone();
+        }
+    }
 
     private static class PartialInputStream extends InputStream {
         private final ParcelFileDescriptor pfd;
-        long filepos;
-        final long end;
+        long filepos, end;
 
         public PartialInputStream(ParcelFileDescriptor pfd, long start, long len) {
             this.pfd = pfd;
@@ -446,7 +473,7 @@ public class AndroidZipFile implements ZipConstants {
                 seek(pfd, filepos);
                 int count = PfdHelper.read(pfd, b, off, len);
                 if (count > 0)
-                    filepos += count;
+                    filepos += len;
                 return count;
             }
         }

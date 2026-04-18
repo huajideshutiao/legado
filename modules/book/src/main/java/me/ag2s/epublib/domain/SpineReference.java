@@ -1,6 +1,5 @@
 package me.ag2s.epublib.domain;
 
-import java.io.Serial;
 import java.io.Serializable;
 
 
@@ -12,7 +11,6 @@ import java.io.Serializable;
  */
 public class SpineReference extends ResourceReference implements Serializable {
 
-    @Serial
     private static final long serialVersionUID = -7921609197351510248L;
     private boolean linear;//default = true;
 

@@ -66,7 +66,7 @@ public class MediaTypes {
 
     static {
         for (MediaType mediaType : mediaTypes) {
-            mediaTypesByName.put(mediaType.name(), mediaType);
+            mediaTypesByName.put(mediaType.getName(), mediaType);
         }
     }
 
@@ -87,7 +87,7 @@ public class MediaTypes {
      */
     public static MediaType determineMediaType(String filename) {
         for (MediaType mediaType : mediaTypesByName.values()) {
-            for (String extension : mediaType.extensions()) {
+            for (String extension : mediaType.getExtensions()) {
                 if (StringUtil.endsWithIgnoreCase(filename, extension)) {
                     return mediaType;
                 }
