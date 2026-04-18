@@ -197,7 +197,10 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_can_update)?.isVisible = viewModel.curBookSource != null
         menu.findItem(R.id.menu_split_long_chapter)?.isVisible =
             viewModel.bookData.value?.isLocalTxt ?: false
-        menu.findItem(R.id.menu_upload)?.isVisible = viewModel.bookData.value?.isLocal ?: false
+        val book = viewModel.bookData.value
+        menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag
+        menu.findItem(R.id.menu_download_local)?.isVisible =
+            book?.origin?.startsWith(BookType.webDavTag) == true
         menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
         return super.onMenuOpened(featureId, menu)
     }
@@ -293,6 +296,12 @@ class BookInfoActivity :
                             cancelButton()
                         }
                     } ?: upLoadBook(book)
+                }
+            }
+
+            R.id.menu_download_local -> {
+                viewModel.getBook()?.let {
+                    viewModel.downloadToLocal(it)
                 }
             }
         }

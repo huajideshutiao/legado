@@ -97,6 +97,7 @@
     <string name="web_edit_source">Web 编辑书源</string>
     <string name="offline_cache">离线缓存</string>
     <string name="offline_cache_t">离线缓存</string>
+    <string name="download_to_local">下载到本地</string>
     <string name="offline_cache_s">缓存选择的章节到本地</string>
     <string name="change_origin">换源</string>
     <string name="about_description">

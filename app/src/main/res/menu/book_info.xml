@@ -20,6 +20,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_download_local"
+        android:title="@string/download_to_local"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_refresh"
         android:title="@string/refresh"
         app:showAsAction="never" />

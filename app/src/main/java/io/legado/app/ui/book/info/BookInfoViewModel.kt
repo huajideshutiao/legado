@@ -225,6 +225,20 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         return book
     }
 
+    fun downloadToLocal(book: Book) {
+        execute {
+            if (!LocalBook.downloadRemoteBook(book)) {
+                throw Exception("下载失败，请检查网络或WebDav配置")
+            }
+        }.onSuccess {
+            context.toastOnUi("下载成功")
+            bookData.postValue(book)
+        }.onError {
+            AppLog.put("下载远程书籍<${book.name}>失败", it)
+            context.toastOnUi("下载失败: ${it.localizedMessage}")
+        }
+    }
+
     fun clearCache() {
         execute {
             BookHelp.clearCache(bookData.value!!)
