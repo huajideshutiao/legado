@@ -30,7 +30,6 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isUmd
-import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
@@ -52,7 +51,6 @@ import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
@@ -86,43 +84,35 @@ object FileBook : BaseLocalBookParse {
             throw TocEmptyException(appCtx.getString(R.string.chapter_list_empty))
         }
         val list = ArrayList(LinkedHashSet(chapters))
+        val replaceRules = ContentProcessor.get(book).getTitleReplaceRules()
+        val useReplaceRule = book.getUseReplaceRule()
         list.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
             if (bookChapter.title.isEmpty()) {
                 bookChapter.title = "无标题章节"
             }
         }
-        val replaceRules = ContentProcessor.get(book).getTitleReplaceRules()
         book.durChapterTitle = list.getOrElse(book.durChapterIndex) { list.last() }
-            .getDisplayTitle(replaceRules, book.getUseReplaceRule())
-        book.latestChapterTitle =
-            list.getOrElse(book.simulatedTotalChapterNum() - 1) { list.last() }
-                .getDisplayTitle(replaceRules, book.getUseReplaceRule())
+            .getDisplayTitle(replaceRules, useReplaceRule)
+        book.latestChapterTitle = list.last().getDisplayTitle(replaceRules, useReplaceRule)
         book.totalChapterNum = list.size
         book.latestChapterTime = System.currentTimeMillis()
         return list
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {
-        var content = try {
+        val content = try {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
             e.printOnDebug()
             "获取本地书籍内容失败\n${e.localizedMessage}".also { AppLog.put(it, e) }
-        }
-        if (book.isEpub) {
-            content ?: return null
-            if (content.indexOf('&') > -1) {
-                content = content.replace("&lt;img", "&lt; img", true)
-                return StringEscapeUtils.unescapeHtml4(content)
-            }
+        } ?: return null
+
+        if (book.isEpub && content.contains('&')) {
+            return StringEscapeUtils.unescapeHtml4(content.replace("&lt;img", "&lt; img", true))
         }
 
-        if (content.isNullOrEmpty()) {
-            return null
-        }
-
-        return content
+        return content.takeIf { it.isNotEmpty() }
     }
 
     fun getCoverPath(bookUrl: String) =
@@ -130,67 +120,67 @@ object FileBook : BaseLocalBookParse {
 
 
     /**
-     * 导入本地文件
+     * 统一核心导入逻辑
      */
-    fun importFile(uri: Uri): Book {
-        val bookUrl: String
-        //updateTime变量不要修改,否则会导致读取不到缓存
-        val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
-            if (size == 0L) throw EmptyFileException("Unexpected empty File")
-            bookUrl = this.toString()
-        }
+    private fun importBook(
+        bookUrl: String,
+        name: String,
+        author: String,
+        originName: String,
+        lastModified: Long,
+        type: Int,
+        origin: String = ""
+    ): Book {
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
-            val nameAuthor = analyzeNameAuthor(fileName)
             book = Book(
-                type = BookType.text or BookType.local,
+                type = type,
                 bookUrl = bookUrl,
-                name = nameAuthor.first,
-                author = nameAuthor.second,
-                originName = fileName,
-                latestChapterTime = updateTime,
-                order = appDb.bookDao.minOrder - 1
-            )
-            upBookInfo(book)
-            appDb.bookDao.insert(book)
-        } else {
-            deleteBook(book, false)
-            upBookInfo(book)
-            // 触发 isLocalModified
-            book.latestChapterTime = 0
-            //已有书籍说明是更新,删除原有目录
-            appDb.bookChapterDao.delByBook(bookUrl)
-        }
-        return book
-    }
-
-    fun importImageBook(
-        bookUrl: String, name: String, originName: String, lastModified: Long, origin: String = ""
-    ): Book {
-        var book = appDb.bookDao.getBook(bookUrl = bookUrl)
-        if (book == null) {
-            book = Book(
-                type = BookType.image or BookType.local,
-                bookUrl = bookUrl,
-                name = name.substringBeforeLast("."),
-                author = "",
+                name = name,
+                author = author,
                 originName = originName,
                 latestChapterTime = lastModified,
                 order = appDb.bookDao.minOrder - 1,
                 origin = origin
-            )
-            upBookInfo(book)
-            appDb.bookDao.insert(book)
+            ).apply {
+                upBookInfo(this)
+                appDb.bookDao.insert(this)
+            }
         } else {
             deleteBook(book, false)
-            book.origin = origin
-            book.originName = originName
-            book.latestChapterTime = lastModified
-            upBookInfo(book)
-            appDb.bookDao.update(book)
+            book.apply {
+                this.name = name
+                this.author = author
+                this.originName = originName
+                this.origin = origin
+                // 文本书籍更新重置时间以触发重新解析，图片书直接使用文件时间
+                this.latestChapterTime = 0
+                upBookInfo(this)
+                appDb.bookDao.update(this)
+            }
         }
         return book
     }
+
+    /**
+     * 导入本地文件
+     */
+    fun importFile(uri: Uri): Book {
+        val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
+            if (size == 0L) throw EmptyFileException("Unexpected empty File")
+        }
+        val (name, author) = analyzeNameAuthor(fileName)
+        return importBook(
+            uri.toString(), name, author, fileName, updateTime, BookType.text or BookType.local
+        )
+    }
+
+    fun importImageBook(
+        bookUrl: String, name: String, originName: String, lastModified: Long, origin: String = ""
+    ): Book = importBook(
+        bookUrl, name.substringBeforeLast("."), "", originName, lastModified,
+        BookType.image or BookType.local, origin
+    )
 
     override fun upBookInfo(book: Book) = book.getHandler().upBookInfo(book)
     override fun getImage(book: Book, href: String) = book.getHandler().getImage(book, href)
@@ -223,20 +213,18 @@ object FileBook : BaseLocalBookParse {
         val tempFileName = fileName.substringBeforeLast(".")
         var name = ""
         var author = ""
-        if (!AppConfig.bookImportFileName.isNullOrBlank()) {
+        AppConfig.bookImportFileName?.takeIf { it.isNotBlank() }?.let { jsCode ->
             try {
                 //在用户脚本后添加捕获author、name的代码，只要脚本中author、name有值就会被捕获
-                val js =
-                    AppConfig.bookImportFileName + "\nJSON.stringify({author:author,name:name})"
+                val js = "$jsCode\nJSON.stringify({author:author,name:name})"
                 //在脚本中定义如何分解文件名成书名、作者名
                 val jsonStr = RhinoScriptEngine.run {
-                    val bindings = ScriptBindings()
-                    bindings["src"] = tempFileName
+                    val bindings = ScriptBindings().apply { put("src", tempFileName) }
                     eval(js, bindings)
                 }.toString()
-                val bookMess = GSON.fromJsonObject<HashMap<String, String>>(jsonStr).getOrThrow()
-                name = bookMess["name"] ?: ""
-                author = bookMess["author"]?.takeIf { it.length != tempFileName.length } ?: ""
+                val bookMess = GSON.fromJsonObject<Map<String, String>>(jsonStr).getOrNull()
+                name = bookMess?.get("name") ?: ""
+                author = bookMess?.get("author")?.takeIf { it.length != tempFileName.length } ?: ""
             } catch (e: Exception) {
                 AppLog.put("执行导入文件名规则出错\n${e.localizedMessage}", e)
             }
@@ -245,9 +233,7 @@ object FileBook : BaseLocalBookParse {
             for (pattern in nameAuthorPatterns) {
                 pattern.matcher(tempFileName).takeIf { it.find() }?.run {
                     name = group(2)!!
-                    val group1 = group(1) ?: ""
-                    val group3 = group(3) ?: ""
-                    author = BookHelp.formatBookAuthor(group1 + group3)
+                    author = BookHelp.formatBookAuthor((group(1) ?: "") + (group(3) ?: ""))
                     return Pair(name, author)
                 }
             }
@@ -305,16 +291,12 @@ object FileBook : BaseLocalBookParse {
         inputStream: InputStream, fileName: String
     ): Uri {
         inputStream.use {
-            val defaultBookTreeUri = AppConfig.defaultBookTreeUri
-            if (defaultBookTreeUri.isNullOrBlank()) throw NoBooksDirException()
-            val treeUri = defaultBookTreeUri.toUri()
+            val treeUri = AppConfig.defaultBookTreeUri?.toUri() ?: throw NoBooksDirException()
             return if (treeUri.isContentScheme()) {
                 val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
-                var doc = treeDoc!!.findFile(fileName)
-                if (doc == null) {
-                    doc = treeDoc.createFile(FileUtils.getMimeType(fileName), fileName)
-                        ?: throw SecurityException("请重新设置书籍保存位置\nPermission Denial")
-                }
+                val doc = treeDoc?.findFile(fileName) ?: treeDoc?.createFile(
+                    FileUtils.getMimeType(fileName), fileName
+                ) ?: throw SecurityException("请重新设置书籍保存位置\nPermission Denial")
                 appCtx.contentResolver.openOutputStream(doc.uri)!!.use { oStream ->
                     it.copyTo(oStream)
                 }
@@ -327,7 +309,7 @@ object FileBook : BaseLocalBookParse {
                         it.copyTo(oStream)
                     }
                     Uri.fromFile(file)
-                } catch (e: FileNotFoundException) {
+                } catch (e: Exception) {
                     throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
                         addSuppressed(e)
                     }
@@ -342,8 +324,9 @@ object FileBook : BaseLocalBookParse {
         localBook.name = onLineBook.name.ifBlank { localBook.name }
         localBook.author = onLineBook.author.ifBlank { localBook.author }
         localBook.coverUrl = onLineBook.coverUrl
-        localBook.intro =
-            if (onLineBook.intro.isNullOrBlank()) localBook.intro else onLineBook.intro
+        if (!onLineBook.intro.isNullOrBlank()) {
+            localBook.intro = onLineBook.intro
+        }
         localBook.save()
         return localBook
     }
@@ -370,17 +353,12 @@ object FileBook : BaseLocalBookParse {
     suspend fun importOrDownloadWebFile(
         webFile: WebFile, book: Book, bookSource: io.legado.app.data.entities.BookSource?
     ): Any {
+        val fileName = book.getExportFileName(webFile.suffix)
+        val uri = saveBookFile(webFile.url, fileName, bookSource)
         return if (webFile.isSupported) {
-            val importedBook = importFile(
-                saveBookFile(
-                    webFile.url, book.getExportFileName(webFile.suffix), bookSource
-                )
-            )
-            mergeBook(importedBook, book)
+            mergeBook(importFile(uri), book)
         } else {
-            saveBookFile(
-                webFile.url, book.getExportFileName(webFile.suffix), bookSource
-            )
+            uri
         }
     }
 
@@ -388,16 +366,15 @@ object FileBook : BaseLocalBookParse {
         val url: String,
         val name: String,
     ) {
-        override fun toString(): String {
-            return name
-        }
+        override fun toString(): String = name
 
         val suffix: String = UrlUtil.getSuffix(name)
 
         val isSupported: Boolean = AppPattern.bookFileRegex.matches(name)
 
         val isSupportDecompress: Boolean = AppPattern.archiveFileRegex.matches(name)
-        val isSupportOnline: Boolean = AppPattern.archiveFileRegex.matches(name)
+
+        val isSupportOnline: Boolean = AppPattern.onlineFileRegex.matches(name)
     }
 
 }
