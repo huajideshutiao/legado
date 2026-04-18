@@ -34,14 +34,17 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
+import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -81,6 +84,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     open var curBookSource: BookSource? = null
         protected set
     val chapterListData = MutableLiveData<List<BookChapter>>()
+    val webFiles = mutableListOf<FileBook.WebFile>()
 
     /**
      * 换源成功后的初始化回调, 子类按需覆写
@@ -200,8 +204,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             }
         }
     }
-
-    protected open fun loadWebFile(book: Book) {}
 
     protected suspend fun loadChapterList(
         book: Book, runPreUpdateJs: Boolean = true
@@ -450,6 +452,27 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             }
         }.onSuccess {
             success?.invoke()
+        }
+    }
+
+    protected open fun loadWebFile(book: Book) {
+        execute {
+            webFiles.clear()
+            val fileNameNoExtension = if (book.author.isBlank()) book.name
+            else "${book.name} 作者：${book.author}"
+            book.downloadUrls!!.map {
+                val analyzeUrl = AnalyzeUrl(
+                    it, source = curBookSource,
+                    coroutineContext = currentCoroutineContext()
+                )
+                val mFileName = UrlUtil.getFileName(analyzeUrl)
+                    ?: "$fileNameNoExtension.${analyzeUrl.type}"
+                FileBook.WebFile(it, mFileName)
+            }
+        }.onError {
+            context.toastOnUi("LoadWebFileError\n${it.localizedMessage}")
+        }.onSuccess {
+            webFiles.addAll(it)
         }
     }
 }

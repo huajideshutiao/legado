@@ -22,6 +22,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
+import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isCbz
@@ -39,6 +40,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
@@ -106,8 +108,7 @@ object FileBook : BaseLocalBookParse {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
             e.printOnDebug()
-            AppLog.put("获取本地书籍内容失败\n${e.localizedMessage}", e)
-            "获取本地书籍内容失败\n${e.localizedMessage}"
+            "获取本地书籍内容失败\n${e.localizedMessage}".also { AppLog.put(it, e) }
         }
         if (book.isEpub) {
             content ?: return null
@@ -127,17 +128,6 @@ object FileBook : BaseLocalBookParse {
     fun getCoverPath(bookUrl: String) =
         FileUtils.getPath(appCtx.externalFiles, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg")
 
-
-    /**
-     * 下载在线的文件并自动导入到阅读（txt umd epub)
-     */
-    suspend fun importFileOnLine(
-        str: String,
-        fileName: String,
-        source: BaseSource? = null,
-    ): Book {
-        return importFile(saveBookFile(str, fileName, source))
-    }
 
     /**
      * 导入本地文件
@@ -206,7 +196,7 @@ object FileBook : BaseLocalBookParse {
     override fun getImage(book: Book, href: String) = book.getHandler().getImage(book, href)
 
     /* 导入压缩包内的书籍 */
-    fun importArchiveFile(
+    fun importFromArchive(
         archiveFileUri: Uri, saveFileName: String? = null, filter: ((String) -> Boolean)? = null
     ): List<Book> {
         val archiveFileDoc = FileDoc.fromUri(archiveFileUri, false)
@@ -223,16 +213,6 @@ object FileBook : BaseLocalBookParse {
                     save()
                 }
             }
-        }
-    }
-
-    /* 批量导入 支持自动导入压缩包的支持书籍 */
-    fun importFiles(uri: Uri): List<Book> {
-        val fileDoc = FileDoc.fromUri(uri, false)
-        return if (ArchiveUtils.isArchive(fileDoc.name)) {
-            importArchiveFile(uri) { it.matches(AppPattern.bookFileRegex) }
-        } else {
-            listOf(importFile(uri))
         }
     }
 
@@ -296,7 +276,7 @@ object FileBook : BaseLocalBookParse {
     }
 
     /**
-     * 下载在线的文件
+     * 下载在线的文件 (支持HTTP URL和WebDAV URL)
      */
     suspend fun saveBookFile(
         str: String,
@@ -304,11 +284,20 @@ object FileBook : BaseLocalBookParse {
         source: BaseSource? = null,
     ): Uri {
         AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
-        return saveBookFile(
+        val inputStream = if (!str.startsWith(BookType.webDavTag)) {
             AnalyzeUrl(
                 str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
-            ).getInputStreamAwait(), fileName
-        )
+            ).getInputStreamAwait()
+        } else {
+            val webdav: WebDav = kotlin.runCatching {
+                WebDav.fromPath(str)
+            }.getOrElse {
+                AppWebDav.authorization?.let { WebDav(str, it) }
+                    ?: throw WebDavException("Unexpected defaultBookWebDav")
+            }
+            webdav.downloadInputStream()
+        }
+        return saveBookFile(inputStream, fileName)
     }
 
     @Throws(SecurityException::class)
@@ -360,43 +349,55 @@ object FileBook : BaseLocalBookParse {
     }
 
     //下载book对应的远程文件 并更新Book
-    fun downloadRemoteBook(localBook: Book): Boolean {
-        val webDavUrl = localBook.getRemoteUrl()
+    fun downloadRemoteBook(book: Book): Boolean {
+        val webDavUrl = book.getRemoteUrl()
         if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
-        try {
-            AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
-            // 兼容旧版链接
-            val webdav: WebDav = kotlin.runCatching {
-                WebDav.fromPath(webDavUrl)
-            }.getOrElse {
-                AppWebDav.authorization?.let { WebDav(webDavUrl, it) }
-                    ?: throw WebDavException("Unexpected defaultBookWebDav")
-            }
-            val inputStream = runBlocking {
-                webdav.downloadInputStream()
-            }
-            inputStream.use {
-                if (localBook.isArchive) {
-                    // 压缩包
-                    val archiveUri = saveBookFile(it, localBook.archiveName)
-                    val newBook = importArchiveFile(archiveUri, localBook.originName) { name ->
-                        name.contains(localBook.originName)
-                    }.first()
-                    localBook.origin = newBook.origin
-                    localBook.bookUrl = newBook.bookUrl
-                } else {
-                    // txt epub pdf umd
-                    val fileUri = saveBookFile(it, localBook.originName)
-                    localBook.bookUrl = FileDoc.fromUri(fileUri, false).toString()
-                    localBook.save()
-                }
-            }
-            return true
-        } catch (e: Exception) {
-            e.printOnDebug()
-            AppLog.put("自动下载webDav书籍失败", e)
-            return false
+        val fileName = if (book.isArchive) book.archiveName else book.originName
+        val fileUri = runBlocking { saveBookFile(webDavUrl, fileName) }
+        if (book.isArchive) {
+            val newBook = importFromArchive(fileUri, book.originName) { name ->
+                name.contains(book.originName)
+            }.first()
+            book.origin = newBook.origin
+            book.bookUrl = newBook.bookUrl
+        } else {
+            book.bookUrl = FileDoc.fromUri(fileUri, false).toString()
         }
+        book.save()
+        return true
+    }
+
+    suspend fun importOrDownloadWebFile(
+        webFile: WebFile, book: Book, bookSource: io.legado.app.data.entities.BookSource?
+    ): Any {
+        return if (webFile.isSupported) {
+            val importedBook = importFile(
+                saveBookFile(
+                    webFile.url, book.getExportFileName(webFile.suffix), bookSource
+                )
+            )
+            mergeBook(importedBook, book)
+        } else {
+            saveBookFile(
+                webFile.url, book.getExportFileName(webFile.suffix), bookSource
+            )
+        }
+    }
+
+    data class WebFile(
+        val url: String,
+        val name: String,
+    ) {
+        override fun toString(): String {
+            return name
+        }
+
+        val suffix: String = UrlUtil.getSuffix(name)
+
+        val isSupported: Boolean = AppPattern.bookFileRegex.matches(name)
+
+        val isSupportDecompress: Boolean = AppPattern.archiveFileRegex.matches(name)
+        val isSupportOnline: Boolean = AppPattern.archiveFileRegex.matches(name)
     }
 
 }

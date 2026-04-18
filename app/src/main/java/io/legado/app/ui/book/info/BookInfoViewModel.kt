@@ -22,17 +22,15 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.FileBook.WebFile
 import io.legado.app.utils.ArchiveUtils
-import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 
 class BookInfoViewModel(application: Application) : BaseReadViewModel(application) {
     val bookData = MutableLiveData<Book>()
-    val webFiles = mutableListOf<WebFile>()
     val waitDialogData = MutableLiveData<Boolean>()
     val actionLive = MutableLiveData<String>()
 
@@ -57,8 +55,8 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         executeLazy(executeContext = IO) {
             if (book.isLocal && !book.isImage) {
                 book.getRemoteUrl()?.let {
-                    val bookWebDav = AppWebDav.defaultBookWebDav
-                        ?: throw NoStackTraceException("webDav没有配置")
+                    val bookWebDav =
+                        AppWebDav.defaultBookWebDav ?: throw NoStackTraceException("webDav没有配置")
                     val remoteBook = bookWebDav.getRemoteBook(it)
                     if (remoteBook == null) {
                         book.origin = BookType.localTag
@@ -97,55 +95,24 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         }
     }
 
-    override fun loadWebFile(book: Book) {
-        execute {
-            webFiles.clear()
-            val fileNameNoExtension = if (book.author.isBlank()) book.name
-            else "${book.name} 作者：${book.author}"
-            book.downloadUrls!!.map {
-                val analyzeUrl = AnalyzeUrl(
-                    it, source = curBookSource,
-                    coroutineContext = coroutineContext
-                )
-                val mFileName = UrlUtil.getFileName(analyzeUrl)
-                    ?: "${fileNameNoExtension}.${analyzeUrl.type}"
-                WebFile(it, mFileName)
-            }
-        }.onError {
-            context.toastOnUi("LoadWebFileError\n${it.localizedMessage}")
-        }.onSuccess {
-            webFiles.addAll(it)
-        }
-    }
-
     /* 导入或者下载在线文件 */
     fun <T> importOrDownloadWebFile(webFile: WebFile, success: ((T) -> Unit)?) {
-        curBookSource ?: return
         execute {
             waitDialogData.postValue(true)
-            if (webFile.isSupported) {
-                val book = FileBook.importFileOnLine(
-                    webFile.url,
-                    bookData.value!!.getExportFileName(webFile.suffix),
-                    curBookSource
-                )
-                changeToLocalBook(book)
-            } else {
-                FileBook.saveBookFile(
-                    webFile.url,
-                    bookData.value!!.getExportFileName(webFile.suffix),
-                    curBookSource
-                )
+            val result = FileBook.importOrDownloadWebFile(
+                webFile, bookData.value!!, curBookSource
+            )
+            if (result is Book) {
+                changeToLocalBook(result)
             }
+            result
         }.onSuccess {
-            @Suppress("unchecked_cast")
-            success?.invoke(it as T)
+            @Suppress("unchecked_cast") success?.invoke(it as T)
         }.onError {
             when (it) {
                 is NoBooksDirException -> actionLive.postValue("selectBooksDir")
                 else -> {
-                    AppLog.put("ImportWebFileError\n${it.localizedMessage}", it)
-                    context.toastOnUi("ImportWebFileError\n${it.localizedMessage}")
+                    AppLog.put("ImportWebFileError\n${it.localizedMessage}", it, true)
                     webFiles.remove(webFile)
                 }
             }
@@ -160,32 +127,26 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
                 AppPattern.bookFileRegex.matches(it)
             }
         }.onError {
-            AppLog.put("getArchiveEntriesName Error:\n${it.localizedMessage}", it)
-            context.toastOnUi("getArchiveEntriesName Error:\n${it.localizedMessage}")
+            AppLog.put("getArchiveEntriesName Error:\n${it.localizedMessage}", it, true)
         }.onSuccess {
             onSuccess.invoke(it)
         }
     }
 
-    fun importArchiveBook(
-        archiveFileUri: Uri,
-        archiveEntryName: String,
-        success: ((Book) -> Unit)? = null
+    fun importBookFromArchive(
+        archiveFileUri: Uri, archiveEntryName: String, success: ((Book) -> Unit)? = null
     ) {
         execute {
             val suffix = archiveEntryName.substringAfterLast(".")
-            FileBook.importArchiveFile(
-                archiveFileUri,
-                bookData.value!!.getExportFileName(suffix)
+            FileBook.importFromArchive(
+                archiveFileUri, bookData.value!!.getExportFileName(suffix)
             ) {
                 it.contains(archiveEntryName)
             }.first()
         }.onSuccess {
-            val book = changeToLocalBook(it)
-            success?.invoke(book)
+            success?.invoke(changeToLocalBook(it))
         }.onError {
-            AppLog.put("importArchiveBook Error:\n${it.localizedMessage}", it)
-            context.toastOnUi("importArchiveBook Error:\n${it.localizedMessage}")
+            AppLog.put("importArchiveBook Error:\n${it.localizedMessage}", it, true)
         }
     }
 
@@ -227,15 +188,12 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun downloadToLocal(book: Book) {
         execute {
-            if (!FileBook.downloadRemoteBook(book)) {
-                throw Exception("下载失败，请检查网络或WebDav配置")
-            }
+            FileBook.downloadRemoteBook(book)
         }.onSuccess {
             context.toastOnUi("下载成功")
             bookData.postValue(book)
         }.onError {
-            AppLog.put("下载远程书籍<${book.name}>失败", it)
-            context.toastOnUi("下载失败: ${it.localizedMessage}")
+            AppLog.put("下载远程书籍<${book.name}>失败", it, true)
         }
     }
 
@@ -265,26 +223,6 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
             inBookshelf = true
             it
         }
-    }
-
-    data class WebFile(
-        val url: String,
-        val name: String,
-    ) {
-
-        override fun toString(): String {
-            return name
-        }
-
-        // 后缀
-        val suffix: String = UrlUtil.getSuffix(name)
-
-        // txt epub umd pdf等文件
-        val isSupported: Boolean = AppPattern.bookFileRegex.matches(name)
-
-        // 压缩包形式的txt epub umd pdf文件
-        val isSupportDecompress: Boolean = AppPattern.archiveFileRegex.matches(name)
-
     }
 
 }

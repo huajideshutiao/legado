@@ -702,7 +702,7 @@ class BookInfoActivity :
                 viewModel.importOrDownloadWebFile<Uri>(webFile) { uri ->
                     viewModel.getArchiveFilesName(uri) { fileNames ->
                         if (fileNames.size == 1) {
-                            viewModel.importArchiveBook(uri, fileNames[0]) {
+                            viewModel.importBookFromArchive(uri, fileNames[0]) {
                                 onClick?.invoke(it)
                             }
                         } else {
@@ -739,7 +739,7 @@ class BookInfoActivity :
         selector(
             R.string.import_select_book, fileNames
         ) { _, name, _ ->
-            viewModel.importArchiveBook(archiveFileUri, name) {
+            viewModel.importBookFromArchive(archiveFileUri, name) {
                 success?.invoke(it)
             }
         }

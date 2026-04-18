@@ -9,7 +9,7 @@ import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.removeLocalUriCache
 import io.legado.app.model.fileBook.FileBook.downloadRemoteBook
-import io.legado.app.model.fileBook.FileBook.importArchiveFile
+import io.legado.app.model.fileBook.FileBook.importFromArchive
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.isContentScheme
 import splitties.init.appCtx
@@ -40,7 +40,7 @@ interface BaseLocalBookParse {
             val webDavUrl = book.getRemoteUrl()
             if (localArchiveUri != null) {
                 // 重新导入对应的压缩包
-                importArchiveFile(localArchiveUri, book.originName) {
+                importFromArchive(localArchiveUri, book.originName) {
                     it.contains(book.originName)
                 }.firstOrNull()?.let {
                     getBookInputStream(it)

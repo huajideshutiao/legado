@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
@@ -19,6 +20,7 @@ import io.legado.app.model.remote.RemoteBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -158,8 +160,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
 
                     ArchiveUtils.isArchive(remoteBook.filename) -> {
                         val webDav = bookWebDav.getWebDav(remoteBook.path)
-                        val fileSize =
-                            runCatching { webDav.getWebDavFile()?.size ?: 0L }.getOrDefault(0L)
+                        val fileSize = remoteBook.size
                         findTxtEntryInRemoteZip(
                             webDav,
                             remoteBook.filename,
@@ -186,7 +187,12 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     }
 
                     else -> bookWebDav.downloadRemoteBook(remoteBook).let { uri ->
-                        FileBook.importFiles(uri).forEach { book ->
+                        val fileDoc = FileDoc.fromUri(uri, false)
+                        (if (ArchiveUtils.isArchive(fileDoc.name)) {
+                            FileBook.importFromArchive(uri) { it.matches(AppPattern.bookFileRegex) }
+                        } else {
+                            listOf(FileBook.importFile(uri))
+                        }).forEach { book ->
                             book.origin = origin
                             book.save()
                         }

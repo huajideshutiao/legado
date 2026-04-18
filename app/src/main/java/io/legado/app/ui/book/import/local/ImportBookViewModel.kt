@@ -107,7 +107,7 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                     val names = ArchiveUtils.getArchiveFilesName(fileDoc.uri)
                     val hasTxt = names.any { it.lowercase().endsWith(".txt") }
                     if (hasTxt) {
-                        FileBook.importArchiveFile(fileDoc.uri) {
+                        FileBook.importFromArchive(fileDoc.uri) {
                             it.matches(bookFileRegex)
                         }
                     } else {

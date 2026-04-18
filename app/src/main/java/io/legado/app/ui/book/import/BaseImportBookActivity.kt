@@ -121,7 +121,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         fileName: String,
         onSuccess: (Book) -> Unit
     ) {
-        FileBook.importArchiveFile(fileDoc.uri, fileName) {
+        FileBook.importFromArchive(fileDoc.uri, fileName) {
             it.contains(fileName)
         }.firstOrNull()?.run {
             onSuccess.invoke(this)
