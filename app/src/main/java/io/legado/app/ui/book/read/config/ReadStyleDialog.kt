@@ -107,7 +107,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
     }
 
     private fun initViewEvent() = binding.run {
-        chineseConverter.onChanged {
+        chineseConverter.onChanged = {
             ChineseUtils.unLoad(*TransType.entries.toTypedArray())
             postEvent(EventBus.UP_CONFIG, arrayListOf(5))
         }

@@ -5,18 +5,16 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.util.AttributeSet
-import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.text.StrokeTextView
-
+import io.legado.app.utils.ChineseUtils
 
 class ChineseConverter(context: Context, attrs: AttributeSet?) : StrokeTextView(context, attrs) {
 
     private val spannableString = SpannableString("简/繁")
     private var enabledSpan: ForegroundColorSpan = ForegroundColorSpan(context.accentColor)
-    private var onChanged: (() -> Unit)? = null
+    var onChanged: (() -> Unit)? = null
 
     init {
         text = spannableString
@@ -24,7 +22,10 @@ class ChineseConverter(context: Context, attrs: AttributeSet?) : StrokeTextView(
             upUi(AppConfig.chineseConverterType)
         }
         setOnClickListener {
-            selectType()
+            ChineseUtils.showConverterSelector(context) {
+                upUi(it)
+                onChanged?.invoke()
+            }
         }
     }
 
@@ -37,17 +38,4 @@ class ChineseConverter(context: Context, attrs: AttributeSet?) : StrokeTextView(
         text = spannableString
     }
 
-    private fun selectType() {
-        context.alert(titleResource = R.string.chinese_converter) {
-            items(context.resources.getStringArray(R.array.chinese_mode).toList()) { _, i ->
-                AppConfig.chineseConverterType = i
-                upUi(i)
-                onChanged?.invoke()
-            }
-        }
-    }
-
-    fun onChanged(unit: () -> Unit) {
-        onChanged = unit
-    }
 }

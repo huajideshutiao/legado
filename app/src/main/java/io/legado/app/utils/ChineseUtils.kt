@@ -1,30 +1,41 @@
 package io.legado.app.utils
 
+import android.content.Context
 import com.github.liuyueyi.quick.transfer.ChineseUtils
+import com.github.liuyueyi.quick.transfer.ChineseUtils.loadAdditionalDict
 import com.github.liuyueyi.quick.transfer.constants.TransType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
+import io.legado.app.R
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.dialogs.alert
+
+private val T2S_EXCLUDE_LIST = listOf(
+    "槃",
+    "划槳", "列根", "雪梨", "雪糕", "多士", "起司", "芝士", "沙芬", "母音",
+    "华乐", "民乐", "晶元", "晶片", "映像", "明覆", "明瞭", "新力", "新喻",
+    "零錢", "零钱", "離線", "碟片", "模組", "桌球", "案頭", "機車", "電漿",
+    "鳳梨", "魔戒", "載入", "菲林", "整合", "變數", "解碼", "散钱", "插水",
+    "房屋", "房价", "快取", "德士", "建立", "常式", "席丹", "布殊", "布希",
+    "巴哈", "巨集", "夜学", "向量", "半形", "加彭", "列印", "函式", "全形",
+    "光碟", "介面", "乳酪", "沈船", "永珍", "演化", "牛油", "相容", "磁碟",
+    "菲林", "規則", "酵素", "雷根", "饭盒",
+    "路易斯", "非同步", "出租车", "周杰倫", "马铃薯", "馬鈴薯", "機械人", "電單車",
+    "電扶梯", "音效卡", "飆車族", "點陣圖", "個入球", "顆進球", "沃尓沃", "晶片集",
+    "斯瓦巴", "斜角巷", "战列舰", "快速面", "希特拉", "太空梭", "吐瓦魯", "吉布堤",
+    "吉布地", "史太林", "南冰洋", "区域网", "波札那", "解析度", "酷洛米", "金夏沙",
+    "魔獸紀元", "高空彈跳", "铁达尼号", "太空战士", "埃及妖后", "吉里巴斯", "附加元件",
+    "魔鬼終結者", "純文字檔案", "奇幻魔法Melody", "列支敦斯登"
+)
 
 object ChineseUtils {
 
     private var fixed = false
-    private var s2tLoaded = false
-    private var t2sLoaded = false
 
-    fun s2t(content: String): String {
-        return ChineseUtils.s2t(content)
-    }
+    fun s2t(content: String): String = ChineseUtils.s2t(content)
 
     fun t2s(content: String): String {
-        if (!fixed) {
-            fixT2sDict()
-        }
+        if (!fixed) fixT2sDict()
         return ChineseUtils.t2s(content)
-    }
-
-    fun preLoad(async: Boolean, vararg transType: TransType) {
-        ChineseUtils.preLoad(async, *transType)
     }
 
     fun unLoad(vararg transType: TransType) {
@@ -33,61 +44,53 @@ object ChineseUtils {
 
     fun fixT2sDict() {
         fixed = true
-        val excludeList = listOf(
-            "槃",
-            "划槳", "列根", "雪梨", "雪糕", "多士", "起司", "芝士", "沙芬", "母音",
-            "华乐", "民乐", "晶元", "晶片", "映像", "明覆", "明瞭", "新力", "新喻",
-            "零錢", "零钱", "離線", "碟片", "模組", "桌球", "案頭", "機車", "電漿",
-            "鳳梨", "魔戒", "載入", "菲林", "整合", "變數", "解碼", "散钱", "插水",
-            "房屋", "房价", "快取", "德士", "建立", "常式", "席丹", "布殊", "布希",
-            "巴哈", "巨集", "夜学", "向量", "半形", "加彭", "列印", "函式", "全形",
-            "光碟", "介面", "乳酪", "沈船", "永珍", "演化", "牛油", "相容", "磁碟",
-            "菲林", "規則", "酵素", "雷根", "饭盒",
-            "路易斯", "非同步", "出租车", "周杰倫", "马铃薯", "馬鈴薯", "機械人", "電單車",
-            "電扶梯", "音效卡", "飆車族", "點陣圖", "個入球", "顆進球", "沃尓沃", "晶片集",
-            "斯瓦巴", "斜角巷", "战列舰", "快速面", "希特拉", "太空梭", "吐瓦魯", "吉布堤",
-            "吉布地", "史太林", "南冰洋", "区域网", "波札那", "解析度", "酷洛米", "金夏沙",
-            "魔獸紀元", "高空彈跳", "铁达尼号", "太空战士", "埃及妖后", "吉里巴斯", "附加元件",
-            "魔鬼終結者", "純文字檔案", "奇幻魔法Melody", "列支敦斯登"
-        )
-        ChineseUtils.loadExcludeDict(TransType.TRADITIONAL_TO_SIMPLE, excludeList)
+        ChineseUtils.loadExcludeDict(TransType.TRADITIONAL_TO_SIMPLE, T2S_EXCLUDE_LIST)
     }
 
-    suspend fun loadDictFromCache(transType: TransType): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val fileName = when (transType) {
-                    TransType.SIMPLE_TO_TRADITIONAL -> "s2t.txt"
-                    TransType.TRADITIONAL_TO_SIMPLE -> "t2s.txt"
-                    else -> return@withContext false
+    fun showConverterSelector(
+        context: Context,
+        onChanged: ((Int) -> Unit)? = null
+    ) {
+        context.alert(titleResource = R.string.chinese_converter) {
+            items(context.resources.getStringArray(R.array.chinese_mode).toList()) { _, i ->
+                if (AppConfig.chineseConverterType != i) {
+                    AppConfig.chineseConverterType = i
+                    onChanged?.invoke(i)
+                    if (i > 0) {
+                        when (i) {
+                            1 -> loadDict(TransType.TRADITIONAL_TO_SIMPLE)
+                            2 -> loadDict(TransType.SIMPLE_TO_TRADITIONAL)
+                        }
+                    }
                 }
-
-                val cacheFile = RemoteAssetsUtils.getTcCachePath(fileName)
-                if (!cacheFile.exists() || cacheFile.length() == 0L) {
-                    RemoteAssetsUtils.downloadTcIfNeeded(fileName) ?: return@withContext false
-                }
-
-                loadDictFromFile(transType, cacheFile)
-            } catch (e: Exception) {
-                false
             }
         }
     }
 
-    private fun loadDictFromFile(transType: TransType, file: File): Boolean {
-        return try {
-            val lines = file.readLines()
-            val dict = mutableMapOf<String, String>()
-            for (line in lines) {
-                val parts = line.split("=")
-                if (parts.size == 2) {
-                    dict[parts[0]] = parts[1]
+    fun loadDict(transType: TransType) {
+        when (transType) {
+            TransType.SIMPLE_TO_TRADITIONAL -> loadDictFile(transType, "s2t.txt")
+            TransType.TRADITIONAL_TO_SIMPLE -> {
+                loadDictFile(transType, "t2s.txt")
+                loadDictFile(transType, "t2hk.txt")
+                loadDictFile(transType, "t2tw.txt")
+            }
+
+            else -> Unit
+        }
+    }
+
+    private fun loadDictFile(transType: TransType, fileName: String) {
+        Coroutine.async {
+            RemoteAssetsUtils.downloadTcIfNeeded(fileName)?.let { bytes ->
+                runCatching {
+                    bytes.inputStream().bufferedReader().useLines { lines ->
+                        lines.mapNotNull { line ->
+                            line.split("=").takeIf { it.size == 2 }?.let { it[0] to it[1] }
+                        }.toMap()
+                    }.let { loadAdditionalDict(transType, it) }
                 }
             }
-            ChineseUtils.loadAdditionalDict(transType, dict)
-            true
-        } catch (e: Exception) {
-            false
         }
     }
 

@@ -17,16 +17,13 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.Item1lineTextBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
+import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-/**
- * 起效的替换规则
- */
 class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
@@ -71,13 +68,8 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
     }
     
     private fun showChineseConvertAlert() {
-        alert(titleResource = R.string.chinese_converter) {
-            items(resources.getStringArray(R.array.chinese_mode).toList()) { _, i ->
-                if (AppConfig.chineseConverterType != i) {
-                    AppConfig.chineseConverterType = i
-                    isEdit = true
-                }
-            }
+        ChineseUtils.showConverterSelector(requireContext()) {
+            isEdit = true
         }
     }
 
