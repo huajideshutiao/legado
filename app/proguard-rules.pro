@@ -5,10 +5,13 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# 关闭混淆但保留压缩和优化
 -dontobfuscate
-# 确保优化启用，使 -assumenosideeffects 生效
--optimizationpasses 5
+-optimizationpasses 7
+-allowaccessmodification
+-mergeinterfacesaggressively
+
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
@@ -32,10 +35,7 @@
 #-verbose
 
 # 保留Annotation不混淆
--keepattributes *Annotation*,InnerClasses
-
-# 避免混淆泛型
--keepattributes Signature
+-keepattributes *Annotation*,InnerClasses,Signature
 
 # 指定混淆是采用的算法，后面的参数是一个过滤器
 # 这个过滤器是谷歌推荐的算法，一般不做更改
@@ -88,6 +88,11 @@ cn.hutool.core.util.**{*;}
 
 -keep class okhttp3.*{*;}
 -keep class okio.*{*;}
+-keepclassmembers class okhttp3.** {
+    *** protocol(...);
+}
+-dontwarn okhttp3.internal.**
+-dontwarn okio.**
 -keep class com.jayway.jsonpath.*{*;}
 
 # LiveEventBus
@@ -152,3 +157,16 @@ cn.hutool.core.util.**{*;}
 # Throwable
 -keepnames class * extends java.lang.Throwable
 -keepclassmembernames,allowobfuscation class * extends java.lang.Throwable{*;}
+
+-assumenosideeffects class kotlin.jvm.internal.Intrinsics {
+    static void checkParameterIsNotNull(java.lang.Object, java.lang.String);
+    static void checkNotNullParameter(java.lang.Object, java.lang.String);
+    static void checkExpressionValueIsNotNull(java.lang.Object, java.lang.String);
+    static void checkNotNullExpressionValue(java.lang.Object, java.lang.String);
+    static void checkReturnedValueIsNotNull(java.lang.Object, java.lang.String);
+    static void checkFieldIsNotNull(java.lang.Object, java.lang.String);
+}
+
+-dontwarn javax.annotation.**
+-dontwarn org.codehaus.**
+-dontwarn java.lang.invoke.StringConcatFactory

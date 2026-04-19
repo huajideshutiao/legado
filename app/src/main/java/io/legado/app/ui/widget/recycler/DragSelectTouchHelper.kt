@@ -26,7 +26,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.OnItemTouchListener
 import io.legado.app.BuildConfig
-import io.legado.app.utils.DebugLog
+import io.legado.app.utils.LogUtils
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -970,15 +970,15 @@ class DragSelectTouchHelper(
     private object Logger {
         private val DEBUG = BuildConfig.DEBUG
         fun d(msg: String) {
-            DebugLog.d(javaClass.name, msg)
+            LogUtils.d(javaClass.name, msg)
         }
 
         fun e(msg: String) {
-            DebugLog.e(javaClass.name, msg)
+            LogUtils.e(javaClass.name, msg)
         }
 
         fun i(msg: String) {
-            DebugLog.i(javaClass.name, msg)
+            LogUtils.d(javaClass.name, msg)
         }
 
         fun logSelectStateChange(before: Int, after: Int) {

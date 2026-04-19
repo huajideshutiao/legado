@@ -7,7 +7,6 @@ import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import com.google.android.renderscript.Toolkit
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
@@ -146,6 +145,15 @@ object BitmapUtils {
         }
     }
 
+    fun decodeBitmap(bytes: ByteArray, width: Int, height: Int): Bitmap? {
+        val op = BitmapFactory.Options()
+        op.inJustDecodeBounds = true
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, op)
+        op.inSampleSize = calculateInSampleSize(op, width, height)
+        op.inJustDecodeBounds = false
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, op)
+    }
+
     /**
      * @param options
      * @param minSideLength
@@ -233,17 +241,90 @@ object BitmapUtils {
  * 获取指定宽高的图片
  */
 fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
-    //获取新的bitmap
-    val bitmap = Toolkit.resize(this, newWidth, newHeight)
+    val bitmap = Bitmap.createScaledBitmap(this, newWidth, newHeight, true)
     recycle()
     return bitmap
 }
 
-/**
- * 高斯模糊
- */
 fun Bitmap.stackBlur(radius: Int = 8): Bitmap {
-    return Toolkit.blur(this, radius)
+    val w = this.width
+    val h = this.height
+    val pix = IntArray(w * h)
+    this.getPixels(pix, 0, w, 0, 0, w, h)
+    val r = radius.coerceIn(1, 25)
+    val wm = w - 1
+    val hm = h - 1
+    val wh = w * h
+    val div = r + r + 1
+    val dv = IntArray(256 * div)
+    for (i in dv.indices) dv[i] = i / div
+    val rBuf = IntArray(wh)
+    val gBuf = IntArray(wh)
+    val bBuf = IntArray(wh)
+    var rsum: Long
+    var gsum: Long
+    var bsum: Long
+    var p: Int
+    var yp: Int
+    var yi: Int
+    run {
+        yi = 0
+        for (y in 0 until h) {
+            rsum = 0; gsum = 0; bsum = 0
+            for (i in -r..r) {
+                p = pix[yi + wm.coerceAtMost(wm.coerceAtLeast(i))]
+                rsum += p and 0xff0000 shr 16
+                gsum += p and 0x00ff00 shr 8
+                bsum += p and 0x0000ff
+            }
+            for (x in 0 until w) {
+                rBuf[yi] = dv[rsum.toInt()]
+                gBuf[yi] = dv[gsum.toInt()]
+                bBuf[yi] = dv[bsum.toInt()]
+                val i1 = x + r + 1
+                p = pix[yi + if (i1 > wm) wm else i1]
+                rsum += (p and 0xff0000 shr 16) - (pix[yi + if (x - r < 0) 0 else x - r] and 0xff0000 shr 16)
+                gsum += (p and 0x00ff00 shr 8) - (pix[yi + if (x - r < 0) 0 else x - r] and 0x00ff00 shr 8)
+                bsum += (p and 0x0000ff) - (pix[yi + if (x - r < 0) 0 else x - r] and 0x0000ff)
+                yi++
+            }
+        }
+    }
+    run {
+        yi = 0
+        for (x in 0 until w) {
+            rsum = 0; gsum = 0; bsum = 0
+            yp = -r * w
+            for (i in -r..r) {
+                val idx = (hm.coerceAtLeast(0.coerceAtMost(yi / w + i))) * w + x
+                rsum += rBuf[idx]
+                gsum += gBuf[idx]
+                bsum += bBuf[idx]
+                yp += w
+            }
+            for (y in 0 until h) {
+                pix[yi] = pix[yi] and 0xff000000.toInt() or
+                    (dv[rsum.toInt()] shl 16) or
+                    (dv[gsum.toInt()] shl 8) or
+                    dv[bsum.toInt()]
+                val i1 = x + (y + r + 1) * w
+                val i2 = x + (y - r) * w
+                if (y + r + 1 <= hm) {
+                    rsum += rBuf[i1] - rBuf[i2]
+                    gsum += gBuf[i1] - gBuf[i2]
+                    bsum += bBuf[i1] - bBuf[i2]
+                } else {
+                    rsum += rBuf[x + hm * w] - rBuf[i2]
+                    gsum += gBuf[x + hm * w] - gBuf[i2]
+                    bsum += bBuf[x + hm * w] - bBuf[i2]
+                }
+                yi += w
+            }
+        }
+    }
+    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    out.setPixels(pix, 0, w, 0, 0, w, h)
+    return out
 }
 
 /**

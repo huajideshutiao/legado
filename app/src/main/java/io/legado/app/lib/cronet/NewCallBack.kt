@@ -24,7 +24,7 @@ class NewCallBack(originalRequest: Request, mCall: Call, readTimeoutMillis: Int)
     override fun waitForDone(urlRequest: UrlRequest): Response {
         urlRequest.start()
         startCheckCancelJob(urlRequest)
-        //DebugLog.i(javaClass.simpleName, "start ${originalRequest.method} ${originalRequest.url}")
+        //LogUtils.d(javaClass.simpleName, "start ${originalRequest.method} ${originalRequest.url}")
         return if (mCall.timeout().timeoutNanos() > 0) {
             responseFuture.get(mCall.timeout().timeoutNanos(), TimeUnit.NANOSECONDS)
         } else {

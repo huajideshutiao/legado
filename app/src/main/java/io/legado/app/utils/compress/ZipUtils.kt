@@ -1,7 +1,7 @@
 package io.legado.app.utils.compress
 
 import android.annotation.SuppressLint
-import io.legado.app.utils.DebugLog
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils.zipFile
 import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.Dispatchers.IO
@@ -332,7 +332,7 @@ object ZipUtils {
         while (entries.hasMoreElements()) {
             val entryName = (entries.nextElement() as ZipEntry).name
             if (entryName.contains("../")) {
-                DebugLog.e(javaClass.name, "entryName: $entryName is dangerous!")
+                LogUtils.e(javaClass.name, "entryName: $entryName is dangerous!")
                 paths.add(entryName)
             } else {
                 paths.add(entryName)

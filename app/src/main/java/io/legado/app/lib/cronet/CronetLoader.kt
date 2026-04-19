@@ -9,7 +9,7 @@ import androidx.annotation.Keep
 import io.legado.app.BuildConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
-import io.legado.app.utils.DebugLog
+import io.legado.app.utils.LogUtils
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
 import org.json.JSONObject
@@ -72,13 +72,13 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     override fun preDownload(onComplete: ((Boolean) -> Unit)?) {
         // 如果系统支持 HttpEngine，彻底跳过下载
         if (isHttpEngineAvailable()) {
-            DebugLog.d(javaClass.simpleName, "系统支持 HttpEngine，跳过下载 SO")
+            LogUtils.d(javaClass.simpleName, "系统支持 HttpEngine，跳过下载 SO")
             onComplete?.invoke(true)
             return
         }
         Coroutine.async {
             if (hasAvailableCronetProvider()) {
-                DebugLog.d(javaClass.simpleName, "发现可用 CronetProvider，跳过下载")
+                LogUtils.d(javaClass.simpleName, "发现可用 CronetProvider，跳过下载")
                 onComplete?.invoke(true)
                 return@async
             }
@@ -130,7 +130,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 it.isEnabled && it.name != CronetProvider.PROVIDER_NAME_FALLBACK
             }
         } catch (e: Throwable) {
-            DebugLog.d(javaClass.simpleName, "检查 CronetProvider 失败: ${e.message}")
+            LogUtils.d(javaClass.simpleName, "检查 CronetProvider 失败: ${e.message}")
             false
         }
     }

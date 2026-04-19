@@ -10,8 +10,8 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.utils.DebugLog
 import io.legado.app.utils.HtmlFormatter
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils.wordCountFormat
 import kotlinx.coroutines.currentCoroutineContext
@@ -91,7 +91,7 @@ object BookInfo {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            DebugLog.e("获取分类出错", e)
+            LogUtils.e("获取分类出错", e.stackTraceToString())
         }
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取字数")
@@ -103,7 +103,7 @@ object BookInfo {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            DebugLog.e("获取字数出错", e)
+            LogUtils.e("获取字数出错", e.stackTraceToString())
         }
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取最新章节")
@@ -115,7 +115,7 @@ object BookInfo {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            DebugLog.e("获取最新章节出错", e)
+            LogUtils.e("获取最新章节出错", e.stackTraceToString())
         }
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取简介")
@@ -127,7 +127,7 @@ object BookInfo {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            DebugLog.e("获取简介出错", e)
+            LogUtils.e("获取简介出错", e.stackTraceToString())
         }
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取封面链接")
@@ -142,7 +142,7 @@ object BookInfo {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            DebugLog.e("获取封面出错", e)
+            LogUtils.e("获取封面出错", e.stackTraceToString())
         }
         currentCoroutineContext().ensureActive()
         if (!book.isWebFile) {

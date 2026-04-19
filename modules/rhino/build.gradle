@@ -1,6 +1,4 @@
 plugins {
-    //d 'com.android.library'
-    //id 'org.jetbrains.kotlin.android'
     alias libs.plugins.android.library
     alias libs.plugins.kotlin.android
 }
@@ -35,13 +33,9 @@ android {
 }
 
 dependencies {
-//    api(fileTree(dir: 'lib', include: ['rhino-1.7.14.jar']))
     api libs.mozilla.rhino
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)
     implementation(libs.androidx.collection)
-
-//    def coroutines_version = '1.7.3'
-//    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version")
 }

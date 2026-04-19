@@ -8,6 +8,7 @@ import androidx.annotation.Keep
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.DefaultData
@@ -15,6 +16,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFolderReplace
 import io.legado.app.utils.externalCache
@@ -27,6 +29,7 @@ import io.legado.app.utils.getMeanColor
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.hexString
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
@@ -707,8 +710,24 @@ object ReadBookConfig {
                 bgDrawable = when (curBgType()) {
                     0 -> ColorDrawable(Color.parseColor(curBgStr()))
                     1 -> {
-                        val path = "bg" + File.separator + curBgStr()
-                        val bitmap = BitmapUtils.decodeAssetsBitmap(appCtx, path, width, height)
+                        val bgName = curBgStr()
+                        val cacheFile = RemoteAssetsUtils.getBgCachePath(bgName)
+                        val bitmap = if (cacheFile.exists() && cacheFile.length() > 0) {
+                            BitmapUtils.decodeBitmap(cacheFile.absolutePath, width, height)
+                        } else {
+                            Coroutine.async {
+                                val downloaded = RemoteAssetsUtils.downloadBgIfNeeded(bgName)
+                                if (downloaded != null) {
+                                    postEvent(EventBus.UP_CONFIG, arrayListOf(1))
+                                }
+                            }
+                            val previewBytes = RemoteAssetsUtils.getBgPreviewBytes(bgName)
+                            if (previewBytes != null) {
+                                BitmapUtils.decodeBitmap(previewBytes, width, height)
+                            } else {
+                                null
+                            }
+                        }
                         BitmapDrawable(resources, bitmap?.resizeAndRecycle(width, height))
                     }
 

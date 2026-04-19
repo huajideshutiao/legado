@@ -134,7 +134,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                     remoteBook.filename.endsWith(".cbz", true) -> importAsImage()
 
                     ArchiveUtils.isArchive(remoteBook.filename) -> {
-                        findTxtEntryInRemoteZip(
+                        findBookEntryInRemoteZip(
                             bookWebDav.getWebDav(remoteBook.path),
                             remoteBook.filename,
                             remoteBook.size
@@ -172,7 +172,7 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         }
     }
 
-    private fun findTxtEntryInRemoteZip(
+    private fun findBookEntryInRemoteZip(
         webDav: WebDav, name: String, fileSize: Long
     ): RemoteZipEntry? {
         if (fileSize <= 0) return null

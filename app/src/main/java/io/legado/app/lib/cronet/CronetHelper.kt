@@ -8,7 +8,7 @@ import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.cronet.CronetLoader.isHttpEngineAvailable
-import io.legado.app.utils.DebugLog
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.externalCache
 import okhttp3.Headers
 import okhttp3.MediaType
@@ -51,7 +51,7 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
         sTestTrustManager.isAccessible = true
         sTestTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
     }.onFailure {
-        DebugLog.d("Cronet", "Failed to disable cert verify: ${it.message}")
+        LogUtils.d("Cronet", "Failed to disable cert verify: ${it.message}")
     }
     val builder = if (isHttpEngineAvailable()) {
         HttpEngineNativeProvider(appCtx).createBuilder() as ExperimentalCronetEngine.Builder
@@ -70,7 +70,7 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
         builder.setLibraryLoader(CronetLoader)
         try {
             val engine = builder.build()
-            DebugLog.d("Cronet Version (Downloaded):", engine.versionString)
+            LogUtils.d("Cronet Version (Downloaded):", engine.versionString)
             return engine
         } catch (e: Throwable) {
             AppLog.put("初始化cronetEngine出错", e)

@@ -41,6 +41,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFileReplace
@@ -158,9 +159,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
                 }
             }
         }
-        requireContext().assets.list("bg")?.let {
-            adapter.setItems(it.toList())
-        }
+        adapter.setItems(RemoteAssetsUtils.getBgList())
     }
 
     @SuppressLint("InflateParams")

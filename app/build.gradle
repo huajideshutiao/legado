@@ -1,17 +1,9 @@
 plugins {
-//    id "com.android.application"
-//    id 'org.jetbrains.kotlin.android'
-//    id 'kotlin-parcelize'
-//    //id 'kotlin-kapt'
-//    id 'com.google.devtools.ksp'
-//    id "com.google.gms.google-services"
-
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
-    alias libs.plugins.google.services
 }
 apply from: 'download.gradle'
 
@@ -158,6 +150,9 @@ android {
     }
     packaging {
         resources.excludes.add('META-INF/*')
+        resources.excludes.add('kotlin/**')
+        resources.excludes.add('META-INF/versions/**')
+        resources.excludes.add('tc/*')
     }
 
     sourceSets {
@@ -175,28 +170,14 @@ android {
 }
 
 dependencies {
-    //compileOnly "com.android.tools.build:gradle:$agp_version"
-    //noinspection GradleDependency,GradlePackageUpdate
-    //coreLibraryDesugaring('com.android.tools:desugar_jdk_libs_nio:2.0.4')
     coreLibraryDesugaring(libs.desugar)
     testImplementation(libs.junit)
     androidTestImplementation(libs.bundles.androidTest)
-    //kotlin
-    //noinspection GradleDependency,DifferentStdlibGradleVersion
-    implementation(libs.kotlin.stdlib)
-    //Kotlin反射
-    //noinspection GradleDependency,DifferentStdlibGradleVersion
-    //implementation(libs.kotlin.reflect)
 
-    //协程
-    //def coroutines_version = '1.7.3'
+    implementation(libs.kotlin.stdlib)
+
     implementation(libs.bundles.coroutines)
 
-
-    //图像处理库Toolkit
-    implementation(libs.renderscript.intrinsics.replacement.toolkit)
-
-    //androidX
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)
     implementation(libs.activity.ktx)
@@ -218,92 +199,60 @@ dependencies {
     implementation(libs.lifecycle.common.java8)
     implementation(libs.lifecycle.service)
 
-    //media
     implementation(libs.media.media)
-    // For media playback using ExoPlayer
     implementation(libs.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.exoplayer.hls)
-    // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
-    // For exposing and controlling media sessions
-    //implementation "androidx.media3:media3-session:$media3_version"
 
-    //Splitties
     implementation(libs.splitties.appctx)
     implementation(libs.splitties.systemservices)
     implementation(libs.splitties.views)
 
-    //room sql语句不高亮解决方法https://issuetracker.google.com/issues/234612964#comment6
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    //kapt("androidx.room:room-compiler:$room_version")
     ksp(libs.room.compiler)
     androidTestImplementation(libs.room.testing)
 
-    //liveEventBus
     implementation(libs.liveeventbus)
 
-    //规则相关
     implementation(libs.jsoup)
     implementation(libs.json.path)
     implementation(libs.jsoupxpath)
     implementation(project(path: ':modules:book'))
     implementation(project(path: ':modules:rhino'))
 
-    //JS rhino
-
-    //网络
     implementation(libs.okhttp)
     implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
-    //implementation(libs.cronet.api)
     implementation(libs.httpengine.native.provider){
         exclude group: 'org.chromium.net'
     }
     implementation(libs.protobuf.javalite)
 
-    //Glide
     implementation(libs.glide.glide)
     implementation(libs.glide.okhttp)
     ksp(libs.glide.ksp)
     implementation libs.glide.recyclerview
 
-    //Svg
     implementation(libs.androidsvg)
-    //Glide svg plugin
     implementation(libs.glide.svg)
 
-    //webServer
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
 
-
-
-    //颜色选择
     implementation(libs.colorpicker)
 
-    //压缩解压
     implementation libs.libarchive
 
-    //apache
     implementation(libs.commons.text)
 
-    //MarkDown
     implementation(libs.markwon.core)
     implementation(libs.markwon.image.glide)
     implementation(libs.markwon.ext.tables)
     implementation(libs.markwon.html)
 
-    //转换繁体
     implementation(libs.quick.chinese.transfer.core)
 
-    //加解密类库,有些书源使用
     //noinspection GradleDependency,GradlePackageUpdate
     implementation(libs.hutool.crypto)
-
-    //LeakCanary, 内存泄露检测
-    //debugImplementation('com.squareup.leakcanary:leakcanary-android:2.7')
-
-    // 代码编辑已集成到应用内
-    //epubLib集成到应用内
 }

@@ -1,33 +1,29 @@
 package io.legado.app.utils
 
-import cn.hutool.crypto.digest.DigestUtil
-import cn.hutool.crypto.digest.Digester
 import java.io.InputStream
-import kotlin.concurrent.getOrSet
+import java.security.MessageDigest
 
-/**
- * 将字符串转化为MD5
- */
 object MD5Utils {
 
-    private val threadLocal = ThreadLocal<Digester>()
-
-    private val MD5Digester
-        get() = threadLocal.getOrSet {
-            DigestUtil.digester("MD5")
-        }
+    private fun md5(): MessageDigest = MessageDigest.getInstance("MD5")
 
     fun md5Encode(str: String?): String {
-        return MD5Digester.digestHex(str)
+        if (str == null) return ""
+        return md5().digest(str.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
     fun md5Encode(inputStream: InputStream): String {
-        return MD5Digester.digestHex(inputStream)
+        val digest = md5()
+        val buffer = ByteArray(8192)
+        var bytesRead: Int
+        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            digest.update(buffer, 0, bytesRead)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     fun md5Encode16(str: String): String {
-        var reStr = md5Encode(str)
-        reStr = reStr.substring(8, 24)
-        return reStr
+        val reStr = md5Encode(str)
+        return reStr.substring(8, 24)
     }
 }

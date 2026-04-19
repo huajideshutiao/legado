@@ -18,9 +18,9 @@ import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.ReplaceAnalyzer
-import io.legado.app.utils.DebugLog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.jsonPath
@@ -145,7 +145,7 @@ object ImportOldData {
             if (book.bookUrl.isBlank()) continue
             book.name = jsonItem.readString("$.bookInfoBean.name") ?: ""
             if (book.bookUrl in existingBooks) {
-                DebugLog.d(javaClass.name, "Found existing book: " + book.name)
+                LogUtils.d(javaClass.name, "Found existing book: " + book.name)
                 continue
             }
             book.origin = jsonItem.readString("$.tag") ?: ""

@@ -2,10 +2,15 @@ package io.legado.app.utils
 
 import com.github.liuyueyi.quick.transfer.ChineseUtils
 import com.github.liuyueyi.quick.transfer.constants.TransType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 object ChineseUtils {
 
     private var fixed = false
+    private var s2tLoaded = false
+    private var t2sLoaded = false
 
     fun s2t(content: String): String {
         return ChineseUtils.s2t(content)
@@ -46,6 +51,44 @@ object ChineseUtils {
             "魔鬼終結者", "純文字檔案", "奇幻魔法Melody", "列支敦斯登"
         )
         ChineseUtils.loadExcludeDict(TransType.TRADITIONAL_TO_SIMPLE, excludeList)
+    }
+
+    suspend fun loadDictFromCache(transType: TransType): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val fileName = when (transType) {
+                    TransType.SIMPLE_TO_TRADITIONAL -> "s2t.txt"
+                    TransType.TRADITIONAL_TO_SIMPLE -> "t2s.txt"
+                    else -> return@withContext false
+                }
+
+                val cacheFile = RemoteAssetsUtils.getTcCachePath(fileName)
+                if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                    RemoteAssetsUtils.downloadTcIfNeeded(fileName) ?: return@withContext false
+                }
+
+                loadDictFromFile(transType, cacheFile)
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    private fun loadDictFromFile(transType: TransType, file: File): Boolean {
+        return try {
+            val lines = file.readLines()
+            val dict = mutableMapOf<String, String>()
+            for (line in lines) {
+                val parts = line.split("=")
+                if (parts.size == 2) {
+                    dict[parts[0]] = parts[1]
+                }
+            }
+            ChineseUtils.loadAdditionalDict(transType, dict)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
 }

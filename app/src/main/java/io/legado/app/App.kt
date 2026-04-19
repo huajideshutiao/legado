@@ -112,10 +112,10 @@ class App : Application() {
             when (AppConfig.chineseConverterType) {
                 1 -> {
                     ChineseUtils.fixT2sDict()
-                    ChineseUtils.preLoad(true, TransType.TRADITIONAL_TO_SIMPLE)
+                    ChineseUtils.loadDictFromCache(TransType.TRADITIONAL_TO_SIMPLE)
                 }
 
-                2 -> ChineseUtils.preLoad(true, TransType.SIMPLE_TO_TRADITIONAL)
+                2 -> ChineseUtils.loadDictFromCache(TransType.SIMPLE_TO_TRADITIONAL)
             }
             //调整排序序号
             SourceHelp.adjustSortNumber()

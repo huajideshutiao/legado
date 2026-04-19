@@ -85,28 +85,29 @@ class MobiFile(var book: Book) {
     }
 
     private fun getChapterList(): ArrayList<BookChapter> {
-        return when (val book = mobiBook) {
-            is KF8Book -> getChapterListKF8(book)
-            is KF6Book -> getChapterListKF6(book)
-            else -> error("impossible condition")
-        }
-    }
-
-    private fun getChapterListKF6(kF6Book: KF6Book): ArrayList<BookChapter> {
+        val mobi = mobiBook ?: return arrayListOf()
         val chapterList = arrayListOf<BookChapter>()
-        val toc = kF6Book.toc
+        val toc = when (mobi) {
+            is KF8Book -> mobi.toc
+            is KF6Book -> mobi.toc
+            else -> return chapterList
+        }
 
-        if (kF6Book.sectionIdMap[0] == null) {
-            val section = kF6Book.sections.firstOrNull()
-            if (section != null) {
-                val chapter = BookChapter()
-                val content = kF6Book.getSectionText(section)
-                val soup = Jsoup.parse(content)
-                val title = soup.getElementsByTag("title").first()?.text() ?: "卷首"
-                chapter.bookUrl = book.bookUrl
-                chapter.title = title
-                chapter.url = "0:" + section.href
-                chapterList.add(chapter)
+        when (mobi) {
+            is KF8Book -> {
+                if (mobi.sectionIdMap[0] == null) {
+                    mobi.sections.firstOrNull { it.href.isNotEmpty() }?.let { section ->
+                        addFirstChapter(chapterList, mobi.getSectionText(section), section.href)
+                    }
+                }
+            }
+
+            is KF6Book -> {
+                if (mobi.sectionIdMap[0] == null) {
+                    mobi.sections.firstOrNull()?.let { section ->
+                        addFirstChapter(chapterList, mobi.getSectionText(section), section.href)
+                    }
+                }
             }
         }
 
@@ -133,45 +134,16 @@ class MobiFile(var book: Book) {
         return chapterList
     }
 
-    private fun getChapterListKF8(kf8Book: KF8Book): ArrayList<BookChapter> {
-        val chapterList = arrayListOf<BookChapter>()
-        val toc = kf8Book.toc
-
-        if (kf8Book.sectionIdMap[0] == null) {
-            val section = kf8Book.sections.firstOrNull { it.href.isNotEmpty() }
-            if (section != null) {
-                val chapter = BookChapter()
-                val content = kf8Book.getSectionText(section)
-                val soup = Jsoup.parse(content)
-                val title = soup.getElementsByTag("title").first()?.text() ?: "卷首"
-                chapter.bookUrl = book.bookUrl
-                chapter.title = title
-                chapter.url = "0:" + section.href
-                chapterList.add(chapter)
-            }
-        }
-
-        fun append(ref: TOC) {
-            val chapter = BookChapter()
-            chapter.bookUrl = book.bookUrl
-            chapter.title = ref.label
-            chapter.url = "${chapterList.size}:${ref.href}"
-            chapter.isVolume = ref.subitems != null
-            val lastChapter = chapterList.lastOrNull()
-            if (lastChapter != null &&
-                lastChapter.isVolume &&
-                lastChapter.url.substringAfter(":") == chapter.url.substringAfter(":")
-            ) {
-                lastChapter.url = "skip:" + lastChapter.url
-            }
-            lastChapter?.putVariable("nextUrl", chapter.url)
-            chapterList.add(chapter)
-            ref.subitems?.forEach(::append)
-        }
-
-        toc?.forEach(::append)
-
-        return chapterList
+    private fun addFirstChapter(
+        chapterList: ArrayList<BookChapter>, content: String, href: String
+    ) {
+        val chapter = BookChapter()
+        val soup = Jsoup.parse(content)
+        val title = soup.getElementsByTag("title").first()?.text() ?: "卷首"
+        chapter.bookUrl = book.bookUrl
+        chapter.title = title
+        chapter.url = "0:$href"
+        chapterList.add(chapter)
     }
 
     private fun getContent(chapter: BookChapter): String? {
@@ -191,17 +163,12 @@ class MobiFile(var book: Book) {
         sb.append(kf6Book.getSectionText(section))
         while (true) {
             section = section.next ?: break
-            if (section.href == nextSectionHref) {
-                break
-            }
-            if (kf6Book.sectionIdMap[section.index] != null) {
-                break
-            }
+            if (section.href == nextSectionHref) break
+            if (kf6Book.sectionIdMap[section.index] != null) break
             sb.append(kf6Book.getSectionText(section))
         }
 
         val soup = Jsoup.parse(sb.toString())
-
         soup.select("title").remove()
         soup.select("[style*=display:none]").remove()
         soup.select("img[recindex]").forEach {
@@ -209,7 +176,6 @@ class MobiFile(var book: Book) {
             it.clearAttributes()
             it.attr("src", "recindex:$recindex")
         }
-
         return format(soup.outerHtml())
     }
 
@@ -222,27 +188,17 @@ class MobiFile(var book: Book) {
         val sb = StringBuilder()
         sb.append(kf8Book.getTextByHref(chapter.url, nextSectionHref))
         while (true) {
-            if (nextPos != null && section.frags.any { it.index == nextPos.fid }) {
-                break
-            }
+            if (nextPos != null && section.frags.any { it.index == nextPos.fid }) break
             section = section.next ?: break
-            if (!section.linear) {
-                continue
-            }
-            if (section.href == nextSectionHref) {
-                break
-            }
-            if (kf8Book.sectionIdMap[section.index] != null) {
-                break
-            }
+            if (!section.linear) continue
+            if (section.href == nextSectionHref) break
+            if (kf8Book.sectionIdMap[section.index] != null) break
             sb.append(kf8Book.getSectionText(section))
         }
 
         val soup = Jsoup.parse(sb.toString())
-
         soup.select("title").remove()
         soup.select("[style*=display:none]").remove()
-
         return format(soup.outerHtml())
     }
 
@@ -253,19 +209,11 @@ class MobiFile(var book: Book) {
     }
 
     private fun getImage(href: String): InputStream? {
-        return when (val book = mobiBook) {
-            is KF8Book -> getImageKF8(book, href)
-            is KF6Book -> getImageKF6(book, href)
-            else -> error("impossible condition")
+        return when (val mobi = mobiBook) {
+            is KF8Book -> mobi.getResourceByHref(href)?.inputStream()
+            is KF6Book -> mobi.getResourceByHref(href)?.inputStream()
+            else -> null
         }
-    }
-
-    private fun getImageKF6(kf6Book: KF6Book, href: String): InputStream? {
-        return kf6Book.getResourceByHref(href)?.inputStream()
-    }
-
-    private fun getImageKF8(kf8Book: KF8Book, href: String): InputStream? {
-        return kf8Book.getResourceByHref(href)?.inputStream()
     }
 
     private fun upBookCover(fastCheck: Boolean = false) {

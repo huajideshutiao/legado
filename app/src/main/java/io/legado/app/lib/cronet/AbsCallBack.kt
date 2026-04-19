@@ -5,7 +5,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.utils.DebugLog
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.asIOException
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.delay
@@ -154,7 +154,7 @@ abstract class AbsCallBack(
 
         //打印协议，用于调试
         val msg = "onResponseStarted[${info.negotiatedProtocol}][${info.httpStatusCode}]${info.url}"
-        DebugLog.i(javaClass.simpleName, msg)
+        LogUtils.d(javaClass.simpleName, msg)
         if (eventListener != null) {
             eventListener.responseHeadersEnd(mCall, response)
             eventListener.responseBodyStart(mCall)
@@ -181,7 +181,7 @@ abstract class AbsCallBack(
         callbackResults.add(CallbackResult(CallbackStep.ON_SUCCESS))
         cancelJob?.cancel()
         eventListener?.responseBodyEnd(mCall, info.receivedByteCount)
-        //DebugLog.i(javaClass.simpleName, "end[${info.negotiatedProtocol}]${info.url}")
+        //LogUtils.d(javaClass.simpleName, "end[${info.negotiatedProtocol}]${info.url}")
 
         eventListener?.callEnd(mCall)
     }
@@ -191,7 +191,7 @@ abstract class AbsCallBack(
     override fun onFailed(request: UrlRequest, info: UrlResponseInfo?, error: CronetException) {
         callbackResults.add(CallbackResult(CallbackStep.ON_FAILED, null, error))
         cancelJob?.cancel()
-        DebugLog.e(javaClass.name, error.message.toString())
+        LogUtils.e(javaClass.name, error.message.toString())
         onError(error.asIOException())
         eventListener?.callFailed(mCall, error)
         responseCallback?.onFailure(mCall, error)
@@ -211,7 +211,7 @@ abstract class AbsCallBack(
         canceled.set(true)
         callbackResults.add(CallbackResult(CallbackStep.ON_CANCELED))
         cancelJob?.cancel()
-        //DebugLog.i(javaClass.simpleName, "cancel[${info?.negotiatedProtocol}]${info?.url}")
+        //LogUtils.d(javaClass.simpleName, "cancel[${info?.negotiatedProtocol}]${info?.url}")
         eventListener?.callEnd(mCall)
         onError(IOException("Cronet Request Canceled"))
     }
@@ -288,7 +288,7 @@ abstract class AbsCallBack(
                         }
                         add(key, value)
                     } catch (_: Exception) {
-                        DebugLog.w(javaClass.name, "Invalid HTTP header/value: $key$value")
+                        LogUtils.e(javaClass.name, "Invalid HTTP header/value: $key$value")
                         // Ignore that header
                     }
                 }
