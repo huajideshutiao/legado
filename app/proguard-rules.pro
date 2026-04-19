@@ -8,7 +8,6 @@
 -dontobfuscate
 -optimizationpasses 7
 -allowaccessmodification
--mergeinterfacesaggressively
 
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

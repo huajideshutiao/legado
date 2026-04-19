@@ -35,7 +35,6 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.AudioPlay.durCoverUrl
 import io.legado.app.model.AudioPlay.durLrcData
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
@@ -137,37 +136,21 @@ class AudioPlayService : BaseService(),
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         doDs()
         // 使用 Glide 加载图片，利用缓存机制避免重复下载
-        loadCover(AudioPlay.book?.getDisplayCover())
+        loadCover(AudioPlay.durCoverUrl ?: AudioPlay.book?.getDisplayCover())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.action?.let { action ->
             when (action) {
-                IntentAction.play -> {
-                    exoPlayer.stop()
-                    upPlayProgressJob?.cancel()
-                    pause = false
-                    position = AudioPlay.book?.durChapterPos ?: 0
-                    url = AudioPlay.durPlayUrl
-                    play()
-                }
-
-                IntentAction.playData -> {
-                    // 使用统一的 loadCover 方法加载封面，利用 Glide 缓存
-                    loadCover(durCoverUrl)
-                }
-
-                IntentAction.lrc -> {
-                    upPlayProgressForLrc()
-                }
-
-                IntentAction.playNew -> {
+                IntentAction.play, IntentAction.playNew -> {
                     exoPlayer.stop()
                     upPlayProgressJob?.cancel()
                     upPlayProgressForLrcJob?.cancel()
                     pause = false
-                    position = 0
+                    position =
+                        if (action == IntentAction.play) AudioPlay.book?.durChapterPos ?: 0 else 0
                     url = AudioPlay.durPlayUrl
+                    loadCover(AudioPlay.durCoverUrl ?: AudioPlay.book?.getDisplayCover())
                     play()
                 }
 
@@ -176,6 +159,7 @@ class AudioPlayService : BaseService(),
                     upPlayProgressJob?.cancel()
                     upPlayProgressForLrcJob?.cancel()
                     AudioPlay.status = Status.STOP
+                    AudioPlay.book?.save()
                     postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 }
 
@@ -188,6 +172,10 @@ class AudioPlayService : BaseService(),
                 IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
                 IntentAction.adjustProgress -> {
                     adjustProgress(intent.getIntExtra("position", position))
+                }
+
+                IntentAction.playData -> {
+                    loadCover(AudioPlay.durCoverUrl)
                 }
 
                 IntentAction.stop -> stopSelf()
@@ -457,6 +445,9 @@ class AudioPlayService : BaseService(),
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                if (upPlayProgressForLrcJob?.isActive != true && durLrcData?.isNotEmpty() == true) {
+                    upPlayProgressForLrc()
+                }
                 delay(1000)
             }
         }
@@ -465,20 +456,19 @@ class AudioPlayService : BaseService(),
     private fun upPlayProgressForLrc() {
         upPlayProgressForLrcJob?.cancel()
         val lrc = durLrcData ?: return
+        if (lrc.isEmpty() || lrc.last().first == -1) return
+        
         upPlayProgressForLrcJob = lifecycleScope.launch {
-            if (lrc[lrc.size - 1].first == -1) return@launch
-            var position: Int = -1
-            for (i in lrc.indices) {
-                if (lrc[i].first <= exoPlayer.currentPosition + 60) {
-                    position = i
-                } else break
-            }
-
+            var position =
+                lrc.indexOfLast { it.first <= exoPlayer.currentPosition + 60 }.coerceAtLeast(0)
             if (position != -1) postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+
             while (isActive) {
-                if (position > lrc.size - 2) break
-                if (lrc[position + 1].first <= exoPlayer.currentPosition + 60) {
-                    position += 1
+                val curLrc = durLrcData ?: break
+                if (position >= curLrc.size - 1) break
+
+                if (curLrc[position + 1].first <= exoPlayer.currentPosition + 60) {
+                    position++
                     postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                 }
                 delay(50)
@@ -719,11 +709,17 @@ class AudioPlayService : BaseService(),
      * 使用 Glide 加载图片，利用缓存机制避免重复下载
      */
     private fun loadCover(url: String?) {
-        if (url.isNullOrBlank()) return
+        val finalUrl = if (url.isNullOrBlank()) AudioPlay.book?.getDisplayCover() else url
+        if (finalUrl.isNullOrBlank()) {
+            cover = BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
+            upMediaMetadata()
+            upAudioPlayNotification()
+            return
+        }
         execute {
             // 使用 Glide 加载图片，会自动利用缓存
             ImageLoader
-                .loadBitmap(this@AudioPlayService, url)
+                .loadBitmap(this@AudioPlayService, finalUrl)
                 .submit()
                 .get()
         }.onSuccess {

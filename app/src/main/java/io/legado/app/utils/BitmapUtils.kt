@@ -7,16 +7,19 @@ import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.get
+import androidx.core.graphics.scale
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 
@@ -214,9 +217,11 @@ object BitmapUtils {
             maxNumOfPixels == -1 && minSideLength == -1 -> {
                 1
             }
+
             minSideLength == -1 -> {
                 lowerBound
             }
+
             else -> {
                 upperBound
             }
@@ -241,120 +246,272 @@ object BitmapUtils {
  * 获取指定宽高的图片
  */
 fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
-    val bitmap = Bitmap.createScaledBitmap(this, newWidth, newHeight, true)
+    val bitmap = this.scale(newWidth, newHeight)
     recycle()
     return bitmap
 }
 
-fun Bitmap.stackBlur(radius: Int = 8): Bitmap {
-    val w = this.width
-    val h = this.height
+/**
+ * 获取图片代表性颜色 (近邻采样 + 饱和度提升)
+ */
+fun Bitmap.getRepresentativeColor(): Int {
+    val w = width
+    val h = height
+
+    val samplingCount = 25
+    val stepX = (w / samplingCount).coerceAtLeast(1)
+    val stepY = (h / samplingCount).coerceAtLeast(1)
+
+    var rSum = 0L
+    var gSum = 0L
+    var bSum = 0L
+    var count = 0
+
+    val hsl = FloatArray(3)
+
+    // 步进采样，避免创建临时 Bitmap
+    for (y in 0 until h step stepY) {
+        for (x in 0 until w step stepX) {
+            val pixel = this[x, y]
+            val a = (pixel shr 24) and 0xFF
+            if (a < 128) continue // 过滤透明部分
+
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+
+            // 简单的效果优化：计算该像素的鲜艳度
+            // 只有当像素不是纯黑、纯白或纯灰色时，才赋予更高的权重，或者直接过滤
+            ColorUtils.RGBToHSL(r, g, b, hsl)
+
+            // 过滤：饱和度太低 (灰) 或 亮度太高/太低 (黑白) 的像素不计入代表色
+            if (hsl[1] < 0.1f || hsl[2] < 0.1f || hsl[2] > 0.9f) continue
+
+            rSum += r
+            gSum += g
+            bSum += b
+            count++
+        }
+    }
+
+    // 如果没有采到有效颜色（比如全是黑白），则重新以低要求采样或取中心点
+    if (count == 0) {
+        val centerPixel = this[w / 2, h / 2]
+        return centerPixel
+    }
+
+    return Color.rgb(
+        (rSum / count).toInt(),
+        (gSum / count).toInt(),
+        (bSum / count).toInt()
+    )
+}
+
+fun Bitmap.stackBlur(radius: Int = 20, maxShortSide: Int = 400): Bitmap {
+    val r = radius.coerceIn(1, 100)
+    val originalWidth = width
+    val originalHeight = height
+
+    // 1. 降采样：缩小图片以提升性能和模糊感
+    val shortSide = min(originalWidth, originalHeight)
+    val workingBitmap = if (shortSide > maxShortSide) {
+        val scale = maxShortSide.toFloat() / shortSide
+        this.scale((originalWidth * scale).toInt(), (originalHeight * scale).toInt(), false)
+    } else {
+        this.copy(config ?: Config.ARGB_8888, true)
+    }
+
+    val w = workingBitmap.width
+    val h = workingBitmap.height
     val pix = IntArray(w * h)
-    this.getPixels(pix, 0, w, 0, 0, w, h)
-    val r = radius.coerceIn(1, 25)
+    workingBitmap.getPixels(pix, 0, w, 0, 0, w, h)
+
     val wm = w - 1
     val hm = h - 1
     val wh = w * h
     val div = r + r + 1
-    val dv = IntArray(256 * div)
-    for (i in dv.indices) dv[i] = i / div
-    val rBuf = IntArray(wh)
-    val gBuf = IntArray(wh)
-    val bBuf = IntArray(wh)
-    var rsum: Long
-    var gsum: Long
-    var bsum: Long
-    var p: Int
-    var yp: Int
-    var yi: Int
-    run {
-        yi = 0
-        for (y in 0 until h) {
-            rsum = 0; gsum = 0; bsum = 0
-            for (i in -r..r) {
-                p = pix[yi + wm.coerceAtMost(wm.coerceAtLeast(i))]
-                rsum += p and 0xff0000 shr 16
-                gsum += p and 0x00ff00 shr 8
-                bsum += p and 0x0000ff
-            }
-            for (x in 0 until w) {
-                rBuf[yi] = dv[rsum.toInt()]
-                gBuf[yi] = dv[gsum.toInt()]
-                bBuf[yi] = dv[bsum.toInt()]
-                val i1 = x + r + 1
-                p = pix[yi + if (i1 > wm) wm else i1]
-                rsum += (p and 0xff0000 shr 16) - (pix[yi + if (x - r < 0) 0 else x - r] and 0xff0000 shr 16)
-                gsum += (p and 0x00ff00 shr 8) - (pix[yi + if (x - r < 0) 0 else x - r] and 0x00ff00 shr 8)
-                bsum += (p and 0x0000ff) - (pix[yi + if (x - r < 0) 0 else x - r] and 0x0000ff)
-                yi++
+
+    val rSumArr = IntArray(wh)
+    val gSumArr = IntArray(wh)
+    val bSumArr = IntArray(wh)
+    val vmin = IntArray(max(w, h))
+
+    val divSum = (div + 1 shr 1) * (div + 1 shr 1)
+    val dv = IntArray(256 * divSum)
+    for (i in 0 until 256 * divSum) dv[i] = i / divSum
+
+    var yw = 0
+    var yi = 0
+    val stack = Array(div) { IntArray(3) }
+    var stackPointer: Int
+    var stackStart: Int
+    var sir: IntArray
+    var rbs: Int
+    val r1 = r + 1
+    var rOutSum: Int
+    var gOutSum: Int
+    var bOutSum: Int
+    var rInSum: Int
+    var gInSum: Int
+    var bInSum: Int
+    var rSum: Int
+    var gSum: Int
+    var bSum: Int
+
+    for (y in 0 until h) {
+        rInSum = 0; gInSum = 0; bInSum = 0
+        rOutSum = 0; gOutSum = 0; bOutSum = 0
+        rSum = 0; gSum = 0; bSum = 0
+        for (i in -r..r) {
+            val p = pix[yi + min(wm, max(i, 0))]
+            sir = stack[i + r]
+            sir[0] = p shr 16 and 0xff
+            sir[1] = p shr 8 and 0xff
+            sir[2] = p and 0xff
+            rbs = r1 - abs(i)
+            rSum += sir[0] * rbs
+            gSum += sir[1] * rbs
+            bSum += sir[2] * rbs
+            if (i > 0) {
+                rInSum += sir[0]
+                gInSum += sir[1]
+                bInSum += sir[2]
+            } else {
+                rOutSum += sir[0]
+                gOutSum += sir[1]
+                bOutSum += sir[2]
             }
         }
-    }
-    run {
-        yi = 0
+        stackPointer = r
+
         for (x in 0 until w) {
-            rsum = 0; gsum = 0; bsum = 0
-            yp = -r * w
-            for (i in -r..r) {
-                val idx = (hm.coerceAtLeast(0.coerceAtMost(yi / w + i))) * w + x
-                rsum += rBuf[idx]
-                gsum += gBuf[idx]
-                bsum += bBuf[idx]
-                yp += w
+            rSumArr[yi] = dv[rSum]
+            gSumArr[yi] = dv[gSum]
+            bSumArr[yi] = dv[bSum]
+
+            rSum -= rOutSum
+            gSum -= gOutSum
+            bSum -= bOutSum
+
+            stackStart = stackPointer - r + div
+            sir = stack[stackStart % div]
+
+            rOutSum -= sir[0]
+            gOutSum -= sir[1]
+            bOutSum -= sir[2]
+
+            if (y == 0) vmin[x] = min(x + r + 1, wm)
+            val p = pix[yw + vmin[x]]
+
+            sir[0] = p shr 16 and 0xff
+            sir[1] = p shr 8 and 0xff
+            sir[2] = p and 0xff
+
+            rInSum += sir[0]
+            gInSum += sir[1]
+            bInSum += sir[2]
+
+            rSum += rInSum
+            gSum += gInSum
+            bSum += bInSum
+
+            stackPointer = (stackPointer + 1) % div
+            sir = stack[stackPointer % div]
+
+            rOutSum += sir[0]
+            gOutSum += sir[1]
+            bOutSum += sir[2]
+
+            rInSum -= sir[0]
+            gInSum -= sir[1]
+            bInSum -= sir[2]
+
+            yi++
+        }
+        yw += w
+    }
+
+    for (x in 0 until w) {
+        rInSum = 0; gInSum = 0; bInSum = 0
+        rOutSum = 0; gOutSum = 0; bOutSum = 0
+        rSum = 0; gSum = 0; bSum = 0
+        var yp = -r * w
+        for (i in -r..r) {
+            yi = max(0, yp) + x
+            sir = stack[i + r]
+            sir[0] = rSumArr[yi]
+            sir[1] = gSumArr[yi]
+            sir[2] = bSumArr[yi]
+            rbs = r1 - abs(i)
+            rSum += rSumArr[yi] * rbs
+            gSum += gSumArr[yi] * rbs
+            bSum += bSumArr[yi] * rbs
+            if (i > 0) {
+                rInSum += sir[0]
+                gInSum += sir[1]
+                bInSum += sir[2]
+            } else {
+                rOutSum += sir[0]
+                gOutSum += sir[1]
+                bOutSum += sir[2]
             }
-            for (y in 0 until h) {
-                pix[yi] = pix[yi] and 0xff000000.toInt() or
-                    (dv[rsum.toInt()] shl 16) or
-                    (dv[gsum.toInt()] shl 8) or
-                    dv[bsum.toInt()]
-                val i1 = x + (y + r + 1) * w
-                val i2 = x + (y - r) * w
-                if (y + r + 1 <= hm) {
-                    rsum += rBuf[i1] - rBuf[i2]
-                    gsum += gBuf[i1] - gBuf[i2]
-                    bsum += bBuf[i1] - bBuf[i2]
-                } else {
-                    rsum += rBuf[x + hm * w] - rBuf[i2]
-                    gsum += gBuf[x + hm * w] - gBuf[i2]
-                    bsum += bBuf[x + hm * w] - bBuf[i2]
-                }
-                yi += w
-            }
+            if (i < hm) yp += w
+        }
+        yi = x
+        stackPointer = r
+        for (y in 0 until h) {
+            pix[yi] = -0x1000000 and pix[yi] or (dv[rSum] shl 16) or (dv[gSum] shl 8) or dv[bSum]
+
+            rSum -= rOutSum
+            gSum -= gOutSum
+            bSum -= bOutSum
+
+            stackStart = stackPointer - r + div
+            sir = stack[stackStart % div]
+
+            rOutSum -= sir[0]
+            gOutSum -= sir[1]
+            bOutSum -= sir[2]
+
+            if (x == 0) vmin[y] = min(y + r1, hm) * w
+            val p = x + vmin[y]
+
+            sir[0] = rSumArr[p]
+            sir[1] = gSumArr[p]
+            sir[2] = bSumArr[p]
+
+            rInSum += sir[0]
+            gInSum += sir[1]
+            bInSum += sir[2]
+
+            rSum += rInSum
+            gSum += gInSum
+            bSum += bInSum
+
+            stackPointer = (stackPointer + 1) % div
+            sir = stack[stackPointer % div]
+
+            rOutSum += sir[0]
+            gOutSum += sir[1]
+            bOutSum += sir[2]
+
+            rInSum -= sir[0]
+            gInSum -= sir[1]
+            bInSum -= sir[2]
+
+            yi += w
         }
     }
-    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    out.setPixels(pix, 0, w, 0, 0, w, h)
-    return out
-}
 
-/**
- * 取平均色
- */
-fun Bitmap.getMeanColor(): Int {
-    val width: Int = this.width
-    val height: Int = this.height
-    var pixel: Int
-    var pixelSumRed = 0
-    var pixelSumBlue = 0
-    var pixelSumGreen = 0
-    for (i in 0..99) {
-        for (j in 70..99) {
-            pixel = this.getPixel(
-                (i * width / 100.toFloat()).roundToInt(),
-                (j * height / 100.toFloat()).roundToInt()
-            )
-            pixelSumRed += Color.red(pixel)
-            pixelSumGreen += Color.green(pixel)
-            pixelSumBlue += Color.blue(pixel)
-        }
+    workingBitmap.setPixels(pix, 0, w, 0, 0, w, h)
+
+    // 2. 还原：拉伸回原图大小，由于是线性拉伸，模糊感会更自然
+    return if (originalWidth != w || originalHeight != h) {
+        val result = workingBitmap.scale(originalWidth, originalHeight)
+        workingBitmap.recycle()
+        result
+    } else {
+        workingBitmap
     }
-    val averagePixelRed = pixelSumRed / 3000
-    val averagePixelBlue = pixelSumBlue / 3000
-    val averagePixelGreen = pixelSumGreen / 3000
-    return Color.rgb(
-        averagePixelRed + 3,
-        averagePixelGreen + 3,
-        averagePixelBlue + 3
-    )
-
 }
+

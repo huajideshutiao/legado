@@ -83,51 +83,32 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun upData(book: Book) {
-        if (durChapterIndex != book.durChapterIndex) {
-            AudioPlay.book = book
-            if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
-                chapterList = null
-            }
-            chapterSize = if (book.totalChapterNum != 0) book.totalChapterNum
-            else if (chapterList != null) chapterList!!.size
-            else appDb.bookChapterDao.getChapterCount(book.bookUrl)
-            simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
-            else chapterSize
-            stopPlay()
-            durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos
-            durPlayUrl = ""
-            durAudioSize = 0
-            upDurChapter()
+        if (durChapterIndex != book.durChapterIndex || this.book?.bookUrl != book.bookUrl) {
+            resetData(book)
         } else {
-            durCoverUrl?.let { callback!!.upCover(it) }
+            durCoverUrl?.let { callback?.upCover(it) }
             if (durLrcData == null) {
-                getLrcData(bookSource!!, book, durChapter!!).onSuccess {
-                    if (it.isEmpty()) return@onSuccess
-                    durLrcData = it
-                    callback!!.upLrc(it)
-                    context.startService<AudioPlayService> {
-                        action = IntentAction.lrc
+                durChapter?.let { chapter ->
+                    bookSource?.let { source ->
+                        getLrcData(source, book, chapter)
                     }
                 }
-            } else callback!!.upLrc(durLrcData!!)
+            } else {
+                callback?.upLrc(durLrcData!!)
+            }
         }
-
     }
 
     fun resetData(book: Book) {
         stop()
         status = Status.STOP
         AudioPlay.book = book
-        if (chapterList?.get(0)?.bookUrl != book.bookUrl) {
+        if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl) {
             chapterList = null
         }
         chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
-        simulatedChapterSize = if (book.readSimulating()) {
-            book.simulatedTotalChapterNum()
-        } else {
-            chapterSize
-        }
+        simulatedChapterSize =
+            if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
         bookSource = book.getBookSource()
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
@@ -249,7 +230,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         }.onSuccess {
             if (it.isEmpty()) return@onSuccess
             durLrcData = it
-            callback!!.upLrc(it)
+            callback?.upLrc(it)
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }
@@ -353,12 +334,10 @@ object AudioPlay : CoroutineScope by MainScope() {
             durChapterIndex
         )
         durAudioSize = durChapter?.end?.toInt() ?: 0
+        durLrcData = null
+        callback?.upLrc(emptyList())
         val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
-        postEvent(
-            EventBus.AUDIO_SUB_TITLE,
-            durChapter?.title ?: appCtx.getString(R.string.data_loading)
-        )
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
@@ -546,12 +525,23 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun register(context: Context) {
         activityContext = context
         callback = context as CallBack
+        if (durLrcData == null && status != Status.STOP) {
+            durChapter?.let { chapter ->
+                bookSource?.let { source ->
+                    book?.let { book ->
+                        getLrcData(source, book, chapter)
+                    }
+                }
+            }
+        }
+        postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
     fun unregister(context: Context) {
         if (activityContext === context) {
             activityContext = null
             callback = null
+            durLrcData = null
         }
         coroutineContext.cancelChildren()
     }

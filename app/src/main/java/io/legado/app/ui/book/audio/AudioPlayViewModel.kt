@@ -16,10 +16,11 @@ import kotlinx.coroutines.withContext
 class AudioPlayViewModel(application: Application) : BaseReadViewModel(application) {
     val titleData = MutableLiveData<String>()
 
-    override var curBook: Book?
-        get() = AudioPlay.book
+    override var curBook: Book? = null
+    override var inBookshelf: Boolean
+        get() = AudioPlay.inBookshelf
         set(value) {
-            AudioPlay.book = value
+            AudioPlay.inBookshelf = value
         }
     override var curBookSource: BookSource?
         get() = AudioPlay.bookSource
@@ -44,8 +45,6 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
             else resetData(curBook!!)
             titleData.postValue(book.name)
             if (status == Status.STOP) loadOrUpPlayUrl()
-        }.onFinally {
-            saveRead()
         }
     }
 }

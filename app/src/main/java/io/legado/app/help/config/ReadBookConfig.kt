@@ -1,10 +1,15 @@
 package io.legado.app.help.config
 
-import android.graphics.Color
+import android.graphics.Color.blue
+import android.graphics.Color.green
+import android.graphics.Color.red
+import android.graphics.Color.rgb
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import androidx.annotation.Keep
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.get
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -25,7 +30,6 @@ import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getFile
-import io.legado.app.utils.getMeanColor
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.hexString
@@ -36,6 +40,7 @@ import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.resizeAndRecycle
 import splitties.init.appCtx
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * 阅读界面配置
@@ -110,7 +115,31 @@ object ReadBookConfig {
     fun upBg(width: Int, height: Int) {
         val drawable = durConfig.curBgDrawable(width, height)
         if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            bgMeanColor = drawable.bitmap.getMeanColor()
+            bgMeanColor = run {
+                val width: Int = drawable.bitmap.width
+                val height: Int = drawable.bitmap.height
+                var pixel: Int
+                var pixelSumRed = 0
+                var pixelSumBlue = 0
+                var pixelSumGreen = 0
+                for (i in 0..99) {
+                    for (j in 70..99) {
+                        pixel =
+                            drawable.bitmap[(i * width / 100.toFloat()).roundToInt(), (j * height / 100.toFloat()).roundToInt()]
+                        pixelSumRed += red(pixel)
+                        pixelSumGreen += green(pixel)
+                        pixelSumBlue += blue(pixel)
+                    }
+                }
+                val averagePixelRed = pixelSumRed / 3000
+                val averagePixelBlue = pixelSumBlue / 3000
+                val averagePixelGreen = pixelSumGreen / 3000
+                rgb(
+                    averagePixelRed + 3,
+                    averagePixelGreen + 3,
+                    averagePixelBlue + 3
+                )
+            }
         } else if (drawable is ColorDrawable) {
             bgMeanColor = drawable.color
         }
@@ -599,9 +628,9 @@ object ReadBookConfig {
         private var initColorInt = false
 
         private fun initColorInt() {
-            textColorIntEInk = Color.parseColor(textColorEInk)
-            textColorIntNight = Color.parseColor(textColorNight)
-            textColorInt = Color.parseColor(textColor)
+            textColorIntEInk = textColorEInk.toColorInt()
+            textColorIntNight = textColorNight.toColorInt()
+            textColorInt = textColor.toColorInt()
             initColorInt = true
         }
 
@@ -702,13 +731,13 @@ object ReadBookConfig {
 
         fun curBgDrawable(width: Int, height: Int): Drawable {
             if (width == 0 || height == 0) {
-                return ColorDrawable(appCtx.getCompatColor(R.color.background))
+                return appCtx.getCompatColor(R.color.background).toDrawable()
             }
             var bgDrawable: Drawable? = null
             val resources = appCtx.resources
             try {
                 bgDrawable = when (curBgType()) {
-                    0 -> ColorDrawable(Color.parseColor(curBgStr()))
+                    0 -> curBgStr().toColorInt().toDrawable()
                     1 -> {
                         val bgName = curBgStr()
                         val cacheFile = RemoteAssetsUtils.getBgCachePath(bgName)
@@ -728,7 +757,7 @@ object ReadBookConfig {
                                 null
                             }
                         }
-                        BitmapDrawable(resources, bitmap?.resizeAndRecycle(width, height))
+                        bitmap?.resizeAndRecycle(width, height)?.toDrawable(resources)
                     }
 
                     else -> {
@@ -737,7 +766,7 @@ object ReadBookConfig {
                             else FileUtils.getPath(appCtx.externalFiles, "bg", curBgStr())
                         }
                         val bitmap = BitmapUtils.decodeBitmap(path, width, height)
-                        BitmapDrawable(resources, bitmap?.resizeAndRecycle(width, height))
+                        bitmap?.resizeAndRecycle(width, height)?.toDrawable(resources)
                     }
                 }
             } catch (e: OutOfMemoryError) {
@@ -745,7 +774,7 @@ object ReadBookConfig {
             } catch (e: Exception) {
                 e.printOnDebug()
             }
-            return bgDrawable ?: ColorDrawable(appCtx.getCompatColor(R.color.background))
+            return bgDrawable ?: appCtx.getCompatColor(R.color.background).toDrawable()
         }
 
         fun getBgPath(bgIndex: Int): String? {

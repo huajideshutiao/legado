@@ -19,7 +19,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.CacheManager
 import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.FastBlurTransformation
+import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -94,8 +94,7 @@ object BookCover {
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        var builder = ImageLoader.load(requestManager, path, inBookshelf)
-            .apply(options)
+        var builder = ImageLoader.load(requestManager, path, inBookshelf).apply(options)
         if (onLoadFinish != null) {
             builder = builder.addListener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(
@@ -120,8 +119,7 @@ object BookCover {
                 }
             })
         }
-        return builder.error(defaultDrawable)
-            .centerCrop()
+        return builder.error(defaultDrawable).centerCrop()
     }
 
     /**
@@ -136,15 +134,15 @@ object BookCover {
     ): RequestBuilder<Drawable> {
         if (AppConfig.useDefaultCover) {
             return requestManager.load(defaultDrawable)
-                .transform(FastBlurTransformation(25), CenterCrop())
+                .transform(BlurTransformation(), CenterCrop())
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        return ImageLoader.load(requestManager, path,inBookshelf)
-            .apply(options)
-            .transform(FastBlurTransformation(), CenterCrop())
+        return ImageLoader.load(requestManager, path, inBookshelf).apply(options)
+            .error(defaultDrawable)
+            .transform(BlurTransformation(), CenterCrop())
     }
 
     fun getCoverRule(): CoverRule {
@@ -152,8 +150,7 @@ object BookCover {
     }
 
     fun getConfig(): CoverRule? {
-        return GSON.fromJsonObject<CoverRule>(CacheManager.get(coverRuleConfigKey))
-            .getOrNull()
+        return GSON.fromJsonObject<CoverRule>(CacheManager.get(coverRuleConfigKey)).getOrNull()
     }
 
     suspend fun searchCover(book: Book): String? {

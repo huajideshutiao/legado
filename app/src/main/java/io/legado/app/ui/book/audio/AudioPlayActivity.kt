@@ -1,20 +1,24 @@
 package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.TransitionDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.ImageView
 import android.widget.SeekBar
 import androidx.activity.viewModels
+import androidx.core.graphics.drawable.toBitmapOrNull
 import androidx.core.view.isGone
-import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.LinearSmoothScroller
-import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomViewTarget
+import com.bumptech.glide.request.transition.Transition
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -42,6 +46,7 @@ import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
@@ -51,10 +56,7 @@ import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.views.onLongClick
@@ -66,14 +68,12 @@ import java.util.Locale
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity :
     VMBaseActivity<ActivityAudioPlayBinding, AudioPlayViewModel>(toolBarTheme = Theme.Dark),
-    ChangeBookSourceDialog.CallBack,
-    AudioPlay.CallBack {
+    ChangeBookSourceDialog.CallBack, AudioPlay.CallBack {
 
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
     override val viewModel by viewModels<AudioPlayViewModel>()
     private val timerSliderPopup by lazy { TimerSliderPopup(this) }
     private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
-    private val adapter = LrcAdapter(mutableListOf())
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 
@@ -81,9 +81,7 @@ class AudioPlayActivity :
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
-            if (it.first != AudioPlay.book?.durChapterIndex
-                || it.second == 0
-            ) {
+            if (it.first != AudioPlay.book?.durChapterIndex || it.second == 0) {
                 AudioPlay.skipTo(it.first)
             }
         }
@@ -132,9 +130,9 @@ class AudioPlayActivity :
             R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
             R.id.menu_set_source_variable -> AudioPlay.bookSource?.showSourceVariableDialog(this)
             R.id.menu_set_book_variable -> AudioPlay.book?.showBookVariableDialog(
-                this,
-                AudioPlay.bookSource
+                this, AudioPlay.bookSource
             )
+
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 IntentData.source = it
                 sourceEditResult.launch {}
@@ -145,40 +143,12 @@ class AudioPlayActivity :
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private val scroller by lazy {
-        object : LinearSmoothScroller(this) {
-            //          override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float = 100f / displayMetrics.densityDpi
-            override fun calculateTimeForScrolling(dx: Int): Int {
-                var baseTime = super.calculateTimeForScrolling(dx)
-                if (baseTime < 300) baseTime = 4 * baseTime + 200
-                return baseTime
-            }
-
-            override fun calculateDtToFit(
-                viewStart: Int,
-                viewEnd: Int,
-                boxStart: Int,
-                boxEnd: Int,
-                snapPreference: Int
-            ): Int {
-                return ((boxEnd + boxStart) - (viewEnd + viewStart)) / 2
-            }
-        }
-    }
-
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
             AudioPlay.changePlayMode()
         }
         binding.ivCover.setOnClickListener {
             it.isGone = true
-            binding.ivLrc.post {
-                binding.ivLrc.setPadding(
-                    24.dpToPx(), binding.ivLrc.height / 2, 24.dpToPx(), binding.ivLrc.height / 2
-                )
-                scroller.targetPosition = adapter.update()
-                binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-            }
         }
 
         observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
@@ -227,41 +197,11 @@ class AudioPlayActivity :
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.llPlayMenu.applyNavigationBarPadding()
-        binding.ivLrc.post {
-            binding.ivLrc.setPadding(
-                24.dpToPx(),
-                binding.ivLrc.height / 2,
-                24.dpToPx(),
-                binding.ivLrc.height / 2
-            )
+        binding.ivLrc.setOnPlayClickListener {
+            AudioPlay.adjustProgress(it)
+            binding.ivLrc.updateProgress(it)
+            if (AudioPlay.status == Status.PAUSE) AudioPlay.resume(this)
         }
-        binding.ivLrc.layoutManager = LinearLayoutManager(this)
-        binding.ivLrc.itemAnimator = null
-        binding.ivLrc.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            private var job: Job? = null
-            private var tmp = false
-            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                when (newState) {
-                    RecyclerView.SCROLL_STATE_DRAGGING -> {
-                        tmp = true
-                        job?.cancel()
-                    }
-
-                    RecyclerView.SCROLL_STATE_IDLE -> scheduleAction()
-                }
-            }
-
-            private fun scheduleAction() {
-                job?.cancel()
-                if (tmp) tmp = false else return
-                job = CoroutineScope(lifecycle.coroutineScope.coroutineContext).launch {
-                    delay(5000)
-                    scroller.targetPosition = adapter.update()
-                    binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
-                }
-            }
-        })
-        binding.ivLrc.adapter = adapter
     }
 
     private fun updatePlayModeIcon() {
@@ -374,15 +314,13 @@ class AudioPlayActivity :
                             position = i
                         } else break
                     }
-                    binding.ivLrc.layoutManager?.scrollToPosition(position)
+                    binding.ivLrc.updateProgress(position)
                 }
             }
             binding.tvDurTime.text = it.toDurationTime()
         }
         observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
-            adapter.update(it)
-            scroller.targetPosition = it
-            binding.ivLrc.layoutManager?.startSmoothScroll(scroller)
+            binding.ivLrc.updateProgress(it)
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
@@ -406,25 +344,72 @@ class AudioPlayActivity :
 
     override fun upLrc(lrc: List<Pair<Int, String>>) {
         runOnUiThread {
-            adapter.setData(lrc)
-            binding.ivLrc.layoutManager?.scrollToPosition(0)
+            binding.ivLrc.setLrcData(lrc)
         }
     }
 
     override fun upCover(url: String) {
         runOnUiThread {
-            // 使用同一个 Glide 实例加载图片，利用缓存机制避免重复下载
             val glide = Glide.with(this)
-            val loadRequest =
-                BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-
-            // 先加载封面
-            loadRequest.placeholder(binding.ivCover.drawable).into(binding.ivCover)
-
-            // 加载模糊背景（Glide 会自动复用缓存）
+            BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+                .placeholder(binding.ivCover.drawable).into(binding.ivCover)
             BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                .placeholder(binding.ivBg.drawable).into(binding.ivBg)
+                .into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
+                    override fun onResourceCleared(p0: Drawable?) {}
+                    override fun onLoadFailed(p0: Drawable?) {}
+                    override fun onResourceReady(
+                        p0: Drawable, p1: Transition<in Drawable>?
+                    ) {
+                        if (binding.ivBg.drawable != null) {
+                            // 2. 将旧图和新图包装进 TransitionDrawable
+                            val transitionDrawable =
+                                TransitionDrawable(arrayOf(binding.ivBg.drawable, p0))
+                            transitionDrawable.isCrossFadeEnabled = true
+                            view.setImageDrawable(transitionDrawable)
+                            transitionDrawable.startTransition(300)
+                        } else {
+                            // 如果原本没图，直接显示新图
+                            view.setImageDrawable(p0)
+                        }
+                        p0.toBitmapOrNull()?.let {
+                            updateLrcColor(it)
+                        }
+                    }
+
+                })
+
         }
+    }
+
+    private fun updateLrcColor(bitmap: Bitmap) {
+        val meanColor = try {
+            bitmap.getRepresentativeColor()
+        } catch (_: Exception) {
+            return
+        }
+        val secondaryHsl = FloatArray(3)
+        androidx.core.graphics.ColorUtils.colorToHSL(meanColor, secondaryHsl)
+        val isLight = secondaryHsl[2] > 0.6f
+
+        if (isLight) {
+            secondaryHsl[2] = (secondaryHsl[2] - 0.45f).coerceAtLeast(0.3f)
+        } else {
+            secondaryHsl[2] = (secondaryHsl[2] + 0.45f).coerceAtMost(0.7f)
+        }
+        val secondaryColor = androidx.core.graphics.ColorUtils.HSLToColor(secondaryHsl)
+
+        val primaryHsl = secondaryHsl.copyOf()
+        if (isLight) {
+            primaryHsl[2] = (primaryHsl[2] - 0.35f).coerceAtLeast(0.2f)
+        } else {
+            primaryHsl[2] = (primaryHsl[2] + 0.35f).coerceAtMost(0.8f)
+        }
+        val primaryColor = androidx.core.graphics.ColorUtils.HSLToColor(primaryHsl)
+
+        binding.ivLrc.setColors(primaryColor, secondaryColor)
+        binding.playerProgress.progressTintList = ColorStateList.valueOf(primaryColor)
+        binding.playerProgress.thumbTintList = ColorStateList.valueOf(primaryColor)
+        binding.playerProgress.secondaryProgressTintList = ColorStateList.valueOf(secondaryColor)
     }
 
 }
