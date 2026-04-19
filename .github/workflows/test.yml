@@ -94,7 +94,6 @@ jobs:
           else
             typeName="共存"
             sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
-            sed 's/.release/.releaseA/'     $GITHUB_WORKSPACE/app/google-services.json -i
           fi
           echo "统一版本号"
           sed "/def version/c def version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i

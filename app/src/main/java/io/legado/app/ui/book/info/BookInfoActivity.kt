@@ -93,6 +93,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.views.onClick
+import splitties.views.onLongClick
 
 class BookInfoActivity :
     VMBaseActivity<ActivityBookInfoBinding, BookInfoViewModel>(toolBarTheme = Theme.Dark),
@@ -171,7 +172,7 @@ class BookInfoActivity :
         binding.flAction.setBackgroundColor(bottomBackground)
         binding.flAction.applyNavigationBarPadding()
         binding.tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
-        binding.tvToc.text = getString(R.string.toc_s, getString(R.string.loading))
+        binding.tvToc.text = getString(R.string.loading)
         binding.tvIntro.revealOnFocusHint = false
         viewModel.bookData.observe(this) { showBook(it) }
         viewModel.chapterListData.observe(this) { upLoading(false, it) }
@@ -360,12 +361,11 @@ class BookInfoActivity :
         applyDevFeatLayout(book)
         showCover(book)
         tvName.text = book.name
-        tvAuthor.text = getString(R.string.author_show, book.getRealAuthor())
-        tvOrigin.text = getString(R.string.origin_show, book.originName)
+        tvAuthor.text = book.getRealAuthor()
+        tvOrigin.text = book.originName
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
-        llToc?.visible(!book.isWebFile)
-        //tvToc.text = getString(R.string.toc_s, book.durChapterTitle)
+        llToc.visible(!book.isWebFile)
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
@@ -418,14 +418,12 @@ class BookInfoActivity :
             if (book.isLocal) {
                 withContext(IO) {
                     val size = if (book.bookUrl.startsWith(
-                            "http://",
-                            true
+                            "http://", true
                         ) || book.bookUrl.startsWith("https://", true)
                     ) {
                         0L
                     } else if (book.bookUrl.startsWith(
-                            "davs://",
-                            true
+                            "davs://", true
                         ) || book.bookUrl.startsWith("dav://", true)
                     ) {
                         0L
@@ -492,33 +490,30 @@ class BookInfoActivity :
             false,
             book.origin,
             inBookshelf = viewModel.inBookshelf
-        ) {
-            if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
-                BookCover.loadBlur(
-                    Glide.with(this),
-                    book.getDisplayCover(),
-                    sourceOrigin = book.origin,
-                    inBookshelf = viewModel.inBookshelf
-                ).placeholder(binding.bgBook.drawable).into(binding.bgBook)
-            }
+        )
+        if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
+            BookCover.loadBlur(
+                Glide.with(this),
+                book.getDisplayCover(),
+                sourceOrigin = book.origin,
+                inBookshelf = viewModel.inBookshelf
+            ).placeholder(binding.bgBook.drawable).into(binding.bgBook)
         }
     }
 
     private fun upLoading(isLoading: Boolean, chapterList: List<BookChapter>? = null) {
         when {
             isLoading -> {
-                binding.tvToc.text = getString(R.string.toc_s, getString(R.string.loading))
+                binding.tvToc.text = getString(R.string.loading)
             }
 
             chapterList.isNullOrEmpty() -> {
-                binding.tvToc.text = getString(
-                    R.string.toc_s, getString(R.string.error_load_toc)
-                )
+                binding.tvToc.text = getString(R.string.error_load_toc)
             }
 
             else -> {
                 viewModel.curBook?.let {
-                    binding.tvToc.text = getString(R.string.toc_s, it.durChapterTitle)
+                    binding.tvToc.text = it.durChapterTitle
                     binding.tvLasted.text = getString(R.string.lasted_show, it.latestChapterTitle)
                 }
             }
@@ -536,31 +531,31 @@ class BookInfoActivity :
 
     private fun upGroup(groupId: Long) {
         viewModel.loadGroup(groupId) {
-            if (it.isNullOrEmpty()) {
-                binding.tvGroup.text = if (viewModel.curBook?.isLocal == true) {
-                    getString(R.string.group_s, getString(R.string.local_no_group))
+            binding.tvGroup.text = if (it.isNullOrEmpty()) {
+                if (viewModel.curBook?.isLocal == true) {
+                    getString(R.string.local_no_group)
                 } else {
-                    getString(R.string.group_s, getString(R.string.no_group))
+                    getString(R.string.no_group)
                 }
             } else {
-                binding.tvGroup.text = getString(R.string.group_s, it)
+                it
             }
         }
     }
 
     private fun initViewEvent() = binding.run {
-        ivCover.setOnClickListener {
+        ivCover.setOnLongClickListener {
             viewModel.getBook()?.let {
                 showDialogFragment(
                     ChangeCoverDialog(it.name, it.author)
                 )
             }
+            true
         }
-        ivCover.setOnLongClickListener {
+        ivCover.setOnClickListener {
             viewModel.getBook()?.getDisplayCover()?.let { path ->
                 showDialogFragment(PhotoDialog(path))
             }
-            true
         }
         tvRead.setOnClickListener {
             viewModel.getBook()?.let { book ->
@@ -589,24 +584,24 @@ class BookInfoActivity :
                 }
             }
         }
-        tvOrigin.setOnClickListener {
+        llOrigin.setOnClickListener {
             viewModel.getBook()?.let { book ->
                 if (book.isLocal) return@let
-                if (!appDb.bookSourceDao.has(book.origin)) {
+                if (viewModel.curBookSource == null) {
                     toastOnUi(R.string.error_no_source)
                     return@let
                 }
                 editSourceResult.launch {
-                    putExtra("sourceUrl", book.origin)
+                    IntentData.source = viewModel.curBookSource
                 }
             }
         }
-        tvChangeSource.setOnClickListener {
+        llOrigin.onLongClick {
             viewModel.getBook()?.let { book ->
                 showDialogFragment(ChangeBookSourceDialog(book.name, book.author))
             }
         }
-        tvTocView.setOnClickListener {
+        llToc.setOnClickListener {
             if (viewModel.chapterListData.value.isNullOrEmpty()) {
                 toastOnUi(R.string.chapter_list_empty)
                 return@setOnClickListener
@@ -617,14 +612,14 @@ class BookInfoActivity :
                 tocActivityResult.launch(it.bookUrl)
             }
         }
-        tvChangeGroup.setOnClickListener {
+        llGroup.setOnClickListener {
             viewModel.getBook()?.let {
                 showDialogFragment(
                     GroupSelectDialog(it.group)
                 )
             }
         }
-        tvAuthor.setOnClickListener {
+        llAuthor.setOnClickListener {
             viewModel.getBook(false)?.let { book ->
                 startActivity<SearchActivity> {
                     putExtra("key", book.author)
