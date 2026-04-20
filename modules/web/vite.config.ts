@@ -59,11 +59,30 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: (id) => {
             if (id.includes("node_modules")) {
-              return "vendor";
+              // 更细粒度的代码分割
+              if (id.includes("element-plus")) {
+                return "vendor-element";
+              }
+              if (id.includes("vue")) {
+                return "vendor-vue";
+              }
+              return "vendor-other";
             }
           },
         },
       },
+      // 构建优化
+      assetsDir: 'assets',
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: true,
+          drop_debugger: true,
+        },
+      },
+      // 分析构建产物
+      reportCompressedSize: true,
+      emptyOutDir: true,
     },
     css: {
       preprocessorOptions: {

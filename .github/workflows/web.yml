@@ -52,7 +52,16 @@ jobs:
         working-directory: modules/web
         run: |
           pnpm i
-          pnpm build
+          # 确保使用生产模式构建，启用代码压缩和优化
+          NODE_ENV=production pnpm build
+          # 优化字体文件
+          if [ -d "dist/assets" ]; then
+            # 压缩字体文件（如果有）
+            find dist/assets -name "*.woff" -o -name "*.ttf" | xargs -I {} gzip -9 -c {} > {}.gz || true
+          fi
+          # 显示构建产物大小
+          echo "构建产物大小："
+          du -sh dist/
           version="v$(date -d "8 hour" -u +3.%y.%m%d%H)"
           echo "APP_VER=$version" >> $GITHUB_ENV
 
