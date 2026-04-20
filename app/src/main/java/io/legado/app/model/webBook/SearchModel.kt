@@ -44,9 +44,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var workingState = MutableStateFlow(true)
 
 
-    private fun initSearchPool() {
-        searchPool?.close()
-        searchPool = Executors
+    private fun initSearchPool(): ExecutorCoroutineDispatcher {
+        return Executors
             .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     }
 
@@ -67,7 +66,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             }
             mSearchId = searchId
             searchPage = 1
-            initSearchPool()
+            searchPool = initSearchPool()
         } else {
             searchPage++
         }
@@ -77,7 +76,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private fun startSearch() {
         val precision = appCtx.getPrefBoolean(PreferKey.precisionSearch)
         var hasMore = false
-        searchJob = scope.launch(searchPool!!) {
+        val pool = searchPool ?: return
+        searchJob = scope.launch(pool) {
             flow {
                 bookSources.forEach {
                     emit(it)
@@ -105,6 +105,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 callBack.onSearchSuccess(searchBooks)
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
+                pool.close()
             }.catch {
                 AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
                 callBack.onSearchCancel(it)
@@ -194,7 +195,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
     fun close() {
         searchJob?.cancel()
-        searchPool?.close()
         searchPool = null
         mSearchId = 0L
     }

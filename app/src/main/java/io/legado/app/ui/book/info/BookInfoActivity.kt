@@ -13,7 +13,6 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -64,6 +63,7 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
@@ -85,6 +85,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -380,7 +381,9 @@ class BookInfoActivity :
             titleBar.setTextColor(getPrimaryTextColor(false))
             titleBar.setColorFilter(getPrimaryTextColor(false))
             tvName.gravity = Gravity.CENTER
-            lbKind.setPadding(0, 0, 0, 0)
+            lbWordCount.setPadding(0, 0, 0, 0)
+            llLasted.gravity = Gravity.CENTER
+            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
             llTop?.orientation = LinearLayout.VERTICAL
             (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
                 this?.width = LinearLayout.LayoutParams.MATCH_PARENT
@@ -390,7 +393,7 @@ class BookInfoActivity :
                 weight = 0f
             }
             llInfoTop.apply { setPadding(paddingRight, 0, paddingRight, 0) }
-            (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
+            (lbWordCount.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
         } else {
             setLightStatusBar(isDarkTheme)
             bgBook.gone()
@@ -398,7 +401,9 @@ class BookInfoActivity :
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
             tvName.gravity = Gravity.START
-            lbKind.setPadding((-4).dpToPx(), 0, 0, 0)
+            lbWordCount.setPadding((-4).dpToPx(), 0, 0, 0)
+            llLasted.gravity = Gravity.START
+            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
             llTop?.orientation = LinearLayout.HORIZONTAL
             (rlCover?.layoutParams as? LinearLayout.LayoutParams).apply {
                 this?.width = LinearLayout.LayoutParams.WRAP_CONTENT
@@ -408,13 +413,20 @@ class BookInfoActivity :
                 weight = 1f
             }
             llInfoTop.apply { setPadding(0, 0, paddingRight, 0) }
-            (lbKind.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
+            (lbWordCount.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
         }
     }
 
     private fun upKinds(book: Book) = binding.run {
         lifecycleScope.launch {
-            var kinds = book.getKindList()
+            val wordCounts = arrayListOf<String>()
+            val kinds = arrayListOf<String>()
+            book.wordCount?.let {
+                if (it.isNotBlank()) wordCounts.add(it)
+            }
+            book.kind?.let {
+                kinds.addAll(it.splitNotBlank(",", "\n"))
+            }
             if (book.isLocal) {
                 withContext(IO) {
                     val size = if (book.bookUrl.startsWith(
@@ -435,42 +447,58 @@ class BookInfoActivity :
                         }
                     }
                     if (size > 0) {
-                        kinds = kinds.toMutableList()
-                        kinds.add(ConvertUtils.formatFileSize(size))
+                        wordCounts.add(ConvertUtils.formatFileSize(size))
                     }
                 }
             }
-            if (kinds.isEmpty()) {
-                lbKind.gone()
-            } else {
-                lbKind.visible()
-                val diff = kinds.size - lbKind.childCount
-                if (diff > 0) {
-                    repeat(diff) {
-                        ItemFilletTextBinding.inflate(layoutInflater, lbKind, false).let {
-                            lbKind.addView(it.root)
-                        }
-                    }
-                } else if (diff < 0) {
-                    repeat(-diff) {
-                        lbKind.removeViewAt(lbKind.childCount - 1)
+            bindKinds(lbWordCount, wordCounts)
+            bindKinds(lbKind, kinds)
+        }
+    }
+
+    private fun bindKinds(
+        flexboxLayout: com.google.android.flexbox.FlexboxLayout,
+        kinds: List<String>
+    ) {
+        if (kinds.isEmpty()) {
+            flexboxLayout.gone()
+        } else {
+            flexboxLayout.visible()
+            val diff = kinds.size - flexboxLayout.childCount
+            if (diff > 0) {
+                repeat(diff) {
+                    ItemFilletTextBinding.inflate(layoutInflater, flexboxLayout, false).let {
+                        flexboxLayout.addView(it.root)
                     }
                 }
-                for ((index, kind) in kinds.withIndex()) {
-                    ItemFilletTextBinding.bind(lbKind.getChildAt(index)).let {
-                        it.root.id = index + 1000
-                        val tmp = kind.split("::", limit = 2)
-                        it.textView.text = tmp[0]
-                        if (tmp.size > 1) {
-                            it.root.onClick {
-                                IntentData.source = viewModel.curBookSource
-                                startActivity<ExploreShowActivity> {
-                                    putExtra("exploreName", tmp[0])
-                                    putExtra("exploreUrl", tmp[1])
+            } else if (diff < 0) {
+                repeat(-diff) {
+                    flexboxLayout.removeViewAt(flexboxLayout.childCount - 1)
+                }
+            }
+            for ((index, kind) in kinds.withIndex()) {
+                ItemFilletTextBinding.bind(flexboxLayout.getChildAt(index)).let {
+                    it.root.id = index + 1000
+                    val tmp = kind.split("::", limit = 2)
+                    it.textView.text = tmp[0]
+                    if (tmp.size > 1) {
+                        it.root.onClick {
+                            IntentData.source = viewModel.curBookSource
+                            startActivity<ExploreShowActivity> {
+                                putExtra("exploreName", tmp[0])
+                                putExtra("exploreUrl", tmp[1])
+                            }
+                        }
+                    } else {
+                        it.root.onClick {
+                            viewModel.getBook(false)?.let { _ ->
+                                startActivity<SearchActivity> {
+                                    putExtra("key", tmp[0])
+                                    viewModel.curBookSource?.let { source ->
+                                        putExtra("searchScope", SearchScope(source).toString())
+                                    }
                                 }
                             }
-                        } else {
-                            it.root.setOnClickListener(null)
                         }
                     }
                 }
@@ -630,6 +658,9 @@ class BookInfoActivity :
             viewModel.getBook(false)?.let { book ->
                 startActivity<SearchActivity> {
                     putExtra("key", book.name)
+                    viewModel.curBookSource?.let {
+                        putExtra("searchScope", SearchScope(it).toString())
+                    }
                 }
             }
         }

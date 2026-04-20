@@ -108,13 +108,44 @@
                             tools:ignore="RtlHardcoded" />
 
                         <com.google.android.flexbox.FlexboxLayout
-                            android:id="@+id/lb_kind"
+                            android:id="@+id/lb_word_count"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_gravity="center"
                             android:visibility="gone"
                             app:flexDirection="row"
                             app:flexWrap="wrap" />
+
+                        <LinearLayout
+                            android:id="@+id/ll_lasted"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            tools:ignore="UseCompoundDrawables">
+
+                            <ImageView
+                                android:layout_width="18sp"
+                                android:layout_height="18sp"
+                                android:contentDescription="@string/read_dur_progress"
+                                android:paddingRight="2dp"
+                                android:src="@drawable/ic_book_last"
+                                app:tint="@color/tv_text_summary" />
+
+                            <TextView
+                                android:id="@+id/tv_lasted"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:includeFontPadding="false"
+                                android:singleLine="true"
+                                android:textColor="@color/tv_text_summary"
+                                tools:text="@string/read_dur_progress" />
+
+                        </LinearLayout>
 
 
                     </LinearLayout>
@@ -130,36 +161,6 @@
                     android:paddingLeft="8dp"
                     android:paddingRight="8dp"
                     android:paddingBottom="8dp">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingTop="3dp"
-                        android:paddingBottom="3dp"
-                        tools:ignore="UseCompoundDrawables">
-
-                        <ImageView
-                            android:layout_width="18sp"
-                            android:layout_height="18sp"
-                            android:contentDescription="@string/read_dur_progress"
-                            android:paddingRight="2dp"
-                            android:src="@drawable/ic_book_last"
-                            app:tint="@color/tv_text_summary" />
-
-                        <TextView
-                            android:id="@+id/tv_lasted"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:singleLine="true"
-                            android:textColor="@color/tv_text_summary"
-                            tools:text="@string/read_dur_progress" />
-
-                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -191,6 +192,17 @@
                             tools:text="@string/toc_s" />
 
                     </LinearLayout>
+
+                    <com.google.android.flexbox.FlexboxLayout
+                        android:id="@+id/lb_kind"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone"
+                        app:flexDirection="row"
+                        app:flexWrap="wrap" />
 
                     <io.legado.app.ui.widget.text.ScrollTextView
                         android:id="@+id/tv_intro"

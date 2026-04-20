@@ -3,6 +3,7 @@ package io.legado.app.ui.book.manga.recyclerview
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -80,16 +81,15 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         }
         mImage.tag = imageUrl
         Glide.with(context)
-            .asBitmap()
             .load(MangaModel(imageUrl))
             .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
             .diskCacheStrategy(DiskCacheStrategy.NONE)
             .apply { transformation?.let { transform(it) } }
-            .listener(object : RequestListener<Bitmap> {
+            .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(
                     e: GlideException?,
-                    model: Any?,
-                    target: Target<Bitmap>,
+                    p1: Any,
+                    p2: Target<Drawable>,
                     isFirstResource: Boolean
                 ): Boolean {
                     if (mImage.tag == imageUrl) {
@@ -105,9 +105,9 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                 }
 
                 override fun onResourceReady(
-                    resource: Bitmap,
+                    p0: Drawable,
                     model: Any,
-                    target: Target<Bitmap>?,
+                    p2: Target<Drawable>,
                     dataSource: DataSource,
                     isFirstResource: Boolean
                 ): Boolean {
