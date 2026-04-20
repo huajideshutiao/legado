@@ -365,7 +365,7 @@ class BookInfoActivity :
         tvOrigin.text = book.originName
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
-        llToc.visible(!book.isWebFile)
+        tvToc.visible(!book.isWebFile)
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
@@ -584,7 +584,7 @@ class BookInfoActivity :
                 }
             }
         }
-        llOrigin.setOnClickListener {
+        tvOrigin.setOnClickListener {
             viewModel.getBook()?.let { book ->
                 if (book.isLocal) return@let
                 if (viewModel.curBookSource == null) {
@@ -596,12 +596,12 @@ class BookInfoActivity :
                 }
             }
         }
-        llOrigin.onLongClick {
+        tvOrigin.onLongClick {
             viewModel.getBook()?.let { book ->
                 showDialogFragment(ChangeBookSourceDialog(book.name, book.author))
             }
         }
-        llToc.setOnClickListener {
+        tvToc.setOnClickListener {
             if (viewModel.chapterListData.value.isNullOrEmpty()) {
                 toastOnUi(R.string.chapter_list_empty)
                 return@setOnClickListener
@@ -612,14 +612,14 @@ class BookInfoActivity :
                 tocActivityResult.launch(it.bookUrl)
             }
         }
-        llGroup.setOnClickListener {
+        tvGroup.setOnClickListener {
             viewModel.getBook()?.let {
                 showDialogFragment(
                     GroupSelectDialog(it.group)
                 )
             }
         }
-        llAuthor.setOnClickListener {
+        tvAuthor.setOnClickListener {
             viewModel.getBook(false)?.let { book ->
                 startActivity<SearchActivity> {
                     putExtra("key", book.author)
