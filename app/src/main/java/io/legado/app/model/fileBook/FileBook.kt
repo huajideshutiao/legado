@@ -122,43 +122,27 @@ object FileBook : BaseFileBook {
      * 统一核心导入逻辑
      */
     private fun importBook(
-        bookUrl: String,
-        name: String,
-        author: String,
-        originName: String,
-        lastModified: Long,
-        type: Int,
-        origin: String = ""
+        book: Book
     ): Book {
-        var book = appDb.bookDao.getBook(bookUrl)
-        if (book == null) {
-            book = Book(
-                type = type,
-                bookUrl = bookUrl,
-                name = name,
-                author = author,
-                originName = originName,
-                latestChapterTime = lastModified,
-                order = appDb.bookDao.minOrder - 1,
-                origin = origin
-            ).apply {
+        val dbBook = appDb.bookDao.getBook(book.bookUrl)
+        return if (dbBook == null) {
+            book.apply {
                 upBookInfo(this)
                 appDb.bookDao.insert(this)
             }
         } else {
-            deleteBook(book, false)
-            book.apply {
-                this.name = name
-                this.author = author
-                this.originName = originName
-                this.origin = origin
+            deleteBook(dbBook, false)
+            dbBook.apply {
+                this.name = book.name
+                this.author = book.author
+                this.originName = book.originName
+                this.origin = book.origin
                 // 文本书籍更新重置时间以触发重新解析，图片书直接使用文件时间
                 this.latestChapterTime = 0
                 upBookInfo(this)
                 appDb.bookDao.update(this)
             }
         }
-        return book
     }
 
     override fun upBookInfo(book: Book) = book.getHandler().upBookInfo(book)
@@ -206,7 +190,16 @@ object FileBook : BaseFileBook {
             else -> {}
         }
         return importBook(
-            fileDoc.uri.toString(), name, author, fileName, updateTime, type
+            Book(
+                bookUrl = fileDoc.uri.toString(),
+                name = name,
+                author = author,
+                originName = fileName,
+                latestChapterTime = updateTime,
+                order = appDb.bookDao.minOrder - 1,
+                origin = fileDoc.uri.toString(),
+                type = type
+            )
         )
     }
 
@@ -223,23 +216,31 @@ object FileBook : BaseFileBook {
                 saveBookFile(origin, name).toString()
             } else origin
             return importBook(
-                bookUrl,
-                name.substringBeforeLast("."),
-                "",
-                name,
-                lastModify,
-                BookType.image or BookType.local,
-                origin
-            )
+                Book(
+                    bookUrl = bookUrl,
+                    name = name.substringBeforeLast("."),
+                    author = "",
+                    originName = name,
+                    latestChapterTime = lastModify,
+                    order = appDb.bookDao.minOrder - 1,
+                    origin = origin,
+                    type = BookType.image or BookType.local
+                ).apply {
+                    variable = "cbz:${0L},${0L},${size}"
+                })
         }
 
         return when {
             name.endsWith(".cbz", true) -> importAsImage()
             name.endsWith(".zip", true) -> {
                 val remoteZip = RemoteZipWrapper(webDav, name, size)
-                val entries = remoteZip.entries().asSequence()
+                val entries = remoteZip.entries().toList()
                 val hasBookFile = entries.any { !it.isDirectory && isBookFile(it.name) }
-                if (hasBookFile) {
+                val hasImageFile =
+                    entries.any { !it.isDirectory && AppPattern.imgFileRegex.matches(it.name) }
+                if (hasImageFile) {
+                    importAsImage()
+                } else if (hasBookFile) {
                     try {
                         val entry = remoteZip.entries().asSequence()
                             .first { !it.isDirectory && isBookFile(it.name) }
@@ -255,13 +256,7 @@ object FileBook : BaseFileBook {
                     } finally {
                         remoteZip.close()
                     }
-                } else {
-                    val imgList = entries.filter {
-                        !it.isDirectory && AppPattern.onlineFileRegex.matches(it.name)
-                    }
-                    if (imgList.any()) importAsImage()
-                    else throw NoStackTraceException("不支持的压缩包格式")
-                }
+                } else throw NoStackTraceException("不支持的压缩包格式")
             }
 
             else -> importLocalFile(saveBookFile(origin, name)).apply {
@@ -418,7 +413,6 @@ object FileBook : BaseFileBook {
 
         val isSupportDecompress: Boolean = AppPattern.archiveFileRegex.matches(name)
 
-        val isSupportOnline: Boolean = AppPattern.onlineFileRegex.matches(name)
     }
 
 }

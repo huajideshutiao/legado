@@ -88,10 +88,11 @@ class CbzFile(var book: Book) {
             )
             cache.entries
         } else {
+
             zipFile?.run {
                 runCatching {
                     entries().asSequence().filter {
-                        !it.isDirectory && AppPattern.onlineFileRegex.matches(it.name)
+                        !it.isDirectory && AppPattern.imgFileRegex.matches(it.name)
                     }.sortedWith(compareBy(AlphanumComparator) { it.name }).toList()
                 }.onFailure { AppLog.put("读取Cbz图片列表失败\n${it.localizedMessage}", it) }
                     .getOrNull()
