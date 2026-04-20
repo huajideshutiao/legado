@@ -8,7 +8,6 @@ import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.constant.PreferKey
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.AlphanumComparator
-import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.delete
 import io.legado.app.utils.getPrefInt
@@ -94,33 +93,7 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
     fun addToBookshelf(bookList: HashSet<ImportBook>, finally: () -> Unit) {
         execute {
             bookList.forEach { importBook ->
-                val fileDoc = importBook.file
-                val fileName = fileDoc.name
-                if (fileName.endsWith(".cbz", true)) {
-                    FileBook.importImageBook(
-                        bookUrl = fileDoc.toString(),
-                        name = fileDoc.name,
-                        originName = fileDoc.name,
-                        lastModified = fileDoc.lastModified
-                    )
-                } else if (ArchiveUtils.isArchive(fileName)) {
-                    val names = ArchiveUtils.getArchiveFilesName(fileDoc.uri)
-                    val hasBookFile = names.any { it.matches(bookFileRegex) }
-                    if (hasBookFile) {
-                        FileBook.importFromArchive(fileDoc.uri) {
-                            it.matches(bookFileRegex)
-                        }
-                    } else {
-                        FileBook.importImageBook(
-                            bookUrl = fileDoc.toString(),
-                            name = fileDoc.name,
-                            originName = fileDoc.name,
-                            lastModified = fileDoc.lastModified
-                        )
-                    }
-                } else {
-                    FileBook.importFile(fileDoc.uri)
-                }
+                FileBook.importLocalFile(importBook.file)
                 importBook.isOnBookShelf = true
             }
         }.onError {

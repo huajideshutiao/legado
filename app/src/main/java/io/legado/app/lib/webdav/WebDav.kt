@@ -460,7 +460,7 @@ open class WebDav(
     @Throws(IOException::class)
     fun readRange(offset: Long, length: Int, fileSize: Long = -1): ByteArray {
         if (length <= 0) return ByteArray(0)
-        if (fileSize > 0 && offset >= fileSize) return ByteArray(0)
+        if (fileSize in 1..offset) return ByteArray(0)
 
         val end = if (fileSize > 0) {
             minOf(fileSize - 1, offset + length - 1)

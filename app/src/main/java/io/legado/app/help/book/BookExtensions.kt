@@ -57,22 +57,8 @@ val BaseBook.isLocalTxt: Boolean
 val BaseBook.isEpub: Boolean
     get() = isLocal && originName.endsWith(".epub", true)
 
-val BaseBook.isUmd: Boolean
-    get() = isLocal && originName.endsWith(".umd", true)
-
 val BaseBook.isPdf: Boolean
     get() = isLocal && originName.endsWith(".pdf", true)
-
-val BaseBook.isMobi: Boolean
-    get() = isLocal && (originName.endsWith(".mobi", true) ||
-            originName.endsWith(".azw3", true) ||
-            originName.endsWith(".azw", true))
-
-val BaseBook.isCbz: Boolean
-    get() = isLocal && (originName.endsWith(".cbz", true) || originName.endsWith(
-        ".zip",
-        true
-    ) && isImage)
 
 val BaseBook.isOnLineTxt: Boolean
     get() = !isLocal && isType(BookType.text)

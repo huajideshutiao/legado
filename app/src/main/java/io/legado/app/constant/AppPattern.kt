@@ -30,6 +30,8 @@ object AppPattern {
     val archiveFileRegex = Regex(".*\\.(zip|rar|7z)$", RegexOption.IGNORE_CASE)
     val onlineFileRegex = Regex(".*\\.(zip|cbz)$", RegexOption.IGNORE_CASE)
 
+    val imgFileRegex = Regex(".*\\.(jpg|jpeg|png|gif|bmp|webp|svg|apng|avif|heic|heif)$", RegexOption.IGNORE_CASE)
+
     /**
      * 所有标点
      */

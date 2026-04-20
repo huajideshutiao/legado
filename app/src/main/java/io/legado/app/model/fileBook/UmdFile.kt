@@ -45,7 +45,7 @@ class UmdFile(var book: Book) {
             return getUFile(book).upBookInfo()
         }
 
-        fun clear() {
+        override fun clear() {
             uFile = null
         }
     }

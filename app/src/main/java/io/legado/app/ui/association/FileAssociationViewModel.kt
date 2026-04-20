@@ -66,7 +66,7 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     }
 
     fun importBook(uri: Uri) {
-        val book = FileBook.importFile(uri)
+        val book = FileBook.importLocalFile(uri)
         openBookLiveData.postValue(book)
     }
 }

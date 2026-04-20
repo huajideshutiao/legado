@@ -54,7 +54,7 @@ class MobiFile(var book: Book) {
             return getMFile(book).upBookInfo()
         }
 
-        fun clear() {
+        override fun clear() {
             mFile = null
         }
     }

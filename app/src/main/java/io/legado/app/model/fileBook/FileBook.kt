@@ -17,23 +17,21 @@ import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
-import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
-import io.legado.app.help.book.isCbz
 import io.legado.app.help.book.isEpub
-import io.legado.app.help.book.isMobi
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
-import io.legado.app.help.book.isUmd
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
-import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.analyzeRule.CustomUrl
+import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -44,15 +42,14 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.Locale.getDefault
 import java.util.regex.Pattern
 
 /**
@@ -68,14 +65,23 @@ object FileBook : BaseFileBook {
         Pattern.compile("(^)(.+) by (.+)$")
     )
 
-    private fun Book.getHandler(): BaseFileBook = when {
-        isEpub -> EpubFile
-        isUmd -> UmdFile
-        isPdf -> PdfFile
-        isMobi -> MobiFile
-        isCbz -> CbzFile
-        else -> TextFile
+    fun Book.getHandler(): BaseFileBook {
+        val originName = originName.lowercase(getDefault())
+        return when {
+            isPdf -> PdfFile
+            isLocal && (originName.endsWith(".mobi") || originName.endsWith(".azw3") || originName.endsWith(
+                ".azw"
+            )) -> MobiFile
+
+            isEpub -> EpubFile
+            isLocal && originName.endsWith(".umd") -> UmdFile
+            isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && isImage) -> CbzFile
+
+            else -> TextFile
+        }
     }
+
+    fun isBookFile(fileName: String): Boolean = AppPattern.bookFileRegex.matches(fileName)
 
     @Throws(TocEmptyException::class)
     override fun getChapterList(book: Book): ArrayList<BookChapter> {
@@ -101,18 +107,11 @@ object FileBook : BaseFileBook {
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {
-        val content = try {
+        return try {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
-            e.printOnDebug()
             "获取本地书籍内容失败\n${e.localizedMessage}".also { AppLog.put(it, e) }
-        } ?: return null
-
-        if (book.isEpub && content.contains('&')) {
-            return StringEscapeUtils.unescapeHtml4(content.replace("&lt;img", "&lt; img", true))
         }
-
-        return content.takeIf { it.isNotEmpty() }
     }
 
     fun getCoverPath(bookUrl: String) =
@@ -162,26 +161,6 @@ object FileBook : BaseFileBook {
         return book
     }
 
-    /**
-     * 导入本地文件
-     */
-    fun importFile(uri: Uri): Book {
-        val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
-            if (size == 0L) throw EmptyFileException("Unexpected empty File")
-        }
-        val (name, author) = analyzeNameAuthor(fileName)
-        return importBook(
-            uri.toString(), name, author, fileName, updateTime, BookType.text or BookType.local
-        )
-    }
-
-    fun importImageBook(
-        bookUrl: String, name: String, originName: String, lastModified: Long, origin: String = ""
-    ): Book = importBook(
-        bookUrl, name.substringBeforeLast("."), "", originName, lastModified,
-        BookType.image or BookType.local, origin
-    )
-
     override fun upBookInfo(book: Book) = book.getHandler().upBookInfo(book)
     override fun getImage(book: Book, href: String) = book.getHandler().getImage(book, href)
 
@@ -196,12 +175,98 @@ object FileBook : BaseFileBook {
         }
         return files.map {
             saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uri ->
-                importFile(uri).apply {
+                importLocalFile(uri).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
                     origin = "${BookType.localTag}::${archiveFileDoc.name}"
                     addType(BookType.archive)
                     save()
                 }
+            }
+        }
+    }
+
+    fun importLocalFile(uri: Uri) = importLocalFile(FileDoc.fromUri(uri, false))
+    fun importLocalFile(fileDoc: FileDoc): Book {
+        val (fileName, _, _, updateTime, _) = fileDoc.apply {
+            if (size == 0L) throw EmptyFileException("Unexpected empty File")
+        }
+        val (name, author) = analyzeNameAuthor(fileName)
+        var type = BookType.text or BookType.local
+        when {
+            fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
+            AppPattern.archiveFileRegex.matches(fileName) -> {
+                val names = ArchiveUtils.getArchiveFilesName(fileDoc.uri)
+                val hasBookFile = names.any { isBookFile(it) }
+                if (hasBookFile) {
+                    return importFromArchive(fileDoc.uri) { isBookFile(it) }.firstOrNull()
+                        ?: throw NoStackTraceException(appCtx.getString(R.string.unsupport_archivefile_entry))
+                }
+            }
+
+            else -> {}
+        }
+        return importBook(
+            fileDoc.uri.toString(), name, author, fileName, updateTime, type
+        )
+    }
+
+    suspend fun importRemoteBook(
+        webDav: WebDav, serverID: Long?, remoteBook: RemoteBook, downloadFile: Boolean = false
+    ): Book {
+        val (name, path, size, lastModify) = remoteBook
+        val origin = BookType.webDavTag + CustomUrl(path).putAttribute(
+            "serverID", serverID
+        ).toString()
+
+        suspend fun importAsImage(): Book {
+            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) {
+                saveBookFile(origin, name).toString()
+            } else origin
+            return importBook(
+                bookUrl,
+                name.substringBeforeLast("."),
+                "",
+                name,
+                lastModify,
+                BookType.image or BookType.local,
+                origin
+            )
+        }
+
+        return when {
+            name.endsWith(".cbz", true) -> importAsImage()
+            name.endsWith(".zip", true) -> {
+                val remoteZip = RemoteZipWrapper(webDav, name, size)
+                val entries = remoteZip.entries().asSequence()
+                val hasBookFile = entries.any { !it.isDirectory && isBookFile(it.name) }
+                if (hasBookFile) {
+                    try {
+                        val entry = remoteZip.entries().asSequence()
+                            .first { !it.isDirectory && isBookFile(it.name) }
+                        val uri = saveBookFile(
+                            remoteZip.getInputStream(entry)
+                                ?: throw NoStackTraceException("获取流失败"), entry.name
+                        )
+                        importLocalFile(uri).apply {
+                            this.origin = origin
+                            addType(BookType.archive)
+                            save()
+                        }
+                    } finally {
+                        remoteZip.close()
+                    }
+                } else {
+                    val imgList = entries.filter {
+                        !it.isDirectory && AppPattern.onlineFileRegex.matches(it.name)
+                    }
+                    if (imgList.any()) importAsImage()
+                    else throw NoStackTraceException("不支持的压缩包格式")
+                }
+            }
+
+            else -> importLocalFile(saveBookFile(origin, name)).apply {
+                this.origin = origin
+                save()
             }
         }
     }
@@ -270,19 +335,10 @@ object FileBook : BaseFileBook {
         source: BaseSource? = null,
     ): Uri {
         AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
-        val inputStream = if (!str.startsWith(BookType.webDavTag)) {
-            AnalyzeUrl(
-                str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
-            ).getInputStreamAwait()
-        } else {
-            val webdav: WebDav = kotlin.runCatching {
-                WebDav.fromPath(str)
-            }.getOrElse {
-                AppWebDav.authorization?.let { WebDav(str, it) }
-                    ?: throw WebDavException("Unexpected defaultBookWebDav")
-            }
-            webdav.downloadInputStream()
-        }
+        val inputStream = if (!str.startsWith(BookType.webDavTag)) AnalyzeUrl(
+            str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
+        ).getInputStreamAwait()
+        else WebDav.fromPath(str.substring(BookType.webDavTag.length)).downloadInputStream()
         return saveBookFile(inputStream, fileName)
     }
 
@@ -340,7 +396,7 @@ object FileBook : BaseFileBook {
         if (book.isArchive) {
             val newBook = importFromArchive(fileUri, book.originName) { name ->
                 name.contains(book.originName)
-            }.first()
+            }.firstOrNull() ?: throw NoStackTraceException("Archive contains no matching book file")
             book.origin = newBook.origin
             book.bookUrl = newBook.bookUrl
         } else {
@@ -348,18 +404,6 @@ object FileBook : BaseFileBook {
         }
         book.save()
         return true
-    }
-
-    suspend fun importOrDownloadWebFile(
-        webFile: WebFile, book: Book, bookSource: io.legado.app.data.entities.BookSource?
-    ): Any {
-        val fileName = book.getExportFileName(webFile.suffix)
-        val uri = saveBookFile(webFile.url, fileName, bookSource)
-        return if (webFile.isSupported) {
-            mergeBook(importFile(uri), book)
-        } else {
-            uri
-        }
     }
 
     data class WebFile(

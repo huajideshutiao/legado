@@ -58,7 +58,7 @@ class PdfFile(var book: Book) {
             return getPFile(book).getImage(href)
         }
 
-        fun clear() {
+        override fun clear() {
             pFile?.closePdf()
             pFile = null
         }

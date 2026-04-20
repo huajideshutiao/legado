@@ -30,6 +30,7 @@ interface BaseFileBook {
     fun getContent(book: Book, chapter: BookChapter): String?
 
     fun getImage(book: Book, href: String): InputStream?
+    fun clear() {}
 
     @Throws(FileNotFoundException::class, SecurityException::class)
     fun getBookInputStream(book: Book): InputStream {

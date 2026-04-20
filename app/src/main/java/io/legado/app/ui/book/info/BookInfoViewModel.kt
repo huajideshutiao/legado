@@ -99,12 +99,13 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun <T> importOrDownloadWebFile(webFile: WebFile, success: ((T) -> Unit)?) {
         execute {
             waitDialogData.postValue(true)
-            val result = FileBook.importOrDownloadWebFile(
-                webFile, bookData.value!!, curBookSource
+            val fileName = bookData.value!!.getExportFileName(webFile.suffix)
+            val uri = FileBook.saveBookFile(
+                webFile.url, fileName, curBookSource
             )
-            if (result is Book) {
-                changeToLocalBook(result)
-            }
+            val result = if (!webFile.isSupported) uri
+            else FileBook.mergeBook(FileBook.importLocalFile(uri), bookData.value!!)
+            if (result is Book) changeToLocalBook(result)
             result
         }.onSuccess {
             @Suppress("unchecked_cast") success?.invoke(it as T)

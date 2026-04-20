@@ -4,23 +4,15 @@ import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
-import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.book.addType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.Authorization
-import io.legado.app.lib.webdav.WebDav
-import io.legado.app.model.analyzeRule.CustomUrl
-import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
-import io.legado.app.utils.ArchiveUtils
-import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -113,55 +105,10 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         execute {
             val bookWebDav = remoteBookWebDav ?: throw NoStackTraceException("没有配置webDav")
             remoteBooks.forEach { remoteBook ->
-                val origin = BookType.webDavTag + CustomUrl(remoteBook.path).putAttribute(
-                    "serverID",
-                    bookWebDav.serverID
-                ).toString()
-
-                val importAsImage: suspend () -> Unit = {
-                    val bookUrl = if (remoteBook.size > 30 * 1024 * 1024) origin
-                    else bookWebDav.downloadRemoteBook(remoteBook).toString()
-                    FileBook.importImageBook(
-                        bookUrl,
-                        remoteBook.filename,
-                        remoteBook.filename,
-                        remoteBook.lastModify,
-                        origin
-                    )
-                }
-
-                when {
-                    remoteBook.filename.endsWith(".cbz", true) -> importAsImage()
-
-                    ArchiveUtils.isArchive(remoteBook.filename) -> {
-                        findBookEntryInRemoteZip(
-                            bookWebDav.getWebDav(remoteBook.path),
-                            remoteBook.filename,
-                            remoteBook.size
-                        )?.use { (remoteZip, entry) ->
-                                val uri = FileBook.saveBookFile(
-                                    remoteZip.getInputStream(entry)
-                                        ?: throw NoStackTraceException("获取流失败"), entry.name
-                                )
-                                FileBook.importFile(uri).apply {
-                                    this.origin = origin
-                                    addType(BookType.archive)
-                                    save()
-                                }
-                            } ?: importAsImage()
-                    }
-
-                    else -> bookWebDav.downloadRemoteBook(remoteBook).let { uri ->
-                        (if (ArchiveUtils.isArchive(FileDoc.fromUri(uri, false).name)) {
-                            FileBook.importFromArchive(uri) { it.matches(AppPattern.bookFileRegex) }
-                        } else {
-                            listOf(FileBook.importFile(uri))
-                        }).forEach { book ->
-                            book.origin = origin
-                            book.save()
-                        }
-                    }
-                }
+                val webDav = bookWebDav.getWebDav(remoteBook.path)
+                FileBook.importRemoteBook(
+                    webDav, bookWebDav.serverID, remoteBook, true
+                )
                 remoteBook.isOnBookShelf = true
             }
         }.onError {
@@ -169,30 +116,6 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
             if (it is SecurityException) permissionDenialLiveData.postValue(1)
         }.onFinally {
             finally()
-        }
-    }
-
-    private fun findBookEntryInRemoteZip(
-        webDav: WebDav, name: String, fileSize: Long
-    ): RemoteZipEntry? {
-        if (fileSize <= 0) return null
-        val remoteZip = CbzFile.RemoteZipFile(webDav, name, fileSize)
-        return try {
-            remoteZip.entries().asSequence()
-                .find { !it.isDirectory && AppPattern.bookFileRegex.matches(it.name.lowercase()) }
-                ?.let { RemoteZipEntry(remoteZip, it) }
-        } finally {
-            remoteZip.close()
-        }
-    }
-
-    private class RemoteZipEntry(
-        val remoteZip: CbzFile.RemoteZipFile, val entry: CbzFile.CbzEntry
-    ) : AutoCloseable {
-        operator fun component1() = remoteZip
-        operator fun component2() = entry
-        override fun close() {
-            remoteZip.close()
         }
     }
 

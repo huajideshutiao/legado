@@ -53,7 +53,7 @@ class TextFile(private var book: Book) {
 
         override fun getImage(book: Book, href: String): InputStream? = null
 
-        fun clear() {
+        override fun clear() {
             textFile = null
         }
 

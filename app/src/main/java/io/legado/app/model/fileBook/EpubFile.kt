@@ -67,7 +67,7 @@ class EpubFile(var book: Book) {
             return getEFile(book).upBookInfo()
         }
 
-        fun clear() {
+        override fun clear() {
             eFile = null
         }
     }
