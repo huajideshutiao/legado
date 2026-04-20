@@ -210,8 +210,6 @@
                         android:layout_height="wrap_content"
                         android:clickable="true"
                         android:focusable="true"
-                        android:paddingLeft="8dp"
-                        android:paddingBottom="8dp"
                         android:text="@string/book_intro"
                         android:textColor="@color/secondaryText"
                         android:textIsSelectable="true"
