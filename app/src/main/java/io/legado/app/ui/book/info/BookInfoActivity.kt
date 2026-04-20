@@ -649,8 +649,13 @@ class BookInfoActivity :
         }
         tvAuthor.setOnClickListener {
             viewModel.getBook(false)?.let { book ->
-                startActivity<SearchActivity> {
-                    putExtra("key", book.author)
+                if (!book.author.isNullOrBlank()) {
+                    startActivity<SearchActivity> {
+                        putExtra("key", book.author)
+                        viewModel.curBookSource?.let { source ->
+                            putExtra("searchScope", SearchScope(source).toString())
+                        }
+                    }
                 }
             }
         }
@@ -658,9 +663,6 @@ class BookInfoActivity :
             viewModel.getBook(false)?.let { book ->
                 startActivity<SearchActivity> {
                     putExtra("key", book.name)
-                    viewModel.curBookSource?.let {
-                        putExtra("searchScope", SearchScope(it).toString())
-                    }
                 }
             }
         }
