@@ -66,7 +66,6 @@ import java.io.File
 import java.io.InputStream
 import java.net.ConnectException
 import java.net.SocketTimeoutException
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -279,7 +278,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             .splitToSequence("\n")
             .filter { it.isNotEmpty() }
             .toList()
-        val flow = loadingState.debounce(3.seconds)
+        val flow = loadingState.debounce(1.seconds)
         contentList.forEach { content ->
             currentCoroutineContext().ensureActive()
             val fileName = md5SpeakFileName(content)
