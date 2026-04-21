@@ -1,27 +1,14 @@
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
-import android.text.TextUtils.isEmpty
 import android.util.Base64
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.text.DecimalFormat
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
-import java.util.regex.Matcher
 import java.util.regex.Pattern
-import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
-import kotlin.math.abs
 
 
-@Suppress("unused", "MemberVisibilityCanBePrivate")
+@Suppress("MemberVisibilityCanBePrivate")
 object StringUtils {
-    private const val HOUR_OF_DAY = 24
-    private const val DAY_OF_YESTERDAY = 2
-    private const val TIME_UNIT = 60
     private val ChnMap = chnMap
     private val wordCountFormatter by lazy {
         DecimalFormat("#.#")
@@ -51,84 +38,6 @@ object StringUtils {
         }
 
     /**
-     * 将日期转换成昨天、今天、明天
-     */
-    fun dateConvert(source: String, pattern: String): String {
-        val format = SimpleDateFormat(pattern, Locale.getDefault())
-        val calendar = Calendar.getInstance()
-        kotlin.runCatching {
-            val date = format.parse(source) ?: return ""
-            val curTime = calendar.timeInMillis
-            calendar.time = date
-            //将MISC 转换成 sec
-            val difSec = abs((curTime - date.time) / 1000)
-            val difMin = difSec / 60
-            val difHour = difMin / 60
-            val difDate = difHour / 60
-            val oldHour = calendar.get(Calendar.HOUR)
-            //如果没有时间
-            if (oldHour == 0) {
-                //比日期:昨天今天和明天
-                return when {
-                    difDate == 0L -> "今天"
-                    difDate < DAY_OF_YESTERDAY -> "昨天"
-                    else -> {
-                        @SuppressLint("SimpleDateFormat")
-                        val convertFormat = SimpleDateFormat("yyyy-MM-dd")
-                        convertFormat.format(date)
-                    }
-                }
-            }
-
-            return when {
-                difSec < TIME_UNIT -> difSec.toString() + "秒前"
-                difMin < TIME_UNIT -> difMin.toString() + "分钟前"
-                difHour < HOUR_OF_DAY -> difHour.toString() + "小时前"
-                difDate < DAY_OF_YESTERDAY -> "昨天"
-                else -> {
-                    @SuppressLint("SimpleDateFormat")
-                    val convertFormat = SimpleDateFormat("yyyy-MM-dd")
-                    convertFormat.format(date)
-                }
-            }
-        }.onFailure {
-            it.printOnDebug()
-        }
-        return ""
-    }
-
-    /**
-     * 首字母大写
-     */
-    @SuppressLint("DefaultLocale")
-    fun toFirstCapital(str: String): String {
-        return str[1].uppercase(Locale.getDefault()) + str.substring(1)
-    }
-
-    /**
-     * 将文本中的半角字符，转换成全角字符
-     */
-    fun halfToFull(input: String): String {
-        val c = input.toCharArray()
-        for (i in c.indices) {
-            if (c[i].code == 32)
-            //半角空格
-            {
-                c[i] = 12288.toChar()
-                continue
-            }
-            //根据实际情况，过滤不需要转换的符号
-            //if (c[i] == 46) //半角点号，不转换
-            // continue;
-
-            if (c[i].code in 33..126)
-            //其他符号都转换为全角
-                c[i] = (c[i].code + 65248).toChar()
-        }
-        return String(c)
-    }
-
-    /**
      * 字符串全角转换为半角
      */
     fun fullToHalf(input: String): String {
@@ -141,8 +50,7 @@ object StringUtils {
                 continue
             }
 
-            if (c[i].code in 65281..65374)
-                c[i] = (c[i].code - 65248).toChar()
+            if (c[i].code in 65281..65374) c[i] = (c[i].code - 65248).toChar()
         }
         return String(c)
     }
@@ -184,17 +92,15 @@ object StringUtils {
                     }
 
                     tmpNum >= 10 -> {
-                        if (tmp == 0)
-                            tmp = 1
+                        if (tmp == 0) tmp = 1
                         result += tmpNum * tmp
                         tmp = 0
                     }
 
                     else -> {
-                        tmp = if (i >= 2 && i == cn.size - 1 && ChnMap[cn[i - 1]]!! > 10)
-                            tmpNum * ChnMap[cn[i - 1]]!! / 10
-                        else
-                            tmp * 10 + tmpNum
+                        tmp =
+                            if (i >= 2 && i == cn.size - 1 && ChnMap[cn[i - 1]]!! > 10) tmpNum * ChnMap[cn[i - 1]]!! / 10
+                            else tmp * 10 + tmpNum
                     }
                 }
             }
@@ -216,15 +122,6 @@ object StringUtils {
             }
         }
         return -1
-    }
-
-    /**
-     * 是否包含数字
-     */
-    fun isContainNumber(company: String): Boolean {
-        val p = Pattern.compile("[0-9]+")
-        val m = p.matcher(company)
-        return m.find()
     }
 
     /**
@@ -250,67 +147,22 @@ object StringUtils {
     }
 
     fun wordCountFormat(wc: String?): String {
-        if (wc == null) return ""
-        var wordsS = ""
-        if (isNumeric(wc)) {
-            val words: Int = wc.toInt()
-            if (words > 0) {
-                if (words > 10000) {
-                    val df = wordCountFormatter
-                    wordsS = df.format(words * 1.0f / 10000f.toDouble()) + "万字"
-                } else {
-                    wordsS = words.toString() + "字"
-                }
-            }
-        } else {
-            wordsS = wc
-        }
-        return wordsS
-    }
+        if (wc.isNullOrEmpty()) return ""
 
-    /**
-     * 移除字符串首尾空字符的高效方法(利用ASCII值判断,包括全角空格)
-     */
-    fun trim(s: String): String {
-        if (isEmpty(s)) return ""
-        var start = 0
-        val len = s.length
-        var end = len - 1
-        while (start < end && (s[start].code <= 0x20 || s[start] == '　')) {
-            ++start
-        }
-        while (start < end && (s[end].code <= 0x20 || s[end] == '　')) {
-            --end
-        }
-        ++end
-        return if (start > 0 || end < len) s.substring(start, end) else s
-    }
+        val prefix = wc.substringBefore(",")
+        val suffix = wc.substringAfter(",", "")
+        val suffixPart = if (suffix.isNotEmpty()) ",$suffix" else ""
 
-    /**
-     * 重复字符串
-     */
-    fun repeat(str: String, n: Int): String {
-        val stringBuilder = StringBuilder()
-        for (i in 0 until n) {
-            stringBuilder.append(str)
-        }
-        return stringBuilder.toString()
-    }
+        val words = prefix.toIntOrNull()
 
-    /**
-     * 移除UTF头
-     */
-    fun removeUTFCharacters(data: String?): String? {
-        if (data == null) return null
-        val p = Pattern.compile("\\\\u(\\p{XDigit}{4})")
-        val m = p.matcher(data)
-        val buf = StringBuffer(data.length)
-        while (m.find()) {
-            val ch = Integer.parseInt(m.group(1)!!, 16).toChar().toString()
-            m.appendReplacement(buf, Matcher.quoteReplacement(ch))
+        val formattedPrefix = when {
+            words == null -> prefix // 修复：原代码为 wc，此处改为 prefix 以避免拼接重复
+            words > 10000 -> "${wordCountFormatter.format(words / 10000.0)}万字"
+            words > 0 -> "${words}字"
+            else -> "" // 保持原逻辑：如果 words <= 0，返回空字符串
         }
-        m.appendTail(buf)
-        return buf.toString()
+
+        return formattedPrefix + suffixPart
     }
 
     /**
@@ -332,35 +184,6 @@ object StringUtils {
                     close()
                 }
                 out.runCatching {
-                    close()
-                }
-            }
-        }
-    }
-
-    /**
-     * 解压字符串
-     */
-    @Throws(IOException::class)
-    fun unCompress(str: String): Result<String> {
-        return kotlin.runCatching {
-            val outputStream = ByteArrayOutputStream()
-            var inputStream: ByteArrayInputStream? = null
-            var ginZip: GZIPInputStream? = null
-            return@runCatching try {
-                val compressed = Base64.decode(str, Base64.NO_WRAP)
-                inputStream = ByteArrayInputStream(compressed)
-                ginZip = GZIPInputStream(inputStream)
-                ginZip.copyTo(outputStream)
-                outputStream.toString()
-            } finally {
-                ginZip?.runCatching {
-                    close()
-                }
-                inputStream?.runCatching {
-                    close()
-                }
-                outputStream.runCatching {
                     close()
                 }
             }

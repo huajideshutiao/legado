@@ -13,6 +13,7 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -362,7 +363,8 @@ class BookInfoActivity :
         applyDevFeatLayout(book)
         showCover(book)
         tvName.text = book.name
-        tvAuthor.text = book.getRealAuthor()
+        tvAuthor.text =
+            book.getRealAuthor().splitNotBlank(",", "\n").joinToString("\n") { it.split("::")[0] }
         tvOrigin.text = book.originName
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
@@ -401,7 +403,7 @@ class BookInfoActivity :
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
             tvName.gravity = Gravity.START
-            lbWordCount.setPadding((-4).dpToPx(), 0, 0, 0)
+            lbWordCount.setPadding((-4).dpToPx(), 0, (-4).dpToPx(), 0)
             llLasted.gravity = Gravity.START
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
             llTop?.orientation = LinearLayout.HORIZONTAL
@@ -451,14 +453,15 @@ class BookInfoActivity :
                     }
                 }
             }
-            bindKinds(lbWordCount, wordCounts)
+            bindKinds(lbWordCount, wordCounts, false)
             bindKinds(lbKind, kinds)
         }
     }
 
     private fun bindKinds(
         flexboxLayout: com.google.android.flexbox.FlexboxLayout,
-        kinds: List<String>
+        kinds: List<String>,
+        clickable: Boolean = true
     ) {
         if (kinds.isEmpty()) {
             flexboxLayout.gone()
@@ -481,25 +484,31 @@ class BookInfoActivity :
                     it.root.id = index + 1000
                     val tmp = kind.split("::", limit = 2)
                     it.textView.text = tmp[0]
-                    if (tmp.size > 1) {
+                    if (clickable) {
+                        it.root.isClickable = true
+                        it.root.isFocusable = true
                         it.root.onClick {
-                            IntentData.source = viewModel.curBookSource
-                            startActivity<ExploreShowActivity> {
-                                putExtra("exploreName", tmp[0])
-                                putExtra("exploreUrl", tmp[1])
-                            }
-                        }
-                    } else {
-                        it.root.onClick {
-                            viewModel.getBook(false)?.let { _ ->
-                                startActivity<SearchActivity> {
-                                    putExtra("key", tmp[0])
-                                    viewModel.curBookSource?.let { source ->
-                                        putExtra("searchScope", SearchScope(source).toString())
+                            if (tmp.size > 1) {
+                                IntentData.source = viewModel.curBookSource
+                                startActivity<ExploreShowActivity> {
+                                    putExtra("exploreName", tmp[0])
+                                    putExtra("exploreUrl", tmp[1])
+                                }
+                            } else {
+                                viewModel.getBook(false)?.let { _ ->
+                                    startActivity<SearchActivity> {
+                                        putExtra("key", tmp[0])
+                                        viewModel.curBookSource?.let { source ->
+                                            putExtra("searchScope", SearchScope(source).toString())
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        it.root.isClickable = false
+                        it.root.isFocusable = false
+                        it.root.setOnClickListener(null)
                     }
                 }
             }
@@ -511,10 +520,12 @@ class BookInfoActivity :
             CoverImageView.CoverRatio.VIDEO
         else if (binding.ivCover.coverRatio != CoverImageView.CoverRatio.NOVEL) binding.ivCover.coverRatio =
             CoverImageView.CoverRatio.NOVEL
+        val author =
+            book.getRealAuthor().splitNotBlank(",", "\n").joinToString("\n") { it.split("::")[0] }
         binding.ivCover.load(
             book.getDisplayCover(),
             book.name,
-            book.author,
+            author,
             false,
             book.origin,
             inBookshelf = viewModel.inBookshelf
@@ -574,8 +585,10 @@ class BookInfoActivity :
     private fun initViewEvent() = binding.run {
         ivCover.setOnLongClickListener {
             viewModel.getBook()?.let {
+                val author = it.getRealAuthor().splitNotBlank(",", "\n")
+                    .joinToString("\n") { a -> a.split("::")[0] }
                 showDialogFragment(
-                    ChangeCoverDialog(it.name, it.author)
+                    ChangeCoverDialog(it.name, author)
                 )
             }
             true
@@ -626,7 +639,9 @@ class BookInfoActivity :
         }
         tvOrigin.onLongClick {
             viewModel.getBook()?.let { book ->
-                showDialogFragment(ChangeBookSourceDialog(book.name, book.author))
+                val author = book.getRealAuthor().splitNotBlank(",", "\n")
+                    .joinToString("\n") { a -> a.split("::")[0] }
+                showDialogFragment(ChangeBookSourceDialog(book.name, author))
             }
         }
         tvToc.setOnClickListener {
@@ -649,13 +664,20 @@ class BookInfoActivity :
         }
         tvAuthor.setOnClickListener {
             viewModel.getBook(false)?.let { book ->
-                if (!book.author.isNullOrBlank()) {
-                    startActivity<SearchActivity> {
-                        putExtra("key", book.author)
-                        viewModel.curBookSource?.let { source ->
-                            putExtra("searchScope", SearchScope(source).toString())
+                val authors = book.getRealAuthor().splitNotBlank(",", "\n")
+                if (authors.isEmpty()) return@let
+                if (authors.size == 1) {
+                    searchAuthor(authors[0])
+                } else {
+                    PopupMenu(this@BookInfoActivity, it).apply {
+                        authors.forEachIndexed { index, s ->
+                            menu.add(0, index, index, s.split("::")[0])
                         }
-                    }
+                        setOnMenuItemClickListener { menuItem ->
+                            searchAuthor(authors[menuItem.itemId])
+                            true
+                        }
+                    }.show()
                 }
             }
         }
@@ -669,6 +691,24 @@ class BookInfoActivity :
         refreshLayout?.setOnRefreshListener {
             refreshLayout.isRefreshing = false
             refreshBook()
+        }
+    }
+
+    private fun searchAuthor(author: String) {
+        val tmp = author.split("::", limit = 2)
+        if (tmp.size > 1) {
+            IntentData.source = viewModel.curBookSource
+            startActivity<ExploreShowActivity> {
+                putExtra("exploreName", tmp[0])
+                putExtra("exploreUrl", tmp[1])
+            }
+        } else {
+            startActivity<SearchActivity> {
+                putExtra("key", tmp[0])
+                viewModel.curBookSource?.let { source ->
+                    putExtra("searchScope", SearchScope(source).toString())
+                }
+            }
         }
     }
 
