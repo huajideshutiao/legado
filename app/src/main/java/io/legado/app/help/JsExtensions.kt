@@ -329,11 +329,7 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     fun getCookie(tag: String, key: String?): String {
-        return if (key != null) {
-            CookieStore.getKey(tag, key)
-        } else {
-            CookieStore.getCookie(tag)
-        }
+        return key?.let { CookieStore.getKey(tag, it) } ?: CookieStore.getCookie(tag)
     }
 
     /**
@@ -676,15 +672,13 @@ interface JsExtensions : JsEncodeUtils {
         if (path.isEmpty()) return ""
         val folder = getFile(path)
         val contents = StringBuilder()
-        folder.listFiles().let {
-            if (it != null) {
-                for (f in it) {
-                    val charsetName = EncodingDetect.getEncode(f)
-                    contents.append(String(f.readBytes(), charset(charsetName)))
-                        .append("\n")
-                }
-                contents.deleteCharAt(contents.length - 1)
-            }
+        folder.listFiles()?.forEach { f ->
+            val charsetName = EncodingDetect.getEncode(f)
+            contents.append(String(f.readBytes(), charset(charsetName)))
+                .append("\n")
+        }
+        if (contents.isNotEmpty()) {
+            contents.deleteCharAt(contents.length - 1)
         }
         FileUtils.delete(folder.absolutePath)
         return contents.toString()
@@ -757,7 +751,7 @@ interface JsExtensions : JsEncodeUtils {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
             var entry: ZipEntry
             while (zis.nextEntry.also { entry = it } != null) {
-                if (entry.name.equals(path)) {
+                if (entry.name == path) {
                     zis.use { it.copyTo(bos) }
                     return bos.toByteArray()
                 }
@@ -836,7 +830,7 @@ interface JsExtensions : JsEncodeUtils {
                         key = MessageDigest.getInstance("SHA-256").digest(data.toByteArray())
                             .toHexString()
                         qTTF = AppCacheManager.getQueryTTF(key)
-                        if (qTTF != null) return qTTF
+                        qTTF?.let { return it }
                     }
                     val font: ByteArray? = when {
                         data.isAbsUrl() -> AnalyzeUrl(
@@ -855,14 +849,14 @@ interface JsExtensions : JsEncodeUtils {
                     if (useCache) {
                         key = MessageDigest.getInstance("SHA-256").digest(data).toHexString()
                         qTTF = AppCacheManager.getQueryTTF(key)
-                        if (qTTF != null) return qTTF
+                        qTTF?.let { return it }
                     }
                     qTTF = QueryTTF(data)
                 }
 
                 else -> return null
             }
-            if (key != null) AppCacheManager.put(key, qTTF)
+            key?.let { AppCacheManager.put(it, qTTF) }
             return qTTF
         } catch (e: Exception) {
             AppLog.put("[queryTTF] 获取字体处理类出错", e)

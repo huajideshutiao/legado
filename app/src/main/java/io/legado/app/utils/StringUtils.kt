@@ -113,15 +113,12 @@ object StringUtils {
      * 字符串转数字
      */
     fun stringToInt(str: String?): Int {
-        if (str != null) {
-            val num = fullToHalf(str).replace("\\s+".toRegex(), "")
-            return kotlin.runCatching {
-                Integer.parseInt(num)
-            }.getOrElse {
-                chineseNumToInt(num)
-            }
+        val num = str?.let { fullToHalf(it).replace("\\s+".toRegex(), "") } ?: return -1
+        return kotlin.runCatching {
+            Integer.parseInt(num)
+        }.getOrElse {
+            chineseNumToInt(num)
         }
-        return -1
     }
 
     /**

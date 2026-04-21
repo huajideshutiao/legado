@@ -185,10 +185,8 @@ class FastScroller : LinearLayout {
     }
 
     fun detachRecyclerView() {
-        if (mRecyclerView != null) {
-            mRecyclerView!!.removeOnScrollListener(mScrollListener)
-            mRecyclerView = null
-        }
+        mRecyclerView?.removeOnScrollListener(mScrollListener)
+        mRecyclerView = null
     }
 
     /**
@@ -225,13 +223,9 @@ class FastScroller : LinearLayout {
      * @param color The color for the scroll track
      */
     fun setTrackColor(@ColorInt color: Int) {
-        if (mTrackImage == null) {
-            val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_track)
-            if (drawable != null) {
-                mTrackImage = DrawableCompat.wrap(drawable)
-            }
-        }
-        DrawableCompat.setTint(mTrackImage!!, color)
+        val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_track)
+        mTrackImage = drawable?.let { DrawableCompat.wrap(it) }
+        mTrackImage?.let { DrawableCompat.setTint(it, color) }
         mTrackView.setImageDrawable(mTrackImage)
     }
 
@@ -242,13 +236,9 @@ class FastScroller : LinearLayout {
      */
     fun setHandleColor(@ColorInt color: Int) {
         mHandleColor = color
-        if (mHandleImage == null) {
-            val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_handle)
-            if (drawable != null) {
-                mHandleImage = DrawableCompat.wrap(drawable)
-            }
-        }
-        DrawableCompat.setTint(mHandleImage!!, mHandleColor)
+        val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_handle)
+        mHandleImage = drawable?.let { DrawableCompat.wrap(it) }
+        mHandleImage?.let { DrawableCompat.setTint(it, mHandleColor) }
         mHandleView.setImageDrawable(mHandleImage)
     }
 
@@ -259,13 +249,9 @@ class FastScroller : LinearLayout {
      */
     fun setBubbleColor(@ColorInt color: Int) {
         mBubbleColor = color
-        if (mBubbleImage == null) {
-            val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_bubble)
-            if (drawable != null) {
-                mBubbleImage = DrawableCompat.wrap(drawable)
-            }
-        }
-        DrawableCompat.setTint(mBubbleImage!!, mBubbleColor)
+        val drawable = ContextCompat.getDrawable(context, R.drawable.fastscroll_bubble)
+        mBubbleImage = drawable?.let { DrawableCompat.wrap(it) }
+        mBubbleImage?.let { DrawableCompat.setTint(it, mBubbleColor) }
         mBubbleView.background = mBubbleImage
     }
 
@@ -311,9 +297,7 @@ class FastScroller : LinearLayout {
                 if (mShowBubble && mSectionIndexer != null) {
                     showBubble()
                 }
-                if (mFastScrollStateChangeListener != null) {
-                    mFastScrollStateChangeListener!!.onFastScrollStart(this)
-                }
+                mFastScrollStateChangeListener?.onFastScrollStart(this)
                 val y = event.y
                 setViewPositions(y)
                 setRecyclerViewPosition(y)
@@ -332,9 +316,7 @@ class FastScroller : LinearLayout {
                     handler.postDelayed(mScrollbarHider, sScrollbarHideDelay.toLong())
                 }
                 hideBubble()
-                if (mFastScrollStateChangeListener != null) {
-                    mFastScrollStateChangeListener!!.onFastScrollStop(this)
-                }
+                mFastScrollStateChangeListener?.onFastScrollStop(this)
                 return true
             }
         }
@@ -515,8 +497,8 @@ class FastScroller : LinearLayout {
         var fadeScrollbar = true
         var showBubble = false
         var showTrack = true
-        if (attrs != null) {
-            val typedArray = context.obtainStyledAttributes(attrs, R.styleable.FastScroller, 0, 0)
+        attrs?.let {
+            val typedArray = context.obtainStyledAttributes(it, R.styleable.FastScroller, 0, 0)
             try {
                 bubbleColor = typedArray.getColor(R.styleable.FastScroller_bubbleColor, bubbleColor)
                 handleColor = typedArray.getColor(R.styleable.FastScroller_handleColor, handleColor)

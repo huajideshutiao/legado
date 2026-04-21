@@ -30,56 +30,52 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
 
     @SuppressLint("RtlHardcoded")
     private fun onSizeChangedTraditionalRotation(w: Int, h: Int, oldw: Int, oldh: Int) {
-        val seekBar = childSeekBar
+        val seekBar = childSeekBar ?: return
 
-        if (seekBar != null) {
-            val hPadding = paddingLeft + paddingRight
-            val vPadding = paddingTop + paddingBottom
-            val lp = seekBar.layoutParams as LayoutParams
+        val hPadding = paddingLeft + paddingRight
+        val vPadding = paddingTop + paddingBottom
+        val lp = seekBar.layoutParams as LayoutParams
 
-            lp.width = LayoutParams.WRAP_CONTENT
-            lp.height = max(0, h - vPadding)
-            seekBar.layoutParams = lp
+        lp.width = LayoutParams.WRAP_CONTENT
+        lp.height = max(0, h - vPadding)
+        seekBar.layoutParams = lp
 
-            seekBar.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED)
+        seekBar.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED)
 
-            val seekBarMeasuredWidth = seekBar.measuredWidth
-            seekBar.measure(
-                MeasureSpec.makeMeasureSpec(
-                    max(0, w - hPadding),
-                    MeasureSpec.AT_MOST
-                ),
-                MeasureSpec.makeMeasureSpec(
-                    max(0, h - vPadding),
-                    MeasureSpec.EXACTLY
-                )
+        val seekBarMeasuredWidth = seekBar.measuredWidth
+        seekBar.measure(
+            MeasureSpec.makeMeasureSpec(
+                max(0, w - hPadding),
+                MeasureSpec.AT_MOST
+            ),
+            MeasureSpec.makeMeasureSpec(
+                max(0, h - vPadding),
+                MeasureSpec.EXACTLY
             )
+        )
 
-            lp.gravity = Gravity.TOP or Gravity.LEFT
-            lp.leftMargin = (max(0, w - hPadding) - seekBarMeasuredWidth) / 2
-            seekBar.layoutParams = lp
-        }
+        lp.gravity = Gravity.TOP or Gravity.LEFT
+        lp.leftMargin = (max(0, w - hPadding) - seekBarMeasuredWidth) / 2
+        seekBar.layoutParams = lp
 
         super.onSizeChanged(w, h, oldw, oldh)
     }
 
     private fun onSizeChangedUseViewRotation(w: Int, h: Int, oldw: Int, oldh: Int) {
-        val seekBar = childSeekBar
+        val seekBar = childSeekBar ?: return
 
-        if (seekBar != null) {
-            val hPadding = paddingLeft + paddingRight
-            val vPadding = paddingTop + paddingBottom
-            seekBar.measure(
-                MeasureSpec.makeMeasureSpec(
-                    max(0, h - vPadding),
-                    MeasureSpec.EXACTLY
-                ),
-                MeasureSpec.makeMeasureSpec(
-                    max(0, w - hPadding),
-                    MeasureSpec.AT_MOST
-                )
+        val hPadding = paddingLeft + paddingRight
+        val vPadding = paddingTop + paddingBottom
+        seekBar.measure(
+            MeasureSpec.makeMeasureSpec(
+                max(0, h - vPadding),
+                MeasureSpec.EXACTLY
+            ),
+            MeasureSpec.makeMeasureSpec(
+                max(0, w - hPadding),
+                MeasureSpec.AT_MOST
             )
-        }
+        )
 
         applyViewRotation(w, h)
         super.onSizeChanged(w, h, oldw, oldh)
@@ -130,46 +126,44 @@ class VerticalSeekBarWrapper @JvmOverloads constructor(
 
     @Suppress("DEPRECATION")
     private fun applyViewRotation(w: Int, h: Int) {
-        val seekBar = childSeekBar
+        val seekBar = childSeekBar ?: return
 
-        if (seekBar != null) {
-            val isLTR = ViewCompat.getLayoutDirection(this) == ViewCompat.LAYOUT_DIRECTION_LTR
-            val rotationAngle = seekBar.rotationAngle
-            val seekBarMeasuredWidth = seekBar.measuredWidth
-            val seekBarMeasuredHeight = seekBar.measuredHeight
-            val hPadding = paddingLeft + paddingRight
-            val vPadding = paddingTop + paddingBottom
-            val hOffset = (max(0, w - hPadding) - seekBarMeasuredHeight) * 0.5f
-            val lp = seekBar.layoutParams
+        val isLTR = ViewCompat.getLayoutDirection(this) == ViewCompat.LAYOUT_DIRECTION_LTR
+        val rotationAngle = seekBar.rotationAngle
+        val seekBarMeasuredWidth = seekBar.measuredWidth
+        val seekBarMeasuredHeight = seekBar.measuredHeight
+        val hPadding = paddingLeft + paddingRight
+        val vPadding = paddingTop + paddingBottom
+        val hOffset = (max(0, w - hPadding) - seekBarMeasuredHeight) * 0.5f
+        val lp = seekBar.layoutParams
 
-            lp.width = max(0, h - vPadding)
-            lp.height = LayoutParams.WRAP_CONTENT
+        lp.width = max(0, h - vPadding)
+        lp.height = LayoutParams.WRAP_CONTENT
 
-            seekBar.layoutParams = lp
+        seekBar.layoutParams = lp
 
-            seekBar.pivotX = (if (isLTR) 0 else max(0, h - vPadding)).toFloat()
-            seekBar.pivotY = 0f
+        seekBar.pivotX = (if (isLTR) 0 else max(0, h - vPadding)).toFloat()
+        seekBar.pivotY = 0f
 
-            when (rotationAngle) {
-                VerticalSeekBar.ROTATION_ANGLE_CW_90 -> {
-                    seekBar.rotation = 90f
-                    if (isLTR) {
-                        seekBar.translationX = seekBarMeasuredHeight + hOffset
-                        seekBar.translationY = 0f
-                    } else {
-                        seekBar.translationX = -hOffset
-                        seekBar.translationY = seekBarMeasuredWidth.toFloat()
-                    }
+        when (rotationAngle) {
+            VerticalSeekBar.ROTATION_ANGLE_CW_90 -> {
+                seekBar.rotation = 90f
+                if (isLTR) {
+                    seekBar.translationX = seekBarMeasuredHeight + hOffset
+                    seekBar.translationY = 0f
+                } else {
+                    seekBar.translationX = -hOffset
+                    seekBar.translationY = seekBarMeasuredWidth.toFloat()
                 }
-                VerticalSeekBar.ROTATION_ANGLE_CW_270 -> {
-                    seekBar.rotation = 270f
-                    if (isLTR) {
-                        seekBar.translationX = hOffset
-                        seekBar.translationY = seekBarMeasuredWidth.toFloat()
-                    } else {
-                        seekBar.translationX = -(seekBarMeasuredHeight + hOffset)
-                        seekBar.translationY = 0f
-                    }
+            }
+            VerticalSeekBar.ROTATION_ANGLE_CW_270 -> {
+                seekBar.rotation = 270f
+                if (isLTR) {
+                    seekBar.translationX = hOffset
+                    seekBar.translationY = seekBarMeasuredWidth.toFloat()
+                } else {
+                    seekBar.translationX = -(seekBarMeasuredHeight + hOffset)
+                    seekBar.translationY = 0f
                 }
             }
         }
