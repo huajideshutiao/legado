@@ -403,7 +403,7 @@ class BookInfoActivity :
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
             tvName.gravity = Gravity.START
-            lbWordCount.setPadding((-4).dpToPx(), 0, (-4).dpToPx(), 0)
+            lbWordCount.setPadding(0, 0, 0, 0)
             llLasted.gravity = Gravity.START
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
             llTop?.orientation = LinearLayout.HORIZONTAL
@@ -453,7 +453,14 @@ class BookInfoActivity :
                     }
                 }
             }
-            bindKinds(lbWordCount, wordCounts, false)
+            // 处理字数显示，使用纯文本框
+            if (wordCounts.isEmpty()) {
+                lbWordCount.gone()
+            } else {
+                lbWordCount.visible()
+                lbWordCount.text = wordCounts.joinToString(",")
+            }
+            // 处理分类显示，继续使用 FlexboxLayout
             bindKinds(lbKind, kinds)
         }
     }
