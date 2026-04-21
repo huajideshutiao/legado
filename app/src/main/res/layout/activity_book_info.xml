@@ -113,8 +113,7 @@
                             android:layout_height="wrap_content"
                             android:layout_gravity="center"
                             android:visibility="gone"
-                            android:textColor="@color/secondaryText"
-                            android:textSize="14sp" />
+                            android:textColor="@color/secondaryText" />
 
                         <LinearLayout
                             android:id="@+id/ll_lasted"
