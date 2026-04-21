@@ -453,7 +453,14 @@ class BookInfoActivity :
                     }
                 }
             }
-            bindKinds(lbWordCount, wordCounts, false)
+            // 处理字数显示，使用纯文本框
+            if (wordCounts.isEmpty()) {
+                lbWordCount.gone()
+            } else {
+                lbWordCount.visible()
+                lbWordCount.text = wordCounts.joinToString(" ")
+            }
+            // 处理分类显示，继续使用 FlexboxLayout
             bindKinds(lbKind, kinds)
         }
     }

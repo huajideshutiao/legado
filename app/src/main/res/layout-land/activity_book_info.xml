@@ -96,14 +96,15 @@
                     android:textSize="20sp"
                     tools:ignore="RtlHardcoded" />
 
-                <com.google.android.flexbox.FlexboxLayout
+                <TextView
                     android:id="@+id/lb_word_count"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
+                    android:gravity="center"
                     android:visibility="gone"
-                    app:flexDirection="row"
-                    app:flexWrap="wrap" />
+                    android:textColor="@color/secondaryText"
+                    android:textSize="14sp" />
 
                 <LinearLayout
                     android:id="@+id/ll_lasted"
