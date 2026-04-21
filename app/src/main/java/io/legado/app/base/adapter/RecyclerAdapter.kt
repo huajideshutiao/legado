@@ -394,15 +394,19 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
     }
 
     private fun registerItemListener(holder: ItemViewHolder) {
-        holder.itemView.setOnClickListener {
-            getItemByLayoutPosition(holder.layoutPosition)?.let {
-                itemClickListener?.invoke(holder, it)
+        if (itemClickListener != null) {
+            holder.itemView.setOnClickListener {
+                getItemByLayoutPosition(holder.layoutPosition)?.let {
+                    itemClickListener?.invoke(holder, it)
+                }
             }
         }
 
-        holder.itemView.onLongClick {
-            getItemByLayoutPosition(holder.layoutPosition)?.let {
-                itemLongClickListener?.invoke(holder, it)
+        if (itemLongClickListener != null) {
+            holder.itemView.onLongClick {
+                getItemByLayoutPosition(holder.layoutPosition)?.let {
+                    itemLongClickListener?.invoke(holder, it)
+                }
             }
         }
     }

@@ -149,15 +149,19 @@ abstract class DiffRecyclerAdapter<ITEM, VB : ViewBinding>(protected val context
     }
 
     private fun registerItemListener(holder: ItemViewHolder) {
-        holder.itemView.setOnClickListener {
-            getItem(holder.layoutPosition)?.let {
-                itemClickListener?.invoke(holder, it)
+        if (itemClickListener != null) {
+            holder.itemView.setOnClickListener {
+                getItem(holder.layoutPosition)?.let {
+                    itemClickListener?.invoke(holder, it)
+                }
             }
         }
 
-        holder.itemView.onLongClick {
-            getItem(holder.layoutPosition)?.let {
-                itemLongClickListener?.invoke(holder, it)
+        if (itemLongClickListener != null) {
+            holder.itemView.onLongClick {
+                getItem(holder.layoutPosition)?.let {
+                    itemLongClickListener?.invoke(holder, it)
+                }
             }
         }
     }
