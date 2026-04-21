@@ -6,6 +6,7 @@ import IconsResolver from "unplugin-icons/resolver";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -39,6 +40,7 @@ export default defineConfig(({ mode }) => {
       Icons({
         autoInstall: true,
       }),
+      viteSingleFile(),
     ],
     base: mode === "development" ? "/" : "./",
     server: {
@@ -55,24 +57,7 @@ export default defineConfig(({ mode }) => {
       drop: mode === "development" ? undefined : ["console", "debugger"],
     },
     build: {
-      rollupOptions: {
-        output: {
-          manualChunks: (id) => {
-            if (id.includes("node_modules")) {
-              // 更细粒度的代码分割
-              if (id.includes("element-plus")) {
-                return "vendor-element";
-              }
-              if (id.includes("vue")) {
-                return "vendor-vue";
-              }
-              return "vendor-other";
-            }
-          },
-        },
-      },
       // 构建优化
-      assetsDir: 'assets',
       minify: 'terser',
       terserOptions: {
         compress: {
