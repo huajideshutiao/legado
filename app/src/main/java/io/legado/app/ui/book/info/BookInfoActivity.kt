@@ -17,6 +17,8 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.google.android.flexbox.FlexWrap
+import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -323,14 +325,15 @@ class BookInfoActivity :
             llLasted.gravity = Gravity.CENTER
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
             llTop?.orientation = LinearLayout.VERTICAL
-            (rlCover?.layoutParams as? LinearLayout.LayoutParams)?.width =
-                LinearLayout.LayoutParams.MATCH_PARENT
+            rlCover?.layoutParams?.width = LinearLayout.LayoutParams.MATCH_PARENT
             (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
                 width = LinearLayout.LayoutParams.MATCH_PARENT
                 weight = 0f
             }
             llInfoTop.setPadding(llInfoTop.paddingRight, 0, llInfoTop.paddingRight, 0)
-            (lbWordCount.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
+            lbWordCount.layoutParams.let {
+                (it as LinearLayout.LayoutParams).gravity = Gravity.CENTER
+            }
         } else {
             setLightStatusBar(isDarkTheme)
             bgBook.gone()
@@ -341,14 +344,15 @@ class BookInfoActivity :
             llLasted.gravity = Gravity.START
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
             llTop?.orientation = LinearLayout.HORIZONTAL
-            (rlCover?.layoutParams as? LinearLayout.LayoutParams)?.width =
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            rlCover?.layoutParams?.width = LinearLayout.LayoutParams.WRAP_CONTENT
             (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
                 width = 0
                 weight = 1f
             }
             llInfoTop.setPadding(0, 0, llInfoTop.paddingRight, 0)
-            (lbWordCount.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
+            lbWordCount.layoutParams.let {
+                (it as LinearLayout.LayoutParams).gravity = Gravity.START
+            }
         }
     }
 
@@ -373,85 +377,67 @@ class BookInfoActivity :
             }
             lbWordCount.isVisible = wordCounts.isNotEmpty()
             lbWordCount.text = wordCounts.joinToString(",")
-            book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it.toList()) }
+            book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
         }
     }
 
-    private fun bindKinds(
-        container: LinearLayout,
-        kinds: List<String>,
-        clickable: Boolean = true
-    ) {
+    private fun bindKinds(container: LinearLayout, kinds: Array<String>) {
         container.isVisible = kinds.isNotEmpty()
         if (kinds.isEmpty()) return
         container.removeAllViews()
 
-        // 1. 数据分组处理
         val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
         val otherLabel = getString(R.string.other)
         kinds.forEach { kind ->
-            // 先分离 URL (同时支持中英文双冒号)
             val urlSplit = kind.split("::", limit = 2)
             val tagContent = urlSplit[0].trim()
-
-            // 再从内容中分离分组 (支持中英文单冒号)
             val groupSplit = tagContent.split(":", limit = 2)
 
             if (groupSplit.size > 1 && groupSplit[0].isNotBlank() && groupSplit[1].isNotBlank()) {
-                // 有分组: "分组:值"
                 val group = groupSplit[0].trim()
                 val value = groupSplit[1].trim()
                 groups.getOrPut(group) { mutableListOf() }.add(value to kind)
             } else if (tagContent.isNotBlank()) {
-                // 无分组: 将其归类到 "其他"
                 groups.getOrPut(otherLabel) { mutableListOf() }.add(tagContent to kind)
             }
         }
 
-        // 2. 渲染分组
         groups.forEach { (groupName, items) ->
-            val flexboxLayout = com.google.android.flexbox.FlexboxLayout(this).apply {
+            val flexboxLayout = FlexboxLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                flexWrap = com.google.android.flexbox.FlexWrap.WRAP
+                flexWrap = FlexWrap.WRAP
             }
 
-            // 修改点：如果分组总数多于1个，则显示标题（包括“其他”）；否则（只有一个组时）不显示标题。
             if (groups.size > 1) {
-                addTagToFlexbox(flexboxLayout, groupName, null, clickable)
+                addTagToFlexbox(flexboxLayout, groupName, null)
             }
 
-            // 添加该组下的所有标签项
             items.forEach { (value, fullKind) ->
                 if (value.isNotEmpty()) {
-                    addTagToFlexbox(flexboxLayout, value, fullKind, clickable)
+                    addTagToFlexbox(flexboxLayout, value, fullKind)
                 }
             }
-
             container.addView(flexboxLayout)
         }
     }
 
     private fun addTagToFlexbox(
-        flexboxLayout: com.google.android.flexbox.FlexboxLayout,
+        flexboxLayout: FlexboxLayout,
         text: String,
-        fullKind: String?,
-        clickable: Boolean
+        fullKind: String?
     ) {
         ItemFilletTextBinding.inflate(layoutInflater, flexboxLayout, false).apply {
             textView.text = text
-            root.isClickable = clickable && fullKind != null
-            root.isFocusable = clickable && fullKind != null
+            root.isClickable = fullKind != null
+            root.isFocusable = fullKind != null
 
             if (fullKind == null) {
-                // 分组标题样式
                 textView.alpha = 0.8f
                 textView.paint.isFakeBoldText = true
-            }
-
-            if (clickable && fullKind != null) {
+            } else {
                 root.onClick {
                     val tmp = fullKind.split("::", limit = 2)
                     if (tmp.size > 1) {
@@ -491,8 +477,7 @@ class BookInfoActivity :
                 book.getDisplayCover(),
                 sourceOrigin = book.origin,
                 inBookshelf = viewModel.inBookshelf
-            )
-                .placeholder(bgBook.drawable).into(bgBook)
+            ).placeholder(bgBook.drawable).into(bgBook)
         }
     }
 
@@ -575,12 +560,7 @@ class BookInfoActivity :
                 if (authors.size == 1) searchAuthor(authors[0])
                 else PopupMenu(this@BookInfoActivity, it).apply {
                     authors.forEachIndexed { index, s ->
-                        menu.add(
-                            0,
-                            index,
-                            index,
-                            s.split("::")[0]
-                        )
+                        menu.add(0, index, index, s.split("::")[0])
                     }
                     setOnMenuItemClickListener { menuItem -> searchAuthor(authors[menuItem.itemId]); true }
                 }.show()
@@ -668,9 +648,7 @@ class BookInfoActivity :
                     message = getString(R.string.file_not_supported, webFile.name)
                 ) {
                     neutralButton(R.string.open_fun) {
-                        viewModel.importOrDownloadWebFile<Uri>(
-                            webFile
-                        ) { openFileUri(it, "*/*") }
+                        viewModel.importOrDownloadWebFile<Uri>(webFile) { openFileUri(it, "*/*") }
                     }
                     noButton()
                 }

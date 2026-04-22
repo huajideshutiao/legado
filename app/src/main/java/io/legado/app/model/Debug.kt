@@ -161,7 +161,8 @@ object Debug {
     private fun exploreDebug(scope: CoroutineScope, bookSource: BookSource, url: String) {
         log(debugSource, "︾开始解析发现页")
         val explore = Coroutine.async(scope) {
-            WebBook.getBookListAwait(bookSource, url, 1, isSearch = false)
+            val debugUrl = parseExploreUrl(url)
+            WebBook.getBookListAwait(bookSource, debugUrl, 1, isSearch = false)
         }.onSuccess { exploreBooks ->
                 if (exploreBooks.isNotEmpty()) {
                     log(debugSource, "︽发现页解析完成")
@@ -177,6 +178,29 @@ object Debug {
                 log(debugSource, it.stackTraceStr, state = -1)
             }
         tasks.add(explore)
+    }
+
+    private fun parseExploreUrl(url: String): String {
+        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
+        var result = url
+        regex.findAll(url).forEach { match ->
+            val name = match.groupValues[1]
+            val pairStrings = match.groupValues[2].split(",")
+            val pairs = pairStrings.mapNotNull {
+                val split = it.split(":")
+                if (split.size >= 2) {
+                    split[0].trim() to split[1].trim()
+                } else if (split.size == 1) {
+                    split[0].trim() to split[0].trim()
+                } else {
+                    null
+                }
+            }
+            if (pairs.isNotEmpty()) {
+                result = result.replace("<$name\\((.*?)\\)>".toRegex(), pairs[0].second)
+            }
+        }
+        return result
     }
 
     private fun searchDebug(scope: CoroutineScope, bookSource: BookSource, key: String) {

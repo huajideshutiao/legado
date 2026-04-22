@@ -28,7 +28,6 @@ import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import java.nio.charset.Charset
 import java.time.LocalDate
-import kotlin.math.max
 
 @Parcelize
 @TypeConverters(Book.Converters::class)
@@ -164,11 +163,14 @@ data class Book(
     fun getDisplayAuthor() =
         getRealAuthor().splitNotBlank(",", "\n").joinToString("\n") { it.split("::")[0] }
 
-    fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex +( if (durChapterPos<0)-1 else 0 ), 0)
+    fun getUnreadChapterNum() =
+        (simulatedTotalChapterNum() - durChapterIndex + if (durChapterPos < 0) -1 else 0).coerceAtLeast(
+            0
+        )
 
-    fun getDisplayCover() = if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
+    fun getDisplayCover() = customCoverUrl.takeUnless { it.isNullOrEmpty() } ?: coverUrl
 
-    fun getDisplayIntro() = if (customIntro.isNullOrEmpty()) intro else customIntro
+    fun getDisplayIntro() = customIntro.takeUnless { it.isNullOrEmpty() } ?: intro
 
     //自定义简介有自动更新的需求时，可通过更新intro再调用upCustomIntro()完成
     @Suppress("unused")
@@ -191,25 +193,18 @@ data class Book(
 
     fun setReverseToc(reverseToc: Boolean) {
         config.reverseToc = reverseToc
-            }
+    }
+
     fun getReverseToc(): Boolean {
         return config.reverseToc
     }
 
     fun setUseReplaceRule(useReplaceRule: Boolean) {
         config.useReplaceRule = useReplaceRule
-        }
+    }
 
     fun getUseReplaceRule(): Boolean {
-        val useReplaceRule = config.useReplaceRule
-        if (useReplaceRule != null) {
-            return useReplaceRule
-        }
-        //图片类书源 epub本地 默认关闭净化
-        if (isImage || isEpub) {
-            return false
-        }
-        return AppConfig.replaceEnableDefault
+        return config.useReplaceRule ?: (!isImage && !isEpub && AppConfig.replaceEnableDefault)
     }
 
     fun setReSegment(reSegment: Boolean) {

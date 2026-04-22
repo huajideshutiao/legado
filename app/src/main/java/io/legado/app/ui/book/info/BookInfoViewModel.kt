@@ -37,8 +37,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     override var curBook: Book?
         get() = getBook(false)
         set(value) {
-            if (value == null) return
-            bookData.postValue(value)
+            value?.let { bookData.postValue(it) }
         }
 
     fun initData() {
@@ -67,20 +66,17 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
                     }
                 }
             } else {
-                val bs = curBookSource ?: return@executeLazy
-                if (book.originName != bs.bookSourceName) {
-                    book.originName = bs.bookSourceName
+                curBookSource?.let {
+                    if (book.originName != it.bookSourceName) {
+                        book.originName = it.bookSourceName
+                    }
                 }
             }
         }.onError {
-            when (it) {
-                is ObjectNotFoundException -> {
-                    book.origin = BookType.localTag
-                }
-
-                else -> {
-                    AppLog.put("下载远程书籍<${book.name}>失败", it)
-                }
+            if (it is ObjectNotFoundException) {
+                book.origin = BookType.localTag
+            } else {
+                AppLog.put("下载远程书籍<${book.name}>失败", it)
             }
         }.onFinally {
             execute { loadBookInfo(book) }
@@ -154,8 +150,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun topBook() {
         execute {
             bookData.value?.let { book ->
-                val minOrder = appDb.bookDao.minOrder
-                book.order = minOrder - 1
+                book.order = appDb.bookDao.minOrder - 1
                 book.durChapterTime = System.currentTimeMillis()
                 appDb.bookDao.update(book)
             }

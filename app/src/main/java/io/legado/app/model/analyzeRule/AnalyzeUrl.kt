@@ -201,16 +201,6 @@ class AnalyzeUrl(
                 ruleUrl = res
             }
         }
-        page?.let {
-            if (ruleUrl.contains("<")) {
-                val matcher = pagePattern.matcher(ruleUrl)
-                while (matcher.find()) {
-                    val pages = matcher.group(1)!!.split(",")
-                    val target = pages[(page - 1).coerceAtMost(pages.size - 1)]
-                    ruleUrl = ruleUrl.replace(matcher.group(), target.trim())
-                }
-            }
-        }
     }
 
     /**
@@ -600,7 +590,6 @@ class AnalyzeUrl(
 
     companion object {
         val paramPattern: Pattern = Pattern.compile("\\s*,\\s*(?=\\{)")
-        private val pagePattern = Pattern.compile("<(.*?)>")
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
 

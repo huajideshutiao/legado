@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
 import java.util.concurrent.ConcurrentHashMap
 
-
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExploreShowViewModel(application: Application) : BaseViewModel(application) {
     val bookshelf: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -35,21 +34,23 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     var bookSource: BookSource? = null
         private set
     val exploreStyle get() = bookSource?.exploreStyle ?: 0
-    private var exploreUrl: String? = null
-    private var page = 1
+    private var rawExploreUrl: String? = null
+    val exploreOptions = mutableListOf<ExploreOption>()
+    private var optionRegexes = mutableMapOf<String, Regex>()
+    var page = 1
+        private set
     private var books = linkedSetOf<SearchBook>()
 
     init {
         execute {
             appDb.bookDao.flowAll().mapLatest { books ->
-                val keys = arrayListOf<String>()
-                books.filterNot { it.isNotShelf }
-                    .forEach {
-                        keys.add("${it.name}-${it.author}")
-                        keys.add(it.name)
-                        keys.add(it.bookUrl)
-                    }
-                keys
+                books.filterNot { it.isNotShelf }.flatMap {
+                    listOfNotNull(
+                        if (it.author.isNotBlank()) "${it.name}-${it.author}" else null,
+                        it.name,
+                        it.bookUrl
+                    )
+                }
             }.catch {
                 AppLog.put("发现列表界面获取书籍数据失败\n${it.localizedMessage}", it)
             }.collect {
@@ -64,7 +65,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun initData(intent: Intent) {
         execute {
-            exploreUrl = intent.getStringExtra("exploreUrl")
+            rawExploreUrl = intent.getStringExtra("exploreUrl")
+            optionRegexes.clear()
+            parseExploreOptions()
             if (bookSource == null) {
                 bookSource = (IntentData.source as? BookSource)
             }
@@ -73,10 +76,38 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    fun explore() {
-        val source = bookSource
-        val url = exploreUrl
-        if (source == null || url == null) return
+    private fun parseExploreOptions() {
+        val url = rawExploreUrl ?: return
+        exploreOptions.clear()
+        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
+        regex.findAll(url).forEach { match ->
+            val name = match.groupValues[1]
+            val pairs = match.groupValues[2].split(",").mapNotNull { s ->
+                val split = s.split(":", limit = 2)
+                val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
+                if (first.isEmpty()) return@mapNotNull null
+                val second = split.getOrNull(1)?.trim() ?: first
+                first to second
+            }
+            if (pairs.isNotEmpty()) {
+                exploreOptions.add(ExploreOption(name, pairs, pairs[0].second))
+            }
+        }
+    }
+
+    fun explore(resetPage: Boolean = false) {
+        val source = bookSource ?: return
+        var url = rawExploreUrl ?: return
+        if (resetPage) {
+            page = 1
+            books.clear()
+        }
+        exploreOptions.forEach { option ->
+            val regex = optionRegexes.getOrPut(option.name) {
+                "<${option.name}\\(.*?\\)>".toRegex()
+            }
+            url = url.replace(regex, option.selectedValue)
+        }
         Coroutine.async(viewModelScope) {
             getBookListAwait(source, url, page, isSearch = false)
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
@@ -91,24 +122,23 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     fun isInBookShelf(book: BaseBook): Boolean {
-        val name = book.name
-        val author = book.author
-        val bookUrl = book.bookUrl
-        val key = if (author.isNotBlank()) "$name-$author" else name
-        return bookshelf.contains(key) || bookshelf.contains(bookUrl)
+        val key = if (book.author.isNotBlank()) "${book.name}-${book.author}" else book.name
+        return bookshelf.contains(key) || bookshelf.contains(book.bookUrl)
     }
 
     fun switchLayout() {
         bookSource?.let {
-            if (it.exploreStyle < 2) {
-                it.exploreStyle += 1
-            } else {
-                it.exploreStyle = 0
-            }
+            it.exploreStyle = (it.exploreStyle + 1) % 3
             execute {
                 appDb.bookSourceDao.update(it)
             }
         }
     }
+
+    data class ExploreOption(
+        val name: String,
+        val options: List<Pair<String, String>>,
+        var selectedValue: String
+    )
 
 }
