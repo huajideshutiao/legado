@@ -14,10 +14,12 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.BackstageWebView
+import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.StrResponse
+import io.legado.app.utils.NetworkUtils
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
@@ -329,7 +331,16 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     fun getCookie(tag: String, key: String?): String {
-        return key?.let { CookieStore.getKey(tag, it) } ?: CookieStore.getCookie(tag)
+        val cookie = key?.let { CookieStore.getKey(tag, it) } ?: CookieStore.getCookie(tag)
+        // 同时从内置浏览器获取cookie
+        val webViewCookie = android.webkit.CookieManager.getInstance().getCookie(tag)
+        if (webViewCookie != null && webViewCookie.isNotEmpty()) {
+            val mergedCookie = CookieManager.mergeCookies(cookie, webViewCookie)
+            if (mergedCookie != null) {
+                return mergedCookie
+            }
+        }
+        return cookie
     }
 
     /**
