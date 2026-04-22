@@ -27,6 +27,16 @@ object CookieStore : CookieManagerInterface {
             CacheManager.putMemory("${domain}_cookie", cookie ?: "")
             val cookieBean = Cookie(domain, cookie ?: "")
             appDb.cookieDao.insert(cookieBean)
+            // 同时设置到内置浏览器
+            val baseUrl = NetworkUtils.getBaseUrl(url) ?: return
+            cookie?.let {
+                val cookies = it.splitNotBlank(";").toTypedArray()
+                val cookieManager = android.webkit.CookieManager.getInstance()
+                cookies.forEach {
+                    cookieManager.setCookie(baseUrl, it)
+                }
+                cookieManager.flush()
+            }
         } catch (e: Exception) {
             AppLog.put("保存Cookie失败\n$e", e)
         }
@@ -55,8 +65,10 @@ object CookieStore : CookieManagerInterface {
 
         val cookie = getCookieNoSession(url)
         val sessionCookie = CookieManager.getSessionCookie(domain)
+        // 同时从内置浏览器获取cookie
+        val webViewCookie = android.webkit.CookieManager.getInstance().getCookie(url)
 
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
+        val cookieMap = mergeCookiesToMap(cookie, sessionCookie, webViewCookie)
 
         var ck = mapToCookie(cookieMap) ?: ""
         while (ck.length > 4096) {
@@ -70,9 +82,7 @@ object CookieStore : CookieManagerInterface {
 
     fun getKey(url: String, key: String): String {
         val cookie = getCookie(url)
-        val sessionCookie = CookieManager.getSessionCookie(url)
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
-        return cookieMap[key] ?: ""
+        return cookieToMap(cookie)[key] ?: ""
     }
 
     override fun removeCookie(url: String) {
@@ -80,7 +90,10 @@ object CookieStore : CookieManagerInterface {
         appDb.cookieDao.delete(domain)
         CacheManager.deleteMemory("${domain}_cookie")
         CacheManager.deleteMemory("${domain}_session_cookie")
-        android.webkit.CookieManager.getInstance().removeCookie(url)
+        // 同时从内置浏览器删除 cookie
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        cookieManager.removeCookie(url)
+        cookieManager.flush()
     }
 
     override fun cookieToMap(cookie: String): MutableMap<String, String> {

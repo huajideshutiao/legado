@@ -344,21 +344,6 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     /**
-     *js实现设置cookie
-     */
-    fun setCookie(tag: String, cookie: String) {
-        CookieStore.setCookie(tag, cookie)
-        // 同时设置到内置浏览器
-        val baseUrl = NetworkUtils.getBaseUrl(tag) ?: return
-        val cookies = cookie.splitNotBlank(";").toTypedArray()
-        val cookieManager = android.webkit.CookieManager.getInstance()
-        cookies.forEach {
-            cookieManager.setCookie(baseUrl, it)
-        }
-        cookieManager.flush()
-    }
-
-    /**
      * 下载文件
      * @param url 下载地址:可带参数type
      * @return 下载的文件相对路径
