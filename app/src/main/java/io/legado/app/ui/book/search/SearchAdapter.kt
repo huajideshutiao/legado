@@ -85,7 +85,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
             getItem(holder.layoutPosition)?.let {
                 callBack.showBookInfo(it.apply {
                     if (!binding.ivInBookshelf.isVisible)type = type or BookType.notShelf
-                }, "")
+                }, false)
             }
             true
         }
@@ -164,6 +164,6 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         /**
          * 显示书籍详情
          */
-        fun showBookInfo(book: BaseBook, type: String = "click")
+        fun showBookInfo(book: BaseBook, isClick: Boolean = true)
     }
 }

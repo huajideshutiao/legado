@@ -82,10 +82,8 @@ object BookInfo {
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取分类")
         try {
-            analyzeRule.getStringList(infoRule.kind)
-                ?.joinToString(",")
-                ?.let {
-                    if (it.isNotEmpty()) book.kind = it
+            analyzeRule.getStringList(infoRule.kind)?.joinToString(",")?.let {
+                book.kind = it
                     Debug.log(bookSource.bookSourceUrl, "└${it}")
                 } ?: Debug.log(bookSource.bookSourceUrl, "└")
         } catch (e: Exception) {
@@ -97,7 +95,7 @@ object BookInfo {
         Debug.log(bookSource.bookSourceUrl, "┌获取字数")
         try {
             wordCountFormat(analyzeRule.getString(infoRule.wordCount)).let {
-                if (it.isNotEmpty()) book.wordCount = it
+                book.wordCount = it
                 Debug.log(bookSource.bookSourceUrl, "└${it}")
             }
         } catch (e: Exception) {
@@ -109,7 +107,7 @@ object BookInfo {
         Debug.log(bookSource.bookSourceUrl, "┌获取最新章节")
         try {
             analyzeRule.getString(infoRule.lastChapter).let {
-                if (it.isNotEmpty()) book.latestChapterTitle = it
+                book.latestChapterTitle = it
                 Debug.log(bookSource.bookSourceUrl, "└${it}")
             }
         } catch (e: Exception) {
@@ -121,7 +119,7 @@ object BookInfo {
         Debug.log(bookSource.bookSourceUrl, "┌获取简介")
         try {
             HtmlFormatter.format(analyzeRule.getString(infoRule.intro)).let {
-                if (it.isNotEmpty()) book.intro = it
+                book.intro = it
                 Debug.log(bookSource.bookSourceUrl, "└${it}")
             }
         } catch (e: Exception) {
@@ -134,8 +132,7 @@ object BookInfo {
         try {
             analyzeRule.getString(infoRule.coverUrl).let {
                 if (it.isNotEmpty()) {
-                    book.coverUrl =
-                        NetworkUtils.getAbsoluteURL(redirectUrl, it)
+                    book.coverUrl = NetworkUtils.getAbsoluteURL(redirectUrl, it)
                 }
                 Debug.log(bookSource.bookSourceUrl, "└${it}")
             }
@@ -161,8 +158,7 @@ object BookInfo {
                 throw NoStackTraceException("下载链接为空")
             } else {
                 Debug.log(
-                    bookSource.bookSourceUrl,
-                    "└" + TextUtils.join("，\n", book.downloadUrls!!)
+                    bookSource.bookSourceUrl, "└" + TextUtils.join("，\n", book.downloadUrls!!)
                 )
             }
         }

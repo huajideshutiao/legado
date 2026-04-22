@@ -15,32 +15,20 @@
         app:title="@string/discovery" />
 
     <LinearLayout
-        android:id="@+id/filter_layout"
+        android:id="@+id/ll_filter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/title_bar"
-        tools:visibility="visible">
-
-        <LinearLayout
-            android:id="@+id/filter_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider" />
-    </LinearLayout>
+        tools:visibility="visible" />
 
     <io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout
         android:id="@+id/content_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/filter_layout">
+        app:layout_constraintTop_toBottomOf="@id/ll_filter">
 
 
         <androidx.recyclerview.widget.RecyclerView

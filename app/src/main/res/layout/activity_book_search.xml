@@ -21,33 +21,12 @@
         android:layout_height="2dp"
         app:layout_constraintTop_toBottomOf="@id/title_bar" />
 
-    <LinearLayout
-        android:id="@+id/filter_layout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/refresh_progress_bar"
-        tools:visibility="visible">
-
-        <LinearLayout
-            android:id="@+id/filter_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider" />
-    </LinearLayout>
-
     <io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout
         android:id="@+id/content_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/filter_layout">
+        app:layout_constraintTop_toBottomOf="@id/refresh_progress_bar">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_view"
@@ -128,3 +107,4 @@
         app:layout_constraintRight_toRightOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
+

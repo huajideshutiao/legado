@@ -17,13 +17,16 @@ import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.isRss
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.rss.ReadRssActivity
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -126,16 +129,15 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     private fun initFilterView() {
         if (viewModel.exploreOptions.isEmpty()) {
-            binding.filterLayout.isVisible = false
+            binding.llFilter.isVisible = false
             return
         }
-        binding.filterLayout.isVisible = true
-        binding.filterContainer.removeAllViews()
+        binding.llFilter.isVisible = true
+        binding.llFilter.removeAllViews()
         viewModel.exploreOptions.forEach { option ->
             val scrollView = HorizontalScrollView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 overScrollMode = RecyclerView.OVER_SCROLL_NEVER
                 isFillViewport = true
@@ -143,14 +145,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
             val linearLayout = LinearLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
             }
             scrollView.addView(linearLayout)
-            binding.filterContainer.addView(scrollView)
+            binding.llFilter.addView(scrollView)
 
             // Label item
             ItemFilletTextBinding.inflate(layoutInflater, linearLayout, true).apply {
@@ -211,19 +212,25 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     override fun showBookInfo(book: BaseBook, longClick: Boolean) {
-        if (book.bookUrl.contains("::")) {
-            val tmp = book.bookUrl.split("::")
+        val urlParts = book.bookUrl.split("::", limit = 2)
+        if (urlParts.size == 2) {
             IntentData.source = viewModel.bookSource
             startActivity<ExploreShowActivity> {
-                putExtra("exploreName", tmp[0])
-                putExtra("exploreUrl", tmp[1])
+                putExtra("exploreName", urlParts[0])
+                putExtra("exploreUrl", urlParts[1])
             }
-        } else if (longClick || !AppConfig.devFeat) {
-            IntentData.book = book
-            startActivity<BookInfoActivity> {
+            return
+        }
+        IntentData.book = book
+        when {
+            longClick || !AppConfig.devFeat -> startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
             }
-        } else startActivityForBook(book)
+
+            book.isVideo -> startActivity<VideoPlayActivity>()
+            book.isRss -> startActivity<ReadRssActivity>()
+            else -> startActivity<BookInfoActivity>()
+        }
     }
 }

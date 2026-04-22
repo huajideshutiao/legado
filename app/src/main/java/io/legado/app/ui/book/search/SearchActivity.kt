@@ -7,8 +7,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View.GONE
 import android.view.View.VISIBLE
-import android.widget.HorizontalScrollView
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
@@ -28,8 +26,9 @@ import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
-import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.isRss
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.Selector
@@ -37,16 +36,15 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.book.explore.ExploreShowViewModel
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -54,7 +52,6 @@ import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -67,13 +64,11 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
+import splitties.init.appCtx
 import kotlin.math.abs
 
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    HistoryKeyAdapter.CallBack,
-    SearchScopeDialog.Callback,
-    SearchAdapter.CallBack {
+    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, SearchAdapter.CallBack {
 
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
@@ -97,8 +92,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var booksFlowJob: Job? = null
     private var precisionSearchMenuItem: MenuItem? = null
     private var isManualStopSearch = false
-    private val searchOptions = mutableListOf<ExploreShowViewModel.ExploreOption>()
-    private val optionRegexes = ConcurrentHashMap<String, Regex>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.llInputHelp.setBackgroundColor(backgroundColor)
@@ -159,15 +152,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             menu.setGroupCheckable(R.id.menu_group_1, true, false)
             menu.setGroupCheckable(R.id.menu_group_2, true, true)
         }
-        return super.onCompatCreateOptionsMenu(menu)
+        return super.onMenuOpened(featureId, menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_precision_search -> {
                 putPrefBoolean(
-                    PreferKey.precisionSearch,
-                    !getPrefBoolean(PreferKey.precisionSearch)
+                    PreferKey.precisionSearch, !getPrefBoolean(PreferKey.precisionSearch)
                 )
                 precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
                 searchView.query?.toString()?.trim()?.let {
@@ -197,7 +189,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String): Boolean {
                 searchView.clearFocus()
-                search(query)
+                query.trim().let { searchKey ->
+                    isManualStopSearch = false
+                    viewModel.saveSearchKey(searchKey)
+                    viewModel.searchKey = ""
+                    viewModel.search(searchKey)
+                }
                 visibleInputHelp(false)
                 return true
             }
@@ -217,28 +214,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         }
         visibleInputHelp(true)
-    }
-
-    private fun search(query: String) {
-        var url = query.trim()
-        if (url.isEmpty()) return
-        isManualStopSearch = false
-        viewModel.saveSearchKey(url)
-        viewModel.searchKey = ""
-
-        if (viewModel.searchScope.isSource()) {
-            val source = viewModel.searchScope.getBookSources().firstOrNull()
-            if (source != null && !source.searchUrl.isNullOrBlank()) {
-                searchOptions.forEach { option ->
-                    val regex = optionRegexes.getOrPut(option.name) {
-                        "<${option.name}\\(.*?\\)>".toRegex()
-                    }
-                    url = url.replace(regex, option.selectedValue)
-                }
-            }
-        }
-
-        viewModel.search(url)
     }
 
     private fun initRecyclerView() {
@@ -304,11 +279,8 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initOtherView() {
-        binding.fbStartStop.backgroundTintList =
-            Selector.colorBuild()
-                .setDefaultColor(accentColor)
-                .setPressedColor(ColorUtils.darkenColor(accentColor))
-                .create()
+        binding.fbStartStop.backgroundTintList = Selector.colorBuild().setDefaultColor(accentColor)
+            .setPressedColor(ColorUtils.darkenColor(accentColor)).create()
         binding.fbStartStop.setOnClickListener {
             if (viewModel.isSearchLiveData.value == true) {
                 isManualStopSearch = true
@@ -324,7 +296,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initData() {
         viewModel.searchScope.stateLiveData.observe(this) {
-            initFilterView()
             if (!binding.llInputHelp.isVisible) {
                 searchView.query?.toString()?.trim()?.let {
                     searchView.setQuery(it, true)
@@ -382,10 +353,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         if (isManualStopSearch) {
             return
         }
-        if (viewModel.isSearchLiveData.value == false
-            && viewModel.searchKey.isNotEmpty()
-            && viewModel.hasMore
-        ) {
+        if (viewModel.isSearchLiveData.value == false && viewModel.searchKey.isNotEmpty() && viewModel.hasMore) {
             viewModel.search("")
         }
     }
@@ -425,12 +393,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
             launch {
                 (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
-                else appDb.searchKeywordDao.flowSearch(key))
-                    .catch { AppLog.put("搜索界面获取本地数据失败\n${it.localizedMessage}", it) }
-                    .flowOn(IO).conflate().collect {
-                        historyKeyAdapter.setItems(it)
-                        binding.tvClearHistory.isVisible = it.isNotEmpty()
-                    }
+                else appDb.searchKeywordDao.flowSearch(key)).catch {
+                    AppLog.put(
+                        "搜索界面获取本地数据失败\n${it.localizedMessage}", it
+                    )
+                }.flowOn(IO).conflate().collect {
+                    historyKeyAdapter.setItems(it)
+                    binding.tvClearHistory.isVisible = it.isNotEmpty()
+                }
             }
         }
     }
@@ -467,12 +437,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         viewModel.searchFinishLiveData.observe(this) { isEmpty ->
             if (!isEmpty || viewModel.searchScope.isAll()) return@observe
             alert("搜索结果为空") {
-                val precisionSearch = getPrefBoolean(PreferKey.precisionSearch)
+                val precisionSearch = appCtx.getPrefBoolean(PreferKey.precisionSearch)
                 val displayScope = viewModel.searchScope.display
                 if (precisionSearch) {
                     setMessage("${displayScope}分组搜索结果为空，是否关闭精准搜索？")
                     yesButton {
-                        putPrefBoolean(PreferKey.precisionSearch, false)
+                        appCtx.putPrefBoolean(PreferKey.precisionSearch, false)
                         precisionSearchMenuItem?.isChecked = false
                         viewModel.searchKey = ""
                         viewModel.search(searchView.query.toString())
@@ -498,15 +468,18 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: BaseBook, type: String) {
+    override fun showBookInfo(book: BaseBook, isClick: Boolean) {
         searchView.clearFocus()
-        if (type == "click" && AppConfig.devFeat) {
-            startActivityForBook(book)
-        }
-        else startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            IntentData.book = book
+        IntentData.book = book
+        when {
+            isClick && !AppConfig.devFeat -> startActivity<BookInfoActivity> {
+                putExtra("name", book.name)
+                putExtra("author", book.author)
+            }
+
+            book.isVideo -> startActivity<VideoPlayActivity>()
+            book.isRss -> startActivity<ReadRssActivity>()
+            else -> startActivity<BookInfoActivity>()
         }
     }
 
@@ -554,92 +527,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 viewModel.clearHistory()
             }
             noButton()
-        }
-    }
-
-    private fun initFilterView() {
-        searchOptions.clear()
-        optionRegexes.clear()
-        if (!viewModel.searchScope.isSource()) {
-            binding.filterLayout.isVisible = false
-            return
-        }
-        val source = viewModel.searchScope.getBookSources().firstOrNull() ?: return
-        val searchUrlRaw = source.searchUrl
-        if (searchUrlRaw.isNullOrBlank()) {
-            binding.filterLayout.isVisible = false
-            return
-        }
-
-        val searchUrl = AnalyzeUrl(searchUrlRaw, source = source).ruleUrl
-
-        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
-        regex.findAll(searchUrl).forEach { match ->
-            val name = match.groupValues[1]
-            val pairs = match.groupValues[2].split(",").mapNotNull { s ->
-                val split = s.split(":", limit = 2)
-                val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
-                if (first.isEmpty()) return@mapNotNull null
-                val second = split.getOrNull(1)?.trim() ?: first
-                first to second
-            }
-            if (pairs.isNotEmpty()) {
-                searchOptions.add(ExploreShowViewModel.ExploreOption(name, pairs, pairs[0].second))
-            }
-        }
-
-        if (searchOptions.isEmpty()) {
-            binding.filterLayout.isVisible = false
-            return
-        }
-
-        binding.filterLayout.isVisible = true
-        binding.filterContainer.removeAllViews()
-        searchOptions.forEach { option ->
-            val scrollView = HorizontalScrollView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                overScrollMode = RecyclerView.OVER_SCROLL_NEVER
-                isFillViewport = true
-                scrollBarSize = 0
-            }
-            val linearLayout = LinearLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
-            }
-            scrollView.addView(linearLayout)
-            binding.filterContainer.addView(scrollView)
-
-            // Label item
-            ItemFilletTextBinding.inflate(layoutInflater, linearLayout, true).apply {
-                textView.text = option.name
-                textView.alpha = 0.8f
-                textView.paint.isFakeBoldText = true
-            }
-            option.options.forEach { pair ->
-                val itemBinding = ItemFilletTextBinding.inflate(layoutInflater, linearLayout, true)
-                itemBinding.textView.text = pair.first
-                itemBinding.root.tag = pair.second
-                itemBinding.textView.alpha = if (pair.second == option.selectedValue) 1.0f else 0.5f
-                itemBinding.root.setOnClickListener {
-                    if (option.selectedValue != pair.second) {
-                        option.selectedValue = pair.second
-                        for (i in 0 until linearLayout.childCount) {
-                            val child = linearLayout.getChildAt(i)
-                            if (child.tag != null) {
-                                child.alpha = if (child.tag == option.selectedValue) 1.0f else 0.5f
-                            }
-                        }
-                        searchView.query?.toString()?.let { search(it) }
-                    }
-                }
-            }
         }
     }
 

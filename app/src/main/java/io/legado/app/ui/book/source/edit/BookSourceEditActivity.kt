@@ -108,13 +108,14 @@ class BookSourceEditActivity :
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_save -> viewModel.save(getSource()) {
+                IntentData.source = it
                 setResult(RESULT_OK)
                 finish()
             }
 
             R.id.menu_debug_source -> viewModel.save(getSource()) { source ->
                 startActivity<BookSourceDebugActivity> {
-                    putExtra("key", source.bookSourceUrl)
+                    IntentData.source = source
                 }
             }
 
@@ -199,7 +200,6 @@ class BookSourceEditActivity :
 
     override fun finish() {
         val source = getSource()
-        IntentData.source = source
         if (!source.equal(viewModel.bookSource ?: BookSource())) {
             alert(R.string.exit) {
                 setMessage(R.string.exit_no_save)

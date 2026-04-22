@@ -56,7 +56,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             }
             setOnLongClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    callBack.showBookInfo(it,"")
+                    callBack.showBookInfo(it, false)
                 }
                 true
             }
