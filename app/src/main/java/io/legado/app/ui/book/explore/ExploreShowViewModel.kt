@@ -15,7 +15,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
@@ -38,7 +37,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private var rawExploreUrl: String? = null
     val exploreOptions = mutableListOf<ExploreOption>()
     private var optionRegexes = mutableMapOf<String, Regex>()
-    private var analyzeUrl: AnalyzeUrl? = null
     var page = 1
         private set
     private var books = linkedSetOf<SearchBook>()
@@ -46,13 +44,14 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     init {
         execute {
             appDb.bookDao.flowAll().mapLatest { books ->
-                books.filterNot { it.isNotShelf }.flatMap {
-                    listOfNotNull(
-                        if (it.author.isNotBlank()) "${it.name}-${it.author}" else null,
-                        it.name,
-                        it.bookUrl
-                    )
+                val keys = arrayListOf<String>()
+                books.filterNot { it.isNotShelf }
+                    .forEach {
+                        keys.add("${it.name}-${it.author}")
+                        keys.add(it.name)
+                        keys.add(it.bookUrl)
                 }
+                keys
             }.catch {
                 AppLog.put("发现列表界面获取书籍数据失败\n${it.localizedMessage}", it)
             }.collect {
@@ -69,10 +68,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         execute {
             rawExploreUrl = intent.getStringExtra("exploreUrl")
             optionRegexes.clear()
-            parseExploreOptions()
             if (bookSource == null) {
                 bookSource = (IntentData.source as? BookSource)
             }
+            parseExploreOptions()
             sourceReadyLiveData.postValue(Unit)
             explore()
         }
@@ -81,10 +80,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private fun parseExploreOptions() {
         val url = rawExploreUrl ?: return
         exploreOptions.clear()
-        analyzeUrl = AnalyzeUrl(url, source = bookSource)
-        val processedUrl = analyzeUrl?.ruleUrl ?: return
-        val regex = "<(\\w+)\\((.*?)\\)>"
-        regex.toRegex().findAll(processedUrl).forEach { match ->
+        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
+        regex.findAll(url).forEach { match ->
             val name = match.groupValues[1]
             val pairs = match.groupValues[2].split(",").mapNotNull { s ->
                 val split = s.split(":", limit = 2)
@@ -101,8 +98,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun explore(resetPage: Boolean = false) {
         val source = bookSource ?: return
-        val analyzeUrl = this.analyzeUrl ?: return
-        var url = analyzeUrl.ruleUrl
+        var url = rawExploreUrl ?: return
         if (resetPage) {
             page = 1
             books.clear()

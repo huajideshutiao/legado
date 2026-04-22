@@ -8,8 +8,7 @@ data class FlexChildStyle(
     val layout_flexShrink: Float = 1F,
     val layout_alignSelf: String = "auto",
     val layout_flexBasisPercent: Float = 0.3F,
-    val layout_wrapBefore: Boolean = false,
-    val layout_minWidth: Float = 0F,
+    val layout_wrapBefore: Boolean = false
 ) {
 
     fun alignSelf(): Int {
@@ -31,12 +30,6 @@ data class FlexChildStyle(
         lp.alignSelf = alignSelf()
         lp.flexBasisPercent = layout_flexBasisPercent
         lp.isWrapBefore = layout_wrapBefore
-        if (layout_minWidth > 0F) {
-            val parent = view.parent as? View ?: return
-            val parentAvailableWidth =
-                parent.width - parent.paddingLeft - parent.paddingRight - lp.leftMargin - lp.rightMargin
-            lp.minWidth = (parentAvailableWidth * layout_minWidth).toInt()
-        }
     }
 
     companion object {
