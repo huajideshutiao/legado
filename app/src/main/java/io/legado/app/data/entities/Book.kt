@@ -23,6 +23,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.splitNotBlank
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import java.nio.charset.Charset
@@ -160,6 +161,9 @@ data class Book(
 
     fun getRealAuthor() = author.replace(AppPattern.authorRegex, "")
 
+    fun getDisplayAuthor() =
+        getRealAuthor().splitNotBlank(",", "\n").joinToString("\n") { it.split("::")[0] }
+
     fun getUnreadChapterNum() = max(simulatedTotalChapterNum() - durChapterIndex +( if (durChapterPos<0)-1 else 0 ), 0)
 
     fun getDisplayCover() = if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
@@ -282,7 +286,7 @@ data class Book(
     }
 
     fun addDelTag(tag: Long) {
-        config.delTag = config.delTag and tag
+        config.delTag = config.delTag or tag
     }
 
     fun removeDelTag(tag: Long) {

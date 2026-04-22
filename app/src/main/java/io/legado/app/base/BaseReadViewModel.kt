@@ -406,7 +406,9 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     /**
      * 子类实现具体的书源更新逻辑, 按需覆写
      */
-    protected open fun onUpSource(book: Book) {}
+    protected open fun onUpSource(book: Book) {
+        curBookSource = IntentData.source as? BookSource
+    }
 
     override fun onCleared() {
         super.onCleared()

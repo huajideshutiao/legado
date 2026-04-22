@@ -198,6 +198,23 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         }
     }
 
+    fun uploadBook(book: Book) {
+        execute {
+            waitDialogData.postValue(true)
+            val bookWebDav =
+                AppWebDav.defaultBookWebDav ?: throw NoStackTraceException("未配置webDav")
+            bookWebDav.upload(book)
+            book.lastCheckTime = System.currentTimeMillis()
+            book.save()
+        }.onSuccess {
+            context.toastOnUi("上传成功")
+        }.onError {
+            context.toastOnUi(it.localizedMessage)
+        }.onFinally {
+            waitDialogData.postValue(false)
+        }
+    }
+
     fun clearCache() {
         execute {
             BookHelp.clearCache(bookData.value!!)

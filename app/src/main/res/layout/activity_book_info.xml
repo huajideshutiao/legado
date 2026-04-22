@@ -164,7 +164,7 @@
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:paddingTop="8dp">
+                        android:baselineAligned="false">
 
                         <TextView
                             android:id="@+id/tv_author"
@@ -192,14 +192,13 @@
 
                     </LinearLayout>
 
-                    <com.google.android.flexbox.FlexboxLayout
+                    <LinearLayout
                         android:id="@+id/lb_kind"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="8dp"
-                        android:visibility="gone"
-                        app:flexDirection="row"
-                        app:flexWrap="wrap" />
+                        android:orientation="vertical"
+                        android:visibility="gone" />
 
                     <io.legado.app.ui.widget.text.ScrollTextView
                         android:id="@+id/tv_intro"

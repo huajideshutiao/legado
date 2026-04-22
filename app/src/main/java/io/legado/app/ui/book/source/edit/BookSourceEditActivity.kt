@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.source.edit
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -19,6 +18,7 @@ import io.legado.app.data.entities.rule.ExploreRule
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.databinding.ActivityBookSourceEditBinding
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -108,7 +108,7 @@ class BookSourceEditActivity :
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_save -> viewModel.save(getSource()) {
-                setResult(RESULT_OK, Intent().putExtra("origin", it.bookSourceUrl))
+                setResult(RESULT_OK)
                 finish()
             }
 
@@ -199,6 +199,7 @@ class BookSourceEditActivity :
 
     override fun finish() {
         val source = getSource()
+        IntentData.source = source
         if (!source.equal(viewModel.bookSource ?: BookSource())) {
             alert(R.string.exit) {
                 setMessage(R.string.exit_no_save)
