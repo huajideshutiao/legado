@@ -1,10 +1,7 @@
 package io.legado.app.help.http
 
-import android.text.TextUtils
 import androidx.annotation.Keep
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern.equalsRegex
-import io.legado.app.constant.AppPattern.semicolonRegex
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Cookie
 import io.legado.app.help.CacheManager
@@ -13,124 +10,136 @@ import io.legado.app.help.http.CookieManager.mergeCookiesToMap
 import io.legado.app.help.http.api.CookieManagerInterface
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.removeCookie
-import io.legado.app.utils.splitNotBlank
 
 @Keep
 object CookieStore : CookieManagerInterface {
 
     /**
-     *保存cookie到数据库，会自动识别url的二级域名
+     * 保存cookie到数据库，并同步到内置浏览器
      */
     override fun setCookie(url: String, cookie: String?) {
+        if (!url.startsWith("http")) return
         try {
-            if(!url.startsWith("http"))return
             val domain = NetworkUtils.getSubDomain(url)
-            CacheManager.putMemory("${domain}_cookie", cookie ?: "")
-            val cookieBean = Cookie(domain, cookie ?: "")
-            appDb.cookieDao.insert(cookieBean)
-            // 同时设置到内置浏览器
+            val cookieStr = cookie ?: ""
+
+            val cacheKey = domain + "_cookie"
+            val oldCache = CacheManager.getFromMemory(cacheKey) as? String
+            if (oldCache == cookieStr && cookieStr.isNotEmpty()) return
+
+            // 内存缓存同步更新，保证 getCookie 能立即拿到新值
+            CacheManager.putMemory(cacheKey, cookieStr)
+            appDb.cookieDao.insert(Cookie(domain, cookieStr))
+            // 同步到内置浏览器
             val baseUrl = NetworkUtils.getBaseUrl(url) ?: return
-            cookie?.let {
-                val cookies = it.splitNotBlank(";").toTypedArray()
+            if (cookieStr.isNotBlank()) {
                 val cookieManager = android.webkit.CookieManager.getInstance()
-                cookies.forEach {
-                    cookieManager.setCookie(baseUrl, it)
+                // 性能优化：使用 split 迭代避免创建多余的 List
+                cookieStr.split(';').forEach {
+                    val c = it.trim()
+                    if (c.isNotEmpty()) {
+                        cookieManager.setCookie(baseUrl, c)
+                    }
                 }
-                cookieManager.flush()
             }
         } catch (e: Exception) {
-            AppLog.put("保存Cookie失败\n$e", e)
+            AppLog.put("保存Cookie失败\n$url\n$e", e)
         }
     }
 
     override fun replaceCookie(url: String, cookie: String) {
-        if (TextUtils.isEmpty(url) || TextUtils.isEmpty(cookie)) {
-            return
-        }
+        if (url.isBlank() || cookie.isBlank()) return
+
         val oldCookie = getCookieNoSession(url)
-        if (TextUtils.isEmpty(oldCookie)) {
+        if (oldCookie.isEmpty()) {
             setCookie(url, cookie)
         } else {
             val cookieMap = cookieToMap(oldCookie)
             cookieMap.putAll(cookieToMap(cookie))
-            val newCookie = mapToCookie(cookieMap)
-            setCookie(url, newCookie)
+            mapToCookie(cookieMap)?.let {
+                setCookie(url, it)
+            }
         }
     }
 
     /**
-     *获取url所属的二级域名的cookie
+     * 获取url所属的二级域名的cookie
      */
     override fun getCookie(url: String): String {
         val domain = NetworkUtils.getSubDomain(url)
-
         val cookie = getCookieNoSession(url)
         val sessionCookie = CookieManager.getSessionCookie(domain)
-        // 同时从内置浏览器获取cookie
-        val webViewCookie = android.webkit.CookieManager.getInstance().getCookie(url)
 
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie, webViewCookie)
+        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
 
         var ck = mapToCookie(cookieMap) ?: ""
-        while (ck.length > 4096) {
-            val removeKey = cookieMap.keys.random()
-            CookieManager.removeCookie(url, removeKey)
-            cookieMap.remove(removeKey)
-            ck = mapToCookie(cookieMap) ?: ""
+        if (ck.length > 4096) {
+            val keys = cookieMap.keys.toList()
+            for (key in keys.shuffled()) {
+                cookieMap.remove(key)
+                CookieManager.removeCookie(url, key)
+                ck = mapToCookie(cookieMap) ?: ""
+                if (ck.length <= 4096) break
+            }
         }
         return ck
     }
 
     fun getKey(url: String, key: String): String {
         val cookie = getCookie(url)
-        return cookieToMap(cookie)[key] ?: ""
+        // 性能优化：直接解析不转换成 Map
+        if (cookie.isBlank()) return ""
+        cookie.split(';').forEach { pair ->
+            val index = pair.indexOf('=')
+            if (index > 0 && pair.take(index).trim() == key) {
+                return pair.substring(index + 1).trim()
+            }
+        }
+        return ""
     }
 
     override fun removeCookie(url: String) {
-        val domain = NetworkUtils.getSubDomain(url)
-        appDb.cookieDao.delete(domain)
-        CacheManager.deleteMemory("${domain}_cookie")
-        CacheManager.deleteMemory("${domain}_session_cookie")
-        // 同时从内置浏览器删除 cookie
-        val cookieManager = android.webkit.CookieManager.getInstance()
-        cookieManager.removeCookie(url)
-        cookieManager.flush()
+        try {
+            val domain = NetworkUtils.getSubDomain(url)
+            appDb.cookieDao.delete(domain)
+            CacheManager.deleteMemory(domain + "_cookie")
+            CacheManager.deleteMemory("${domain}_session_cookie")
+
+            android.webkit.CookieManager.getInstance().removeCookie(url)
+//
+//            // 清理 WebStorage (Local Storage / Session Storage)
+//            val baseUrl = NetworkUtils.getBaseUrl(url)
+//            if (baseUrl != null) {
+//                WebStorage.getInstance().deleteOrigin(baseUrl)
+//            }
+        } catch (e: Exception) {
+            AppLog.put("删除Cookie失败\n$url\n$e", e)
+        }
     }
 
     override fun cookieToMap(cookie: String): MutableMap<String, String> {
         val cookieMap = mutableMapOf<String, String>()
-        if (cookie.isBlank()) {
-            return cookieMap
-        }
-        val pairArray = cookie.split(semicolonRegex).dropLastWhile { it.isEmpty() }.toTypedArray()
-        for (pair in pairArray) {
-            val pairs = pair.split(equalsRegex, 2).dropLastWhile { it.isEmpty() }.toTypedArray()
-            if (pairs.size <= 1) {
-                continue
-            }
-            val key = pairs[0].trim { it <= ' ' }
-            val value = pairs[1]
-            if (value.isNotBlank() || value.trim { it <= ' ' } == "null") {
-                cookieMap[key] = value.trim { it <= ' ' }
+        if (cookie.isBlank()) return cookieMap
+
+        cookie.split(';').forEach { pair ->
+            val index = pair.indexOf('=')
+            if (index > 0) {
+                val key = pair.take(index).trim()
+                val value = pair.substring(index + 1).trim()
+                if (value.isNotEmpty() && value != "null") {
+                    cookieMap[key] = value
+                }
             }
         }
         return cookieMap
     }
 
     override fun mapToCookie(cookieMap: Map<String, String>?): String? {
-        if (cookieMap.isNullOrEmpty()) {
-            return null
-        }
-        val builder = StringBuilder()
-        cookieMap.keys.forEachIndexed { index, key ->
-            if (index > 0) builder.append("; ")
-            builder.append(key).append("=").append(cookieMap[key])
-        }
-        return builder.toString()
+        if (cookieMap.isNullOrEmpty()) return null
+        return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 
     fun clear() {
         appDb.cookieDao.deleteOkHttp()
     }
-
 }

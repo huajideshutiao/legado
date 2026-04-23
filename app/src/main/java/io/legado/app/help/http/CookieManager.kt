@@ -1,6 +1,5 @@
 package io.legado.app.help.http
 
-import android.webkit.CookieManager
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.help.CacheManager
@@ -11,6 +10,7 @@ import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
+import android.webkit.CookieManager as WebkitCookieManager
 
 @Suppress("ConstPropertyName")
 object CookieManager {
@@ -26,44 +26,47 @@ object CookieManager {
      */
     fun saveResponse(response: Response) {
         val url = response.request.url
-        val headers = response.headers
-        saveCookiesFromHeaders(url, headers)
+        saveCookiesFromHeaders(url, response.headers)
     }
 
     private fun saveCookiesFromHeaders(url: HttpUrl, headers: Headers) {
         val domain = NetworkUtils.getSubDomain(url.toString())
         val cookies = Cookie.parseAll(url, headers)
+        if (cookies.isEmpty()) return
 
-        val sessionCookie = cookies.filter { !it.persistent }.getString()
-        updateSessionCookie(domain, sessionCookie)
+        val (persistent, session) = cookies.partition { it.persistent }
 
-        val cookieString = cookies.filter { it.persistent }.getString()
-        CookieStore.replaceCookie(domain, cookieString)
+        if (session.isNotEmpty()) {
+            updateSessionCookie(domain, session.toCookieString())
+        }
+
+        if (persistent.isNotEmpty()) {
+            CookieStore.replaceCookie(domain, persistent.toCookieString())
+        }
     }
 
     /**
      * 加载Cookies到请求中
      */
     fun loadRequest(request: Request): Request {
-        val url = request.url.toString()
-        val domain = NetworkUtils.getSubDomain(url)
+        val urlString = request.url.toString()
+        val domain = NetworkUtils.getSubDomain(urlString)
 
-        val cookie = CookieStore.getCookie(domain)
+        val storeCookie = CookieStore.getCookie(domain)
         val requestCookie = request.header("Cookie")
 
-        val newCookie = mergeCookies(requestCookie, cookie) ?: return request
+        val newCookie = mergeCookies(requestCookie, storeCookie) ?: return request
 
-        kotlin.runCatching {
-            return request.newBuilder()
+        return try {
+            request.newBuilder()
                 .header("Cookie", newCookie)
                 .build()
-        }.onFailure {
-            CookieStore.removeCookie(url)
-            val msg = "设置cookie出错，已清除cookie $domain cookie:$newCookie\n$it"
-            AppLog.put(msg, it)
+        } catch (e: Exception) {
+            CookieStore.removeCookie(urlString)
+            val msg = "设置cookie出错，已清除cookie $domain cookie:$newCookie"
+            AppLog.put(msg, e)
+            request
         }
-
-        return request
     }
 
     private fun getSessionCookieMap(domain: String): MutableMap<String, String>? {
@@ -75,14 +78,13 @@ object CookieManager {
     }
 
     private fun updateSessionCookie(domain: String, cookies: String) {
-        val sessionCookie = getSessionCookie(domain)
-        if (sessionCookie.isNullOrEmpty()) {
-            CacheManager.putMemory("${domain}_session_cookie", cookies)
-            return
+        val cacheKey = "${domain}_session_cookie"
+        val sessionCookie = CacheManager.getFromMemory(cacheKey) as? String
+        val ck =
+            if (sessionCookie.isNullOrEmpty()) cookies else mergeCookies(sessionCookie, cookies)
+        ck?.let {
+            CacheManager.putMemory(cacheKey, it)
         }
-
-        val ck = mergeCookies(sessionCookie, cookies) ?: return
-        CacheManager.putMemory("${domain}_session_cookie", ck)
     }
 
     fun mergeCookies(vararg cookies: String?): String? {
@@ -91,11 +93,13 @@ object CookieManager {
     }
 
     fun mergeCookiesToMap(vararg cookies: String?): MutableMap<String, String> {
-        return cookies.filterNotNull().map {
-            CookieStore.cookieToMap(it)
-        }.reduce { acc, cookieMap ->
-            acc.apply { putAll(cookieMap) }
+        val combinedMap = mutableMapOf<String, String>()
+        cookies.forEach { cookieStr ->
+            if (!cookieStr.isNullOrBlank()) {
+                combinedMap.putAll(CookieStore.cookieToMap(cookieStr))
+            }
         }
+        return combinedMap
     }
 
     /**
@@ -104,18 +108,19 @@ object CookieManager {
     fun removeCookie(url: String, key: String) {
         val domain = NetworkUtils.getSubDomain(url)
 
-        getSessionCookieMap(domain)?.let {
-            it.remove(key)
-            CookieStore.mapToCookie(it)?.let { cookie ->
-                CacheManager.putMemory("${domain}_session_cookie", cookie)
+        getSessionCookieMap(domain)?.let { map ->
+            if (map.remove(key) != null) {
+                CookieStore.mapToCookie(map)?.let {
+                    CacheManager.putMemory("${domain}_session_cookie", it)
+                }
             }
         }
 
         val cookie = getCookieNoSession(url)
         if (cookie.isNotEmpty()) {
-            val cookieMap = CookieStore.cookieToMap(cookie).apply { remove(key) }
-            CookieStore.mapToCookie(cookieMap)?.let {
-                CookieStore.setCookie(url, it)
+            val cookieMap = CookieStore.cookieToMap(cookie)
+            if (cookieMap.remove(key) != null) {
+                CookieStore.setCookie(url, CookieStore.mapToCookie(cookieMap))
             }
         }
     }
@@ -124,30 +129,23 @@ object CookieManager {
         val domain = NetworkUtils.getSubDomain(url)
         val cacheCookie = CacheManager.getFromMemory("${domain}_cookie") as? String
 
-        return if (cacheCookie != null) {
-            cacheCookie
-        } else {
-            val cookieBean = appDb.cookieDao.get(domain)
-            cookieBean?.cookie ?: ""
-        }
+        return cacheCookie ?: appDb.cookieDao.get(domain)?.cookie ?: ""
     }
 
     fun applyToWebView(url: String) {
         val baseUrl = NetworkUtils.getBaseUrl(url) ?: return
         val cookies = CookieStore.getCookie(url).splitNotBlank(";")
-        val cookieManager = android.webkit.CookieManager.getInstance()
-        cookieManager.removeSessionCookies(null)
+        if (cookies.isEmpty()) return
+
+        val webManager = WebkitCookieManager.getInstance()
+        // 不建议在这里直接 removeSessionCookies，因为它会影响全局
         cookies.forEach {
-            cookieManager.setCookie(baseUrl, it)
+            webManager.setCookie(baseUrl, it)
         }
-        cookieManager.flush()
+        webManager.flush()
     }
 
-    fun List<Cookie>.getString() = buildString {
-        this@getString.forEachIndexed { index, cookie ->
-            if (index > 0) append("; ")
-            append(cookie.name).append('=').append(cookie.value)
-        }
+    private fun List<Cookie>.toCookieString(): String {
+        return joinToString("; ") { "${it.name}=${it.value}" }
     }
-
 }
