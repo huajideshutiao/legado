@@ -45,11 +45,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         execute {
             appDb.bookDao.flowAll().mapLatest { books ->
                 val keys = arrayListOf<String>()
-                books.filterNot { it.isNotShelf }
-                    .forEach {
-                        keys.add("${it.name}-${it.author}")
-                        keys.add(it.name)
-                        keys.add(it.bookUrl)
+                books.filterNot { it.isNotShelf }.forEach {
+                    keys.add("${it.name}-${it.author}")
+                    keys.add(it.name)
+                    keys.add(it.bookUrl)
                 }
                 keys
             }.catch {
@@ -69,7 +68,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             rawExploreUrl = intent.getStringExtra("exploreUrl")
             optionRegexes.clear()
             if (bookSource == null) {
-                bookSource = (IntentData.source as? BookSource)
+                bookSource = IntentData.source as? BookSource ?: appDb.bookSourceDao.getBookSource(
+                    intent.getStringExtra("sourceUrl") ?: return@execute
+                )
             }
             parseExploreOptions()
             sourceReadyLiveData.postValue(Unit)
@@ -111,15 +112,14 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
         Coroutine.async(viewModelScope) {
             getBookListAwait(source, url, page, isSearch = false)
-        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
-            .onSuccess(IO) { searchBooks ->
-                books.addAll(searchBooks)
-                booksData.postValue(books.toList())
-                page++
-            }.onError {
-                it.printOnDebug()
-                errorLiveData.postValue(it.stackTraceStr)
-            }
+        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { searchBooks ->
+            books.addAll(searchBooks)
+            booksData.postValue(books.toList())
+            page++
+        }.onError {
+            it.printOnDebug()
+            errorLiveData.postValue(it.stackTraceStr)
+        }
     }
 
     fun isInBookShelf(book: BaseBook): Boolean {
@@ -137,9 +137,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     data class ExploreOption(
-        val name: String,
-        val options: List<Pair<String, String>>,
-        var selectedValue: String
+        val name: String, val options: List<Pair<String, String>>, var selectedValue: String
     )
 
 }
