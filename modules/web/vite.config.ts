@@ -1,8 +1,6 @@
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import Icons from "unplugin-icons/vite";
-import IconsResolver from "unplugin-icons/resolver";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
@@ -22,23 +20,14 @@ export default defineConfig(({ mode }) => {
         },
         resolvers: [
           ElementPlusResolver(),
-          IconsResolver({
-            prefix: "Icon",
-          }),
         ],
         dts: "./src/auto-imports.d.ts",
       }),
       Components({
         resolvers: [
           ElementPlusResolver(),
-          IconsResolver({
-            enabledCollections: ["ep"],
-          }),
         ],
         dts: "./src/components.d.ts",
-      }),
-      Icons({
-        autoInstall: true,
       }),
       viteSingleFile(),
     ],
@@ -57,15 +46,6 @@ export default defineConfig(({ mode }) => {
       drop: mode === "development" ? undefined : ["console", "debugger"],
     },
     build: {
-      // 构建优化
-      minify: 'terser',
-      terserOptions: {
-        compress: {
-          drop_console: true,
-          drop_debugger: true,
-        },
-      },
-      // 分析构建产物
       reportCompressedSize: true,
       emptyOutDir: true,
     },

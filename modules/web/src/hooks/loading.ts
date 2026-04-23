@@ -1,8 +1,9 @@
 import { watch, unref, onUnmounted } from 'vue'
 import { ElLoading } from 'element-plus'
-import loadingSvg from '@element-plus/icons-svg/loading.svg?raw'
 import 'element-plus/theme-chalk/el-loading.css'
 import './loading.css'
+
+const loadingSvg = `<svg viewBox="0 0 50 50" class="circular"><circle cx="50%" cy="50%" r="20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="31.416 31.416" stroke-dashoffset="0"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/></circle></svg>`
 
 export const useLoading = (
   target: MaybeRef<string | HTMLElement | undefined>,

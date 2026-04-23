@@ -2,7 +2,7 @@ import { createWebHashHistory, createRouter } from 'vue-router'
 
 export const bookRoutes = [
   {
-    path: '/',
+    path: '/shelf',
     name: 'shelf',
     component: () => import('../views/BookShelf.vue'),
   },
@@ -14,7 +14,6 @@ export const bookRoutes = [
 ]
 
 const router = createRouter({
-  // mode: "history",
   history: createWebHashHistory(),
   routes: bookRoutes,
 })

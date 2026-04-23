@@ -17,7 +17,6 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "@element-plus/icons-svg": "^2.3.1",
     "@element-plus/icons-vue": "^2.3.1",
     "@vueuse/core": "^11.1.0",
     "@vueuse/shared": "^11.1.0",
@@ -42,10 +41,8 @@
     "npm-run-all2": "^6.2.3",
     "prettier": "^3.3.3",
     "sass-embedded": "^1.83.1",
-    "terser": "^5.31.0",
     "typescript": "~5.5.4",
     "unplugin-auto-import": "^0.18.3",
-    "unplugin-icons": "^0.19.3",
     "unplugin-vue-components": "^0.27.4",
     "vite": "^5.4.8",
     "vue-tsc": "^2.1.6"

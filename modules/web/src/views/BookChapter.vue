@@ -278,7 +278,7 @@ const toBottom = () => {
 // 书架路由切换
 const router = useRouter()
 const toShelf = () => {
-  router.push('/')
+  router.push('/shelf')
 }
 
 // 获取章节内容

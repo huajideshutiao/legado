@@ -1,21 +1,37 @@
 <!DOCTYPE html>
 <html>
-	<head>
-		<meta charset="utf-8" />
-		<title>help</title>
-		<link rel="stylesheet" href="css/github-markdown-light.min.css" />
-		<link rel="stylesheet" href="css/highlight.min.css" />
-		<style>
-			body {
-				min-width: 200px;
-				max-width: 980px;
-				margin: 0 auto;
-				padding: 45px;
-			}
-		</style>
-		<script src="js/require.js" data-main="js/main" defer async="true"></script>
-	</head>
-	<body>
-		<div id="mdviewer" class="markdown-body"></div>
-	</body>
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <title>Help</title>
+    <link href="css/github-markdown-light.min.css" rel="stylesheet">
+    <link href="css/highlight.min.css" rel="stylesheet">
+    <style>
+        body {
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+        @media (max-width: 600px) {
+            body { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+<div class="markdown-body" id="mdviewer"></div>
+<script src="js/marked.min.js"></script>
+<script src="js/highlight.min.js"></script>
+<script>
+    const file = location.hash.slice(1).trim();
+    if (file) {
+        fetch('/help/md/' + file + '.md')
+            .then(r => r.text())
+            .then(md => {
+                document.getElementById('mdviewer').innerHTML = marked.parse(md);
+                hljs.highlightAll();
+            });
+    }
+</script>
+</body>
 </html>
