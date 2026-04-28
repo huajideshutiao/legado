@@ -244,7 +244,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         }
         binding.ivDelete.setOnClickListener {
             if (ReadBookConfig.deleteDur()) {
-                postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+                postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 12, 5))
                 dismissAllowingStateLoss()
             } else {
                 toastOnUi("数量已是最少,不能删除.")
