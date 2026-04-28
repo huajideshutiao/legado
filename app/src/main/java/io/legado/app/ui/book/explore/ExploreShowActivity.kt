@@ -39,6 +39,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     private lateinit var adapter: BaseExploreShowAdapter<*>
     private val loadMoreView by lazy { LoadMoreView(this) }
     private var switchLayoutMenuItem: MenuItem? = null
+    private var starMenuItem: MenuItem? = null
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
@@ -70,6 +71,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 putString(it, null)
             })
         }
+        viewModel.upStarLiveData.observe(this) { upStarIcon(it) }
         viewModel.sourceReadyLiveData.observe(this) {
             upAdapterByStyle(viewModel.exploreStyle)
             initFilterView()
@@ -86,6 +88,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             2 -> {
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
                 adapter = GridExploreShowAdapter(this, this)
+            }
+
+            3 -> {
+                binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
+                adapter = GridExploreShowAdapter(this, this).apply {
+                    isVideoStyle = true
+                }
             }
 
             else -> {
@@ -106,14 +115,17 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         when (viewModel.exploreStyle) {
             0 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_big_card)
             1 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_grid)
-            2 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_list)
+            2 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_video)
+            3 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_list)
         }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.explore_bar, menu)
         switchLayoutMenuItem = menu.findItem(R.id.menu_switch_layout)
+        starMenuItem = menu.findItem(R.id.menu_star)
         upSwitchLayoutIcon()
+        upStarIcon(viewModel.isFavorite())
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -123,8 +135,22 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 viewModel.switchLayout()
                 upAdapterByStyle(viewModel.exploreStyle)
             }
+
+            R.id.menu_star -> {
+                viewModel.toggleFavorite()
+            }
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun upStarIcon(isFavorite: Boolean) {
+        if (isFavorite) {
+            starMenuItem?.setIcon(R.drawable.ic_star)
+            starMenuItem?.setTitle(R.string.in_favorites)
+        } else {
+            starMenuItem?.setIcon(R.drawable.ic_star_border)
+            starMenuItem?.setTitle(R.string.out_favorites)
+        }
     }
 
     private fun initFilterView() {

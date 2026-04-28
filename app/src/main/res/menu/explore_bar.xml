@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menu_star"
+        android:icon="@drawable/ic_star_border"
+        android:title="@string/favorite"
+        app:showAsAction="always"
+        tools:ignore="AlwaysShowAction" />
     <item
         android:id="@+id/menu_switch_layout"
         android:title="@string/switchLayout"
         android:icon="@drawable/ic_layout_big_card"
-        app:showAsAction="always"/>
+        app:showAsAction="always" />
 </menu>

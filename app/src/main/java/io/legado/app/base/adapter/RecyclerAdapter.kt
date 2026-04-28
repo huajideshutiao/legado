@@ -75,7 +75,7 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
         kotlin.runCatching {
             val index = headerItems.indexOfValue(header)
             if (index >= 0) {
-                headerItems.remove(index)
+                headerItems.removeAt(index)
                 notifyItemRemoved(index)
             }
         }
@@ -86,8 +86,8 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
         kotlin.runCatching {
             val index = footerItems.indexOfValue(footer)
             if (index >= 0) {
-                footerItems.remove(index)
-                notifyItemRemoved(getActualItemCount() + index - 2)
+                footerItems.removeAt(index)
+                notifyItemRemoved(getActualItemCount() + getHeaderCount() + index)
             }
         }
     }

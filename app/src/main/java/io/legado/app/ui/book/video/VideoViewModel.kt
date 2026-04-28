@@ -23,7 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class VideoViewModel(application: Application) : BaseReadViewModel(application) {
-    val bookTitle by lazy { curBook?.name ?: "" }
     val videoUrl = MutableLiveData<AnalyzeUrl>()
     val videoSource = MutableLiveData<VideoSource>()
     val resolutions = MutableLiveData<List<VideoResolution>>()

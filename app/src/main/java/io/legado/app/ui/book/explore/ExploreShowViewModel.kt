@@ -11,17 +11,23 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
+import splitties.init.appCtx
 import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -31,10 +37,12 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val booksData = MutableLiveData<List<SearchBook>>()
     val errorLiveData = MutableLiveData<String>()
     val sourceReadyLiveData = MutableLiveData<Unit>()
+    val upStarLiveData = MutableLiveData<Boolean>()
     var bookSource: BookSource? = null
         private set
     val exploreStyle get() = bookSource?.exploreStyle ?: 0
     private var rawExploreUrl: String? = null
+    var exploreName: String? = null
     val exploreOptions = mutableListOf<ExploreOption>()
     private var optionRegexes = mutableMapOf<String, Regex>()
     var page = 1
@@ -66,6 +74,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     fun initData(intent: Intent) {
         execute {
             rawExploreUrl = intent.getStringExtra("exploreUrl")
+            exploreName = intent.getStringExtra("exploreName")
             optionRegexes.clear()
             if (bookSource == null) {
                 bookSource = IntentData.source as? BookSource ?: appDb.bookSourceDao.getBookSource(
@@ -74,8 +83,38 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             }
             parseExploreOptions()
             sourceReadyLiveData.postValue(Unit)
+            upStarLiveData.postValue(isFavorite())
             explore()
         }
+    }
+
+    fun isFavorite(): Boolean {
+        val sourceUrl = bookSource?.bookSourceUrl ?: return false
+        val url = rawExploreUrl ?: return false
+        val favorites = getExploreFavorites()
+        return favorites.any { it.sourceUrl == sourceUrl && it.categoryUrl == url }
+    }
+
+    private fun getExploreFavorites(): List<PinnedExplore> {
+        val json = appCtx.getPrefString("exploreFavorites") ?: return emptyList()
+        return GSON.fromJsonArray<PinnedExplore>(json).getOrNull() ?: emptyList()
+    }
+
+    fun toggleFavorite() {
+        val sourceUrl = bookSource?.bookSourceUrl ?: return
+        val sourceName = bookSource?.bookSourceName ?: return
+        val categoryName = exploreName ?: return
+        val categoryUrl = rawExploreUrl ?: return
+
+        val favorites = getExploreFavorites().toMutableList()
+        val existing = favorites.find { it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl }
+        if (existing != null) {
+            favorites.remove(existing)
+        } else {
+            favorites.add(PinnedExplore(sourceUrl, sourceName, categoryName, categoryUrl))
+        }
+        appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
+        upStarLiveData.postValue(isFavorite())
     }
 
     private fun parseExploreOptions() {
@@ -129,7 +168,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun switchLayout() {
         bookSource?.let {
-            it.exploreStyle = (it.exploreStyle + 1) % 3
+            it.exploreStyle = (it.exploreStyle + 1) % 4
             execute {
                 appDb.bookSourceDao.update(it)
             }

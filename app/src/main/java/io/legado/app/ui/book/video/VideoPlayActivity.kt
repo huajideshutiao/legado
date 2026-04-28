@@ -257,7 +257,6 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData()
-        binding.titleBar.title = viewModel.bookTitle
         viewModel.videoUrl.observe(this) {
             refreshPlayer(it)
             updateResolutionButtonText()
@@ -279,6 +278,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             }
         }
         viewModel.chapterListData.observe(this) {
+            binding.titleBar.title = viewModel.curBook?.name ?: ""
             if (it.size > 1) {
                 binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
                 binding.recyclerView.adapter = adapter

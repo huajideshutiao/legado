@@ -5,6 +5,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
 import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
 import androidx.fragment.app.viewModels
@@ -12,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
@@ -19,7 +21,10 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.databinding.FragmentExploreBinding
+import io.legado.app.databinding.ItemFilletTextBinding
+import io.legado.app.databinding.LayoutExplorePinnedBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
@@ -30,10 +35,13 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +53,8 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import splitties.init.appCtx
+import splitties.views.onLongClick
 
 /**
  * 发现界面
@@ -72,6 +82,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val groups = linkedSetOf<String>()
     private var exploreFlowJob: Job? = null
     private var groupsMenu: SubMenu? = null
+    private var pinnedBinding: LayoutExplorePinnedBinding? = null
+    private val pinnedHeader: (parent: ViewGroup) -> ViewBinding by lazy {
+        { parent ->
+            LayoutExplorePinnedBinding.inflate(layoutInflater, parent, false).also {
+                pinnedBinding = it
+                updatePinnedHeader(viewModel.pinnedExploresData.value)
+            }
+        }
+    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -79,6 +98,56 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initRecyclerView()
         initGroupData()
         upExploreData()
+        viewModel.pinnedExploresData.observe(viewLifecycleOwner) {
+            if (it.isNullOrEmpty()) {
+                adapter.removeHeaderView(pinnedHeader)
+            } else {
+                adapter.removeHeaderView(pinnedHeader)
+                adapter.addHeaderView(pinnedHeader)
+            }
+            updatePinnedHeader(it)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.upPinnedExplores()
+    }
+
+    private fun updatePinnedHeader(pinnedExplores: List<PinnedExplore>?) {
+        val binding = pinnedBinding ?: return
+        if (pinnedExplores.isNullOrEmpty()) {
+            return
+        }
+        binding.flexbox.removeAllViews()
+        pinnedExplores.forEach { pinned ->
+            val itemBinding = ItemFilletTextBinding.inflate(layoutInflater, binding.flexbox, true)
+            itemBinding.textView.text = "${pinned.sourceName}-${pinned.categoryName}"
+            itemBinding.root.setOnClickListener {
+                io.legado.app.help.coroutine.Coroutine.async {
+                    appDb.bookSourceDao.getBookSource(pinned.sourceUrl)
+                }.onSuccess { source ->
+                    if (source != null) {
+                        openExplore(source, pinned.categoryName, pinned.categoryUrl)
+                    } else {
+                        toastOnUi("Source not found")
+                    }
+                }
+            }
+            itemBinding.root.onLongClick {
+                requireContext().alert(R.string.draw) {
+                    setMessage(getString(R.string.sure_del) + "\n${pinned.sourceName}-${pinned.categoryName}")
+                    yesButton {
+                        val favorites =
+                            (viewModel.pinnedExploresData.value ?: emptyList()).toMutableList()
+                        favorites.removeAll { it.sourceUrl == pinned.sourceUrl && it.categoryUrl == pinned.categoryUrl }
+                        appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
+                        viewModel.upPinnedExplores()
+                    }
+                    noButton()
+                }.show()
+            }
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {

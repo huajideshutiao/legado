@@ -80,7 +80,7 @@
             android:ellipsize="end"
             android:gravity="top|center_horizontal"
             android:includeFontPadding="false"
-            android:lines="2"
+            android:maxLines="2"
             android:scrollbars="none"
             android:text="@string/book_name"
             android:textColor="@color/primaryText"

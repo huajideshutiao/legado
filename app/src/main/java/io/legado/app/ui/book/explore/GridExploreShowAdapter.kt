@@ -7,10 +7,13 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGridBinding
+import io.legado.app.ui.widget.image.CoverImageView
 
 
 class GridExploreShowAdapter(context: Context, callBack: CallBack) :
     BaseExploreShowAdapter<ItemBookshelfGridBinding>(context, callBack) {
+
+    var isVideoStyle = false
 
     override fun getViewBinding(parent: ViewGroup): ItemBookshelfGridBinding {
         return ItemBookshelfGridBinding.inflate(inflater, parent, false)
@@ -22,6 +25,11 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
         item: SearchBook
     ) {
         binding.run {
+            if (isVideoStyle) {
+                ivCover.coverRatio = CoverImageView.CoverRatio.VIDEO
+            } else {
+                ivCover.coverRatio = CoverImageView.CoverRatio.NOVEL
+            }
             tvName.text = item.name
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             ivCover.load(
@@ -32,8 +40,8 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
                 item.origin,
                 inBookshelf = callBack.isInBookshelf(item)
             )
-            }
         }
+    }
 
 
         override fun bindChange(binding: ItemBookshelfGridBinding, item: SearchBook, bundle: Bundle) {
