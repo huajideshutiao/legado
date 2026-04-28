@@ -138,10 +138,11 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         override fun onLongPress(e: MotionEvent) {
             player?.let { p ->
                 originalSpeed = p.playbackParameters.speed
+                val targetSpeed = originalSpeed * 2f
                 p.playbackParameters =
-                    PlaybackParameters(originalSpeed * 2f, p.playbackParameters.pitch)
+                    PlaybackParameters(targetSpeed, p.playbackParameters.pitch)
                 binding.tvVideoSpeed.text = String.format(
-                    Locale.getDefault(), "%.1fX", originalSpeed * 2f
+                    Locale.getDefault(), "%.1fX", targetSpeed
                 )
                 binding.tvVideoSpeed.visibility = View.VISIBLE
             }
@@ -227,19 +228,16 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         }
 
         fun onUp() {
+            player?.let { p ->
+                if (p.playbackParameters.speed != originalSpeed) {
+                    p.playbackParameters =
+                        PlaybackParameters(originalSpeed, p.playbackParameters.pitch)
+                }
+            }
             when (gestureMode) {
                 GestureMode.PROGRESS -> {
                     player?.seekTo(position)
                     player?.play()
-                }
-
-                GestureMode.NONE -> {
-                    player?.let { p ->
-                        if (originalSpeed != p.playbackParameters.speed) p.playbackParameters =
-                            PlaybackParameters(
-                                originalSpeed, p.playbackParameters.pitch
-                            )
-                    }
                 }
 
                 else -> {}
