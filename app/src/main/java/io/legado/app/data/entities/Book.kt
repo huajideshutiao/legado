@@ -8,7 +8,6 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.help.book.BookHelp
@@ -158,10 +157,7 @@ data class Book(
     @IgnoredOnParcel
     val lastChapterIndex get() = totalChapterNum - 1
 
-    fun getRealAuthor() = author.replace(AppPattern.authorRegex, "")
-
-    fun getDisplayAuthor() =
-        getRealAuthor().splitNotBlank(",", "\n").joinToString("\n") { it.split("::")[0] }
+    fun getRealAuthor() = author.splitNotBlank("\n").joinToString("\n") { it.split("::")[0] }
 
     fun getUnreadChapterNum() =
         (simulatedTotalChapterNum() - durChapterIndex + if (durChapterPos < 0) -1 else 0).coerceAtLeast(

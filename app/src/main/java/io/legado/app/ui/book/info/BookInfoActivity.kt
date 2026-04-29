@@ -132,6 +132,7 @@ class BookInfoActivity :
                 viewModel.inBookshelf = true
                 upTvBookshelf()
             }
+
             RESULT_DELETED -> {
                 setResult(RESULT_DELETED)
                 finish()
@@ -210,6 +211,7 @@ class BookInfoActivity :
                 IntentData.book = it
                 infoEditResult.launch {}
             }
+
             R.id.menu_share_it -> viewModel.curBook?.let { book ->
                 share(
                     "[${
@@ -233,15 +235,18 @@ class BookInfoActivity :
                     }]"
                 )
             }
+
             R.id.menu_refresh -> refreshBook()
             R.id.menu_login -> viewModel.curBookSource?.let {
                 IntentData.book = viewModel.bookData.value
                 it.showLoginDialog(this)
             }
+
             R.id.menu_top -> viewModel.topBook()
             R.id.menu_set_source_variable -> viewModel.curBookSource?.showSourceVariableDialog(this)
             R.id.menu_set_book_variable -> viewModel.getBook()
                 ?.showBookVariableDialog(this, viewModel.curBookSource)
+
             R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let { sendToClip(it) }
             R.id.menu_copy_toc_url -> viewModel.getBook()?.tocUrl?.let { sendToClip(it) }
             R.id.menu_can_update -> viewModel.getBook()?.let {
@@ -251,6 +256,7 @@ class BookInfoActivity :
                     viewModel.saveBook(it)
                 }
             }
+
             R.id.menu_clear_cache -> viewModel.clearCache()
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
             R.id.menu_split_long_chapter -> {
@@ -262,6 +268,7 @@ class BookInfoActivity :
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
             }
+
             R.id.menu_delete_alert -> LocalConfig.bookInfoDeleteAlert = !item.isChecked
             R.id.menu_upload -> viewModel.getBook()?.let { book ->
                 if (book.getRemoteUrl() != null) {
@@ -271,6 +278,7 @@ class BookInfoActivity :
                     }
                 } else viewModel.uploadBook(book)
             }
+
             R.id.menu_download_local -> viewModel.getBook()?.let { viewModel.downloadToLocal(it) }
         }
         return super.onCompatOptionsItemSelected(item)
@@ -302,7 +310,7 @@ class BookInfoActivity :
         applyDevFeatLayout(book)
         showCover(book)
         tvName.text = book.name
-        tvAuthor.text = book.getDisplayAuthor()
+        tvAuthor.text = book.getRealAuthor()
         tvOrigin.text = book.originName
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
         tvIntro.text = book.getDisplayIntro()
@@ -364,8 +372,7 @@ class BookInfoActivity :
                 withContext(IO) {
                     val size = try {
                         if (book.bookUrl.startsWith("http", true) || book.bookUrl.startsWith(
-                                "dav",
-                                true
+                                "dav", true
                             )
                         ) 0L
                         else FileDoc.fromFile(book.bookUrl).size
@@ -405,8 +412,7 @@ class BookInfoActivity :
         groups.forEach { (groupName, items) ->
             val flexboxLayout = FlexboxLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 flexWrap = FlexWrap.WRAP
             }
@@ -425,9 +431,7 @@ class BookInfoActivity :
     }
 
     private fun addTagToFlexbox(
-        flexboxLayout: FlexboxLayout,
-        text: String,
-        fullKind: String?
+        flexboxLayout: FlexboxLayout, text: String, fullKind: String?
     ) {
         ItemFilletTextBinding.inflate(layoutInflater, flexboxLayout, false).apply {
             textView.text = text
@@ -439,21 +443,7 @@ class BookInfoActivity :
                 textView.paint.isFakeBoldText = true
             } else {
                 root.onClick {
-                    val tmp = fullKind.split("::", limit = 2)
-                    if (tmp.size > 1) {
-                        IntentData.source = viewModel.curBookSource
-                        startActivity<ExploreShowActivity> {
-                            putExtra("exploreName", text)
-                            putExtra("exploreUrl", tmp[1])
-                        }
-                    } else {
-                        startActivity<SearchActivity> {
-                            putExtra("key", tmp[0])
-                            viewModel.curBookSource?.let { source ->
-                                putExtra("searchScope", SearchScope(source).toString())
-                            }
-                        }
-                    }
+                    search(fullKind)
                 }
             }
             flexboxLayout.addView(root)
@@ -466,7 +456,7 @@ class BookInfoActivity :
         ivCover.load(
             book.getDisplayCover(),
             book.name,
-            book.getDisplayAuthor(),
+            book.getRealAuthor(),
             false,
             book.origin,
             inBookshelf = viewModel.inBookshelf
@@ -510,7 +500,7 @@ class BookInfoActivity :
     private fun initViewEvent() = binding.run {
         ivCover.onLongClick {
             viewModel.getBook()
-                ?.let { showDialogFragment(ChangeCoverDialog(it.name, it.getDisplayAuthor())) }
+                ?.let { showDialogFragment(ChangeCoverDialog(it.name, it.getRealAuthor())) }
         }
         ivCover.onClick {
             viewModel.getBook()?.getDisplayCover()?.let { showDialogFragment(PhotoDialog(it)) }
@@ -540,7 +530,7 @@ class BookInfoActivity :
         }
         tvOrigin.onLongClick {
             viewModel.getBook()
-                ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getDisplayAuthor())) }
+                ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getRealAuthor())) }
         }
         tvToc.onClick {
             if (viewModel.chapterListData.value.isNullOrEmpty()) return@onClick toastOnUi(R.string.chapter_list_empty)
@@ -555,14 +545,14 @@ class BookInfoActivity :
         }
         tvAuthor.onClick {
             viewModel.getBook(false)?.let { book ->
-                val authors = book.getRealAuthor().splitNotBlank(",", "\n")
+                val authors = book.author.splitNotBlank("\n")
                 if (authors.isEmpty()) return@let
-                if (authors.size == 1) searchAuthor(authors[0])
+                if (authors.size == 1) search(authors[0])
                 else PopupMenu(this@BookInfoActivity, it).apply {
                     authors.forEachIndexed { index, s ->
                         menu.add(0, index, index, s.split("::")[0])
                     }
-                    setOnMenuItemClickListener { menuItem -> searchAuthor(authors[menuItem.itemId]); true }
+                    setOnMenuItemClickListener { menuItem -> search(authors[menuItem.itemId]); true }
                 }.show()
             }
         }
@@ -576,7 +566,7 @@ class BookInfoActivity :
         }
     }
 
-    private fun searchAuthor(author: String) {
+    private fun search(author: String) {
         val tmp = author.split("::", limit = 2)
         if (tmp.size > 1) {
             IntentData.source = viewModel.curBookSource
@@ -586,7 +576,13 @@ class BookInfoActivity :
             }
         } else startActivity<SearchActivity> {
             putExtra("key", tmp[0])
-            viewModel.curBookSource?.let { putExtra("searchScope", SearchScope(it).toString()) }
+            viewModel.curBookSource?.let {
+                it.searchUrl?.let { _ ->
+                    putExtra(
+                        "searchScope", SearchScope(it).toString()
+                    )
+                }
+            }
         }
     }
 
@@ -636,8 +632,7 @@ class BookInfoActivity :
                 viewModel.importOrDownloadWebFile<Uri>(webFile) { uri ->
                     viewModel.getArchiveFilesName(uri) { fileNames ->
                         if (fileNames.size == 1) viewModel.importBookFromArchive(
-                            uri,
-                            fileNames[0]
+                            uri, fileNames[0]
                         ) { onClick?.invoke(it) }
                         else showDecompressFileImportAlert(uri, fileNames, onClick)
                     }
@@ -657,9 +652,7 @@ class BookInfoActivity :
     }
 
     private fun showDecompressFileImportAlert(
-        archiveFileUri: Uri,
-        fileNames: List<String>,
-        success: ((Book) -> Unit)? = null
+        archiveFileUri: Uri, fileNames: List<String>, success: ((Book) -> Unit)? = null
     ) {
         if (fileNames.isEmpty()) return toastOnUi(R.string.unsupport_archivefile_entry)
         selector(R.string.import_select_book, fileNames) { _, name, _ ->

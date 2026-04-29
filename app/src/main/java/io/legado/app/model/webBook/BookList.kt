@@ -7,7 +7,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.BookHelp
 import io.legado.app.help.source.exploreKindsJson
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
@@ -217,12 +216,12 @@ object BookList {
         analyzeRule.setContent(item)
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名", log)
-        searchBook.name = BookHelp.formatBookName(analyzeRule.getString(ruleName))
+        searchBook.name = analyzeRule.getString(ruleName)
         Debug.log(bookSource.bookSourceUrl, "└${searchBook.name}", log)
         if (searchBook.name.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取作者", log)
-            searchBook.author = BookHelp.formatBookAuthor(analyzeRule.getString(ruleAuthor))
+            searchBook.author = analyzeRule.getString(ruleAuthor)
             Debug.log(bookSource.bookSourceUrl, "└${searchBook.author}", log)
             if (filter?.invoke(searchBook.name, searchBook.author) == false) {
                 return null

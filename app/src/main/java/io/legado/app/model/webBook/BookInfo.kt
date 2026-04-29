@@ -5,7 +5,6 @@ import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isWebFile
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -65,7 +64,7 @@ object BookInfo {
         val mCanReName = canReName && !infoRule.canReName.isNullOrBlank()
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名")
-        BookHelp.formatBookName(analyzeRule.getString(infoRule.name)).let {
+        analyzeRule.getString(infoRule.name).let {
             if (it.isNotEmpty() && (mCanReName || book.name.isEmpty())) {
                 book.name = it
             }
@@ -73,7 +72,7 @@ object BookInfo {
         }
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取作者")
-        BookHelp.formatBookAuthor(analyzeRule.getString(infoRule.author)).let {
+        analyzeRule.getString(infoRule.author).let {
             if (it.isNotEmpty() && (mCanReName || book.author.isEmpty())) {
                 book.author = it
             }
