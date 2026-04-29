@@ -472,7 +472,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         searchView.clearFocus()
         IntentData.book = book
         when {
-            isClick && !AppConfig.devFeat -> startActivity<BookInfoActivity> {
+            !isClick || !AppConfig.devFeat -> startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
             }

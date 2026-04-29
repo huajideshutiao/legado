@@ -477,7 +477,7 @@ class BookInfoActivity :
                 book.getDisplayCover(),
                 sourceOrigin = book.origin,
                 inBookshelf = viewModel.inBookshelf
-            ).placeholder(bgBook.drawable).into(bgBook)
+            ).into(bgBook)
         }
     }
 

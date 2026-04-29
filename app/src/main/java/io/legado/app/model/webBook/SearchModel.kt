@@ -105,7 +105,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 callBack.onSearchSuccess(searchBooks)
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
-                pool.close()
             }.catch {
                 AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
                 callBack.onSearchCancel(it)
@@ -195,6 +194,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
     fun close() {
         searchJob?.cancel()
+        searchPool?.close()
         searchPool = null
         mSearchId = 0L
     }

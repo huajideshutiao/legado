@@ -96,21 +96,17 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
      * 开始搜索
      */
     fun search(key: String) {
-        if (key.isEmpty()) {
-            searchModel.cancelSearch()
-            searchKey = ""
-            searchBookLiveData.postValue(emptyList())
-            return
-        }
-        if (searchKey == key && isSearchLiveData.value == true) {
-            return
-        }
         execute {
+            if ((searchKey == key) || key.isNotEmpty()) {
             searchModel.cancelSearch()
             searchID = System.currentTimeMillis()
             searchBookLiveData.postValue(emptyList())
             searchKey = key
             hasMore = true
+            }
+            if (searchKey.isEmpty()) {
+                return@execute
+            }
             searchModel.search(searchID, searchKey)
         }
     }

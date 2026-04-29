@@ -57,7 +57,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             if (payloads.isEmpty()) {
                 tvName.text = item.bookSourceName
             }
-            if (exIndex == holder.layoutPosition) {
+            if (exIndex == holder.layoutPosition - getHeaderCount()) {
                 val item = item.getBookSource()!!
                 ivStatus.setImageResource(R.drawable.ic_arrow_down)
                 rotateLoading.loadingColor = context.accentColor
@@ -147,18 +147,21 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemFindBookBinding) {
         binding.apply {
             llTitle.setOnClickListener {
-                val position = holder.layoutPosition
+                val layoutPos = holder.layoutPosition
+                val actualPos = layoutPos - getHeaderCount()
                 val oldEx = exIndex
-                exIndex = if (exIndex == position) -1 else position
-                notifyItemChanged(oldEx, false)
+                exIndex = if (exIndex == actualPos) -1 else actualPos
+                if (oldEx != -1) {
+                    notifyItemChanged(oldEx + getHeaderCount(), false)
+                }
                 if (exIndex != -1) {
-                    scrollTo = position
-                    callBack.scrollTo(position)
-                    notifyItemChanged(position, false)
+                    scrollTo = layoutPos
+                    callBack.scrollTo(layoutPos)
+                    notifyItemChanged(layoutPos, false)
                 }
             }
             llTitle.onLongClick {
-                showMenu(llTitle, holder.layoutPosition)
+                showMenu(llTitle, holder.layoutPosition - getHeaderCount())
             }
         }
     }
@@ -169,7 +172,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         } else {
             val oldExIndex = exIndex
             exIndex = -1
-            notifyItemChanged(oldExIndex)
+            notifyItemChanged(oldExIndex + getHeaderCount())
             true
         }
     }
@@ -190,7 +193,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 R.id.menu_refresh -> Coroutine.async(callBack.scope) {
                     source.clearExploreKindsCache()
                 }.onSuccess {
-                    notifyItemChanged(position)
+                    notifyItemChanged(position + getHeaderCount())
                 }
 
                 R.id.menu_del -> callBack.deleteSource(source)

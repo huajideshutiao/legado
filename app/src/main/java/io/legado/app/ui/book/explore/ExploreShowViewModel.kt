@@ -8,6 +8,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
@@ -20,6 +21,7 @@ import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.stackTraceStr
@@ -115,6 +117,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
         appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
         upStarLiveData.postValue(isFavorite())
+        postEvent(EventBus.UP_EXPLORE_PINNED, "")
     }
 
     private fun parseExploreOptions() {

@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.explore
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -17,6 +18,7 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
@@ -38,6 +40,8 @@ import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.observeEvent
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
@@ -98,6 +102,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initRecyclerView()
         initGroupData()
         upExploreData()
+        viewModel.upPinnedExplores()
+        observeEvent<String>(EventBus.UP_EXPLORE_PINNED) {
+            viewModel.upPinnedExplores()
+        }
         viewModel.pinnedExploresData.observe(viewLifecycleOwner) {
             if (it.isNullOrEmpty()) {
                 adapter.removeHeaderView(pinnedHeader)
@@ -109,11 +117,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        viewModel.upPinnedExplores()
-    }
-
+    @SuppressLint("SetTextI18n")
     private fun updatePinnedHeader(pinnedExplores: List<PinnedExplore>?) {
         val binding = pinnedBinding ?: return
         if (pinnedExplores.isNullOrEmpty()) {
@@ -142,7 +146,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                             (viewModel.pinnedExploresData.value ?: emptyList()).toMutableList()
                         favorites.removeAll { it.sourceUrl == pinned.sourceUrl && it.categoryUrl == pinned.categoryUrl }
                         appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
-                        viewModel.upPinnedExplores()
+                        postEvent(EventBus.UP_EXPLORE_PINNED, "")
                     }
                     noButton()
                 }.show()
@@ -227,7 +231,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 AppLog.put("发现界面更新数据出错", it)
             }.conflate().flowOn(IO).collect {
                 binding.tvEmptyMsg.isGone = it.isNotEmpty() || searchView.query.isNotEmpty()
-                adapter.setItems(it.sortedBy { it.customOrder }, diffItemCallBack)
+                adapter.setItems(
+                    it.sortedBy { sourcePart -> sourcePart.customOrder },
+                    diffItemCallBack
+                )
                 delay(500)
             }
         }
