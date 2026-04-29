@@ -36,7 +36,6 @@ import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.RuleBigDataHelp
-import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
@@ -103,7 +102,6 @@ class App : Application() {
                 appDb.searchBookDao.clearExpired(clearTime)
             }
             RuleBigDataHelp.clearInvalid()
-            BookHelp.clearInvalidCache()
             Backup.clearCache()
             ReadBookConfig.clearBgAndCache()
             ThemeConfig.clearBg()
