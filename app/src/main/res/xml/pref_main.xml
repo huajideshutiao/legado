@@ -4,34 +4,7 @@
     android:divider="@color/transparent"
     app:allowDividerBelow="false">
 
-    <io.legado.app.lib.prefs.Preference
-        android:icon="@drawable/ic_cfg_source"
-        android:key="bookSourceManage"
-        android:summary="@string/book_source_manage_desc"
-        android:title="@string/book_source_manage"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:icon="@drawable/ic_cfg_source"
-        android:key="txtTocRuleManage"
-        android:summary="@string/config_txt_toc_rule"
-        android:title="@string/txt_toc_rule"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:icon="@drawable/ic_cfg_replace"
-        android:key="replaceManage"
-        android:summary="@string/replace_purify_desc"
-        android:title="@string/replace_purify"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:icon="@drawable/ic_translate"
-        android:key="dictRuleManage"
-        android:summary="@string/config_dict_rule"
-        android:title="@string/dict_rule"
-        app:iconSpaceReserved="false" />
-
+    <!-- 应用设置 (原本没有分类标题，直接平铺在顶部) -->
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="0"
         android:entries="@array/theme_mode"
@@ -42,52 +15,80 @@
         android:title="@string/theme_mode"
         app:iconSpaceReserved="false" />
 
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_cfg_theme"
+        android:key="theme_setting"
+        android:summary="@string/theme_setting_s"
+        android:title="@string/theme_setting"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_cfg_backup"
+        android:key="web_dav_setting"
+        android:summary="@string/web_dav_set_import_old"
+        android:title="@string/backup_restore"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:icon="@drawable/ic_cfg_web"
         android:key="webService"
         android:summary="@string/web_service_desc"
         android:title="@string/web_service"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_cfg_other"
+        android:key="setting"
+        android:summary="@string/other_setting_s"
+        android:title="@string/other_setting"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
+    <!-- 书源规则分类 -->
     <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/setting"
+        android:title="@string/book_source"
         app:allowDividerAbove="true"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
-            android:icon="@drawable/ic_cfg_backup"
-            android:key="web_dav_setting"
-            android:summary="@string/web_dav_set_import_old"
-            android:title="@string/backup_restore"
+            android:icon="@drawable/ic_cfg_source"
+            android:key="bookSourceManage"
+            android:summary="@string/book_source_manage_desc"
+            android:title="@string/book_source_manage"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:icon="@drawable/ic_cfg_theme"
-            android:key="theme_setting"
-            android:summary="@string/theme_setting_s"
-            android:title="@string/theme_setting"
+            android:icon="@drawable/ic_cfg_replace"
+            android:key="replaceManage"
+            android:summary="@string/replace_purify_desc"
+            android:title="@string/replace_purify"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:icon="@drawable/ic_cfg_other"
-            android:key="setting"
-            android:summary="@string/other_setting_s"
-            android:title="@string/other_setting"
+            android:icon="@drawable/ic_cfg_source"
+            android:key="txtTocRuleManage"
+            android:summary="@string/config_txt_toc_rule"
+            android:title="@string/txt_toc_rule"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:icon="@drawable/ic_translate"
+            android:key="dictRuleManage"
+            android:summary="@string/config_dict_rule"
+            android:title="@string/dict_rule"
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
 
+    <!-- 阅读记录分类 -->
     <io.legado.app.lib.prefs.PreferenceCategory
-        android:key="aboutCategory"
-        android:title="@string/other"
+        android:title="@string/read_record"
         app:allowDividerAbove="true"
         app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_bookmark"
@@ -108,9 +109,21 @@
             android:key="fileManage"
             android:summary="@string/file_manage_summary"
             android:title="@string/file_manage"
+            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <!-- 其他分类 -->
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aboutCategory"
+        android:title="@string/other"
+        app:allowDividerAbove="true"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+    <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_cfg_about"
             android:key="about"
             android:title="@string/about"

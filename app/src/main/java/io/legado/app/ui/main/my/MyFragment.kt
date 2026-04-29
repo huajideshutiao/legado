@@ -81,9 +81,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             putPrefBoolean(PreferKey.webService, WebService.isRun)
             addPreferencesFromResource(R.xml.pref_main)
             findPreference<SwitchPreference>("webService")?.onLongClick {
-                if (!WebService.isRun) {
-                    return@onLongClick false
-                }
                 context?.selector(arrayListOf("复制地址", "浏览器打开")) { _, i ->
                     when (i) {
                         0 -> context?.sendToClip(it.summary.toString())
