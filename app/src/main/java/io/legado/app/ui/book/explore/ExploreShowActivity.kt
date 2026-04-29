@@ -229,12 +229,14 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     private fun upData(books: List<SearchBook>) {
         loadMoreView.stopLoad()
-        if (books.isEmpty() && adapter.isEmpty()) {
+        val oldSize = adapter.getActualItemCount()
+        if (books.isEmpty() && oldSize == 0) {
             loadMoreView.noMore(getString(R.string.empty))
-        } else if (adapter.getActualItemCount() >= books.size && viewModel.page > 1) {
+        } else if (oldSize >= books.size && viewModel.page > 1) {
             loadMoreView.noMore()
-        } else {
-            adapter.setItems(books)
+        } else if (oldSize < books.size) {
+            val newItems = books.subList(oldSize, books.size)
+            adapter.addItems(newItems)
         }
     }
 
