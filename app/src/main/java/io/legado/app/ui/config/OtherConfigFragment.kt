@@ -68,7 +68,6 @@ class OtherConfigFragment : PreferenceFragment(),
         }
         upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
         upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
-        upPreferenceSummary(PreferKey.imageRetainNum, AppConfig.imageRetainNum.toString())
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -132,14 +131,6 @@ class OtherConfigFragment : PreferenceFragment(),
                         ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
                     }
             }
-            PreferKey.imageRetainNum -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.image_retain_number))
-                .setMaxValue(999)
-                .setMinValue(0)
-                .setValue(AppConfig.imageRetainNum)
-                .show {
-                    AppConfig.imageRetainNum = it
-                }
 
             PreferKey.clearWebViewData -> clearWebViewData()
             "localPassword" -> alertLocalPassword()
@@ -199,10 +190,6 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.bitmapCacheSize -> {
                 upPreferenceSummary(key, AppConfig.bitmapCacheSize.toString())
             }
-
-            PreferKey.imageRetainNum -> {
-                upPreferenceSummary(key, AppConfig.imageRetainNum.toString())
-            }
         }
     }
 
@@ -216,8 +203,6 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.webPort -> preference.summary = getString(R.string.web_port_summary, value)
             PreferKey.bitmapCacheSize -> preference.summary =
                 getString(R.string.bitmap_cache_size_summary, value)
-            PreferKey.imageRetainNum -> preference.summary =
-                getString(R.string.image_retain_number_summary, value)
 
             else -> if (preference is ListPreference) {
                 val index = preference.findIndexOfValue(value)

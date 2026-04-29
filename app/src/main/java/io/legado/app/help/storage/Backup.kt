@@ -2,6 +2,7 @@ package io.legado.app.help.storage
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.constant.AppLog
@@ -174,27 +175,27 @@ object Backup {
         }
         currentCoroutineContext().ensureActive()
         appCtx.getSharedPreferences(backupPath, "config")?.let { sp ->
-            val edit = sp.edit()
-            appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
-                if (BackupConfig.keyIsNotIgnore(key)) {
-                    when (key) {
-                        PreferKey.webDavPassword -> {
-                            edit.putString(key, aes.runCatching {
-                                encryptBase64(value.toString())
-                            }.getOrDefault(value.toString()))
-                        }
+            sp.edit(commit = true) {
+                appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
+                    if (BackupConfig.keyIsNotIgnore(key)) {
+                        when (key) {
+                            PreferKey.webDavPassword -> {
+                                putString(key, aes.runCatching {
+                                    encryptBase64(value.toString())
+                                }.getOrDefault(value.toString()))
+                            }
 
-                        else -> when (value) {
-                            is Int -> edit.putInt(key, value)
-                            is Boolean -> edit.putBoolean(key, value)
-                            is Long -> edit.putLong(key, value)
-                            is Float -> edit.putFloat(key, value)
-                            is String -> edit.putString(key, value)
+                            else -> when (value) {
+                                is Int -> putInt(key, value)
+                                is Boolean -> putBoolean(key, value)
+                                is Long -> putLong(key, value)
+                                is Float -> putFloat(key, value)
+                                is String -> putString(key, value)
+                            }
                         }
                     }
                 }
             }
-            edit.commit()
         }
         currentCoroutineContext().ensureActive()
         val zipFileName = getNowZipFileName()

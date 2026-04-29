@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -141,11 +142,17 @@ fun <T> Flow<T>.flowWithLifecycleAndDatabaseChangeFirst(
     table: String
 ): Flow<T> = callbackFlow {
     var update = 0
+    val isActive = lifecycle.currentState.isAtLeast(minActiveState)
     val channel = appDb.invalidationTracker
-        .createFlow(table, emitInitialState = true)
+        .createFlow(table, emitInitialState = isActive)
         .conflate()
         .onEach { update++ }
         .produceIn(this)
+    if (!isActive) {
+        firstOrNull()?.let {
+            send(it)
+        }
+    }
     lifecycle.repeatOnLifecycle(minActiveState) {
         if (update == 0) {
             channel.receive()

@@ -1009,8 +1009,6 @@
     <string name="add_remote_book">Sách từ xa</string>
     <string name="bitmap_cache_size_summary">Kích thước bộ đệm tối đa hiện tại %1$s MB</string>
     <string name="bitmap_cache_size">Kích thước bộ đệm bitmap</string>
-    <string name="image_retain_number_summary">Giữ lại số chương đã đọc %s</string>
-    <string name="image_retain_number">Số lượng đặt trước manga</string>
     <string name="export_pics_file">Xuất tệp ảnh</string>
     <string name="error_decode_bitmap">Giải mã bitmap thất bại</string>
     <string name="error_image_url_empty">URL hình ảnh trống, kiểm tra quy tắc thay thế</string>

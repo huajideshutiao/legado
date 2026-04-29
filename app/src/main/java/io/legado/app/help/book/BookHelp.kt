@@ -96,65 +96,48 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
-            val bookFolderNames = hashSetOf<String>()
-            val originNames = hashSetOf<String>()
-            appDb.bookDao.all.forEach {
-                clearComicCache(it)
-                bookFolderNames.add(it.getFolderName())
-                if (it.isEpub) originNames.add(it.originName)
+            val bookFolderNames = appDb.bookDao.allBookFolderNames.mapTo(hashSetOf()) {
+                it.name.replace(AppPattern.fileNameRegex, "").let { name ->
+                    name.substring(0, min(9, name.length)) + MD5Utils.md5Encode16(it.bookUrl)
+                }
             }
-            downloadDir.getFile(cacheFolderName)
-                .listFiles()?.forEach { bookFile ->
-                    if (!bookFolderNames.contains(bookFile.name)) {
-                        FileUtils.delete(bookFile.absolutePath)
+            val cacheFolder = downloadDir.getFile(cacheFolderName)
+            // 1. 删除不在书架的书籍缓存
+            cacheFolder.listFiles()?.forEach { bookFile ->
+                if (bookFile.isDirectory && !bookFolderNames.contains(bookFile.name)) {
+                    FileUtils.delete(bookFile.absolutePath)
+                }
+            }
+            // 2. 漫画图片缓存管理 (512MB)
+            val folders = cacheFolder.listFiles()?.filter { it.isDirectory } ?: return@withContext
+            val sortedFolders = folders.sortedBy { it.lastModified() }
+            var totalSize = 0L
+            val folderSizes = mutableMapOf<File, Long>()
+            for (folder in sortedFolders) {
+                var folderSize = 0L
+                folder.walkBottomUp().forEach {
+                    if (it.isFile) folderSize += it.length()
+                }
+                folderSizes[folder] = folderSize
+                totalSize += folderSize
+            }
+            val maxSize = 512 * 1024 * 1024L
+            if (totalSize > maxSize) {
+                for (folder in sortedFolders) {
+                    // 优先清理漫画 (包含images文件夹的)
+                    if (File(folder, cacheImageFolderName).exists()) {
+                        val size = folderSizes[folder] ?: 0L
+                        FileUtils.delete(folder.absolutePath)
+                        totalSize -= size
+                        if (totalSize <= maxSize) break
                     }
                 }
-            downloadDir.getFile(cacheEpubFolderName)
-                .listFiles()?.forEach { epubFile ->
-                    if (!originNames.contains(epubFile.name)) {
-                        FileUtils.delete(epubFile.absolutePath)
-                    }
-                }
+            }
             FileUtils.delete(ArchiveUtils.TEMP_PATH)
             val filesDir = appCtx.filesDir
             FileUtils.delete("$filesDir/shareBookSource.json")
             FileUtils.delete("$filesDir/shareRssSource.json")
             FileUtils.delete("$filesDir/books.json")
-        }
-    }
-
-    //清除已经看过的漫画数据
-    private fun clearComicCache(book: Book) {
-        //只处理漫画
-        //为0的时候，不清除已缓存数据
-        if (!book.isImage || AppConfig.imageRetainNum == 0) {
-            return
-        }
-        //向前保留设定数量，向后保留预下载数量
-        val startIndex = book.durChapterIndex - AppConfig.imageRetainNum
-        val endIndex = book.durChapterIndex + AppConfig.preDownloadNum
-        val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl, startIndex, endIndex)
-        val imgNames = hashSetOf<String>()
-        //获取需要保留章节的图片信息
-        chapterList.forEach {
-            val content = getContent(book, it)
-            if (content != null) {
-                val imgList = Jsoup.parse(content).select("img")
-                for (i in imgList) {
-                    val src = i.attr("src")
-                    if (src.isBlank()) continue
-                    imgNames.add("${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}")
-                }
-            }
-        }
-        downloadDir.getFile(
-            cacheFolderName,
-            book.getFolderName(),
-            cacheImageFolderName
-        ).listFiles()?.forEach { imgFile ->
-            if (!imgNames.contains(imgFile.name)) {
-                imgFile.delete()
-            }
         }
     }
 
