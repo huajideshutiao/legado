@@ -45,19 +45,19 @@
             android:strokeLineJoin="round" />
         <path
             android:fillColor="#FFD54F"
-            android:pathData="M74,73 L76.5,73 L77.5,92 L75,92 Z"
+            android:pathData="M73.2,72.5 L75.7,72.5 L77.5,92 L75,92 Z"
             android:strokeWidth="1.1"
             android:strokeColor="#212121"
             android:strokeLineJoin="round" />
         <path
             android:fillColor="#FFCA28"
-            android:pathData="M77,76 L79.5,76 L80,92 L77.5,92 Z"
+            android:pathData="M77,74.5 L79.5,74.5 L80,90.5 L77.5,90.5 Z"
             android:strokeWidth="1.1"
             android:strokeColor="#212121"
             android:strokeLineJoin="round" />
         <path
             android:fillColor="#FFD54F"
-            android:pathData="M80,71 L82.5,71 L82.5,92 L80,92 Z"
+            android:pathData="M80.8,71.5 L83.3,71.5 L82.5,92 L80,92 Z"
             android:strokeWidth="1.1"
             android:strokeColor="#212121"
             android:strokeLineJoin="round" />

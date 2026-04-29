@@ -132,17 +132,16 @@ object BookCover {
         sourceOrigin: String? = null,
         inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
+        val blurOptions = RequestOptions().transform(BlurTransformation(), CenterCrop())
         if (AppConfig.useDefaultCover) {
-            return requestManager.load(defaultDrawable)
-                .transform(BlurTransformation(), CenterCrop())
+            return requestManager.load(defaultDrawable).apply(blurOptions)
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
-        return ImageLoader.load(requestManager, path, inBookshelf).apply(options)
-            .error(defaultDrawable)
-            .transform(BlurTransformation(), CenterCrop())
+        return ImageLoader.load(requestManager, path, inBookshelf).apply(options).apply(blurOptions)
+            .error(requestManager.load(defaultDrawable).apply(blurOptions))
     }
 
     fun getCoverRule(): CoverRule {
