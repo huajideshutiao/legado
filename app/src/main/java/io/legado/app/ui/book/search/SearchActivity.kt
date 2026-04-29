@@ -217,6 +217,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initRecyclerView() {
+        binding.recyclerView.setFastScrollEnabled(true)
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.rvBookshelfSearch.setEdgeEffectColor(primaryColor)
         binding.rvHistoryKey.setEdgeEffectColor(primaryColor)

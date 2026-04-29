@@ -25,7 +25,6 @@ import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -75,6 +74,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.viewPagerBookshelf.adapter = adapter
     }
 
+    private val groupBookCountMap = mutableMapOf<Long, Int>()
+
     override fun onQueryTextSubmit(query: String?): Boolean {
         SearchActivity.start(requireContext(), query)
         return false
@@ -117,10 +118,15 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     }
 
     override fun onTabReselected(tab: TabLayout.Tab) {
-        selectedGroup?.let { group ->
-            fragmentMap[group.groupId]?.let {
-                toastOnUi("${group.groupName}(${it.getBooksCount()})")
-            }
+        gotoTop()
+    }
+
+    fun updateTabTitle(groupId: Long, count: Int) {
+        val groupIndex = bookGroups.indexOfFirst { it.groupId == groupId }
+        if (groupIndex != -1) {
+            val group = bookGroups[groupIndex]
+            groupBookCountMap[groupId] = count
+            tabLayout.getTabAt(groupIndex)?.text = "${group.groupName}($count)"
         }
     }
 
@@ -138,7 +144,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
 
         override fun getPageTitle(position: Int): CharSequence {
-            return bookGroups[position].groupName
+            val group = bookGroups[position]
+            val count = groupBookCountMap[group.groupId]
+            return "${group.groupName}(${count ?: "..."})"
         }
 
         /**

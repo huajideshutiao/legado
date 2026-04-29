@@ -8,5 +8,9 @@
     android:background="@android:color/transparent"
     app:tabBackground="@android:color/transparent"
     app:tabRippleColor="@android:color/transparent"
-    app:tabMaxWidth="100dp"
-    app:tabMinWidth="10dp" />
+    app:tabMaxWidth="110dp"
+    app:tabMinWidth="10dp"
+    app:tabPaddingEnd="8dp"
+    app:tabPaddingStart="8dp"
+    app:tabSelectedTextAppearance="@style/TabLayoutTextAppearance"
+    app:tabTextAppearance="@style/TabLayoutTextAppearance" />

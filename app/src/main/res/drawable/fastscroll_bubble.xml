@@ -20,11 +20,7 @@
 
     <tools:solid android:color="#777777" />
 
-    <corners
-        android:topLeftRadius="@dimen/fastscroll_bubble_radius"
-        android:topRightRadius="@dimen/fastscroll_bubble_radius"
-        android:bottomLeftRadius="@dimen/fastscroll_bubble_radius"
-        android:bottomRightRadius="0dp" />
+    <corners android:radius="@dimen/fastscroll_bubble_radius" />
 
     <size
         android:height="@dimen/fastscroll_bubble_size"

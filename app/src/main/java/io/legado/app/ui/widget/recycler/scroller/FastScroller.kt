@@ -478,7 +478,9 @@ class FastScroller : LinearLayout {
 
     private fun setHandleSelected(selected: Boolean) {
         mHandleView.isSelected = selected
-        DrawableCompat.setTint(mHandleImage!!, if (selected) mBubbleColor else mHandleColor)
+        DrawableCompat.setTint(mHandleImage!!, if (selected) context.accentColor else mHandleColor)
+        mHandleView.pivotX = mHandleView.width.toFloat()
+        mHandleView.animate().scaleX(if (selected) 1.5f else 1.0f).setDuration(200).start()
     }
 
     private fun layout(context: Context, attrs: AttributeSet?) {
@@ -489,14 +491,14 @@ class FastScroller : LinearLayout {
         mHandleView = findViewById(R.id.fastscroll_handle)
         mTrackView = findViewById(R.id.fastscroll_track)
         mScrollbar = findViewById(R.id.fastscroll_scrollbar)
-        @ColorInt var bubbleColor = ColorUtils.adjustAlpha(context.accentColor, 0.8f)
-        @ColorInt var handleColor = context.accentColor
+        @ColorInt var bubbleColor = context.accentColor
+        @ColorInt var handleColor = context.getCompatColor(R.color.darker_gray)
         @ColorInt var trackColor = context.getCompatColor(R.color.transparent30)
         @ColorInt var textColor =
             if (ColorUtils.isColorLight(bubbleColor)) Color.BLACK else Color.WHITE
         var fadeScrollbar = true
         var showBubble = false
-        var showTrack = true
+        var showTrack = false
         attrs?.let {
             val typedArray = context.obtainStyledAttributes(it, R.styleable.FastScroller, 0, 0)
             try {

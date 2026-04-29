@@ -45,6 +45,11 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         binding.titleBar.title = intent.getStringExtra("exploreName")
         initAdapter(viewModel.exploreStyle)
 
+        binding.recyclerView.setFastScrollEnabled(true)
+        binding.titleBar.toolbar.setOnClickListener {
+            binding.recyclerView.smoothScrollToPosition(0)
+        }
+
         binding.recyclerView.applyNavigationBarPadding()
         loadMoreView.startLoad()
         loadMoreView.setOnClickListener {
