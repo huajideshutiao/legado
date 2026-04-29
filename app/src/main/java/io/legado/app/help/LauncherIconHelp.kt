@@ -5,11 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import io.legado.app.R
 import io.legado.app.ui.welcome.Launcher1
-import io.legado.app.ui.welcome.Launcher2
-import io.legado.app.ui.welcome.Launcher3
 import io.legado.app.ui.welcome.Launcher4
 import io.legado.app.ui.welcome.Launcher5
-import io.legado.app.ui.welcome.Launcher6
 import io.legado.app.ui.welcome.WelcomeActivity
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -22,11 +19,8 @@ object LauncherIconHelp {
     private val packageManager: PackageManager = appCtx.packageManager
     private val componentNames = arrayListOf(
         ComponentName(appCtx, Launcher1::class.java.name),
-        ComponentName(appCtx, Launcher2::class.java.name),
-        ComponentName(appCtx, Launcher3::class.java.name),
         ComponentName(appCtx, Launcher4::class.java.name),
-        ComponentName(appCtx, Launcher5::class.java.name),
-        ComponentName(appCtx, Launcher6::class.java.name)
+        ComponentName(appCtx, Launcher5::class.java.name)
     )
 
     fun changeIcon(icon: String?) {

@@ -78,29 +78,8 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity> <!-- 图标2 -->
-        <activity
-            android:name=".ui.welcome.Launcher2"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/launcher2">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity> <!-- 图标3 -->
-        <activity
-            android:name=".ui.welcome.Launcher3"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/launcher3">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
         </activity> <!-- 图标4 -->
+
         <activity
             android:name=".ui.welcome.Launcher4"
             android:enabled="false"
@@ -117,17 +96,6 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher5">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity> <!-- 图标6 -->
-        <activity
-            android:name=".ui.welcome.Launcher6"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/launcher6">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
