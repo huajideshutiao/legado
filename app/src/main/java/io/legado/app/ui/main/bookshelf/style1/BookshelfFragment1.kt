@@ -31,8 +31,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 书架界面
  */
 class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1),
-    TabLayout.OnTabSelectedListener,
-    SearchView.OnQueryTextListener {
+    TabLayout.OnTabSelectedListener, SearchView.OnQueryTextListener {
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -146,7 +145,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         override fun getPageTitle(position: Int): CharSequence {
             val group = bookGroups[position]
             val count = groupBookCountMap[group.groupId]
-            return "${group.groupName}(${count ?: "..."})"
+            return group.groupName + "(${count ?: ".."})"
         }
 
         /**

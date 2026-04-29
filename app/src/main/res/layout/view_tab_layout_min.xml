@@ -4,13 +4,10 @@
     android:id="@+id/tab_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:theme="?attr/actionBarStyle"
     android:background="@android:color/transparent"
+    android:theme="?attr/actionBarStyle"
     app:tabBackground="@android:color/transparent"
-    app:tabRippleColor="@android:color/transparent"
-    app:tabMaxWidth="110dp"
     app:tabMinWidth="10dp"
     app:tabPaddingEnd="8dp"
     app:tabPaddingStart="8dp"
-    app:tabSelectedTextAppearance="@style/TabLayoutTextAppearance"
-    app:tabTextAppearance="@style/TabLayoutTextAppearance" />
+    app:tabRippleColor="@android:color/transparent" />
