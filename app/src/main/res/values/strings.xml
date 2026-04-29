@@ -1199,7 +1199,6 @@
     <string name="read_aloud_by_media_button_summary">Use headset buttons to start speech</string>
     <string name="group_sources_by_domain">Group by domain</string>
     <string name="theme_config">Theme config</string>
-    <string name="show_manga_ui">Manga viewer</string>
     <string name="disable_manga_scale">Disable manga scaling</string>
     <string name="disable_manga_click_scroll">Disable tap to turn page</string>
     <string name="enable_auto_page_scroll">Enable auto page scroll</string>

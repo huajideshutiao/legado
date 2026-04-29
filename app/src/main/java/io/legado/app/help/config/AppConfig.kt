@@ -651,10 +651,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
     }
 
-    //跳转到漫画界面不使用富文本模式
-    val showMangaUi: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.showMangaUi, true)
-
     //直接跳转到视频界面，忽略详情
     val devFeat: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.devFeat, false)

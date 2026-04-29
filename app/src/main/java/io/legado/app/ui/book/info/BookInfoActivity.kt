@@ -683,7 +683,7 @@ class BookInfoActivity :
                 this, when {
                     book.isAudio -> AudioPlayActivity::class.java
                     book.isVideo -> VideoPlayActivity::class.java
-                    book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+                    book.isImage -> ReadMangaActivity::class.java
                     book.isRss -> ReadRssActivity::class.java
                     else -> ReadBookActivity::class.java
                 }

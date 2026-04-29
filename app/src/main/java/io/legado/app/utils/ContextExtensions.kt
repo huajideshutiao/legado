@@ -43,10 +43,8 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
@@ -74,7 +72,7 @@ fun Context.startActivityForBook(
     val cls = when {
         book.isAudio -> AudioPlayActivity::class.java
         book.isVideo -> VideoPlayActivity::class.java
-        book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
+        book.isImage -> ReadMangaActivity::class.java
         book.isRss -> ReadRssActivity::class.java
         else -> ReadBookActivity::class.java
     }
