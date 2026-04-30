@@ -20,7 +20,9 @@
 
     <tools:solid android:color="#555555" />
 
-    <corners android:radius="@dimen/fastscroll_handle_radius" />
+    <corners
+        android:bottomLeftRadius="@dimen/fastscroll_handle_radius"
+        android:topLeftRadius="@dimen/fastscroll_handle_radius" />
 
     <size
         android:height="@dimen/fastscroll_handle_height"

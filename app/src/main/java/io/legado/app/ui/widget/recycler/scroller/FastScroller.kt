@@ -441,9 +441,7 @@ class FastScroller : LinearLayout {
     private fun showScrollbar() {
         mRecyclerView?.let { mRecyclerView ->
             if (mRecyclerView.computeVerticalScrollRange() - mViewHeight > 0) {
-                val transX =
-                    resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_padding_end)
-                        .toFloat()
+                val transX = if (mScrollbar.width > 0) mScrollbar.width.toFloat() else 60f
                 mScrollbar.translationX = transX
                 mScrollbar.visibility = VISIBLE
                 mScrollbarAnimator = mScrollbar.animate().translationX(0f).alpha(1f)
@@ -457,8 +455,7 @@ class FastScroller : LinearLayout {
     }
 
     private fun hideScrollbar() {
-        val transX =
-            resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_padding_end).toFloat()
+        val transX = if (mScrollbar.width > 0) mScrollbar.width.toFloat() else 60f
         mScrollbarAnimator = mScrollbar.animate().translationX(transX).alpha(0f)
             .setDuration(sScrollbarAnimDuration.toLong())
             .setListener(object : AnimatorListenerAdapter() {
