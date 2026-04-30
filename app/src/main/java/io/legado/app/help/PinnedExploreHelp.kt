@@ -20,9 +20,22 @@ object PinnedExploreHelp {
         return pinnedExplores!!
     }
 
-    fun updatePinnedExplores(explores: List<PinnedExplore>) {
-        pinnedExplores = explores
-        appCtx.putPrefString("exploreFavorites", GSON.toJson(explores))
-        postEvent(EventBus.UP_EXPLORE_PINNED, "")
+    fun addPinnedExplore(pinned: PinnedExplore) {
+        val favorites = getPinnedExplores().toMutableList()
+        favorites.add(pinned)
+        pinnedExplores = favorites
+        appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
+        postEvent(EventBus.UP_EXPLORE_PINNED, "add")
+    }
+
+    fun removePinnedExplore(pinned: PinnedExplore) {
+        val favorites = getPinnedExplores().toMutableList()
+        val index = favorites.indexOf(pinned)
+        if (index != -1) {
+            favorites.removeAt(index)
+            pinnedExplores = favorites
+            appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
+            postEvent(EventBus.UP_EXPLORE_PINNED, "remove:$index")
+        }
     }
 }

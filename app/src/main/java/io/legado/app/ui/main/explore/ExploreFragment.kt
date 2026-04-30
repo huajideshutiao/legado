@@ -89,7 +89,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         { parent ->
             LayoutExplorePinnedBinding.inflate(layoutInflater, parent, false).also {
                 pinnedBinding = it
-                updatePinnedHeader(PinnedExploreHelp.getPinnedExplores())
+                upPinned()
             }
         }
     }
@@ -102,71 +102,80 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         upExploreData()
         upPinned()
         observeEvent<String>(EventBus.UP_EXPLORE_PINNED) {
-            upPinned()
+            upPinned(it)
         }
     }
 
-    private fun upPinned() {
+    @SuppressLint("SetTextI18n")
+    private fun upPinned(command: String = "") {
         val explores = PinnedExploreHelp.getPinnedExplores()
         if (explores.isEmpty()) {
             if (pinnedHeaderAdded) {
                 adapter.removeHeaderView(pinnedHeader)
                 pinnedHeaderAdded = false
-                pinnedBinding = null
             }
-        } else {
-            if (!pinnedHeaderAdded) {
-                adapter.addHeaderView(pinnedHeader)
-                pinnedHeaderAdded = true
+            return
+        } else if (!pinnedHeaderAdded) {
+            adapter.addHeaderView(pinnedHeader)
+            pinnedHeaderAdded = true
+            pinnedBinding?.let { upPinned() }
+            return
+        }
+        val binding = pinnedBinding ?: return
+        binding.flexbox.run {
+            when {
+                command == "add" -> bindPinnedItem(explores.last(), childCount)
+
+                command.startsWith("remove:") -> {
+                    val index = command.substring(7).toIntOrNull() ?: return@run
+                    if (index < childCount) {
+                        removeViewAt(index)
+                    }
+                }
+
+                else -> {
+                    val childCount = childCount
+                    val dataSize = explores.size
+                    if (childCount > dataSize) {
+                        removeViews(dataSize, childCount - dataSize)
+                    }
+                    explores.forEachIndexed { index, pinned ->
+                        bindPinnedItem(pinned, index)
+                    }
+                }
             }
-            updatePinnedHeader(explores)
         }
     }
 
     @SuppressLint("SetTextI18n")
-    private fun updatePinnedHeader(pinnedExplores: List<PinnedExplore>?) {
-        val binding = pinnedBinding ?: return
-        val explores = pinnedExplores ?: emptyList()
-        binding.flexbox.run {
-            val childCount = childCount
-            val dataSize = explores.size
-            if (childCount > dataSize) {
-                removeViews(dataSize, childCount - dataSize)
-            }
-            explores.forEachIndexed { index, pinned ->
-                val itemBinding = if (index < childCount) {
-                    ItemFilletTextBinding.bind(getChildAt(index))
-                } else {
-                    ItemFilletTextBinding.inflate(layoutInflater, this, true)
-                }
-                itemBinding.textView.text = "${pinned.sourceName}-${pinned.categoryName}"
-                itemBinding.root.setOnClickListener {
-                    Coroutine.async {
-                        appDb.bookSourceDao.getBookSource(pinned.sourceUrl)
-                    }.onSuccess { source ->
-                        if (source != null) {
-                            openExplore(source, pinned.categoryName, pinned.categoryUrl)
-                        } else {
-                            this@ExploreFragment.toastOnUi("Source not found")
-                        }
+    private fun ViewGroup.bindPinnedItem(pinned: PinnedExplore, index: Int) {
+        val itemBinding = if (index < childCount) {
+            ItemFilletTextBinding.bind(getChildAt(index))
+        } else {
+            ItemFilletTextBinding.inflate(layoutInflater, this, true)
+        }
+        if (itemBinding.root.tag != pinned) {
+            itemBinding.root.tag = pinned
+            itemBinding.textView.text = "${pinned.sourceName}-${pinned.categoryName}"
+            itemBinding.root.setOnClickListener {
+                Coroutine.async {
+                    appDb.bookSourceDao.getBookSource(pinned.sourceUrl)
+                }.onSuccess { source ->
+                    if (source != null) {
+                        openExplore(source, pinned.categoryName, pinned.categoryUrl)
+                    } else {
+                        toastOnUi("Source not found")
                     }
                 }
-                itemBinding.root.onLongClick {
-                    requireContext().alert(R.string.draw) {
-                        setMessage(getString(R.string.sure_del) + "\n${pinned.sourceName}-${pinned.categoryName}")
-                        yesButton {
-                            val favorites = PinnedExploreHelp.getPinnedExplores().toMutableList()
-                            if (favorites.remove(pinned)) {
-                                PinnedExploreHelp.updatePinnedExplores(favorites)
-                                pinnedBinding?.flexbox?.removeView(itemBinding.root)
-                                if (favorites.isEmpty()) {
-                                    upPinned()
-                                }
-                            }
-                        }
-                        noButton()
-                    }.show()
-                }
+            }
+            itemBinding.root.onLongClick {
+                requireContext().alert(R.string.draw) {
+                    setMessage(getString(R.string.sure_del) + "\n${pinned.sourceName}-${pinned.categoryName}")
+                    yesButton {
+                        PinnedExploreHelp.removePinnedExplore(pinned)
+                    }
+                    noButton()
+                }.show()
             }
         }
     }
@@ -217,15 +226,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun initGroupData() {
         viewLifecycleOwner.lifecycleScope.launch {
             appDb.bookSourceDao.flowExploreGroups().flowWithLifecycleAndDatabaseChange(
-                    viewLifecycleOwner.lifecycle,
-                    Lifecycle.State.RESUMED,
-                    AppDatabase.BOOK_SOURCE_TABLE_NAME
+                viewLifecycleOwner.lifecycle,
+                Lifecycle.State.RESUMED,
+                AppDatabase.BOOK_SOURCE_TABLE_NAME
             ).conflate().distinctUntilChanged().collect {
-                    groups.clear()
-                    groups.addAll(it)
-                    upGroupsMenu()
-                    delay(500)
-                }
+                groups.clear()
+                groups.addAll(it)
+                upGroupsMenu()
+                delay(500)
+            }
         }
     }
 

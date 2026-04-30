@@ -97,14 +97,20 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val categoryName = exploreName ?: return
         val categoryUrl = rawExploreUrl ?: return
 
-        val favorites = PinnedExploreHelp.getPinnedExplores().toMutableList()
+        val favorites = PinnedExploreHelp.getPinnedExplores()
         val existing = favorites.find { it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl }
         if (existing != null) {
-            favorites.remove(existing)
+            PinnedExploreHelp.removePinnedExplore(existing)
         } else {
-            favorites.add(PinnedExplore(sourceUrl, sourceName, categoryName, categoryUrl))
+            PinnedExploreHelp.addPinnedExplore(
+                PinnedExplore(
+                    sourceUrl,
+                    sourceName,
+                    categoryName,
+                    categoryUrl
+                )
+            )
         }
-        PinnedExploreHelp.updatePinnedExplores(favorites)
         upStarLiveData.postValue(isFavorite())
     }
 
