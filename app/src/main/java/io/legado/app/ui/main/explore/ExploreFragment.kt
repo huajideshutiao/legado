@@ -28,7 +28,9 @@ import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.LayoutExplorePinnedBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -37,12 +39,9 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
-import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -57,15 +56,13 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
 import splitties.views.onLongClick
 
 /**
  * 发现界面
  */
 class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_explore),
-    MainFragmentInterface,
-    ExploreAdapter.CallBack {
+    MainFragmentInterface, ExploreAdapter.CallBack {
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -87,11 +84,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var exploreFlowJob: Job? = null
     private var groupsMenu: SubMenu? = null
     private var pinnedBinding: LayoutExplorePinnedBinding? = null
+    private var pinnedHeaderAdded = false
     private val pinnedHeader: (parent: ViewGroup) -> ViewBinding by lazy {
         { parent ->
             LayoutExplorePinnedBinding.inflate(layoutInflater, parent, false).also {
                 pinnedBinding = it
-                updatePinnedHeader(viewModel.pinnedExploresData.value)
+                updatePinnedHeader(PinnedExploreHelp.getPinnedExplores())
             }
         }
     }
@@ -102,54 +100,73 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initRecyclerView()
         initGroupData()
         upExploreData()
-        viewModel.upPinnedExplores()
+        upPinned()
         observeEvent<String>(EventBus.UP_EXPLORE_PINNED) {
-            viewModel.upPinnedExplores()
+            upPinned()
         }
-        viewModel.pinnedExploresData.observe(viewLifecycleOwner) {
-            if (it.isNullOrEmpty()) {
+    }
+
+    private fun upPinned() {
+        val explores = PinnedExploreHelp.getPinnedExplores()
+        if (explores.isEmpty()) {
+            if (pinnedHeaderAdded) {
                 adapter.removeHeaderView(pinnedHeader)
-            } else {
-                adapter.removeHeaderView(pinnedHeader)
-                adapter.addHeaderView(pinnedHeader)
+                pinnedHeaderAdded = false
+                pinnedBinding = null
             }
-            updatePinnedHeader(it)
+        } else {
+            if (!pinnedHeaderAdded) {
+                adapter.addHeaderView(pinnedHeader)
+                pinnedHeaderAdded = true
+            }
+            updatePinnedHeader(explores)
         }
     }
 
     @SuppressLint("SetTextI18n")
     private fun updatePinnedHeader(pinnedExplores: List<PinnedExplore>?) {
         val binding = pinnedBinding ?: return
-        if (pinnedExplores.isNullOrEmpty()) {
-            return
-        }
-        binding.flexbox.removeAllViews()
-        pinnedExplores.forEach { pinned ->
-            val itemBinding = ItemFilletTextBinding.inflate(layoutInflater, binding.flexbox, true)
-            itemBinding.textView.text = "${pinned.sourceName}-${pinned.categoryName}"
-            itemBinding.root.setOnClickListener {
-                io.legado.app.help.coroutine.Coroutine.async {
-                    appDb.bookSourceDao.getBookSource(pinned.sourceUrl)
-                }.onSuccess { source ->
-                    if (source != null) {
-                        openExplore(source, pinned.categoryName, pinned.categoryUrl)
-                    } else {
-                        toastOnUi("Source not found")
+        val explores = pinnedExplores ?: emptyList()
+        binding.flexbox.run {
+            val childCount = childCount
+            val dataSize = explores.size
+            if (childCount > dataSize) {
+                removeViews(dataSize, childCount - dataSize)
+            }
+            explores.forEachIndexed { index, pinned ->
+                val itemBinding = if (index < childCount) {
+                    ItemFilletTextBinding.bind(getChildAt(index))
+                } else {
+                    ItemFilletTextBinding.inflate(layoutInflater, this, true)
+                }
+                itemBinding.textView.text = "${pinned.sourceName}-${pinned.categoryName}"
+                itemBinding.root.setOnClickListener {
+                    Coroutine.async {
+                        appDb.bookSourceDao.getBookSource(pinned.sourceUrl)
+                    }.onSuccess { source ->
+                        if (source != null) {
+                            openExplore(source, pinned.categoryName, pinned.categoryUrl)
+                        } else {
+                            this@ExploreFragment.toastOnUi("Source not found")
+                        }
                     }
                 }
-            }
-            itemBinding.root.onLongClick {
-                requireContext().alert(R.string.draw) {
-                    setMessage(getString(R.string.sure_del) + "\n${pinned.sourceName}-${pinned.categoryName}")
-                    yesButton {
-                        val favorites =
-                            (viewModel.pinnedExploresData.value ?: emptyList()).toMutableList()
-                        favorites.removeAll { it.sourceUrl == pinned.sourceUrl && it.categoryUrl == pinned.categoryUrl }
-                        appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
-                        postEvent(EventBus.UP_EXPLORE_PINNED, "")
-                    }
-                    noButton()
-                }.show()
+                itemBinding.root.onLongClick {
+                    requireContext().alert(R.string.draw) {
+                        setMessage(getString(R.string.sure_del) + "\n${pinned.sourceName}-${pinned.categoryName}")
+                        yesButton {
+                            val favorites = PinnedExploreHelp.getPinnedExplores().toMutableList()
+                            if (favorites.remove(pinned)) {
+                                PinnedExploreHelp.updatePinnedExplores(favorites)
+                                pinnedBinding?.flexbox?.removeView(itemBinding.root)
+                                if (favorites.isEmpty()) {
+                                    upPinned()
+                                }
+                            }
+                        }
+                        noButton()
+                    }.show()
+                }
             }
         }
     }
@@ -199,15 +216,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun initGroupData() {
         viewLifecycleOwner.lifecycleScope.launch {
-            appDb.bookSourceDao.flowExploreGroups()
-                .flowWithLifecycleAndDatabaseChange(
+            appDb.bookSourceDao.flowExploreGroups().flowWithLifecycleAndDatabaseChange(
                     viewLifecycleOwner.lifecycle,
                     Lifecycle.State.RESUMED,
                     AppDatabase.BOOK_SOURCE_TABLE_NAME
-                )
-                .conflate()
-                .distinctUntilChanged()
-                .collect {
+            ).conflate().distinctUntilChanged().collect {
                     groups.clear()
                     groups.addAll(it)
                     upGroupsMenu()
@@ -221,7 +234,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         exploreFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             when {
                 searchKey.isNullOrBlank() -> appDb.bookSourceDao.flowExplore()
-                searchKey.startsWith("group:") -> appDb.bookSourceDao.flowGroupExplore(searchKey.substringAfter("group:"))
+                searchKey.startsWith("group:") -> appDb.bookSourceDao.flowGroupExplore(
+                    searchKey.substringAfter(
+                        "group:"
+                    )
+                )
+
                 else -> appDb.bookSourceDao.flowExplore(searchKey)
             }.flowWithLifecycleAndDatabaseChange(
                 viewLifecycleOwner.lifecycle,
@@ -232,8 +250,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }.conflate().flowOn(IO).collect {
                 binding.tvEmptyMsg.isGone = it.isNotEmpty() || searchView.query.isNotEmpty()
                 adapter.setItems(
-                    it.sortedBy { sourcePart -> sourcePart.customOrder },
-                    diffItemCallBack
+                    it.sortedBy { sourcePart -> sourcePart.customOrder }, diffItemCallBack
                 )
                 delay(500)
             }

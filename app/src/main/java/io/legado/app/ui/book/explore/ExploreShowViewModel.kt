@@ -8,28 +8,22 @@ import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook.getBookListAwait
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.getPrefString
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
-import splitties.init.appCtx
 import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,13 +87,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     fun isFavorite(): Boolean {
         val sourceUrl = bookSource?.bookSourceUrl ?: return false
         val url = rawExploreUrl ?: return false
-        val favorites = getExploreFavorites()
+        val favorites = PinnedExploreHelp.getPinnedExplores()
         return favorites.any { it.sourceUrl == sourceUrl && it.categoryUrl == url }
-    }
-
-    private fun getExploreFavorites(): List<PinnedExplore> {
-        val json = appCtx.getPrefString("exploreFavorites") ?: return emptyList()
-        return GSON.fromJsonArray<PinnedExplore>(json).getOrNull() ?: emptyList()
     }
 
     fun toggleFavorite() {
@@ -108,16 +97,15 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val categoryName = exploreName ?: return
         val categoryUrl = rawExploreUrl ?: return
 
-        val favorites = getExploreFavorites().toMutableList()
+        val favorites = PinnedExploreHelp.getPinnedExplores().toMutableList()
         val existing = favorites.find { it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl }
         if (existing != null) {
             favorites.remove(existing)
         } else {
             favorites.add(PinnedExplore(sourceUrl, sourceName, categoryName, categoryUrl))
         }
-        appCtx.putPrefString("exploreFavorites", GSON.toJson(favorites))
+        PinnedExploreHelp.updatePinnedExplores(favorites)
         upStarLiveData.postValue(isFavorite())
-        postEvent(EventBus.UP_EXPLORE_PINNED, "")
     }
 
     private fun parseExploreOptions() {
