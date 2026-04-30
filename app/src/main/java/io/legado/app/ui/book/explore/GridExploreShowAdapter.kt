@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.explore
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
@@ -8,6 +7,7 @@ import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.gone
 
 
 class GridExploreShowAdapter(context: Context, callBack: CallBack) :
@@ -19,12 +19,12 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
         return ItemBookshelfGridBinding.inflate(inflater, parent, false)
     }
 
-    @SuppressLint("CheckResult")
     override fun bind(
-        binding: ItemBookshelfGridBinding,
-        item: SearchBook
+        binding: ItemBookshelfGridBinding, item: SearchBook
     ) {
         binding.run {
+            bvUnread.gone()
+            rlLoading.gone()
             if (isVideoStyle) {
                 ivCover.coverRatio = CoverImageView.CoverRatio.VIDEO
             } else {
@@ -32,7 +32,8 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
             }
             tvName.text = item.name
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
-            ivCover.load(
+            if (item.coverUrl.isNullOrBlank()) ivCover.gone()
+            else ivCover.load(
                 item.coverUrl,
                 item.name,
                 item.author,
@@ -44,15 +45,14 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
     }
 
 
-        override fun bindChange(binding: ItemBookshelfGridBinding, item: SearchBook, bundle: Bundle) {
-            binding.run {
-                bundle.keySet().forEach {
-                    when (it) {
-                        "isInBookshelf" -> ivInBookshelf.isVisible =
-                            callBack.isInBookshelf(item)
-                    }
+    override fun bindChange(binding: ItemBookshelfGridBinding, item: SearchBook, bundle: Bundle) {
+        binding.run {
+            bundle.keySet().forEach {
+                when (it) {
+                    "isInBookshelf" -> ivInBookshelf.isVisible = callBack.isInBookshelf(item)
                 }
             }
         }
-
     }
+
+}
