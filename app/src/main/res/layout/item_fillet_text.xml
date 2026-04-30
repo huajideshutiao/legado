@@ -13,6 +13,7 @@
     android:paddingTop="6dp"
     android:paddingRight="10dp"
     android:paddingBottom="6dp"
+    android:scrollbars="none"
     android:textColor="@color/secondaryText"
     android:textSize="14sp"
     tools:ignore="UnusedAttribute" />
