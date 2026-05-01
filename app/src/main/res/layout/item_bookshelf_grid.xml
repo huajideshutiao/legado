@@ -13,7 +13,6 @@
 
 
     <LinearLayout
-        android:id="@+id/linearLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -30,8 +29,20 @@
                 android:id="@+id/iv_cover"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_margin="8dp"
                 app:layout_constraintTop_toTopOf="parent"
                 tools:layout_editor_absoluteX="8dp" />
+
+            <io.legado.app.ui.widget.text.BadgeView
+                android:id="@+id/bv_unread"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="right"
+                android:includeFontPadding="false"
+                android:scrollbars="none"
+                app:layout_constraintRight_toRightOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:ignore="RtlHardcoded" />
 
             <io.legado.app.ui.widget.anima.RotateLoading
                 android:id="@+id/rl_loading"
@@ -53,7 +64,7 @@
                 app:layout_constraintDimensionRatio="1:1"
                 app:layout_constraintStart_toStartOf="@+id/iv_cover"
                 app:layout_constraintTop_toTopOf="@+id/iv_cover"
-                app:layout_constraintWidth_percent="0.25"
+                app:layout_constraintWidth_percent="0.22"
                 app:srcCompat="@drawable/ic_bookmark"
                 tools:ignore="ContentDescription" />
 
@@ -75,17 +86,6 @@
             tools:ignore="RtlHardcoded,RtlSymmetry" />
 
     </LinearLayout>
-
-    <io.legado.app.ui.widget.text.BadgeView
-        android:id="@+id/bv_unread"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="right"
-        android:includeFontPadding="false"
-        android:scrollbars="none"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:ignore="RtlHardcoded" />
 
     <View
         android:id="@+id/vw_foreground"

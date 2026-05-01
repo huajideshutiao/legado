@@ -8,6 +8,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.gone
+import io.legado.app.utils.visible
 
 
 class GridExploreShowAdapter(context: Context, callBack: CallBack) :
@@ -33,14 +34,17 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
             tvName.text = item.name
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             if (item.coverUrl.isNullOrBlank()) ivCover.gone()
-            else ivCover.load(
-                item.coverUrl,
-                item.name,
-                item.author,
-                false,
-                item.origin,
-                inBookshelf = callBack.isInBookshelf(item)
-            )
+            else {
+                ivCover.visible()
+                ivCover.load(
+                    item.coverUrl,
+                    item.name,
+                    item.author,
+                    false,
+                    item.origin,
+                    inBookshelf = callBack.isInBookshelf(item)
+                )
+            }
         }
     }
 
