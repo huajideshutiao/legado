@@ -32,6 +32,7 @@ class ZhLayout(
 
     private val defaultCapacity = 10
     var lineStart = IntArray(defaultCapacity)
+    var lineStartCluster = IntArray(defaultCapacity)
     var lineWidth = FloatArray(defaultCapacity)
     private var lineCount = 0
     private val curPaint = textPaint
@@ -63,6 +64,7 @@ class ZhLayout(
             lineW += cw
             var offset = 0f
             var breakCharCnt = 0
+            var breakClusterCnt = 0
 
             if (lineW > width) {
                 /*禁止在行尾的标点处理*/
@@ -120,37 +122,49 @@ class ZhLayout(
                     BreakMod.NORMAL -> {//模式0 正常断行
                         offset = cw
                         lineStart[line + 1] = length
+                        lineStartCluster[line + 1] = index
                         breakCharCnt = 1
+                        breakClusterCnt = 1
                     }
 
                     BreakMod.BREAK_ONE_CHAR -> {//模式1 当前行下移一个字
                         offset = cw + cwPre
                         lineStart[line + 1] = length - words[index - 1].length
+                        lineStartCluster[line + 1] = index - 1
                         breakCharCnt = 2
+                        breakClusterCnt = 2
                     }
 
                     BreakMod.BREAK_MORE_CHAR -> {//模式2 当前行下移多个字
                         offset = cw + cwPre
                         lineStart[line + 1] = length - breakLength
+                        lineStartCluster[line + 1] = index - breakIndex
                         breakCharCnt = breakIndex + 1
+                        breakClusterCnt = breakIndex + 1
                     }
 
                     BreakMod.CPS_1 -> {//模式3 两个后置标点压缩
                         offset = 0f
                         lineStart[line + 1] = length + s.length
+                        lineStartCluster[line + 1] = index + 1
                         breakCharCnt = 0
+                        breakClusterCnt = 0
                     }
 
                     BreakMod.CPS_2 -> { //模式4 前置标点压缩+前置标点压缩+字
                         offset = 0f
                         lineStart[line + 1] = length + s.length
+                        lineStartCluster[line + 1] = index + 1
                         breakCharCnt = 0
+                        breakClusterCnt = 0
                     }
 
                     BreakMod.CPS_3 -> {//模式5 前置标点压缩+字+后置标点压缩
                         offset = 0f
                         lineStart[line + 1] = length + s.length
+                        lineStartCluster[line + 1] = index + 1
                         breakCharCnt = 0
+                        breakClusterCnt = 0
                     }
                 }
                 breakLine = true
@@ -167,6 +181,7 @@ class ZhLayout(
                 if (!breakLine) {
                     offset = 0f
                     lineStart[line + 1] = length + s.length
+                    lineStartCluster[line + 1] = index + 1
                     lineWidth[line] = lineW - offset
                     lineW = offset
                     addLineArray(++line)
@@ -174,6 +189,7 @@ class ZhLayout(
                 /*写满断行、段落末尾、且需要下移字符，这种特殊情况下要额外多一行*/
                 else if (breakCharCnt > 0) {
                     lineStart[line + 1] = lineStart[line] + breakCharCnt
+                    lineStartCluster[line + 1] = lineStartCluster[line] + breakClusterCnt
                     lineWidth[line] = lineW
                     addLineArray(++line)
                 }
@@ -189,6 +205,7 @@ class ZhLayout(
     private fun addLineArray(line: Int) {
         if (lineStart.size <= line + 1) {
             lineStart = lineStart.copyOf(line + defaultCapacity)
+            lineStartCluster = lineStartCluster.copyOf(line + defaultCapacity)
             lineWidth = lineWidth.copyOf(line + defaultCapacity)
         }
     }
@@ -241,6 +258,14 @@ class ZhLayout(
 
     override fun getLineStart(line: Int): Int {
         return lineStart[line]
+    }
+
+    fun getLineStartCluster(line: Int): Int {
+        return lineStartCluster[line]
+    }
+
+    fun getLineEndCluster(line: Int): Int {
+        return lineStartCluster[line + 1]
     }
 
     override fun getParagraphDirection(line: Int): Int {
