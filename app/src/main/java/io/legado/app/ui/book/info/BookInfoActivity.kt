@@ -466,7 +466,8 @@ class BookInfoActivity :
                 Glide.with(this@BookInfoActivity),
                 book.getDisplayCover(),
                 sourceOrigin = book.origin,
-                inBookshelf = viewModel.inBookshelf
+                inBookshelf = viewModel.inBookshelf,
+                view = bgBook
             ).into(bgBook)
         }
     }

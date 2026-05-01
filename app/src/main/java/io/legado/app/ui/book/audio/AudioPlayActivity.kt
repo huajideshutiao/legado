@@ -353,8 +353,11 @@ class AudioPlayActivity :
             val glide = Glide.with(this)
             BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
                 .placeholder(binding.ivCover.drawable).into(binding.ivCover)
-            BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                .into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
+            BookCover.loadBlur(
+                glide, url,
+                sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
+                view = binding.ivBg
+            ).into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
                     override fun onResourceCleared(p0: Drawable?) {}
                     override fun onLoadFailed(p0: Drawable?) {}
                     override fun onResourceReady(

@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
+import android.view.View
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
 import com.bumptech.glide.RequestBuilder
@@ -130,9 +131,10 @@ object BookCover {
         path: String?,
         loadOnlyWifi: Boolean = false,
         sourceOrigin: String? = null,
-        inBookshelf: Boolean = false
+        inBookshelf: Boolean = false,
+        view: View? = null
     ): RequestBuilder<Drawable> {
-        val blurOptions = RequestOptions().transform(BlurTransformation(), CenterCrop())
+        val blurOptions = RequestOptions().transform(BlurTransformation(view = view), CenterCrop())
         if (AppConfig.useDefaultCover) {
             return requestManager.load(defaultDrawable).apply(blurOptions)
         }
