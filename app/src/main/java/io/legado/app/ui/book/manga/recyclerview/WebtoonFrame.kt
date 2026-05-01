@@ -2,12 +2,13 @@ package io.legado.app.ui.book.manga.recyclerview
 
 import android.content.Context
 import android.graphics.Rect
-import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.widget.FrameLayout
+
+import io.legado.app.ui.book.read.config.ClickArea
 
 class WebtoonFrame : FrameLayout {
 
@@ -27,33 +28,22 @@ class WebtoonFrame : FrameLayout {
     private val recycler: WebtoonRecyclerView?
         get() = getChildAt(0) as? WebtoonRecyclerView
 
-    private val mcRect = RectF()
-    private val blRect = RectF()
-    private val brRect = RectF()
+    private val clickArea = ClickArea()
 
-    private var mTouchMiddle: (() -> Unit)? = null
-    fun onTouchMiddle(init: () -> Unit) = apply { this.mTouchMiddle = init }
-    private var mNextPage: (() -> Unit)? = null
-    fun onNextPage(init: () -> Unit) = apply { this.mNextPage = init }
-    private var mPrevPage: (() -> Unit)? = null
-    fun onPrevPage(init: () -> Unit) = apply { this.mPrevPage = init }
+    private var onAction: ((Int) -> Unit)? = null
+    fun onAction(callback: (Int) -> Unit) = apply {
+        onAction = callback
+    }
 
     var disabledClickScroll = false
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         recycler?.tapListener = { ev ->
-            when {
-                mcRect.contains(ev.rawX, ev.rawY) -> {
-                    mTouchMiddle?.invoke()
-                }
-
-                blRect.contains(ev.rawX, ev.rawY) && !disabledClickScroll -> {
-                    mPrevPage?.invoke()
-                }
-
-                brRect.contains(ev.rawX, ev.rawY) && !disabledClickScroll -> {
-                    mNextPage?.invoke()
+            val action = clickArea.getAction(ev.x, ev.y)
+            if (action != -1) {
+                if (!(disabledClickScroll && (action == 1 || action == 2))) {
+                    onAction?.invoke(action)
                 }
             }
         }
@@ -61,9 +51,7 @@ class WebtoonFrame : FrameLayout {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        mcRect.set(width * 0.33f, height * 0.33f, width * 0.66f, height * 0.66f)
-        blRect.set(0f, height * 0.66f, width * 0.33f, height.toFloat())
-        brRect.set(width * 0.66f, height * 0.66f, width.toFloat(), height.toFloat())
+        clickArea.setRect(w, h)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

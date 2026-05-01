@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read.page
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.RectF
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -19,6 +18,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.ContentEditDialog
+import io.legado.app.ui.book.read.config.ClickArea
 import io.legado.app.ui.book.read.page.api.DataSource
 import io.legado.app.ui.book.read.page.delegate.CoverPageDelegate
 import io.legado.app.ui.book.read.page.delegate.HorizontalPageDelegate
@@ -99,15 +99,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private val slopSquare by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private var pageSlopSquare: Int = slopSquare
     var pageSlopSquare2: Int = pageSlopSquare * pageSlopSquare
-    private val tlRect = RectF()
-    private val tcRect = RectF()
-    private val trRect = RectF()
-    private val mlRect = RectF()
-    private val mcRect = RectF()
-    private val mrRect = RectF()
-    private val blRect = RectF()
-    private val bcRect = RectF()
-    private val brRect = RectF()
+    private val clickArea = ClickArea()
     private val boundary by lazy { BreakIterator.getWordInstance(Locale.getDefault()) }
     private val upProgressThrottle = throttle(200) { post { upProgress() } }
     val autoPager = AutoPager(this)
@@ -129,15 +121,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
 
     private fun setRect9x() {
-        tlRect.set(0f, 0f, width * 0.33f, height * 0.33f)
-        tcRect.set(width * 0.33f, 0f, width * 0.66f, height * 0.33f)
-        trRect.set(width * 0.36f, 0f, width.toFloat(), height * 0.33f)
-        mlRect.set(0f, height * 0.33f, width * 0.33f, height * 0.66f)
-        mcRect.set(width * 0.33f, height * 0.33f, width * 0.66f, height * 0.66f)
-        mrRect.set(width * 0.66f, height * 0.33f, width.toFloat(), height * 0.66f)
-        blRect.set(0f, height * 0.66f, width * 0.33f, height.toFloat())
-        bcRect.set(width * 0.33f, height * 0.66f, width * 0.66f, height.toFloat())
-        brRect.set(width * 0.66f, height * 0.66f, width.toFloat(), height.toFloat())
+        clickArea.setRect(width, height)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -390,44 +374,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * 单击
      */
     private fun onSingleTapUp() {
-        when {
-            isTextSelected -> Unit
-            mcRect.contains(startX, startY) -> if (!isAbortAnim) {
-                click(AppConfig.clickActionMC)
-            }
-
-            bcRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionBC)
-            }
-
-            blRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionBL)
-            }
-
-            brRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionBR)
-            }
-
-            mlRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionML)
-            }
-
-            mrRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionMR)
-            }
-
-            tlRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionTL)
-            }
-
-            tcRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionTC)
-            }
-
-            trRect.contains(startX, startY) -> {
-                click(AppConfig.clickActionTR)
-            }
-        }
+        if (isTextSelected) return
+        if (clickArea.isCenter(startX, startY) && isAbortAnim) return
+        val action = clickArea.getAction(startX, startY)
+        click(action)
     }
 
     /**

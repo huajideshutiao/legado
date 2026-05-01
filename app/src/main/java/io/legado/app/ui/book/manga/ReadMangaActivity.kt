@@ -23,6 +23,7 @@ import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.util.FixedPreloadSizeProvider
 import io.legado.app.BuildConfig
 import io.legado.app.R
+import io.legado.app.base.IBottomDialog
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.EventBus
@@ -51,8 +52,10 @@ import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.recyclerview.MangaAdapter
 import io.legado.app.ui.book.manga.recyclerview.MangaLayoutManager
 import io.legado.app.ui.book.manga.recyclerview.ScrollTimer
+import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.MangaMenu
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
+import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
@@ -81,7 +84,18 @@ import kotlin.math.ceil
 
 class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewModel>(),
     ReadManga.Callback, ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
-    MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback, MangaEpaperDialog.Callback {
+    MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback, MangaEpaperDialog.Callback,
+    IBottomDialog {
+
+    override var bottomDialog: Int = 0
+        set(value) {
+            field = value
+            if (value > 0) {
+                binding.mangaMenu.runMenuOut()
+            } else {
+                binding.mangaMenu.runMenuIn()
+            }
+        }
 
     private val mLayoutManager by lazy {
         MangaLayoutManager(this)
@@ -246,16 +260,8 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
         }
         binding.webtoonFrame.run {
-            onTouchMiddle {
-                if (!binding.mangaMenu.isVisible && !loadingViewVisible) {
-                    binding.mangaMenu.runMenuIn()
-                }
-            }
-            onNextPage {
-                scrollToNext()
-            }
-            onPrevPage {
-                scrollToPrev()
+            onAction {
+                click(it)
             }
         }
     }
@@ -564,6 +570,10 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
                 showDialogFragment(MangaFooterSettingDialog())
             }
 
+            R.id.menu_click_regional_config -> {
+                showClickRegionalConfig()
+            }
+
             R.id.menu_enable_horizontal_scroll -> {
                 item.isChecked = !item.isChecked
                 AppConfig.enableMangaHorizontalScroll = item.isChecked
@@ -792,6 +802,34 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             .show {
                 callback.invoke(it)
             }
+    }
+
+    fun showClickRegionalConfig() {
+        showDialogFragment<ClickActionConfigDialog>()
+    }
+
+    private fun click(action: Int) {
+        when (action) {
+            0 -> if (!binding.mangaMenu.isVisible && !loadingViewVisible) {
+                binding.mangaMenu.runMenuIn()
+            }
+
+            1 -> scrollToNext()
+            2 -> scrollToPrev()
+            3 -> ReadManga.moveToNextChapter(true)
+            4 -> ReadManga.moveToPrevChapter(true)
+            8 -> showDialogFragment(ContentEditDialog())
+            10 -> {
+                IntentData.book = ReadManga.book
+                IntentData.chapterList = ReadManga.chapterList
+                tocActivity.launch("")
+            }
+
+            12 -> ReadManga.syncProgress(
+                { progress -> sureNewProgress(progress) },
+                { toastOnUi(R.string.upload_book_success) },
+                { toastOnUi(R.string.sync_book_progress_success) })
+        }
     }
 
     override fun finish() {

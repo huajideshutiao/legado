@@ -92,6 +92,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_click_regional_config"
+        android:title="@string/click_regional_config"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_manga_color_filter"
         android:title="@string/manga_color_filter"
         app:showAsAction="never" />

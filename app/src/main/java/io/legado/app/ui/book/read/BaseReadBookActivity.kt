@@ -14,6 +14,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import io.legado.app.R
+import io.legado.app.base.IBottomDialog
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.charsets
 import io.legado.app.constant.PreferKey
@@ -53,14 +54,14 @@ import java.time.format.DateTimeFormatter
  * 阅读界面
  */
 abstract class BaseReadBookActivity :
-    VMBaseActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false) {
+    VMBaseActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false), IBottomDialog {
 
     override val binding by viewBinding(ActivityBookReadBinding::inflate)
     override val viewModel by viewModels<ReadBookViewModel>()
     protected val menuLayoutIsVisible
         get() = bottomDialog > 0 || binding.readMenu.isVisible || binding.searchMenu.bottomMenuVisible
 
-    var bottomDialog = 0
+    override var bottomDialog = 0
         set(value) {
             if (field != value) {
                 field = value
