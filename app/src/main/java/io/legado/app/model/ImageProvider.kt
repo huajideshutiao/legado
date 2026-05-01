@@ -65,12 +65,10 @@ object ImageProvider {
                     removeCount++
                 }
             }
-            //错误图片不能释放,占位用,防止一直重复获取图片
-            if (oldValue != errorBitmap) {
+            // 记录渲染导致recycle后不能再绘制,交给gc回收,错误图片不能释放
+            /* if (oldValue != errorBitmap) {
                 oldValue.recycle()
-                //putDebug("ImageProvider: trigger bitmap recycle. URI: $filePath")
-                //putDebug("ImageProvider : cacheUsage ${size()}bytes / ${maxSize()}bytes")
-            }
+            } */
         }
 
     }
