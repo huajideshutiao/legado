@@ -33,8 +33,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import org.jsoup.Jsoup
-import org.jsoup.nodes.TextNode
 import java.util.LinkedList
 import kotlin.math.roundToInt
 
@@ -215,36 +213,26 @@ class TextChapterLayout(
             }
         }
 
+        val parsedLines = ChapterContentParser.parse(bookContent)
         var isSetTypedImage = false
-        contents.forEach { content ->
+        parsedLines.forEach { parsedLine ->
             currentCoroutineContext().ensureActive()
-            var contentProcessed = content.replace(ChapterProvider.srcReplaceChar, "▣")
+            val contentText = parsedLine.text
             val imgList = LinkedList<Img>()
-            if (contentProcessed.contains("<img")) {
-                val body = Jsoup.parse(contentProcessed)
-                body.select("img").forEach {
-                    imgList.add(
-                        Img(
-                            it.attr("src"),
-                            it.attr("style"),
-                            it.attr("onclick")
-                        )
-                    )
-                    it.replaceWith(TextNode(ChapterProvider.srcReplaceChar))
-                }
-                contentProcessed = body.wholeText()
+            parsedLine.images.forEach {
+                imgList.add(Img(it.src, it.style ?: "", it.onclick ?: ""))
             }
 
             var lineStartIndex = 0
-            val contentLength = contentProcessed.length
+            val contentLength = contentText.length
             while (lineStartIndex < contentLength) {
-                var lineEndIndex = contentProcessed.indexOf('\n', lineStartIndex)
+                var lineEndIndex = contentText.indexOf('\n', lineStartIndex)
                 if (lineEndIndex == -1) lineEndIndex = contentLength
 
-                val rawLine = contentProcessed.substring(lineStartIndex, lineEndIndex)
+                val rawLine = contentText.substring(lineStartIndex, lineEndIndex)
                 val line =
                     if (rawLine.startsWith("　　")) paragraphIndent + rawLine.substring(2) else rawLine
-                
+
                 if (isTextImageStyle || imgList.isEmpty()) {
                     //图片样式为文字嵌入类型
                     setTypeText(

@@ -15,6 +15,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
@@ -39,7 +40,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.apache.commons.text.similarity.JaccardSimilarity
-import org.jsoup.Jsoup
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -179,11 +179,10 @@ object BookHelp {
 
     fun flowImages(bookChapter: BookChapter, content: String): Flow<String> {
         return flow {
-            val imgList = Jsoup.parse(content).select("img")
+            val imgList = ChapterContentParser.extractImages(content)
             for (i in imgList) {
-                val src = i.attr("src")
-                if (src.isBlank()) continue
-                emit(src)
+                if (i.src.isBlank()) continue
+                emit(i.src)
             }
         }
     }
@@ -368,9 +367,9 @@ object BookHelp {
         val op = BitmapFactory.Options()
         op.inJustDecodeBounds = true
         getContent(book, bookChapter)?.let {
-            val imgList = Jsoup.parse(it).select("img")
+            val imgList = ChapterContentParser.extractImages(it)
             for (i in imgList) {
-                val src = i.attr("src")
+                val src = i.src
                 val image = getImage(book, src)
                 if (!image.exists()) {
                     ret = false

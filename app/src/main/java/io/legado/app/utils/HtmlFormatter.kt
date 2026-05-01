@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Tag
+import java.util.LinkedList
 import java.util.regex.Pattern
 
 @Suppress("RegExpRedundantEscape")
@@ -49,40 +50,63 @@ object HtmlFormatter {
             }
         } else {
             val content = Jsoup.parse(html, redirectUrl ?: "").body()
-            fun extractFromNode(node: Node) {
-                for (child in node.childNodes()) {
-                    when (child) {
-                        is TextNode -> {
-                            val text = child.wholeText
-                            if (text.isNotEmpty()) str.apply {
-                                text.lines().forEach {
-                                    val oo = it.trim()
-                                    if (oo == "") return@forEach
-                                    if (str.isNotEmpty()) append("\n")
-                                    append("　　")
-                                    append(oo)
-                                }
-                            }
-                        }
+            val nodes = LinkedList<Node>()
+            nodes.add(content)
 
-                        is Element if child.tagName() == "img" -> {
+            var lastIsBlock = true // 初始视为块开始，触发首行缩进
+
+            while (nodes.isNotEmpty()) {
+                val node = nodes.pollFirst() ?: continue
+                when (node) {
+                    is TextNode -> {
+                        val text = node.wholeText.trim()
+                        if (text.isNotEmpty()) {
+                            if (lastIsBlock) {
+                                if (str.isNotEmpty()) str.append("\n")
+                                str.append("　　")
+                            }
+                            str.append(text)
+                            lastIsBlock = false
+                        }
+                    }
+
+                    is Element -> {
+                        val tagName = node.tagName()
+                        if (tagName == "img") {
+                            if (lastIsBlock) {
+                                if (str.isNotEmpty()) str.append("\n")
+                                str.append("　　")
+                            }
                             val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
                             val src = when {
-                                child.hasAttr("data-src") -> child.absUrl("data-src").ifEmpty { child.attr("data-src") }
-                                child.hasAttr("data-original") -> child.absUrl("data-original").ifEmpty { child.attr("data-original") }
-                                else -> child.absUrl("src").ifEmpty { child.attr("src") }
+                                node.hasAttr("data-src") -> node.absUrl("data-src")
+                                    .ifEmpty { node.attr("data-src") }
+
+                                node.hasAttr("data-original") -> node.absUrl("data-original")
+                                    .ifEmpty { node.attr("data-original") }
+
+                                else -> node.absUrl("src").ifEmpty { node.attr("src") }
                             }
                             img.attr("src", src)
-                            child.attribute("style")?.let { img.attr("style", it.value) }
-                            child.attribute("onclick")?.let { img.attr("onclick", it.value) }
+                            node.attribute("style")?.let { img.attr("style", it.value) }
+                            node.attribute("onclick")?.let { img.attr("onclick", it.value) }
                             str.append(img.outerHtml())
+                            lastIsBlock = false
+                        } else {
+                            // 块级标签处理
+                            val isBlock = node.isBlock || tagName == "br"
+                            if (isBlock && !lastIsBlock) {
+                                lastIsBlock = true
+                            }
+                            // 将子节点逆序放入队列前端，实现深度优先遍历
+                            val childNodes = node.childNodes()
+                            for (i in childNodes.indices.reversed()) {
+                                nodes.addFirst(childNodes[i])
+                            }
                         }
-
-                        is Element -> extractFromNode(child)
                     }
                 }
             }
-            extractFromNode(content)
         }
         return str.toString()
     }
