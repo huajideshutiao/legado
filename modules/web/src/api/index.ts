@@ -1,4 +1,3 @@
-import type { AxiosResponse } from 'axios'
 import type { LeagdoApiResponse } from './api'
 import API, {
   setWebsocketOnError,
@@ -8,6 +7,7 @@ import API, {
 } from './api'
 import ajax from './axios'
 import { validatorHttpUrl } from '@/utils/utils'
+import { toast } from '@/utils/toast'
 
 import { createApp } from 'vue'
 import App from '@/App.vue'
@@ -18,9 +18,8 @@ const connectionStore = useConnectionStore()
 
 const LeagdoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
 
-const notification = ElMessage
-/** Axios.Interceptor: check if resp is LeagaoLeagdoApiResponse*/
-const responseCheckInterceptor = (resp: AxiosResponse) => {
+/** Interceptor: check if resp is LeagdoApiResponse*/
+const responseCheckInterceptor = (resp: any) => {
   let isLeagdoApiResponse = true
   try {
     const data = resp.data
@@ -40,7 +39,7 @@ const responseCheckInterceptor = (resp: AxiosResponse) => {
     isLeagdoApiResponse = false
   }
   if (isLeagdoApiResponse === false) {
-    notification.warning({ message: '后端返回内容格式错误', grouping: true })
+    toast.warning({ message: '后端返回内容格式错误', grouping: true })
     throw new Error()
   }
   connectionStore.setConnectType('primary')
@@ -48,8 +47,8 @@ const responseCheckInterceptor = (resp: AxiosResponse) => {
   return resp
 }
 
-const axiosErrorInterceptor = (err: unknown) => {
-  notification.error({
+const fetchErrorInterceptor = (err: unknown) => {
+  toast.error({
     message: '后端连接失败，请检查阅读WEB服务或者设置其它可用链接',
     grouping: true,
   })
@@ -58,33 +57,30 @@ const axiosErrorInterceptor = (err: unknown) => {
   throw err
 }
 // http全局
-ajax.interceptors.response.use(responseCheckInterceptor, axiosErrorInterceptor)
+ajax.interceptors.response.use(responseCheckInterceptor, fetchErrorInterceptor)
 // websocket
-setWebsocketOnError(axiosErrorInterceptor)
+setWebsocketOnError(fetchErrorInterceptor)
 setWebsocketOnMessage(() => {
   connectionStore.setConnectType('primary')
   connectionStore.setConnectStatus('已连接 ' + legado_http_entry_point)
 })
 /**
  * 按照阅读的默认规则 解析阅读HTTP WebSocket API入口地址
- * @returns [http_url, webSocekt_url]
  */
 export const parseLeagdoHttpUrlWithDefault = (
   http_url: string | URL,
 ): [string, string] => {
-  let url = new URL(location.origin) //默认当前网址的origin部分
+  let url = new URL(location.origin)
   if (validatorHttpUrl(http_url)) {
     url = new URL(http_url)
   }
   const { protocol, port } = url
-  // websocket服务端口 为http服务端口 + 1
   let legado_webSocket_port
   if (port !== '') {
     legado_webSocket_port = String(Number(port) + 1)
   } else {
     legado_webSocket_port = protocol.startsWith('https:') ? '444' : '81'
   }
-  // websocket协议是否为加密版本
   const legado_webSocket_protocol = protocol.startsWith('https:')
     ? 'wss://'
     : 'ws://'
@@ -102,8 +98,6 @@ export const parseLeagdoHttpUrlWithDefault = (
   })
   return [http_entry_point, webSocket_entry_point]
 }
-
-//export const useLeagdoRemoteUrlDialog = () => { }
 
 setApiEntryPoint(
   ...parseLeagdoHttpUrlWithDefault(ajax.defaults.baseURL as string),

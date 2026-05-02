@@ -9,7 +9,7 @@ import type {
   SeachBook,
 } from '@/book'
 import type { webReadConfig } from '@/web'
-import { ElMessage } from 'element-plus/es'
+import { toast } from '@/utils/toast'
 import { toRaw } from 'vue'
 
 const default_config: webReadConfig = {
@@ -70,7 +70,6 @@ export const useBookStore = defineStore('book', {
     isNight: state => state.config.theme == 6,
   },
   actions: {
-    /** 获取所有分组 */
     async loadGroups() {
       try {
         const resp = await API.getGroups()
@@ -84,7 +83,6 @@ export const useBookStore = defineStore('book', {
         console.error('获取分组出错:', e)
       }
     },
-    /** 从后端加载书架书籍，优先返回内存缓存 */
     async loadBookShelf(groupId?: number | string): Promise<Book[]> {
       const fetchBookshellf_promise = API.getBookShelf(groupId).then(resp => {
         console.log('API.getBookShelf数据返回')
@@ -96,26 +94,25 @@ export const useBookStore = defineStore('book', {
             data.length > 0 &&
             groupId === this.currentGroupId
           ) {
-            ElMessage.info(`书架数据已更新`)
+            toast.info('书架数据已更新')
           }
-          this.shelf = data.sort((a, b) => {
+          this.shelf = data.sort((a: any, b: any) => {
             const x = a['durChapterTime'] || 0
             const y = b['durChapterTime'] || 0
             return y - x
           })
         } else {
           if (errorMsg.includes('还没有添加小说') && this.shelf.length > 0) {
-            ElMessage.info('当前书架上的书籍已经被删除')
+            toast.info('当前书架上的书籍已经被删除')
             return (this.shelf = [])
           }
-          ElMessage.error(errorMsg ?? '后端返回格式错误！')
+          toast.error(errorMsg ?? '后端返回格式错误！')
         }
         console.log('书架数据已更新')
         return this.shelf
       })
 
       if (this.shelf.length > 0 && groupId === this.currentGroupId) {
-        // bookshelf data fetched before:do not await
         console.log('返回缓存书架数据')
         return this.shelf
       } else {
@@ -124,7 +121,6 @@ export const useBookStore = defineStore('book', {
         return await fetchBookshellf_promise
       }
     },
-    /** 从后端加载书籍目录，优先返回内存缓存 */
     async loadWebCatalog(
       book: typeof this.readingBook,
     ): Promise<BookChapter[]> {
@@ -134,7 +130,7 @@ export const useBookStore = defineStore('book', {
       ).then(res => {
         const { isSuccess, data, errorMsg } = res.data
         if (isSuccess === false) {
-          ElMessage.error(errorMsg)
+          toast.error(errorMsg)
           throw new Error()
         }
         if (
@@ -143,7 +139,7 @@ export const useBookStore = defineStore('book', {
           data.length > 0 &&
           this.catalog.length > 0
         ) {
-          ElMessage.info(`书籍${name}: 章节目录已更新`)
+          toast.info(`书籍${name}: 章节目录已更新`)
         }
         this.catalog = data
         console.log(`书籍${name}: 章节目录已更新`)
@@ -170,7 +166,6 @@ export const useBookStore = defineStore('book', {
     setReadingBook(readingBook: typeof this.readingBook) {
       this.readingBook = readingBook
     },
-    /** 只从从后端加载一次web阅读配置 */
     async loadWebConfig() {
       if (webReadConfigLoadedDate === undefined) {
         const _config = await API.getReadConfig()
@@ -209,7 +204,6 @@ export const useBookStore = defineStore('book', {
     clearSearchBooks() {
       this.searchBooks = []
     },
-    /** 1.保存进度到app 2.修改内存中的数据*/
     async saveBookProgress() {
       if (!this.bookProgress) return Promise.resolve()
       const { bookUrl } = this.readingBook
@@ -222,8 +216,6 @@ export const useBookStore = defineStore('book', {
           this.bookProgress,
         )
       }
-      // 直接关闭浏览器时 http请求可能被取消
-      // return API.saveBookProgress(this.bookProgress)
       return API.saveBookProgressWithBeacon(this.bookProgress)
     },
   },

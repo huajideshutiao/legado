@@ -7,15 +7,9 @@ export const sourceRoutes = [
     name: 'book-home',
     component: sourceEditor,
   },
-  {
-    path: '/rssSource',
-    name: 'rss-home',
-    component: sourceEditor,
-  },
 ]
 
 const router = createRouter({
-  //   history: createWebHistory(process.env.BASE_URL),
   history: createWebHashHistory(),
   routes: sourceRoutes,
 })

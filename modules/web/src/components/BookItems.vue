@@ -24,12 +24,13 @@
               {{ book.author }}
             </div>
             <div class="tags" v-if="isSearch">
-              <el-tag
+              <span
+                class="web-tag"
                 v-for="tag in book.kind?.split(',').slice(0, 2)"
                 :key="tag"
               >
                 {{ tag }}
-              </el-tag>
+              </span>
             </div>
             <div class="update-info" v-if="!isSearch">
               <div class="dot">•</div>
@@ -82,7 +83,7 @@ const subJustify = computed(() =>
 
   .wrapper {
     display: grid;
-    grid-template-columns: repeat(auto-fill, 380px);
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     justify-content: space-around;
     grid-gap: 10px;
 
@@ -92,9 +93,10 @@ const subJustify = computed(() =>
       cursor: pointer;
       margin-bottom: 18px;
       padding: 24px 24px;
-      width: 360px;
+      width: 100%;
       flex-direction: row;
       justify-content: space-around;
+      box-sizing: border-box;
 
       .cover-img {
         width: 84px;
@@ -132,7 +134,7 @@ const subJustify = computed(() =>
           font-weight: 600;
           color: #6b6b6b;
           .tags {
-            :deep(.el-tag) {
+            .web-tag {
               margin-right: 0.5em;
             }
           }

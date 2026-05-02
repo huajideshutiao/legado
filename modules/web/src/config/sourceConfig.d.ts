@@ -1,10 +1,7 @@
 import type { Source } from '@/source'
 import bookSourceEditConfig from './bookSourceEditConfig'
-import rssSourceEditConfig from './rssSourceEditConfig'
 
-type SourceConfigKey =
-  | keyof typeof bookSourceEditConfig
-  | keyof typeof rssSourceEditConfig
+type SourceConfigKey = keyof typeof bookSourceEditConfig
 type SourceConfigRecord = {
   title: string
   type: string //"array" | "String" | "Boolean"

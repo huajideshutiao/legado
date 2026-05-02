@@ -160,6 +160,6 @@ type RssSource = BaseSource & {
   lastUpdateTime: number
   customOrder: number
 }
-type Source = BookSoure | RssSource
+type Source = BookSoure
 
-export { Source, BookSoure, RssSource }
+export { Source, BookSoure }

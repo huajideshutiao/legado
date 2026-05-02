@@ -1,8 +1,11 @@
-.el-loading-spinner {
-  font-size: 36px;
+.circular {
+  width: 42px;
+  height: 42px;
   color: #b5b5b5;
+  animation: web-rotate 2s linear infinite;
+  transform-origin: center;
 }
-.el-loading-text {
-  font-weight: 500;
-  color: #b5b5b5 !important;
+@keyframes web-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

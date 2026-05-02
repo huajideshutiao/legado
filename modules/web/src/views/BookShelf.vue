@@ -6,25 +6,20 @@
         <div class="navigation-sub-title">清风不识字，何故乱翻书</div>
       </div>
       <div class="search-wrapper">
-        <el-input
+        <input
+          class="web-input search-input"
           placeholder="搜索书籍，在线书籍自动加入书架"
           v-model="searchWord"
-          class="search-input"
-          :prefix-icon="SearchIcon"
           @keyup.enter="searchBook"
-        >
-        </el-input>
+        />
       </div>
       <div class="bottom-wrapper">
         <div class="recent-wrapper">
           <div class="recent-title">最近阅读</div>
           <div class="reading-recent">
-            <el-tag
-              :type="
-                readingRecent.name == '尚无阅读记录' ? 'warning' : 'primary'
-              "
-              class="recent-book"
-              size="large"
+            <span
+              class="web-tag"
+              :class="[readingRecent.name === '尚无阅读记录' ? 'web-tag--warning' : 'web-tag--primary', 'web-tag--large', 'recent-book', { 'no-point': !readingRecent.bookUrl }]"
               @click="
                 toDetail(
                   readingRecent.bookUrl,
@@ -36,42 +31,39 @@
                   true,
                 )
               "
-              :class="{ 'no-point': readingRecent.bookUrl == '' }"
             >
               {{ readingRecent.name }}
-            </el-tag>
+            </span>
           </div>
         </div>
         <div class="group-wrapper">
           <div class="group-title">书架分组</div>
           <div class="group-selector">
-            <el-select
+            <select
               v-model="currentGroupId"
-              placeholder="选择分组"
-              @change="handleGroupChange"
-              class="group-select"
+              class="web-select group-select"
+              @change="handleGroupChange($event)"
             >
-              <el-option
+              <option
                 v-for="group in groups"
                 :key="group.groupId"
-                :label="group.groupName"
                 :value="group.groupId"
-              />
-            </el-select>
+              >
+                {{ group.groupName }}
+              </option>
+            </select>
           </div>
         </div>
         <div class="setting-wrapper">
           <div class="setting-title">基本设定</div>
           <div class="setting-item">
-            <el-tag
-              :type="connectType"
-              size="large"
-              class="setting-connect"
-              :class="{ 'no-point': newConnect }"
+            <span
+              class="web-tag"
+              :class="[connectType === 'primary' ? 'web-tag--success' : 'web-tag--danger', 'web-tag--large', 'setting-connect', { 'no-point': newConnect }]"
               @click="setLegadoRetmoteUrl"
             >
               {{ connectStatus }}
-            </el-tag>
+            </span>
           </div>
         </div>
       </div>
@@ -102,7 +94,6 @@ import '@/assets/fonts/shelffont.css'
 import { useBookStore } from '@/store'
 import githubUrl from '@/assets/imgs/github.png'
 import { useLoading } from '@/hooks/loading'
-import { Search as SearchIcon } from '@element-plus/icons-vue'
 import { baseURL_localStorage_key } from '@/api/axios'
 import API, {
   legado_http_entry_point,
@@ -110,18 +101,19 @@ import API, {
   setApiEntryPoint,
 } from '@api'
 import { validatorHttpUrl } from '@/utils/utils'
+import { toast } from '@/utils/toast'
+import { msgbox } from '@/utils/toast'
 import type { Book, SeachBook } from '@/book'
 import type { webReadConfig } from '@/web'
 
 const store = useBookStore()
 const isNight = computed(() => store.isNight)
 
-/** shortcuts of `store.setConfig` */
 const applyReadConfig = (config?: webReadConfig) => {
   try {
     if (config !== undefined) store.setConfig(config)
   } catch {
-    ElMessage.info('阅读界面配置解析错误')
+    toast.info('阅读界面配置解析错误')
   }
 }
 
@@ -135,19 +127,16 @@ const readingRecent = ref<typeof store.readingBook>({
 })
 
 const shelfWrapper = ref<HTMLElement>()
-//const shelfWrapper = useTemplateRef<HTMLElement>("shelfWrapper")
 const { showLoading, closeLoading, loadingWrapper, isLoading } = useLoading(
   shelfWrapper,
   '正在获取书籍信息',
 )
 
-// 书架书籍和在线书籍搜索
 const books = shallowRef<Book[] | SeachBook[]>([])
 const shelf = computed(() => store.shelf)
 const searchWord = ref('')
 const isSearching = ref(false)
 
-// 分组相关
 const groups = computed(() => store.groups)
 const currentGroupId = ref<number | string | undefined>(undefined)
 watchEffect(() => {
@@ -166,7 +155,6 @@ watchEffect(() => {
   })
 })
 
-//搜索在线书籍
 const searchBook = () => {
   if (searchWord.value == '') return
   books.value = []
@@ -182,74 +170,58 @@ const searchBook = () => {
       try {
         store.setSearchBooks(searcBooks)
         books.value = store.searchBooks
-        //store.searchBooks.forEach((item) => books.value.push(item));
       } catch (e) {
-        ElMessage.error('后端数据错误')
+        toast.error('后端数据错误')
         throw e
       }
     },
     () => {
       closeLoading()
       if (books.value.length == 0) {
-        ElMessage.info('搜索结果为空')
+        toast.info('搜索结果为空')
       }
     },
   )
 }
 
-//连接状态
 const connectionStore = useConnectionStore()
 const { connectStatus, connectType, newConnect } = storeToRefs(connectionStore)
 
 const setLegadoRetmoteUrl = () => {
-  ElMessageBox.prompt(
+  msgbox.prompt(
     '请输入 后端地址 ( 如：http://127.0.0.1:9527 或者通过内网穿透的地址)',
     '提示',
     {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
       inputPlaceholder: legado_http_entry_point,
-      inputValidator: value => validatorHttpUrl(value),
+      inputValidator: value => validatorHttpUrl(value) as boolean,
       inputErrorMessage: '输入的格式不对',
-      beforeClose: (action, instance, done) => {
-        if (action === 'confirm') {
-          connectionStore.setNewConnect(true)
-          instance.confirmButtonLoading = true
-          instance.confirmButtonText = '校验中……'
-          // instance.inputValue
-          const url = new URL(instance.inputValue).toString()
-          API.getReadConfig(url)
-            .then(function (config) {
-              connectionStore.setNewConnect(false)
-              applyReadConfig(config)
-              instance.confirmButtonLoading = false
-              store.clearSearchBooks()
-              setApiEntryPoint(...parseLeagdoHttpUrlWithDefault(url))
-              if (url === location.origin) {
-                localStorage.removeItem(baseURL_localStorage_key)
-              } else {
-                localStorage.setItem(baseURL_localStorage_key, url)
-              }
-              store.loadBookShelf()
-              done()
-            })
-            .catch(function (error) {
-              connectionStore.setNewConnect(false)
-              instance.confirmButtonLoading = false
-              instance.confirmButtonText = '确定'
-              throw error
-            })
-        } else {
-          done()
-        }
-      },
     },
-  )
+  ).then(async (result) => {
+    if (result.action === 'confirm') {
+      connectionStore.setNewConnect(true)
+      const url = new URL(result.value).toString()
+      try {
+        const config = await API.getReadConfig(url)
+        connectionStore.setNewConnect(false)
+        applyReadConfig(config)
+        store.clearSearchBooks()
+        setApiEntryPoint(...parseLeagdoHttpUrlWithDefault(url))
+        if (url === location.origin) {
+          localStorage.removeItem(baseURL_localStorage_key)
+        } else {
+          localStorage.setItem(baseURL_localStorage_key, url)
+        }
+        store.loadBookShelf()
+      } catch (error) {
+        connectionStore.setNewConnect(false)
+        throw error
+      }
+    }
+  })
 }
 
 const router = useRouter()
 const handleBookClick = async (book: SeachBook | Book) => {
-  // 判断是否为 searchBook
   const isSeachBook = 'respondTime' in book
   if (isSeachBook) {
     await API.saveBook(book)
@@ -258,11 +230,9 @@ const handleBookClick = async (book: SeachBook | Book) => {
     bookUrl,
     name,
     author,
-    // @ts-expect-error: descruct with default value
     durChapterIndex = 0,
-    // @ts-expect-error: descruct with default value
     durChapterPos = 0,
-  } = book
+  } = book as any
 
   toDetail(bookUrl, name, author, durChapterIndex, durChapterPos, isSeachBook)
 }
@@ -276,7 +246,6 @@ const toDetail = (
   fromReadRecentClick = false,
 ) => {
   if (bookName === '尚无阅读记录') return
-  // 最近书籍不再书架上 自动搜索
   if (
     fromReadRecentClick &&
     shelf.value.every(book => book.bookUrl !== bookUrl)
@@ -308,20 +277,17 @@ const toDetail = (
 const loadShelf = async () => {
   await store.loadWebConfig()
   await store.saveBookProgress()
-  // 先获取分组列表
   await store.loadGroups()
-  // 获取第一个分组的书籍
   if (groups.value.length > 0) {
     currentGroupId.value = groups.value[0].groupId
     await store.loadBookShelf(currentGroupId.value)
   } else {
-    // 如果没有分组，加载所有书籍
     await store.loadBookShelf()
   }
 }
 
-// 分组切换处理
-const handleGroupChange = async (groupId: number | string) => {
+const handleGroupChange = async (e: Event) => {
+  const groupId = (e.target as HTMLSelectElement).value
   showLoading()
   try {
     await store.loadBookShelf(groupId)
@@ -331,7 +297,6 @@ const handleGroupChange = async (groupId: number | string) => {
 }
 
 onMounted(() => {
-  //获取最近阅读书籍
   const readingRecentStr = localStorage.getItem('readingRecent')
   if (readingRecentStr != null) {
     readingRecent.value = JSON.parse(readingRecentStr)
@@ -373,13 +338,9 @@ onMounted(() => {
 
     .search-wrapper {
       .search-input {
-        border-radius: 50%;
+        border-radius: 50px;
         margin-top: 24px;
-
-        :deep(.el-input__wrapper) {
-          border-radius: 50px;
-          border-color: #e3e3e3;
-        }
+        border-color: #e3e3e3;
       }
     }
 
@@ -419,13 +380,7 @@ onMounted(() => {
         margin: 18px 0;
 
         .recent-book {
-          font-size: 10px;
-          /*           // font-weight: 400;
-          // margin: 12px 0;
-          // font-weight: 500;
-          // color: #6B7C87; */
           cursor: pointer;
-          /*           // padding: 6px 18px; */
         }
       }
     }
@@ -444,9 +399,7 @@ onMounted(() => {
       }
 
       .setting-connect {
-        font-size: 8px;
         margin-top: 16px;
-        /*         // color: #6B7C87; */
         cursor: pointer;
       }
     }
@@ -512,10 +465,6 @@ onMounted(() => {
     .shelf-wrapper {
       padding: 0;
       flex-grow: 1;
-
-      :deep(.el-loading-spinner) {
-        display: none;
-      }
     }
   }
 }
@@ -530,18 +479,14 @@ onMounted(() => {
 
     .search-wrapper {
       .search-input {
-        .el-input__wrapper {
-          background-color: #454545;
-        }
-
-        .el-input__inner {
-          color: #b1b1b1;
-        }
+        background-color: #454545;
+        color: #b1b1b1;
+        border-color: #555;
       }
     }
   }
 
-  :deep(.shelf-wrapper) {
+  .shelf-wrapper {
     background-color: #161819;
   }
 }

@@ -1,114 +1,73 @@
 <template>
   <div class="menu flex-column-center">
-    <el-button
+    <button
       v-for="button in buttons"
-      size="large"
+      class="web-btn"
       :key="button.name"
       @click="button.action"
     >
       {{ button.name }}
-    </el-button>
-    <el-button size="large" @click="() => (hotkeysDialogVisible = true)"
-      >快捷键</el-button
-    >
+    </button>
+    <button class="web-btn" @click="() => (hotkeysDialogVisible = true)">快捷键</button>
   </div>
-  <el-dialog
-    v-model="hotkeysDialogVisible"
-    :show-close="false"
-    :before-close="stopRecordKeyDown"
-  >
-    <template #header="{ titleClass, titleId }">
-      <div class="hotkeys-header flex-space-between">
-        <div :id="titleId" :class="titleClass">
+  <div v-if="hotkeysDialogVisible" class="web-dialog-overlay" @click.self="stopRecordKeyDown">
+    <div class="web-dialog">
+      <div class="web-dialog__header">
+        <span>
           快捷键设置
-          <span v-if="recordKeyDowning">
-            <el-text> / 录入中 </el-text>
-          </span>
+          <span v-if="recordKeyDowning" class="web-text web-text--secondary"> / 录入中 </span>
+        </span>
+        <div style="display:flex;gap:8px">
+          <button class="web-btn web-btn--primary" :disabled="recordKeyDowning" @click="saveHotKeys">保存</button>
+          <button class="web-dialog__close" @click="stopRecordKeyDown">&times;</button>
         </div>
-        <el-button
-          :disabled="recordKeyDowning"
-          @click="saveHotKeys"
-          :icon="CircleCheckFilled"
-          >保存</el-button
-        >
       </div>
-    </template>
-
-    <div class="hotkeys-settings flex-column-center">
-      <div
-        v-for="(button, buttonIndex) in buttons"
-        :key="button.name"
-        class="hotkeys-item flex-space-between"
-      >
-        <span class="title"
-          ><el-text>{{ button.name }}</el-text></span
-        >
-        <div class="hotkeys-item__content">
-          <div v-for="(key, hotKeysIndex) in button.hotKeys" :key="key">
-            <kbd>{{ key }}</kbd>
-            <span v-if="hotKeysIndex + 1 < button.hotKeys.length">
-              <el-text>+</el-text>
-            </span>
+      <div class="hotkeys-settings flex-column-center">
+        <div v-for="(button, buttonIndex) in buttons" :key="button.name" class="hotkeys-item flex-space-between">
+          <span class="title">{{ button.name }}</span>
+          <div class="hotkeys-item__content">
+            <template v-for="(key, hotKeysIndex) in button.hotKeys" :key="key">
+              <kbd>{{ key }}</kbd>
+              <span v-if="hotKeysIndex + 1 < button.hotKeys.length">+</span>
+            </template>
+            <span v-if="button.hotKeys.length == 0">未设置</span>
           </div>
-          <span v-if="button.hotKeys.length == 0">未设置</span>
+          <button class="web-btn web-btn--text" :disabled="recordKeyDowning" @click="recordKeyDown(buttonIndex)">编辑</button>
         </div>
-        <el-button
-          :disabled="recordKeyDowning"
-          text
-          :icon="Edit"
-          @click="recordKeyDown(buttonIndex)"
-          >编辑</el-button
-        >
       </div>
     </div>
-  </el-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
 import API from '@api'
-import { CircleCheckFilled, Edit } from '@element-plus/icons-vue'
 import hotkeys from 'hotkeys-js'
 import { getSourceName, isInvaildSource, normalizeSource } from '../utils/souce'
+import { toast } from '@/utils/toast'
 
 const store = useSourceStore()
 const pull = () => {
-  const loadingMsg = ElMessage({
-    message: '加载中……',
-    showClose: true,
-    duration: 0,
-  })
+  toast.info({ message: '加载中……', showClose: true, duration: 0 })
   API.getSources()
     .then(({ data }) => {
       if (data.isSuccess) {
         store.changeTabName('editList')
         store.saveSources(data.data)
-        ElMessage({
-          message: `成功拉取${data.data.length}条源`,
-          type: 'success',
-        })
+        toast.success(`成功拉取${data.data.length}条源`)
       } else {
-        ElMessage({
-          message: data.errorMsg ?? '后端错误',
-          type: 'error',
-        })
+        toast.error(data.errorMsg ?? '后端错误')
       }
     })
-    .finally(() => loadingMsg.close())
+    .finally(() => toast.close())
 }
 
 const push = () => {
   const sources = store.sources
   store.changeTabName('editList')
   if (sources.length === 0) {
-    return ElMessage({
-      message: '空空如也',
-      type: 'info',
-    })
+    return toast.info('空空如也')
   }
-  ElMessage({
-    message: '正在推送中',
-    type: 'info',
-  })
+  toast.info('正在推送中')
   API.saveSources(sources).then(({ data }) => {
     if (data.isSuccess) {
       const okData = data.data
@@ -118,20 +77,10 @@ const push = () => {
           failMsg = '\n推送失败的源将用红色字体标注!'
           store.setPushReturnSources(okData)
         }
-        ElMessage({
-          message: `批量推送源到「阅读3.0APP」\n共计: ${
-            sources.length
-          } 条\n成功: ${okData.length} 条\n失败: ${
-            sources.length - okData.length
-          } 条${failMsg}`,
-          type: 'success',
-        })
+        toast.success(`批量推送源到「阅读3.0APP」\n共计: ${sources.length} 条\n成功: ${okData.length} 条\n失败: ${sources.length - okData.length} 条${failMsg}`)
       }
     } else {
-      ElMessage({
-        message: `批量推送源失败!\nErrorMsg: ${data.errorMsg}`,
-        type: 'error',
-      })
+      toast.error(`批量推送源失败!\nErrorMsg: ${data.errorMsg}`)
     }
   })
 }
@@ -150,19 +99,13 @@ const undo = () => {
 
 const clearEdit = () => {
   store.clearEdit()
-  ElMessage({
-    message: '已清除',
-    type: 'success',
-  })
+  toast.success('已清除')
 }
 
 const redo = () => {
   store.clearEdit()
   store.clearAllHistory()
-  ElMessage({
-    message: '已清除所有历史记录',
-    type: 'success',
-  })
+  toast.success('已清除所有历史记录')
 }
 
 const saveSource = () => {
@@ -172,24 +115,14 @@ const saveSource = () => {
     API.saveSource(source).then(({ data }) => {
       const sourceName = getSourceName(source)
       if (data.isSuccess) {
-        ElMessage({
-          message: `源《${sourceName}》已成功保存到「阅读3.0APP」`,
-          type: 'success',
-        })
-        //save to store
+        toast.success(`源《${sourceName}》已成功保存到「阅读3.0APP」`)
         store.saveCurrentSource()
       } else {
-        ElMessage({
-          message: `源《${sourceName}》保存失败!\nErrorMsg: ${data.errorMsg}`,
-          type: 'error',
-        })
+        toast.error(`源《${sourceName}》保存失败!\nErrorMsg: ${data.errorMsg}`)
       }
     })
   } else {
-    ElMessage({
-      message: `请检查<必填>项是否全部填写`,
-      type: 'error',
-    })
+    toast.error(`请检查<必填>项是否全部填写`)
   }
 }
 
@@ -234,12 +167,10 @@ watch(
     }
     readHotkeysConfig()
     hotkeys.unbind()
-    /**监听按键 */
     hotkeys('*', event => {
       event.preventDefault()
       const pressedKeys = hotkeys.getPressedKeyString()
       if (pressedKeys.length == 1 && pressedKeys[0] == 'esc') {
-        //单独按下esc 不录入
         return
       }
       if (recordKeyDowning.value && recordKeyDownIndex.value > -1)
@@ -251,10 +182,7 @@ watch(
 
 const recordKeyDown = (index: number) => {
   recordKeyDowning.value = true
-  ElMessage({
-    message: '按ESC键或者点击空白处结束录入',
-    type: 'info',
-  })
+  toast.info('按ESC键或者点击空白处结束录入')
   buttons.value[index].hotKeys = []
   recordKeyDownIndex.value = index
 }
@@ -269,7 +197,6 @@ const saveHotKeys = () => {
 }
 
 const bindHotKeys = () => {
-  // hotkeys默认过滤INPUT SELECT TEXTAREA
   hotkeys.filter = () => true
   buttons.value.forEach(({ hotKeys, action }) => {
     if (hotKeys.length == 0) return
@@ -283,10 +210,6 @@ const saveHotkeysConfig = (config: string[][]) => {
   localStorage.setItem('legado_web_hotkeys', JSON.stringify(config))
 }
 
-/**
- * 读取快捷键配置
- * @return 是否成功读取配置
- */
 function readHotkeysConfig() {
   try {
     const localStorageConfig = localStorage.getItem('legado_web_hotkeys')
@@ -296,14 +219,13 @@ function readHotkeysConfig() {
     buttons.value.forEach((button, index) => (button.hotKeys = config[index]))
     return true
   } catch {
-    ElMessage({ message: '快捷键配置错误', type: 'error' })
+    toast.error('快捷键配置错误')
     localStorage.removeItem('legado_web_hotkeys')
   }
   return false
 }
 
 onMounted(() => {
-  /**读取热键配置 */
   if (readHotkeysConfig()) {
     hotkeysDialogVisible.value = false
   }
@@ -322,7 +244,7 @@ onMounted(() => {
   justify-content: center;
 }
 
-.menu > .el-button {
+.menu > .web-btn {
   margin: 4px;
   padding: 1em;
   width: 6em;

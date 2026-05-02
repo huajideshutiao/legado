@@ -7,7 +7,6 @@
         <a class="welcome-btn" @click="goTo('/shelf')" href="javascript:void(0)">书架</a>
         <a class="welcome-btn" @click="goTo('/bookSource')" href="javascript:void(0)">书源</a>
         <a class="welcome-btn" href="./uploadBook/index.html">传书</a>
-        <a class="welcome-btn" @click="goTo('/rssSource')" href="javascript:void(0)">订阅源</a>
       </nav>
     </div>
   </div>
@@ -50,18 +49,20 @@ const goTo = (path: string) => {
 }
 
 .welcome-nav {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 1em;
-  max-width: 400px;
+  max-width: 500px;
   margin: 0 auto;
 }
 
 .welcome-btn {
+  flex: 1 1 0;
+  min-width: 140px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 120px;
   padding: 0.8em 1.6em;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
@@ -84,7 +85,6 @@ const goTo = (path: string) => {
     font-size: 1.4em;
   }
   .welcome-nav {
-    grid-template-columns: 1fr 1fr;
     gap: 0.8em;
   }
   .welcome-btn {

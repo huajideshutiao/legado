@@ -1,89 +1,135 @@
 <template>
-  <el-tabs id="source-edit">
-    <el-tab-pane
-      v-for="{ name, children } in Object.values(config)"
-      :label="name"
-      :key="name"
-    >
-      <el-form label-position="right" label-width="auto">
-        <el-form-item
-          v-for="{
-            type,
-            title,
-            namespace,
-            id,
-            array,
-            hint,
-            required = false,
-          } in children"
-          :label="title"
-          :key="title"
-          :required="required"
+  <div class="source-form">
+    <div class="form-tabs">
+      <div class="web-tabs">
+        <button
+          v-for="(tab, key) in config"
+          :key="key"
+          class="web-tab"
+          :class="{ 'web-tab--active': activeTab === key }"
+          @click="activeTab = key"
         >
-          <el-input
-            v-if="type == 'String' && typeof namespace == 'undefined'"
-            type="textarea"
-            v-model="currentSource[id]"
-            :placeholder="hint"
-            autosize
-          />
-          <el-input
-            v-if="type == 'String' && typeof namespace != 'undefined'"
-            type="textarea"
-            v-model="currentSource[namespace][id]"
-            :placeholder="hint"
-            autosize
+          {{ tab.name }}
+        </button>
+      </div>
+    </div>
+    <div class="form-body">
+      <div v-for="(tab, key) in config" :key="key" v-show="activeTab === key">
+        <div v-for="field in tab.children" :key="field.id" class="web-form-group">
+          <label class="web-form-label">
+            {{ field.title }}
+            <span v-if="field.required" class="required">*</span>
+          </label>
+
+          <textarea
+            v-if="field.type === 'String' && !field.namespace"
+            class="web-textarea"
+            :placeholder="field.hint || ''"
+            :value="source[field.id]"
+            @input="updateField(field, $event)"
+            :rows="field.id === 'bookSourceComment' ? 1 : 2"
+          ></textarea>
+
+          <textarea
+            v-else-if="field.type === 'String' && field.namespace"
+            class="web-textarea"
+            :placeholder="field.hint || ''"
+            :value="(source[field.namespace] || {})[field.id]"
+            @input="updateNsField(field, $event)"
+            :rows="2"
+          ></textarea>
+
+          <input
+            v-else-if="field.type === 'Number'"
+            class="web-input"
+            type="number"
+            :value="source[field.id]"
+            @input="updateField(field, $event)"
           />
 
-          <el-switch
-            v-if="(type as string) === 'Boolean'"
-            v-model="currentSource[id]"
-          />
-
-          <el-input-number
-            v-if="(type as string) === 'Number'"
-            v-model="currentSource[id]"
-            :min="0"
-          />
-
-          <el-select
-            v-if="(type as string) === 'Array'"
-            v-model="currentSource[id]"
+          <select
+            v-else-if="field.type === 'Array'"
+            class="web-select"
+            :value="source[field.id]"
+            @change="updateField(field, $event)"
           >
-            <el-option
-              v-for="(optionName, index) in array"
-              :value="index"
-              :key="optionName"
-              :label="optionName"
+            <option
+              v-for="(opt, oi) in field.array"
+              :key="oi"
+              :value="oi"
+            >
+              {{ opt }}
+            </option>
+          </select>
+
+          <label v-else-if="field.type === 'Boolean'" class="web-switch">
+            <input
+              type="checkbox"
+              :checked="source[field.id]"
+              @change="updateBoolField(field, $event)"
             />
-          </el-select>
-        </el-form-item>
-      </el-form>
-    </el-tab-pane>
-  </el-tabs>
+            <span class="web-switch__slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import type { SourceConfig } from '@/config/sourceConfig'
+defineProps<{ config: Record<string, any> }>()
 
 const store = useSourceStore()
-defineProps<{ config: SourceConfig }>()
+const source = computed(() => store.currentSource as Record<string, any>)
+const activeTab = ref('base')
 
-const currentSource = computed(() => store.currentSource)
-/* 
-修改currentSource的属性 没有直接修改本身
-const { currentSource } = storeToRefs(store);
- */
+function updateField(field: any, e: Event) {
+  const target = e.target as HTMLInputElement
+  const val = field.type === 'Number' ? parseFloat(target.value) || 0 : target.value
+  store.currentSource = { ...store.currentSource, [field.id]: val }
+}
+
+function updateNsField(field: any, e: Event) {
+  const target = e.target as HTMLInputElement
+  store.currentSource = {
+    ...store.currentSource,
+    [field.namespace]: {
+      ...(source.value[field.namespace] || {}),
+      [field.id]: target.value,
+    },
+  }
+}
+
+function updateBoolField(field: any, e: Event) {
+  const target = e.target as HTMLInputElement
+  store.currentSource = { ...store.currentSource, [field.id]: target.checked }
+}
 </script>
 
-<style lang="scss" scoped>
-:deep(.el-tab-pane) {
-  height: calc(100vh - 55px);
-  padding-top: 15px;
-  padding-right: 5px;
-  overflow-y: auto;
+<style scoped>
+
+.source-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-:deep(.el-tabs__header) {
-  margin: 0;
+
+.form-tabs {
+  flex-shrink: 0;
+}
+
+.form-tabs .web-tabs {
+  border-bottom: 2px solid var(--web-border-light);
+}
+
+.form-tabs .web-tab {
+  background: none;
+  font-size: 14px;
+}
+
+.form-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 12px;
 }
 </style>

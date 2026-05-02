@@ -1,67 +1,76 @@
 <template>
-  <el-input
-    v-if="isBookSource"
-    id="debug-key"
-    v-model="searchKey"
-    placeholder="搜索书名、作者"
-    :prefix-icon="Search"
-    style="padding-bottom: 4px"
-    @keydown.enter="startDebug"
-  />
-  <el-input
-    id="debug-text"
-    v-model="printDebug"
-    type="textarea"
-    readonly
-    :rows="29"
-    placeholder="这里用于输出调试信息"
-  />
+  <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">
+    <input class="web-input" placeholder="搜索" v-model="searchKey" />
+    <div style="display:flex;gap:6px">
+      <button class="web-btn" @click="debug">调试</button>
+      <button class="web-btn" :disabled="!isDebuging" @click="stopDebug">停止</button>
+    </div>
+    <div ref="logContainer" style="flex:1;overflow-y:auto;font-size:12px;font-family:monospace;background:var(--web-bg);border-radius:4px;padding:8px;min-height:200px">
+      <div v-for="(log, i) in logs" :key="i" :style="{color: log.color || 'inherit'}">{{ log.text }}</div>
+      <div v-if="logs.length === 0 && !isDebuging" style="color:var(--web-text-secondary);text-align:center;padding:20px">点击调试开始</div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import API from '@api'
-import { Search } from '@element-plus/icons-vue'
+import { toast } from '@/utils/toast'
 
 const store = useSourceStore()
+const searchKey = ref(store.searchKey)
 
-const printDebug = ref('')
-const searchKey = ref('')
+interface LogEntry { text: string; color?: string }
+const logs = ref<LogEntry[]>([])
+const logContainer = ref<HTMLElement>()
+const isDebuging = ref(false)
 
-watch(
-  () => store.isDebuging,
-  () => {
-    if (store.isDebuging) startDebug()
-  },
-)
-
-const appendDebugMsg = (msg: string) => {
-  const debugDom = document.querySelector('#debug-text')
-  debugDom!.scrollTop = debugDom!.scrollHeight
-  printDebug.value += msg + '\n'
+function addLog(text: string, color?: string) {
+  logs.value.push({ text, color })
+  nextTick(() => {
+    if (logContainer.value) {
+      logContainer.value.scrollTop = logContainer.value.scrollHeight
+    }
+  })
 }
-const startDebug = async () => {
-  printDebug.value = ''
-  try {
-    await API.saveSource(store.currentSource)
-  } catch (e) {
-    store.debugFinish()
-    throw e
+
+function debug() {
+  if (!store.currentSourceUrl) {
+    toast.warning('源URL为空')
+    return
   }
+  logs.value = []
+  isDebuging.value = true
+  addLog('开始调试...')
   API.debug(
     store.currentSourceUrl,
-    searchKey.value || store.searchKey,
-    appendDebugMsg,
-    store.debugFinish,
+    searchKey.value,
+    (data) => {
+      try {
+        const obj = JSON.parse(data)
+        if (obj.type === 'toast') {
+          addLog(obj.msg, '#e6a23c')
+        } else if (obj.type === 'content') {
+          addLog(obj.content || data, '#67c23a')
+        } else if (obj.type === 'error') {
+          addLog(obj.msg || data, '#f56c6c')
+        } else {
+          addLog(data)
+        }
+      } catch {
+        addLog(data)
+      }
+    },
+    () => {
+      addLog('调试结束', '#909399')
+      isDebuging.value = false
+      store.debugFinish()
+    },
   )
 }
 
-const isBookSource = computed(() => {
-  return /bookSource/i.test(window.location.href)
-})
-</script>
-
-<style lang="scss" scoped>
-:deep(#debug-text) {
-  height: calc(100vh - 45px - 36px - 5px);
+function stopDebug() {
+  isDebuging.value = false
+  store.debugFinish()
+  addLog('调试已停止', '#909399')
 }
-</style>
+</script>
