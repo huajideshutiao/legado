@@ -7,10 +7,6 @@ import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
-import android.view.View
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.get
 import androidx.core.graphics.scale
@@ -311,19 +307,7 @@ fun Bitmap.getRepresentativeColor(): Int {
     )
 }
 
-fun Bitmap.stackBlur(radius: Int = 20, maxShortSide: Int = 400, view: View? = null): Bitmap {
-    if (view != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        view.post {
-            view.setRenderEffect(
-                RenderEffect.createBlurEffect(
-                    radius.toFloat(),
-                    radius.toFloat(),
-                    Shader.TileMode.CLAMP
-                )
-            )
-        }
-        return this
-    }
+fun Bitmap.stackBlur(radius: Int = 20, maxShortSide: Int = 400): Bitmap {
     val r = radius.coerceIn(1, 100)
     val originalWidth = width
     val originalHeight = height
