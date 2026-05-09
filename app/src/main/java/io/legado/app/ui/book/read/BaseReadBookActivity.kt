@@ -2,22 +2,18 @@ package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
 import android.app.DatePickerDialog
-import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
-import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import io.legado.app.R
-import io.legado.app.base.IBottomDialog
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseReadActivity
 import io.legado.app.constant.AppConst.charsets
-import io.legado.app.constant.PreferKey
+import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookReadBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
 import io.legado.app.databinding.DialogEditTextBinding
@@ -39,7 +35,6 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
-import io.legado.app.utils.getPrefString
 import io.legado.app.utils.gone
 import io.legado.app.utils.isTv
 import io.legado.app.utils.setLightStatusBar
@@ -54,20 +49,15 @@ import java.time.format.DateTimeFormatter
  * 阅读界面
  */
 abstract class BaseReadBookActivity :
-    VMBaseActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false), IBottomDialog {
+    BaseReadActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false) {
 
     override val binding by viewBinding(ActivityBookReadBinding::inflate)
     override val viewModel by viewModels<ReadBookViewModel>()
+    override val currentBook: Book?
+        get() = ReadBook.book
     protected val menuLayoutIsVisible
         get() = bottomDialog > 0 || binding.readMenu.isVisible || binding.searchMenu.bottomMenuVisible
 
-    override var bottomDialog = 0
-        set(value) {
-            if (field != value) {
-                field = value
-                onBottomDialogChange()
-            }
-        }
     private val selectBookFolderResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ReadBook.book?.let { book ->
@@ -82,8 +72,6 @@ abstract class BaseReadBookActivity :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ReadBook.msg = null
-        setOrientation()
-        upLayoutInDisplayCutoutMode()
         super.onCreate(savedInstanceState)
         binding.navigationBar.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -111,7 +99,7 @@ abstract class BaseReadBookActivity :
         }
     }
 
-    private fun onBottomDialogChange() {
+    override fun onBottomDialogChange() {
         when (bottomDialog) {
             0 -> onMenuHide()
             1 -> onMenuShow()
@@ -140,20 +128,6 @@ abstract class BaseReadBookActivity :
 
     private fun showCustomPageKeyConfig() {
         PageKeyDialog(this).show()
-    }
-
-    /**
-     * 屏幕方向
-     */
-    @SuppressLint("SourceLockedOrientationActivity")
-    fun setOrientation() {
-        when (AppConfig.screenOrientation) {
-            "0" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            "1" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            "2" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            "3" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            "4" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-        }
     }
 
     /**
@@ -232,35 +206,6 @@ abstract class BaseReadBookActivity :
     @SuppressLint("RtlHardcoded")
     private fun upNavigationBar() {
         binding.navigationBar.gone(!menuLayoutIsVisible)
-    }
-
-    /**
-     * 保持亮屏
-     */
-    fun keepScreenOn(on: Boolean) {
-        val isScreenOn =
-            (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
-        if (on == isScreenOn) return
-        if (on) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    /**
-     * 适配刘海
-     */
-    private fun upLayoutInDisplayCutoutMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = if (ReadBookConfig.readBodyToLh) {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                } else {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
-                }
-            }
-        }
     }
 
     @SuppressLint("InflateParams", "SetTextI18n")
@@ -372,21 +317,5 @@ abstract class BaseReadBookActivity :
         selector(R.string.page_anim, items) { _, _ ->
             success()
         }
-    }
-
-    fun isPrevKey(keyCode: Int): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) {
-            return false
-        }
-        val prevKeysStr = getPrefString(PreferKey.prevKeys)
-        return prevKeysStr?.split(",")?.contains(keyCode.toString()) ?: false
-    }
-
-    fun isNextKey(keyCode: Int): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) {
-            return false
-        }
-        val nextKeysStr = getPrefString(PreferKey.nextKeys)
-        return nextKeysStr?.split(",")?.contains(keyCode.toString()) ?: false
     }
 }

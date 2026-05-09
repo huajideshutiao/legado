@@ -2,12 +2,10 @@ package io.legado.app.ui.book.manga
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
-import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -23,8 +21,7 @@ import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.util.FixedPreloadSizeProvider
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.base.IBottomDialog
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseReadActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
@@ -82,20 +79,12 @@ import splitties.init.appCtx
 import java.text.DecimalFormat
 import kotlin.math.ceil
 
-class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewModel>(),
+class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewModel>(),
     ReadManga.Callback, ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
-    MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback, MangaEpaperDialog.Callback,
-    IBottomDialog {
+    MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback, MangaEpaperDialog.Callback {
 
-    override var bottomDialog: Int = 0
-        set(value) {
-            field = value
-            if (value > 0) {
-                binding.mangaMenu.runMenuOut()
-            } else {
-                binding.mangaMenu.runMenuIn()
-            }
-        }
+    override val currentBook: Book?
+        get() = ReadManga.book
 
     private val mLayoutManager by lazy {
         MangaLayoutManager(this)
@@ -175,11 +164,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         DecimalFormat("0.0%")
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        upLayoutInDisplayCutoutMode()
-        super.onCreate(savedInstanceState)
-    }
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         ReadManga.register(this)
         upSystemUiVisibility(false)
@@ -201,6 +185,14 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         mMangaFooterConfig =
             GSON.fromJsonObject<MangaFooterConfig>(AppConfig.mangaFooterConfig).getOrNull()
                 ?: MangaFooterConfig()
+    }
+
+    override fun onBottomDialogChange() {
+        if (bottomDialog > 0) {
+            binding.mangaMenu.runMenuOut()
+        } else {
+            binding.mangaMenu.runMenuIn()
+        }
     }
 
     override fun observeLiveBus() {
@@ -571,7 +563,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
 
             R.id.menu_click_regional_config -> {
-                showClickRegionalConfig()
+                showDialogFragment<ClickActionConfigDialog>()
             }
 
             R.id.menu_enable_horizontal_scroll -> {
@@ -746,15 +738,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         binding.webtoonFrame.disabledClickScroll = disable
     }
 
-    private fun upLayoutInDisplayCutoutMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        }
-    }
-
     private fun scrollToNext() {
         scrollPageTo(1)
     }
@@ -804,10 +787,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             }
     }
 
-    fun showClickRegionalConfig() {
-        showDialogFragment<ClickActionConfigDialog>()
-    }
-
     private fun click(action: Int) {
         when (action) {
             0 -> if (!binding.mangaMenu.isVisible && !loadingViewVisible) {
@@ -830,37 +809,6 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
                 { toastOnUi(R.string.upload_book_success) },
                 { toastOnUi(R.string.sync_book_progress_success) })
         }
-    }
-
-    override fun finish() {
-        val book = ReadManga.book ?: return super.finish()
-
-        if (ReadManga.inBookshelf) {
-            return super.finish()
-        }
-
-        if (!AppConfig.showAddToShelfAlert) {
-            viewModel.removeFromBookshelf { super.finish() }
-        } else {
-            alert(title = getString(R.string.add_to_bookshelf)) {
-                setMessage(getString(R.string.check_add_bookshelf, book.name))
-                okButton {
-                    ReadManga.book?.save()
-                    ReadManga.inBookshelf = true
-                    setResult(RESULT_OK)
-                }
-                noButton { viewModel.removeFromBookshelf { super.finish() } }
-            }
-        }
-    }
-
-    fun updateWindowBrightness(brightness: Int) {
-        val layoutParams = window.attributes
-        val normalizedBrightness = brightness.toFloat() / 255.0f
-        layoutParams.screenBrightness = normalizedBrightness.coerceIn(0f, 1f)
-        window.attributes = layoutParams
-        // 强制刷新屏幕
-        window.decorView.postInvalidate()
     }
 
     override fun skipToPage(index: Int) {
