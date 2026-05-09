@@ -162,20 +162,24 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                     PreferKey.precisionSearch, !getPrefBoolean(PreferKey.precisionSearch)
                 )
                 precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
+                checkSearch()
             }
 
             R.id.menu_search_scope -> alertSearchScope()
             R.id.menu_source_manage -> startActivity<BookSourceActivity>()
             R.id.menu_log -> showDialogFragment(AppLogDialog())
-            R.id.menu_1 -> viewModel.searchScope.update("")
+            R.id.menu_1 -> {
+                viewModel.searchScope.update("")
+                checkSearch()
+            }
+
             else -> {
                 if (item.groupId == R.id.menu_group_1) {
                     viewModel.searchScope.remove(item.title.toString())
+                    checkSearch()
                 } else if (item.groupId == R.id.menu_group_2) {
                     viewModel.searchScope.update(item.title.toString())
+                    checkSearch()
                 }
             }
         }
@@ -296,13 +300,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initData() {
-        viewModel.searchScope.stateLiveData.observe(this) {
-            if (!binding.llInputHelp.isVisible) {
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
-            }
-        }
         viewModel.isSearchLiveData.observe(this) {
             if (it) {
                 startSearch()
@@ -344,6 +341,16 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 .requestFocus()
         } else {
             searchView.setQuery(key, true)
+        }
+    }
+
+    private fun checkSearch() {
+        if (!binding.llInputHelp.isVisible) {
+            searchView.query?.toString()?.trim()?.let {
+                if (it.isNotEmpty()) {
+                    searchView.setQuery(it, true)
+                }
+            }
         }
     }
 
@@ -452,6 +459,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                     setMessage("${displayScope}分组搜索结果为空，是否切换到全部分组？")
                     yesButton {
                         viewModel.searchScope.update("")
+                        checkSearch()
                     }
                 }
                 noButton()
@@ -515,6 +523,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     override fun onSearchScopeOk(searchScope: SearchScope) {
         viewModel.searchScope.update(searchScope.toString())
+        checkSearch()
     }
 
     private fun alertSearchScope() {
