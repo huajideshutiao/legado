@@ -394,7 +394,7 @@ class BookInfoActivity :
         container.removeAllViews()
 
         val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
-        val otherLabel = getString(R.string.other)
+        val otherLabel = ""
         kinds.forEach { kind ->
             val urlSplit = kind.split("::", limit = 2)
             val tagContent = urlSplit[0].trim()
@@ -417,7 +417,7 @@ class BookInfoActivity :
                 flexWrap = FlexWrap.WRAP
             }
 
-            if (groups.size > 1) {
+            if (groups.size > 1 || groupName != otherLabel) {
                 addTagToFlexbox(flexboxLayout, groupName, null)
             }
 
@@ -627,9 +627,9 @@ class BookInfoActivity :
         if (webFiles.isEmpty()) return toastOnUi("Unexpected webFileData")
         selector(R.string.download_and_import_file, webFiles) { _, webFile, _ ->
             if (webFile.isSupported) {
-                viewModel.importOrDownloadWebFile<Book>(webFile) { onClick?.invoke(it) }
+                viewModel.importWebFile(webFile) { onClick?.invoke(it) }
             } else if (webFile.isSupportDecompress) {
-                viewModel.importOrDownloadWebFile<Uri>(webFile) { uri ->
+                viewModel.downloadWebFile(webFile) { uri ->
                     viewModel.getArchiveFilesName(uri) { fileNames ->
                         if (fileNames.size == 1) viewModel.importBookFromArchive(
                             uri, fileNames[0]
@@ -643,7 +643,7 @@ class BookInfoActivity :
                     message = getString(R.string.file_not_supported, webFile.name)
                 ) {
                     neutralButton(R.string.open_fun) {
-                        viewModel.importOrDownloadWebFile<Uri>(webFile) { openFileUri(it, "*/*") }
+                        viewModel.downloadWebFile(webFile) { openFileUri(it, "*/*") }
                     }
                     noButton()
                 }

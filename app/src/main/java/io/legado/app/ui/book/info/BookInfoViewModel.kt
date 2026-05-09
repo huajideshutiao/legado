@@ -35,7 +35,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     val actionLive = MutableLiveData<String>()
 
     override var curBook: Book?
-        get() = getBook(false)
+        get() = bookData.value
         set(value) {
             value?.let { bookData.postValue(it) }
         }
@@ -53,24 +53,9 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     fun refreshBook(book: Book) {
         executeLazy(executeContext = IO) {
             if (book.isLocal && !book.isImage) {
-                book.getRemoteUrl()?.let {
-                    val bookWebDav =
-                        AppWebDav.defaultBookWebDav ?: throw NoStackTraceException("webDav没有配置")
-                    val remoteBook = bookWebDav.getRemoteBook(it)
-                    if (remoteBook == null) {
-                        book.origin = BookType.localTag
-                    } else if (remoteBook.lastModify > book.lastCheckTime) {
-                        val uri = bookWebDav.downloadRemoteBook(remoteBook)
-                        book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
-                        book.lastCheckTime = remoteBook.lastModify
-                    }
-                }
+                refreshWebDavBook(book)
             } else {
-                curBookSource?.let {
-                    if (book.originName != it.bookSourceName) {
-                        book.originName = it.bookSourceName
-                    }
-                }
+                refreshBookSourceName(book)
             }
         }.onError {
             if (it is ObjectNotFoundException) {
@@ -83,6 +68,31 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         }.start()
     }
 
+    private suspend fun refreshWebDavBook(book: Book) {
+        book.getRemoteUrl()?.let { remoteUrl ->
+            val bookWebDav =
+                AppWebDav.defaultBookWebDav ?: throw NoStackTraceException("webDav没有配置")
+            val remoteBook = bookWebDav.getRemoteBook(remoteUrl)
+            if (remoteBook == null) {
+                book.origin = BookType.localTag
+                return
+            }
+            if (remoteBook.lastModify > book.lastCheckTime) {
+                val uri = bookWebDav.downloadRemoteBook(remoteBook)
+                book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
+                book.lastCheckTime = remoteBook.lastModify
+            }
+        }
+    }
+
+    private fun refreshBookSourceName(book: Book) {
+        curBookSource?.let { source ->
+            if (book.originName != source.bookSourceName) {
+                book.originName = source.bookSourceName
+            }
+        }
+    }
+
     fun loadGroup(groupId: Long, success: ((groupNames: String?) -> Unit)) {
         execute {
             appDb.bookGroupDao.getGroupNames(groupId).joinToString(",")
@@ -91,25 +101,41 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         }
     }
 
-    /* 导入或者下载在线文件 */
-    fun <T> importOrDownloadWebFile(webFile: WebFile, success: ((T) -> Unit)?) {
+    fun importWebFile(webFile: WebFile, success: ((Book) -> Unit)?) {
         execute {
             waitDialogData.postValue(true)
-            val fileName = bookData.value!!.getExportFileName(webFile.suffix)
-            val uri = FileBook.saveBookFile(
-                webFile.url, fileName, curBookSource
-            )
-            val result = if (!webFile.isSupported) uri
-            else FileBook.mergeBook(FileBook.importLocalFile(uri), bookData.value!!)
-            if (result is Book) changeToLocalBook(result)
-            result
+            val book = bookData.value ?: throw NoStackTraceException("book is null")
+            val fileName = book.getExportFileName(webFile.suffix)
+            val uri = FileBook.saveBookFile(webFile.url, fileName, curBookSource)
+            changeToLocalBook(FileBook.mergeBook(FileBook.importLocalFile(uri), book))
         }.onSuccess {
-            @Suppress("unchecked_cast") success?.invoke(it as T)
+            success?.invoke(it)
         }.onError {
             when (it) {
                 is NoBooksDirException -> actionLive.postValue("selectBooksDir")
                 else -> {
                     AppLog.put("ImportWebFileError\n${it.localizedMessage}", it, true)
+                    webFiles.remove(webFile)
+                }
+            }
+        }.onFinally {
+            waitDialogData.postValue(false)
+        }
+    }
+
+    fun downloadWebFile(webFile: WebFile, success: ((Uri) -> Unit)?) {
+        execute {
+            waitDialogData.postValue(true)
+            val book = bookData.value ?: throw NoStackTraceException("book is null")
+            val fileName = book.getExportFileName(webFile.suffix)
+            FileBook.saveBookFile(webFile.url, fileName, curBookSource)
+        }.onSuccess {
+            success?.invoke(it)
+        }.onError {
+            when (it) {
+                is NoBooksDirException -> actionLive.postValue("selectBooksDir")
+                else -> {
+                    AppLog.put("DownloadWebFileError\n${it.localizedMessage}", it, true)
                     webFiles.remove(webFile)
                 }
             }
@@ -135,8 +161,9 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
     ) {
         execute {
             val suffix = archiveEntryName.substringAfterLast(".")
+            val book = bookData.value ?: throw NoStackTraceException("book is null")
             FileBook.importFromArchive(
-                archiveFileUri, bookData.value!!.getExportFileName(suffix)
+                archiveFileUri, book.getExportFileName(suffix)
             ) {
                 it.contains(archiveEntryName)
             }.first()
@@ -159,19 +186,8 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun saveBook(book: Book?, success: (() -> Unit)? = null) {
         book ?: return
-        execute {
-            if (book.order == 0) {
-                book.order = appDb.bookDao.minOrder - 1
-            }
-            appDb.bookDao.getBook(book.name, book.author)?.let {
-                book.durChapterIndex = it.durChapterIndex
-                book.durChapterPos = it.durChapterPos
-                book.durChapterTitle = it.durChapterTitle
-            }
-            book.save()
-        }.onSuccess {
-            success?.invoke()
-        }
+        curBook = book
+        addToBookshelf(success)
     }
 
     fun getBook(toastNull: Boolean = true): Book? {
@@ -212,11 +228,12 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
 
     fun clearCache() {
         execute {
-            BookHelp.clearCache(bookData.value!!)
-            if (ReadBook.book?.bookUrl == bookData.value!!.bookUrl) {
+            val book = bookData.value ?: throw NoStackTraceException("book is null")
+            BookHelp.clearCache(book)
+            if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.clearTextChapter()
             }
-            if (ReadManga.book?.bookUrl == bookData.value!!.bookUrl) {
+            if (ReadManga.book?.bookUrl == book.bookUrl) {
                 ReadManga.clearMangaChapter()
             }
         }.onSuccess {
