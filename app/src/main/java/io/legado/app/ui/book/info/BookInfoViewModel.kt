@@ -21,7 +21,6 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
-import io.legado.app.model.ReadManga
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBook.WebFile
 import io.legado.app.utils.ArchiveUtils
@@ -232,9 +231,6 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
             BookHelp.clearCache(book)
             if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.clearTextChapter()
-            }
-            if (ReadManga.book?.bookUrl == book.bookUrl) {
-                ReadManga.clearMangaChapter()
             }
         }.onSuccess {
             context.toastOnUi(R.string.clear_cache_success)

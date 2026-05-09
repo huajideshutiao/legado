@@ -25,6 +25,8 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 
@@ -55,6 +57,8 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
     @SuppressLint("CheckResult", "DefaultLocale")
     fun loadImageWithRetry(
         imageUrl: String,
+        book: Book,
+        bookSource: BookSource?,
         isHorizontal: Boolean,
         isLastImage: Boolean,
         transformation: Transformation<Bitmap>?
@@ -81,7 +85,7 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         }
         mImage.tag = imageUrl
         Glide.with(context)
-            .load(MangaModel(imageUrl))
+            .load(MangaModel(imageUrl, book, bookSource))
             .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
             .diskCacheStrategy(DiskCacheStrategy.NONE)
             .apply { transformation?.let { transform(it) } }

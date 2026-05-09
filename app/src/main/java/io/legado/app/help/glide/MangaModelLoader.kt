@@ -8,6 +8,8 @@ import com.bumptech.glide.load.model.ModelLoader
 import com.bumptech.glide.load.model.ModelLoaderFactory
 import com.bumptech.glide.load.model.MultiModelLoaderFactory
 import com.bumptech.glide.signature.ObjectKey
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.Coroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +46,12 @@ class MangaDataFetcher(private val model: MangaModel) : DataFetcher<ByteBuffer> 
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in ByteBuffer>) {
         Coroutine.async(coroutineScope, Dispatchers.IO) {
             try {
-                val result = ImageLoader.loadManga(model.url, coroutineContext)
+                val result = ImageLoader.loadManga(
+                    model.url,
+                    model.book,
+                    model.bookSource,
+                    coroutineContext
+                )
                 if (result != null) {
                     callback.onDataReady(ByteBuffer.wrap(result))
                 } else {
@@ -72,4 +79,18 @@ class MangaDataFetcher(private val model: MangaModel) : DataFetcher<ByteBuffer> 
     }
 }
 
-data class MangaModel(val url: String)
+data class MangaModel(
+    val url: String,
+    val book: Book,
+    val bookSource: BookSource?
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MangaModel) return false
+        return url == other.url
+    }
+
+    override fun hashCode(): Int {
+        return url.hashCode()
+    }
+}

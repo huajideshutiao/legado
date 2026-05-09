@@ -34,7 +34,6 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.model.ReadManga
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -80,11 +79,11 @@ import java.text.DecimalFormat
 import kotlin.math.ceil
 
 class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewModel>(),
-    ReadManga.Callback, ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
+    ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
     MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback, MangaEpaperDialog.Callback {
 
     override val currentBook: Book?
-        get() = ReadManga.book
+        get() = viewModel.curBook
 
     private val mLayoutManager by lazy {
         MangaLayoutManager(this)
@@ -145,7 +144,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 setResult(RESULT_DELETED)
                 super.finish()
             } else {
-                ReadManga.loadOrUpContent()
+                viewModel.loadOrUpContent()
             }
         }
 
@@ -165,26 +164,44 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        ReadManga.register(this)
         upSystemUiVisibility(false)
         initRecyclerView()
         binding.tvRetry.setOnClickListener {
             binding.llLoading.isVisible = true
             binding.llRetry.isGone = true
-            ReadManga.loadOrUpContent()
+            viewModel.loadOrUpContent()
         }
         binding.pbLoading.isVisible = !AppConfig.isEInkMode
         mAdapter
         loadMoreView.setOnClickListener {
-            if (!loadMoreView.isLoading && ReadManga.hasNextChapter) {
+            if (!loadMoreView.isLoading && viewModel.hasNextChapter) {
                 loadMoreView.startLoad()
-                ReadManga.loadOrUpContent()
+                viewModel.loadOrUpContent()
             }
         }
         loadMoreView.gone()
         mMangaFooterConfig =
             GSON.fromJsonObject<MangaFooterConfig>(AppConfig.mangaFooterConfig).getOrNull()
                 ?: MangaFooterConfig()
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        viewModel.upContentLiveData.observe(this) {
+            upContent()
+        }
+        viewModel.loadFailLiveData.observe(this) {
+            loadFail(it.first, it.second)
+        }
+        viewModel.showLoadingLiveData.observe(this) {
+            showLoading()
+        }
+        viewModel.startLoadLiveData.observe(this) {
+            startLoad()
+        }
+        viewModel.syncProgressLiveData.observe(this) {
+            sureNewProgress(it)
+        }
     }
 
     override fun onBottomDialogChange() {
@@ -211,6 +228,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             setMangaImageColorFilter(mangaColorFilter)
             enableMangaEInk(AppConfig.enableMangaEInk, AppConfig.mangaEInkThreshold)
             enableGray(AppConfig.enableMangaGray)
+            book = viewModel.curBook
+            bookSource = viewModel.curBookSource
         }
         setHorizontalScroll(AppConfig.enableMangaHorizontalScroll)
         binding.recyclerView.run {
@@ -235,13 +254,13 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 if (mAdapter.isNotEmpty()) {
                     val item = mAdapter.getItem(position)
                     if (item is BaseMangaPage) {
-                        if (ReadManga.durChapterIndex < item.chapterIndex) {
-                            ReadManga.moveToNextChapter()
-                        } else if (ReadManga.durChapterIndex > item.chapterIndex) {
-                            ReadManga.moveToPrevChapter()
+                        if (viewModel.durChapterIndex < item.chapterIndex) {
+                            viewModel.moveToNextChapter()
+                        } else if (viewModel.durChapterIndex > item.chapterIndex) {
+                            viewModel.moveToPrevChapter()
                         } else {
-                            ReadManga.durChapterPos = item.index
-                            ReadManga.curPageChanged()
+                            viewModel.durChapterPos = item.index
+                            viewModel.curPageChanged()
                         }
                         if (item is MangaPage) {
                             binding.mangaMenu.upSeekBar(item.index, item.imageCount)
@@ -269,14 +288,16 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         justInitData = true
     }
 
-    override fun upContent() {
+    fun upContent() {
         lifecycleScope.launch {
-            title = ReadManga.book?.name
-            val data = withContext(IO) { ReadManga.mangaContents }
+            title = viewModel.curBook?.name
+            val data = withContext(IO) { viewModel.buildMangaContent() }
             val pos = data.pos
             val list = data.items
             val curFinish = data.curFinish
             val nextFinish = data.nextFinish
+            mAdapter.book = viewModel.curBook
+            mAdapter.bookSource = viewModel.curBookSource
             mAdapter.submitList(list) {
                 if (loadingViewVisible && curFinish) {
                     binding.infobar.isVisible = true
@@ -285,12 +306,12 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                     binding.flLoading.isGone = true
                     loadMoreView.visible()
                     binding.mangaMenu.upSeekBar(
-                        ReadManga.durChapterPos, ReadManga.curMangaChapter!!.imageCount
+                        viewModel.durChapterPos, viewModel.curMangaChapter!!.imageCount
                     )
                 }
 
                 if (curFinish) {
-                    if (!ReadManga.hasNextChapter) {
+                    if (!viewModel.hasNextChapter) {
                         loadMoreView.noMore("暂无章节了！")
                     } else if (nextFinish) {
                         loadMoreView.stopLoad()
@@ -363,12 +384,12 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     override fun onResume() {
         super.onResume()
-        ReadManga.readStartTime = System.currentTimeMillis()
+        viewModel.readStartTime = System.currentTimeMillis()
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = {
             // 当网络是可用状态且无需初始化时同步进度（初始化中已有同步进度逻辑）
-            if (AppConfig.syncBookProgressPlus && NetworkUtils.isAvailable() && !justInitData && ReadManga.inBookshelf) {
-                ReadManga.syncProgress({ progress -> sureNewProgress(progress) })
+            if (AppConfig.syncBookProgressPlus && NetworkUtils.isAvailable() && !justInitData && viewModel.inBookshelf) {
+                viewModel.syncProgress({ progress -> sureNewProgress(progress) })
             }
         }
         if (enableAutoScrollPage) {
@@ -381,26 +402,26 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     override fun onPause() {
         super.onPause()
-        if (ReadManga.inBookshelf) {
-            ReadManga.saveRead()
+        if (viewModel.inBookshelf) {
+            viewModel.saveRead()
             if (!BuildConfig.DEBUG) {
                 if (AppConfig.syncBookProgressPlus) {
-                    ReadManga.syncProgress()
+                    viewModel.syncProgress()
                 } else {
-                    ReadManga.uploadProgress()
+                    viewModel.uploadProgress()
                 }
             }
         }
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
         }
-        ReadManga.cancelPreDownloadTask()
+        viewModel.cancelPreDownloadTask()
         networkChangedListener.unRegister()
         mScrollTimer.isEnabledPage = false
         mScrollTimer.isEnabled = false
     }
 
-    override fun loadFail(msg: String, retry: Boolean) {
+    fun loadFail(msg: String, retry: Boolean) {
         lifecycleScope.launch {
             if (loadingViewVisible) {
                 binding.llLoading.isGone = true
@@ -414,7 +435,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun onDestroy() {
-        ReadManga.unregister(this)
         CbzFile.clear()
         super.onDestroy()
     }
@@ -424,24 +444,24 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         Glide.get(this).clearMemory()
     }
 
-    override fun sureNewProgress(progress: BookProgress) {
+    fun sureNewProgress(progress: BookProgress) {
         syncDialog?.dismiss()
         syncDialog = alert(R.string.get_book_progress) {
             setMessage(R.string.cloud_progress_exceeds_current)
             okButton {
-                ReadManga.setProgress(progress)
+                viewModel.setProgress(progress)
             }
             noButton()
         }
     }
 
-    override fun showLoading() {
+    fun showLoading() {
         lifecycleScope.launch {
             binding.flLoading.isVisible = true
         }
     }
 
-    override fun startLoad() {
+    fun startLoad() {
         lifecycleScope.launch {
             loadMoreView.startLoad()
         }
@@ -460,7 +480,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override val oldBook: Book?
-        get() = ReadManga.book
+        get() = viewModel.curBook
 
     override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (book.isImage) {
@@ -491,20 +511,20 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         when (item.itemId) {
             R.id.menu_change_source -> {
                 binding.mangaMenu.runMenuOut()
-                ReadManga.book?.let {
+                viewModel.curBook?.let {
                     showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
                 }
             }
 
             R.id.menu_catalog -> {
-                IntentData.book = ReadManga.book
-                IntentData.chapterList = ReadManga.chapterList
+                IntentData.book = viewModel.curBook
+                IntentData.chapterList = viewModel.chapterListData.value
                 tocActivity.launch("")
             }
 
             R.id.menu_refresh -> {
                 binding.flLoading.isVisible = true
-                ReadManga.book?.let {
+                viewModel.curBook?.let {
                     viewModel.refreshContentDur(it)
                 }
             }
@@ -597,7 +617,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             R.id.menu_hide_manga_title -> {
                 item.isChecked = !item.isChecked
                 AppConfig.hideMangaTitle = item.isChecked
-                ReadManga.loadContent()
+                viewModel.loadContent()
             }
 
             R.id.menu_epaper_manga -> {
@@ -641,7 +661,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun openBookInfoActivity() {
-        ReadManga.book?.let {
+        viewModel.curBook?.let {
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
@@ -795,16 +815,16 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
             1 -> scrollToNext()
             2 -> scrollToPrev()
-            3 -> ReadManga.moveToNextChapter(true)
-            4 -> ReadManga.moveToPrevChapter(true)
+            3 -> viewModel.moveToNextChapter(true)
+            4 -> viewModel.moveToPrevChapter(true)
             8 -> showDialogFragment(ContentEditDialog())
             10 -> {
-                IntentData.book = ReadManga.book
-                IntentData.chapterList = ReadManga.chapterList
+                IntentData.book = viewModel.curBook
+                IntentData.chapterList = viewModel.chapterListData.value
                 tocActivity.launch("")
             }
 
-            12 -> ReadManga.syncProgress(
+            12 -> viewModel.syncProgress(
                 { progress -> sureNewProgress(progress) },
                 { toastOnUi(R.string.upload_book_success) },
                 { toastOnUi(R.string.sync_book_progress_success) })
@@ -812,7 +832,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun skipToPage(index: Int) {
-        val durChapterIndex = ReadManga.durChapterIndex
+        val durChapterIndex = viewModel.durChapterIndex
         val itemPos = mAdapter.getItems().fastBinarySearch {
             val chapterIndex: Int
             val pageIndex: Int
@@ -832,7 +852,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         if (itemPos > -1) {
             mLayoutManager.scrollToPositionWithOffset(itemPos, 0)
             upInfoBar(mAdapter.getItem(itemPos))
-            ReadManga.durChapterPos = index
+            viewModel.durChapterPos = index
         }
     }
 

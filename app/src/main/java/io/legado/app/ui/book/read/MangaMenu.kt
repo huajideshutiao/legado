@@ -17,7 +17,7 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.model.ReadBook
-import io.legado.app.model.ReadManga
+import io.legado.app.ui.book.manga.ReadMangaViewModel
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -39,6 +39,12 @@ class MangaMenu @JvmOverloads constructor(
 ) : FrameLayout(context, attrs) {
     private val binding = ViewMangaMenuBinding.inflate(LayoutInflater.from(context), this, true)
     private val callBack: CallBack get() = activity as CallBack
+    private val viewModel: ReadMangaViewModel?
+        get() = (activity as? androidx.fragment.app.FragmentActivity)?.let {
+            androidx.lifecycle.ViewModelProvider(
+                it
+            )[ReadMangaViewModel::class.java]
+        }
     var canShowMenu: Boolean = false
     private val menuTopIn: Animation by lazy {
         loadAnimation(context, R.anim.anim_readbook_top_in)
@@ -75,7 +81,7 @@ class MangaMenu @JvmOverloads constructor(
     private val menuInListener = object : Animation.AnimationListener {
         override fun onAnimationStart(animation: Animation) {
             binding.tvSourceAction.text =
-                ReadManga.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
+                viewModel?.curBookSource?.bookSourceName ?: context.getString(R.string.book_source)
             callBack.upSystemUiVisibility(true)
             binding.tvSourceAction.isGone = false
         }
@@ -204,10 +210,10 @@ class MangaMenu @JvmOverloads constructor(
         tvChapterUrl.setOnLongClickListener(chapterViewLongClickListener)
 
         tvNext.setOnClickListener {
-            ReadManga.moveToNextChapter(true)
+            viewModel?.moveToNextChapter(true)
         }
         tvPre.setOnClickListener {
-            ReadManga.moveToPrevChapter(true)
+            viewModel?.moveToPrevChapter(true)
         }
 
         seekReadPage.setOnSeekBarChangeListener(object : SeekBarChangeListener {

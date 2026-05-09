@@ -22,7 +22,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isRss
@@ -32,8 +31,6 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.ReadBook
-import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
@@ -82,14 +79,21 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     open var inBookshelf: Boolean = false
     var isSearchBook: Boolean = false
     open var curBookSource: BookSource? = null
-        protected set
+        set(value) {
+            field = value
+            onBookSourceChanged()
+        }
     val chapterListData = MutableLiveData<List<BookChapter>>()
     val webFiles = mutableListOf<FileBook.WebFile>()
+
+    protected open fun onBookSourceChanged() {}
 
     /**
      * 换源成功后的初始化回调, 子类按需覆写
      */
     protected open fun onSourceChanged(book: Book, toc: List<BookChapter>) {}
+
+    protected open fun onChapterListUpdated(book: Book) {}
 
     /**
      * 进度同步时设置进度, 子类按需覆写
@@ -214,11 +218,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     appDb.bookDao.update(book)
                     appDb.bookChapterDao.delByBook(book.bookUrl)
                     if (inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
-                    if (book.isImage) {
-                        ReadManga.onChapterListUpdated(book)
-                    } else {
-                        ReadBook.onChapterListUpdated(book)
-                    }
+                    onChapterListUpdated(book)
                     curBook = book
                     chapterListData.postValue(it)
                 }

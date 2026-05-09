@@ -20,6 +20,8 @@ import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter.Companion.TYPE_FOOTER_VIEW
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ItemBookMangaEdgeBinding
 import io.legado.app.databinding.ItemBookMangaPageBinding
 import io.legado.app.help.glide.MangaModel
@@ -39,6 +41,8 @@ class MangaAdapter(private val context: Context) :
     private lateinit var mConfig: MangaColorFilterConfig
     private var mTransformation: BitmapTransformation? = null
     private var currentMangaEInkThreshold = 0
+    var book: Book? = null
+    var bookSource: BookSource? = null
 
     companion object {
         private const val LOADING_VIEW = 0
@@ -107,8 +111,9 @@ class MangaAdapter(private val context: Context) :
                 val item = mDiffer.currentList[layoutPosition]
                 if (item is MangaPage) {
                     val isLastImage = item.imageCount > 0 && item.index == item.imageCount - 1
+                    val book = book ?: return@setOnClickListener
                     loadImageWithRetry(
-                        item.mImageUrl, isHorizontal, isLastImage, mTransformation
+                        item.mImageUrl, book, bookSource, isHorizontal, isLastImage, mTransformation
                     )
                 }
             }
@@ -117,7 +122,15 @@ class MangaAdapter(private val context: Context) :
         fun onBind(item: MangaPage) {
             setImageColorFilter()
             val isLastImage = item.imageCount > 0 && item.index == item.imageCount - 1
-            loadImageWithRetry(item.mImageUrl, isHorizontal, isLastImage, mTransformation)
+            val book = book ?: return
+            loadImageWithRetry(
+                item.mImageUrl,
+                book,
+                bookSource,
+                isHorizontal,
+                isLastImage,
+                mTransformation
+            )
         }
 
         fun setImageColorFilter() {
@@ -227,8 +240,9 @@ class MangaAdapter(private val context: Context) :
 
     override fun getPreloadRequestBuilder(item: Any): RequestBuilder<*>? {
         if (item is MangaPage) {
+            val book = book ?: return null
             return Glide.with(context)
-                .load(MangaModel(item.mImageUrl))
+                .load(MangaModel(item.mImageUrl, book, bookSource))
                 .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
         }
         return null
