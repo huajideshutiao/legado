@@ -5,26 +5,26 @@ import androidx.annotation.Keep
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.select.Elements
-import org.seimicrawler.xpath.JXDocument
-import org.seimicrawler.xpath.JXNode
 
 @Keep
 class AnalyzeByXPath(doc: Any) {
-    private var jxNode: Any = parse(doc)
+    private var baseElement: Element = parse(doc)
 
-    private fun parse(doc: Any): Any {
+    private fun parse(doc: Any): Element {
         return when (doc) {
-            is JXNode -> if (doc.isElement) doc else strToJXDocument(doc.toString())
-            is Document -> JXDocument.create(doc)
-            is Element -> JXDocument.create(Elements(doc))
-            is Elements -> JXDocument.create(doc)
-            else -> strToJXDocument(doc.toString())
+            is Document -> doc
+            is Element -> doc
+            is Elements -> doc.first() ?: Jsoup.parse("")
+            is Node -> Jsoup.parse(doc.toString())
+            else -> strToElement(doc.toString())
         }
     }
 
-    private fun strToJXDocument(html: String): JXDocument {
+    private fun strToElement(html: String): Element {
         var html1 = html
         if (html1.endsWith("</td>")) {
             html1 = "<tr>${html1}</tr>"
@@ -34,33 +34,39 @@ class AnalyzeByXPath(doc: Any) {
         }
         kotlin.runCatching {
             if (html1.trim().startsWith("<?xml", true)) {
-                return JXDocument.create(Jsoup.parse(html1, Parser.xmlParser()))
+                return Jsoup.parse(html1, Parser.xmlParser())
             }
         }
-        return JXDocument.create(html1)
+        return Jsoup.parse(html1)
     }
 
-    private fun getResult(xPath: String): List<JXNode>? {
-        val node = jxNode
-        return if (node is JXNode) {
-            node.sel(xPath)
-        } else {
-            (node as JXDocument).selN(xPath)
+    private fun getResult(xPath: String): List<Node>? {
+        return try {
+            if (xPath.contains("/@")) {
+                val parts = xPath.split("/@", limit = 2)
+                val elementPath = parts[0].ifEmpty { "." }
+                val attrName = parts[1]
+                val elements = baseElement.selectXpath(elementPath, Element::class.java)
+                elements.map { TextNode(it.attr(attrName)) }
+            } else {
+                baseElement.selectXpath(xPath, Node::class.java)
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
-    internal fun getElements(xPath: String): List<JXNode>? {
-
+    internal fun getElements(xPath: String): List<Node>? {
         if (xPath.isEmpty()) return null
 
-        val jxNodes = ArrayList<JXNode>()
+        val nodes = ArrayList<Node>()
         val ruleAnalyzes = RuleAnalyzer(xPath)
         val rules = ruleAnalyzes.splitRule("&&", "||", "%%")
 
         if (rules.size == 1) {
             return getResult(rules[0])
         } else {
-            val results = ArrayList<List<JXNode>>()
+            val results = ArrayList<List<Node>>()
             for (rl in rules) {
                 val temp = getElements(rl)
                 if (!temp.isNullOrEmpty()) {
@@ -75,29 +81,28 @@ class AnalyzeByXPath(doc: Any) {
                     for (i in results[0].indices) {
                         for (temp in results) {
                             if (i < temp.size) {
-                                jxNodes.add(temp[i])
+                                nodes.add(temp[i])
                             }
                         }
                     }
                 } else {
                     for (temp in results) {
-                        jxNodes.addAll(temp)
+                        nodes.addAll(temp)
                     }
                 }
             }
         }
-        return jxNodes
+        return nodes
     }
 
     internal fun getStringList(xPath: String): List<String> {
-
         val result = ArrayList<String>()
         val ruleAnalyzes = RuleAnalyzer(xPath)
         val rules = ruleAnalyzes.splitRule("&&", "||", "%%")
 
         if (rules.size == 1) {
             getResult(xPath)?.map {
-                result.add(it.asString())
+                result.add(getNodeText(it))
             }
             return result
         } else {
@@ -135,7 +140,7 @@ class AnalyzeByXPath(doc: Any) {
         val rules = ruleAnalyzes.splitRule("&&", "||")
         if (rules.size == 1) {
             getResult(rule)?.let {
-                return TextUtils.join("\n", it)
+                return TextUtils.join("\n", it.map { node -> getNodeText(node) })
             }
             return null
         } else {
@@ -150,6 +155,14 @@ class AnalyzeByXPath(doc: Any) {
                 }
             }
             return textList.joinToString("\n")
+        }
+    }
+
+    private fun getNodeText(node: Node): String {
+        return when (node) {
+            is Element -> node.text()
+            is TextNode -> node.text()
+            else -> node.toString()
         }
     }
 }

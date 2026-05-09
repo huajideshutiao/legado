@@ -122,9 +122,6 @@ cn.hutool.core.util.**{*;}
 }
 
 # JsoupXpath
--keep,allowobfuscation class * implements org.seimicrawler.xpath.core.AxisSelector{*;}
--keep,allowobfuscation class * implements org.seimicrawler.xpath.core.NodeTest{*;}
--keep,allowobfuscation class * implements org.seimicrawler.xpath.core.Function{*;}
 
 ## JSOUP
 -keep class org.jsoup.**{*;}

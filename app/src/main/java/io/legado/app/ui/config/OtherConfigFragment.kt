@@ -10,7 +10,6 @@ import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
 import androidx.preference.Preference
-import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditTextBinding
@@ -166,7 +165,6 @@ class OtherConfigFragment : PreferenceFragment(),
                 AppConfig.recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
                 LogUtils.upLevel()
                 LogUtils.logDeviceInfo()
-                LiveEventBus.config().enableLogger(AppConfig.recordLog)
                 AppFreezeMonitor.init(appCtx)
                 DispatchersMonitor.init()
             }

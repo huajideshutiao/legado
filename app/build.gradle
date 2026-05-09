@@ -196,7 +196,6 @@ dependencies {
     implementation(libs.gson)
 
     //lifecycle
-    implementation(libs.lifecycle.common.java8)
     implementation(libs.lifecycle.service)
 
     implementation(libs.media.media)
@@ -214,11 +213,8 @@ dependencies {
     ksp(libs.room.compiler)
     androidTestImplementation(libs.room.testing)
 
-    implementation(libs.liveeventbus)
-
     implementation(libs.jsoup)
     implementation(libs.json.path)
-    implementation(libs.jsoupxpath)
     implementation(project(path: ':modules:book'))
     implementation(project(path: ':modules:rhino'))
 

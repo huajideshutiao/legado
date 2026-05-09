@@ -3,11 +3,11 @@ package io.legado.app.model.analyzeRule
 import androidx.annotation.Keep
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
 import org.jsoup.parser.Parser
 import org.jsoup.select.Collector
 import org.jsoup.select.Elements
 import org.jsoup.select.Evaluator
-import org.seimicrawler.xpath.JXNode
 
 /**
  * Created by GKF on 2018/1/25.
@@ -22,8 +22,8 @@ class AnalyzeByJSoup(doc: Any) {
         if (doc is Element) {
             return doc
         }
-        if (doc is JXNode) {
-            return if (doc.isElement) doc.asElement() else Jsoup.parse(doc.toString())
+        if (doc is Node) {
+            return Jsoup.parse(doc.toString())
         }
         kotlin.runCatching {
             if (doc.toString().startsWith("<?xml", true)) {
