@@ -631,15 +631,15 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
 
     fun invalidateTextPage() {
-        if (!AppConfig.optimizeRender) {
-            return
+        if (AppConfig.optimizeRender) {
+            pageFactory.run {
+                prevPage.invalidateAll()
+                curPage.invalidateAll()
+                nextPage.invalidateAll()
+                nextPlusPage.invalidateAll()
+            }
         }
-        pageFactory.run {
-            prevPage.invalidateAll()
-            curPage.invalidateAll()
-            nextPage.invalidateAll()
-            nextPlusPage.invalidateAll()
-        }
+        curPage.invalidateContentView()
     }
 
     fun onScrollAnimStart() {

@@ -73,10 +73,6 @@ object HtmlFormatter {
                     is Element -> {
                         val tagName = node.tagName()
                         if (tagName == "img") {
-                            if (lastIsBlock) {
-                                if (str.isNotEmpty()) str.append("\n")
-                                str.append("　　")
-                            }
                             val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
                             val src = when {
                                 node.hasAttr("data-src") -> node.absUrl("data-src")

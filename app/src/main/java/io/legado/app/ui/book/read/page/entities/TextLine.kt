@@ -143,7 +143,7 @@ data class TextLine(
     }
 
     fun draw(view: ContentTextView, canvas: Canvas) {
-        if (AppConfig.optimizeRender) {
+        if (AppConfig.optimizeRender && !isImage) {
             canvasRecorder.recordIfNeededThenDraw(canvas, view.width, height.toInt()) {
                 drawTextLine(view, this)
             }
@@ -230,7 +230,7 @@ data class TextLine(
         if (!AppConfig.optimizeRender || exceed || !onlyTextColumn || textPage.isMsgPage) {
             return false
         }
-        if (wordSpacing != 0f && (!atLeastApi26 || !wordSpacingWorking)) {
+        if (wordSpacing != 0f && (!wordSpacingWorking)) {
             return false
         }
         return searchResultColumnCount == 0
@@ -252,7 +252,7 @@ data class TextLine(
     @SuppressLint("NewApi")
     companion object {
         val emptyTextLine = TextLine()
-        private val atLeastApi26 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        private const val atLeastApi26 = true
         private val atLeastApi35 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
         private val wordSpacingWorking by lazy {
             // issue 3785 3846

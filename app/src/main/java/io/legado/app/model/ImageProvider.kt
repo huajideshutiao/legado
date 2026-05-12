@@ -25,7 +25,7 @@ import kotlin.math.min
 
 object ImageProvider {
 
-    private val errorBitmap: Bitmap by lazy {
+    val errorBitmap: Bitmap by lazy {
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.image_loading_error)
     }
 

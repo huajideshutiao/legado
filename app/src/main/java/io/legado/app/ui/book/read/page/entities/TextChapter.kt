@@ -308,6 +308,10 @@ data class TextChapter(
         listener = null
     }
 
+    fun notifyPageChanged() {
+        layout?.notifyPageChanged()
+    }
+
     companion object {
         val emptyTextChapter = TextChapter(
             BookChapter(), -1, "emptyTextChapter", -1,

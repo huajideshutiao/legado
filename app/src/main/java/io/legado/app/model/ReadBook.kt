@@ -453,6 +453,7 @@ object ReadBook : CoroutineScope by MainScope() {
     private fun curPageChanged(pageChanged: Boolean = false) {
         callBack?.pageChanged()
         curTextChapter?.let {
+            it.notifyPageChanged()
             if (BaseReadAloudService.isRun && it.isCompleted) {
                 val scrollPageAnim = pageAnim() == 3
                 if (scrollPageAnim && pageChanged) {

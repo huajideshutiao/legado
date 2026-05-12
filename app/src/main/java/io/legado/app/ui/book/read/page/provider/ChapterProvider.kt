@@ -539,7 +539,7 @@ object ChapterProvider {
             )
             return
         }
-        val residualWidth = visibleWidth - desiredWidth
+        val residualWidth = visibleWidth - startX - desiredWidth
         val spaceSize = words.count { it == " " }
         if (spaceSize > 1) {
             val d = residualWidth / spaceSize
