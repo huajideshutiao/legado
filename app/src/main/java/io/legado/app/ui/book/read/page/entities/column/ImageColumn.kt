@@ -44,7 +44,7 @@ data class ImageColumn(
         // 仅更新绘图缓存，严禁在此处同步修改 textLine 坐标
         if (bitmap !== lastBitmap || containerW != lastContainerW || containerH != lastContainerH) {
             // 如果在绘制时发现是真图（非占位图）且尺寸未对齐，提交异步布局更新请求
-            if (bitmap != ImageProvider.errorBitmap && (abs(bitmap.width - containerW) > 1f || isSingle)) {
+            if (isSingle && bitmap != ImageProvider.errorBitmap) {
                 view.post {
                     // 在下一帧安全调用，避开 CanvasRecorder 录制期
                     io.legado.app.help.coroutine.Coroutine.async {
