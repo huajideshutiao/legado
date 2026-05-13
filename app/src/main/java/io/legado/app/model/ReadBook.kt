@@ -861,7 +861,14 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun pageAnim(): Int {
-        return if(book?.getImageStyle().equals(Book.imgStyleSingle,true))PageAnim.coverPageAnim else ReadBookConfig.pageAnim
+        val anim = ReadBookConfig.pageAnim
+        return if (book?.getImageStyle()
+                .equals(Book.imgStyleSingle, true) && anim == scrollPageAnim
+        ) {
+            PageAnim.coverPageAnim
+        } else {
+            anim
+        }
     }
 
     fun setCharset(charset: String) {
