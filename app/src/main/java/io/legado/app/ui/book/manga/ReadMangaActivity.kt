@@ -67,6 +67,7 @@ import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -162,6 +163,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     private val df by lazy {
         DecimalFormat("0.0%")
     }
+    private val nextPageThrottle by lazy { throttle(200L) { scrollToNext() } }
+    private val prevPageThrottle by lazy { throttle(200L) { scrollToPrev() } }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upSystemUiVisibility(false)
@@ -859,12 +862,12 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                scrollToPrev()
+                prevPageThrottle()
                 return true
             }
 
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                scrollToNext()
+                nextPageThrottle()
                 return true
             }
         }

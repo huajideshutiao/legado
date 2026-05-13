@@ -95,7 +95,6 @@ import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
-import io.legado.app.utils.Debounce
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StartActivityContract
@@ -227,8 +226,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val pageFactory get() = binding.readView.pageFactory
     override val pageDelegate get() = binding.readView.pageDelegate
     override val headerHeight: Int get() = binding.readView.curPage.headerHeight
-    private val nextPageDebounce by lazy { Debounce { keyPage(PageDirection.NEXT) } }
-    private val prevPageDebounce by lazy { Debounce { keyPage(PageDirection.PREV) } }
+    private val nextPageDebounce by lazy { throttle { keyPage(PageDirection.NEXT) } }
+    private val prevPageDebounce by lazy { throttle { keyPage(PageDirection.PREV) } }
     private var bookChanged = false
     private var pageChanged = false
     private val handler by lazy { buildMainHandler() }
@@ -925,16 +924,15 @@ class ReadBookActivity : BaseReadBookActivity(),
         mouseWheel: Boolean = false,
         longPress: Boolean
     ) {
-        if (longPress) {
-            return
-        }
         nextPageDebounce.apply {
-            wait = if (mouseWheel) 200L else 600L
+            wait = 200L
+            maxWait = 200L
             leading = !mouseWheel
             trailing = mouseWheel
         }
         prevPageDebounce.apply {
-            wait = if (mouseWheel) 200L else 600L
+            wait = 200L
+            maxWait = 200L
             leading = !mouseWheel
             trailing = mouseWheel
         }
