@@ -82,8 +82,9 @@ object HtmlFormatter {
                                 else -> node.absUrl("src").ifEmpty { node.attr("src") }
                             }
                             str.append("<img src=\"$src\"")
-                            node.attribute("style")?.let { str.append(" style=\"${it}\"") }
-                            node.attribute("onclick")?.let { str.append(" onclick=\"${it}\"") }
+                            node.attribute("style")?.let { str.append(" style=\"${it.value}\"") }
+                            node.attribute("onclick")
+                                ?.let { str.append(" onclick=\"${it.value}\"") }
                             str.append(">")
                             lastIsBlock = false
                         } else {
