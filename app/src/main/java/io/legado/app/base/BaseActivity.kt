@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
@@ -19,6 +20,7 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
@@ -27,12 +29,12 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.applyBackgroundTint
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableAutoFill
 import io.legado.app.utils.fullScreen
 import io.legado.app.utils.hideSoftInput
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.setStatusBarColorAuto
@@ -48,6 +50,7 @@ abstract class BaseActivity<VB : ViewBinding>(
 ) : AppCompatActivity() {
 
     protected abstract val binding: VB
+    private var themeVersion = 0L
 
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
@@ -77,8 +80,9 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     @SuppressLint("ObsoleteSdkInt")
     override fun onCreate(savedInstanceState: Bundle?) {
-        window.decorView.disableAutoFill()
+        themeVersion = ThemeStore.currentVersion
         initTheme()
+        window.decorView.disableAutoFill()
         super.onCreate(savedInstanceState)
         setupSystemBar()
         setContentView(binding.root)
@@ -94,6 +98,18 @@ abstract class BaseActivity<VB : ViewBinding>(
         onActivityCreated(savedInstanceState)
     }
 
+    override fun onStart() {
+        super.onStart()
+        syncTheme()
+    }
+
+    private fun syncTheme() {
+        if (themeVersion < ThemeStore.currentVersion) {
+            themeVersion = ThemeStore.currentVersion
+            recreate()
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
@@ -107,6 +123,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         findViewById<TitleBar>(R.id.title_bar)
             ?.onMultiWindowModeChanged(isInMultiWindow, fullScreen)
         setupSystemBar()
+        syncTheme()
     }
 
     abstract fun onActivityCreated(savedInstanceState: Bundle?)
@@ -135,25 +152,29 @@ abstract class BaseActivity<VB : ViewBinding>(
     open fun onCompatOptionsItemSelected(item: MenuItem) = super.onOptionsItemSelected(item)
 
     open fun initTheme() {
+        // 在 super.onCreate 之前注入 Window 背景，防止过渡瞬间的黑屏/白屏闪烁
+        window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+
+        val isDark = when (theme) {
+            Theme.Dark -> true
+            Theme.Light -> false
+            Theme.Transparent -> AppConfig.isNightTheme
+            else -> AppConfig.isNightTheme
+        }
+
         when (theme) {
             Theme.Transparent -> setTheme(R.style.AppTheme_Transparent)
-            Theme.Dark -> {
-                setTheme(R.style.AppTheme_Dark)
-                window.decorView.applyBackgroundTint(backgroundColor)
-            }
-
-            Theme.Light -> {
-                setTheme(R.style.AppTheme_Light)
-                window.decorView.applyBackgroundTint(backgroundColor)
-            }
-
             else -> {
-                if (ColorUtils.isColorLight(primaryColor)) {
-                    setTheme(R.style.AppTheme_Light)
-                } else {
+                if (isDark) {
                     setTheme(R.style.AppTheme_Dark)
+                } else {
+                    // 即使是亮色模式，如果配置的颜色过深，也强制使用暗色主题以保证文字可读性
+                    if (ColorUtils.isColorLight(primaryColor)) {
+                        setTheme(R.style.AppTheme_Light)
+                    } else {
+                        setTheme(R.style.AppTheme_Dark)
+                    }
                 }
-                window.decorView.applyBackgroundTint(backgroundColor)
             }
         }
     }
@@ -197,6 +218,9 @@ abstract class BaseActivity<VB : ViewBinding>(
     }
 
     open fun observeLiveBus() {
+        observeEvent<String>(EventBus.RECREATE) {
+            syncTheme()
+        }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

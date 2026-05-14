@@ -62,14 +62,18 @@ object ThemeConfig {
         initNightMode()
     }
 
-    private fun initNightMode() {
+    private fun initNightMode(): Boolean {
         val targetMode =
             if (AppConfig.isNightTheme) {
                 AppCompatDelegate.MODE_NIGHT_YES
             } else {
                 AppCompatDelegate.MODE_NIGHT_NO
             }
-        AppCompatDelegate.setDefaultNightMode(targetMode)
+        if (AppCompatDelegate.getDefaultNightMode() != targetMode) {
+            AppCompatDelegate.setDefaultNightMode(targetMode)
+            return true
+        }
+        return false
     }
 
     fun getBgImage(context: Context, metrics: DisplayMetrics): Bitmap? {

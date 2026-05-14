@@ -337,5 +337,11 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
             }
             return true
         }
+
+        /**
+         * 主题版本号，每次 apply 时更新
+         */
+        val currentVersion: Long
+            get() = prefs(appCtx).getLong(ThemeStorePrefKeys.VALUES_CHANGED, 0L)
     }
 }

@@ -329,14 +329,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     override fun observeLiveBus() {
+        super.observeLiveBus()
         viewModel.onUpBooksLiveData.observe(this) {
             if (onUpBooksBadgeView == null) {
                 onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
             }
             onUpBooksBadgeView!!.setBadgeCount(it)
-        }
-        observeEvent<String>(EventBus.RECREATE) {
-            recreate()
         }
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
             binding.apply {
