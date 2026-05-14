@@ -163,8 +163,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     private val df by lazy {
         DecimalFormat("0.0%")
     }
-    private val nextPageThrottle by lazy { throttle(200L) { scrollToNext() } }
-    private val prevPageThrottle by lazy { throttle(200L) { scrollToPrev() } }
+    private val nextPageThrottle by lazy { throttle(200L, trailing = false) { scrollToNext() } }
+    private val prevPageThrottle by lazy { throttle(200L, trailing = false) { scrollToPrev() } }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upSystemUiVisibility(false)
@@ -860,6 +860,20 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (binding.mangaMenu.isVisible) {
+            return super.onKeyDown(keyCode, event)
+        }
+        when {
+            isPrevKey(keyCode) -> {
+                prevPageThrottle()
+                return true
+            }
+
+            isNextKey(keyCode) -> {
+                nextPageThrottle()
+                return true
+            }
+        }
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 prevPageThrottle()
@@ -867,6 +881,21 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             }
 
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                nextPageThrottle()
+                return true
+            }
+
+            KeyEvent.KEYCODE_PAGE_UP -> {
+                prevPageThrottle()
+                return true
+            }
+
+            KeyEvent.KEYCODE_PAGE_DOWN -> {
+                nextPageThrottle()
+                return true
+            }
+
+            KeyEvent.KEYCODE_SPACE -> {
                 nextPageThrottle()
                 return true
             }
