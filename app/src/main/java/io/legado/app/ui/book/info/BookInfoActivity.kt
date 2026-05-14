@@ -77,6 +77,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
@@ -329,6 +330,7 @@ class BookInfoActivity :
             arcView.visible()
             titleBar.setTextColor(getPrimaryTextColor(false))
             titleBar.setColorFilter(getPrimaryTextColor(false))
+            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Dark)
             tvName.gravity = Gravity.CENTER
             llLasted.gravity = Gravity.CENTER
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
@@ -348,6 +350,7 @@ class BookInfoActivity :
             arcView.gone()
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
+            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Auto)
             tvName.gravity = Gravity.START
             llLasted.gravity = Gravity.START
             (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START

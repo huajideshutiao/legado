@@ -232,9 +232,6 @@ class TitleBar @JvmOverloads constructor(
         toolbar.children.firstOrNull { it is ImageView }?.background?.colorFilter = colorFilter
         toolbar.navigationIcon?.colorFilter = colorFilter
         toolbar.overflowIcon?.colorFilter = colorFilter
-        toolbar.menu.children.forEach {
-            it.icon?.colorFilter = colorFilter
-        }
     }
 
     override fun setBackgroundColor(color: Int) {
