@@ -874,6 +874,13 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         return super.onKeyDown(keyCode, event)
     }
 
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
     override fun updateEepaper(value: Int) {
         mAdapter.updateThreshold(value)
     }

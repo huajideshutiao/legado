@@ -111,105 +111,115 @@ class TextChapterLayout(
             executeContext = IO
         ) {
             val parsedLines = ChapterContentParser.parse(bookContent)
-            launch {
-                val bookSource = book.getBookSource() ?: return@launch
-                val imageStyle = book.getImageStyle()
-                val isSingle = imageStyle.equals(Book.imgStyleSingle, true)
-                val allImages = parsedLines.flatMap { it.images }.map { it.src }.distinct()
-                if (allImages.isEmpty()) return@launch
+            val imageStyle = book.getImageStyle()
+            val isSingle = imageStyle.equals(Book.imgStyleSingle, true)
+            val allImages = parsedLines.flatMap { it.images }.map { it.src }.distinct()
 
-                val imageToIndexMap = allImages.withIndex().associate { it.value to it.index }
-                val downloaded = allImages.filter { BookHelp.isImageExist(book, it) }.toMutableSet()
-
-                for (sig in pageChangeChannel) {
-                    delay(300)
-                    val isDur = bookChapter.index == ReadBook.durChapterIndex
-                    val durPageIdx = if (isDur) ReadBook.durPageIndex else 0
-
-                    // 1. 精确锁定窗口：寻找当前页及附近的图片索引
-                    val activeImageIndices = mutableSetOf<Int>()
-                    for (i in (durPageIdx - 1)..(durPageIdx + 1)) {
-                        if (i in 0 until textPages.size) {
-                            textPages[i].lines.forEach { line ->
-                                if (line.isImage) {
-                                    line.columns.forEach { col ->
-                                        if (col is ImageColumn) {
-                                            imageToIndexMap[col.src]?.let {
-                                                activeImageIndices.add(
-                                                    it
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 如果当前视角附近没图，则下载本章前3张（如果正在读本章开头）
-                    if (activeImageIndices.isEmpty() && durPageIdx == 0) {
-                        for (i in 0..2) if (i in allImages.indices) activeImageIndices.add(i)
-                    }
-
-                    // 2. 构造严格窗口：active 索引及其前后各3张
-                    val downloadWindow = mutableSetOf<String>()
-                    activeImageIndices.forEach { centerIdx ->
-                        for (offset in -3..3) {
-                            val targetIdx = centerIdx + offset
-                            if (targetIdx in allImages.indices) {
-                                downloadWindow.add(allImages[targetIdx])
-                            }
-                        }
-                    }
-
-                    val newDownloaded = mutableListOf<String>()
-                    for (src in downloadWindow) {
+            if (!isSingle && allImages.isNotEmpty()) {
+                val bookSource = book.getBookSource()
+                if (bookSource != null) {
+                    for (src in allImages) {
                         ensureActive()
-                        if (src !in downloaded) {
+                        if (!BookHelp.isImageExist(book, src)) {
                             BookHelp.saveImage(bookSource, book, src, bookChapter)
-                            if (BookHelp.isImageExist(book, src)) {
-                                downloaded.add(src)
-                                newDownloaded.add(src)
-                                ImageProvider.bitmapLruCache.remove(
-                                    BookHelp.getImage(
-                                        book,
-                                        src
-                                    ).absolutePath
-                                )
-                                ImageProvider.getImage(book, src, visibleWidth)
-                            }
                         }
                     }
-
-                    if (newDownloaded.isNotEmpty()) {
-                        // 3. 预布局修正：仅刷新受影响的页面
-                        val affectedPages = mutableSetOf<Int>()
-                        newDownloaded.forEach { src ->
-                            srcToPagesMap[src]?.let { affectedPages.addAll(it) }
-                        }
-
-                        affectedPages.forEach { pIdx ->
-                            if (pIdx in textPages.indices) {
-                                val page = textPages[pIdx]
-                                var pageUpdated = false
-                                page.lines.forEach { line ->
-                                    if (line.isImage) {
-                                        line.columns.forEach { col ->
-                                            if (col is ImageColumn && col.src in downloaded) {
-                                                if (col.refreshLayout(book, isSingle)) pageUpdated =
-                                                    true
-                                            }
-                                        }
-                                    }
-                                }
-                                if (pageUpdated) page.invalidate()
-                            }
-                        }
-                        if (isDur) withContext(Main) { ReadBook.callBack?.contentLoadFinish() }
-                    }
-                    if (downloaded.size >= allImages.size) break
                 }
             }
+
+            if (isSingle && allImages.isNotEmpty()) {
+                launch {
+                    val bookSource = book.getBookSource() ?: return@launch
+                    val downloaded =
+                        allImages.filter { BookHelp.isImageExist(book, it) }.toMutableSet()
+
+                    val imageToIndexMap = allImages.withIndex().associate { it.value to it.index }
+
+                    for (sig in pageChangeChannel) {
+                        delay(300)
+                        val isDur = bookChapter.index == ReadBook.durChapterIndex
+                        val durPageIdx = if (isDur) ReadBook.durPageIndex else 0
+
+                        val activeImageIndices = mutableSetOf<Int>()
+                        for (i in (durPageIdx - 1)..(durPageIdx + 1)) {
+                            if (i in 0 until textPages.size) {
+                                textPages[i].lines.forEach { line ->
+                                    if (line.isImage) {
+                                        line.columns.forEach { col ->
+                                            if (col is ImageColumn) {
+                                                imageToIndexMap[col.src]?.let {
+                                                    activeImageIndices.add(it)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (activeImageIndices.isEmpty() && durPageIdx == 0) {
+                            for (i in 0..2) if (i in allImages.indices) activeImageIndices.add(i)
+                        }
+
+                        val downloadWindow = mutableSetOf<String>()
+                        activeImageIndices.forEach { centerIdx ->
+                            for (offset in -3..3) {
+                                val targetIdx = centerIdx + offset
+                                if (targetIdx in allImages.indices) {
+                                    downloadWindow.add(allImages[targetIdx])
+                                }
+                            }
+                        }
+
+                        val newDownloaded = mutableListOf<String>()
+                        for (src in downloadWindow) {
+                            ensureActive()
+                            if (src !in downloaded) {
+                                BookHelp.saveImage(bookSource, book, src, bookChapter)
+                                if (BookHelp.isImageExist(book, src)) {
+                                    downloaded.add(src)
+                                    newDownloaded.add(src)
+                                    ImageProvider.bitmapLruCache.remove(
+                                        BookHelp.getImage(book, src).absolutePath
+                                    )
+                                    ImageProvider.getImage(book, src, visibleWidth)
+                                }
+                            }
+                        }
+
+                        if (newDownloaded.isNotEmpty()) {
+                            val affectedPages = mutableSetOf<Int>()
+                            newDownloaded.forEach { src ->
+                                srcToPagesMap[src]?.let { affectedPages.addAll(it) }
+                            }
+
+                            affectedPages.forEach { pIdx ->
+                                if (pIdx in textPages.indices) {
+                                    val page = textPages[pIdx]
+                                    var pageUpdated = false
+                                    page.lines.forEach { line ->
+                                        if (line.isImage) {
+                                            line.columns.forEach { col ->
+                                                if (col is ImageColumn && col.src in downloaded) {
+                                                    if (col.refreshLayout(
+                                                            book,
+                                                            isSingle
+                                                        )
+                                                    ) pageUpdated = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (pageUpdated) page.invalidate()
+                                }
+                            }
+                            if (isDur) withContext(Main) { ReadBook.callBack?.contentLoadFinish() }
+                        }
+                        if (downloaded.size >= allImages.size) break
+                    }
+                }
+            }
+
             getTextChapter(book, bookChapter, displayTitle, bookContent, parsedLines)
         }.onError {
             exception = it
