@@ -4,7 +4,6 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import org.jsoup.parser.Tag
 import java.util.LinkedList
 import java.util.regex.Pattern
 
@@ -73,7 +72,6 @@ object HtmlFormatter {
                     is Element -> {
                         val tagName = node.tagName()
                         if (tagName == "img") {
-                            val img = Element(Tag.valueOf("img"), redirectUrl ?: "")
                             val src = when {
                                 node.hasAttr("data-src") -> node.absUrl("data-src")
                                     .ifEmpty { node.attr("data-src") }
@@ -83,10 +81,10 @@ object HtmlFormatter {
 
                                 else -> node.absUrl("src").ifEmpty { node.attr("src") }
                             }
-                            img.attr("src", src)
-                            node.attribute("style")?.let { img.attr("style", it.value) }
-                            node.attribute("onclick")?.let { img.attr("onclick", it.value) }
-                            str.append(img.outerHtml())
+                            str.append("<img src=\"$src\"")
+                            node.attribute("style")?.let { str.append(" style=\"${it}\"") }
+                            node.attribute("onclick")?.let { str.append(" onclick=\"${it}\"") }
+                            str.append(">")
                             lastIsBlock = false
                         } else {
                             // 块级标签处理
