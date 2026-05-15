@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
@@ -195,26 +196,26 @@ class PermissionActivity : AppCompatActivity() {
             finish()
             return
         }
-        rationaleDialog = AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_title)
-            .setMessage(rationale)
-            .setPositiveButton(R.string.dialog_setting) { _, _ ->
-                onOk.invoke()
-            }
-            .setNegativeButton(R.string.dialog_cancel) { _, _ ->
-                RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
-                    permissions,
-                    IntArray(0)
-                )
-                finish()
-            }.setOnCancelListener {
+        rationaleDialog = alert(
+            getString(R.string.dialog_title),
+            rationale
+        ) {
+            positiveButton(R.string.dialog_setting) { onOk.invoke() }
+            negativeButton(R.string.dialog_cancel) {
                 RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
                     permissions,
                     IntArray(0)
                 )
                 finish()
             }
-            .show()
+            onCancelled {
+                RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
+                    permissions,
+                    IntArray(0)
+                )
+                finish()
+            }
+        }
     }
 
     companion object {

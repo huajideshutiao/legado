@@ -21,6 +21,7 @@ import io.legado.app.ui.book.import.remote.RemoteBookActivity
 import io.legado.app.ui.book.manage.BookshelfManageActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -37,13 +38,15 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     val activityViewModel by activityViewModels<MainViewModel>()
     override val viewModel by viewModels<BookshelfViewModel>()
 
-    private val importBookshelf = registerForActivityResult(HandleFileContract()) {
+    private val importBookshelf by lazy {
+        registerHandleFile { result ->
         kotlin.runCatching {
-            it.uri?.readText(requireContext())?.let { text ->
+            result.uri?.readText(requireContext())?.let { text ->
                 viewModel.importBookshelf(text, groupId)
             }
         }.onFailure {
             toastOnUi(it.localizedMessage ?: "ERROR")
+        }
         }
     }
     abstract val groupId: Long

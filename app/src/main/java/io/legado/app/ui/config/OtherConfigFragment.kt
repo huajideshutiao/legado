@@ -25,6 +25,7 @@ import io.legado.app.model.ImageProvider
 import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
@@ -49,9 +50,11 @@ class OtherConfigFragment : PreferenceFragment(),
         appCtx,
         SharedReceiverActivity::class.java.name
     )
-    private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { treeUri ->
+    private val localBookTreeSelect by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
+        }
         }
     }
 

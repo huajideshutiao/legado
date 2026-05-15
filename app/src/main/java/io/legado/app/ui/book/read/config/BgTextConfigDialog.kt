@@ -35,6 +35,7 @@ import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
@@ -80,23 +81,29 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     private var primaryTextColor = 0
     private var secondaryTextColor = 0
     private val importFormNet = "网络导入"
-    private val selectBgImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectBgImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             setBgFromUri(uri)
         }
-    }
-    private val selectExportDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            exportConfig(uri)
         }
     }
-    private val selectImportDoc = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectExportDir by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
+            exportConfig(uri)
+        }
+        }
+    }
+    private val selectImportDoc by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             if (uri.path == "/$importFormNet") {
                 importNetConfigAlert()
             } else {
                 importConfig(uri)
             }
+        }
         }
     }
 

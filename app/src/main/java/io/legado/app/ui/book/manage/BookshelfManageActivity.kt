@@ -49,6 +49,7 @@ import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
@@ -110,18 +111,21 @@ class BookshelfManageActivity :
     }
     private var books: List<Book>? = null
     private val waitDialog by lazy { WaitDialog(this) }
-    private val exportDir = registerForActivityResult(HandleFileContract()) {
-        var uri = it.uri ?: return@registerForActivityResult
-        if(it.value == "cache") {
-            var dirPath = if (uri.isContentScheme())uri.toString() else uri.path ?:return@registerForActivityResult
+    private val exportDir by lazy {
+        registerHandleFile { result ->
+            var uri = result.uri ?: return@registerHandleFile
+            if (result.value == "cache") {
+                var dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
+                    ?: return@registerHandleFile
             ACache.get().put(exportBookPathKey, dirPath)
-            if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
+                if (enableCustomExport()) {
                 configExportSection(dirPath)
             } else {
                 startExport(dirPath)
             }
         }else{
             showExportSuccess(uri)
+        }
         }
     }
 

@@ -35,7 +35,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyNavigationBarPadding
@@ -84,7 +84,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private val groupList: ArrayList<BookGroup> = arrayListOf()
     private var groupId: Long = -1
 
-    private val exportDir = registerForActivityResult(HandleFileContract()) { result ->
+    private val exportDir = registerHandleFile { result ->
         var isReadyPath = false
         var dirPath = ""
         result.uri?.let { uri ->
@@ -101,7 +101,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             }
         }
         if (!isReadyPath) {
-            return@registerForActivityResult
+            return@registerHandleFile
         }
         if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
             configExportSection(dirPath, result.requestCode)

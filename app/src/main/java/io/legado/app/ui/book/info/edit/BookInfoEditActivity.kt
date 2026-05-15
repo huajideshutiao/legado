@@ -23,6 +23,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -40,9 +41,11 @@ class BookInfoEditActivity :
     VMBaseActivity<ActivityBookInfoEditBinding, BookInfoEditViewModel>(),
     ChangeCoverDialog.CallBack {
 
-    private val selectCover = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectCover by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             coverChangeTo(uri)
+        }
         }
     }
 

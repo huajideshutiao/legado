@@ -14,7 +14,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
@@ -34,7 +34,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         binding.titleBar.findViewById(R.id.search_view)
     }
 
-    val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
+    val localBookTreeSelect = registerHandleFile {
         it.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
             localBookTreeSelectListener?.invoke(true)

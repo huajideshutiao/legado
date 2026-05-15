@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.rss
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
@@ -28,7 +29,6 @@ import androidx.lifecycle.lifecycleScope
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookSource
@@ -42,9 +42,10 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.Download
-import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
-import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.association.FileAssociationDialog
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.ACache
 import io.legado.app.utils.gone
@@ -57,7 +58,6 @@ import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.share
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
@@ -80,7 +80,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     private var starMenuItem: MenuItem? = null
     private var ttsMenuItem: MenuItem? = null
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
-    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
+    private val selectImageDir = registerHandleFile {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
             viewModel.saveImage(it.value, uri)
@@ -94,7 +94,6 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData()
-        binding.webView.settings.javaScriptEnabled = true
         viewModel.upStarMenuData.observe(this) { upStarMenu() }
         viewModel.upTtsMenuData.observe(this) { upTtsMenu(it) }
         binding.titleBar.title = viewModel.curBook?.name
@@ -223,6 +222,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         binding.webView.webChromeClient = CustomWebChromeClient()
         binding.webView.webViewClient = CustomWebViewClient()
         binding.webView.settings.apply {
+            javaScriptEnabled = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             domStorageEnabled = true
             allowContentAccess = true
@@ -323,13 +323,11 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
     private fun readAloud() {
         if (viewModel.tts?.isSpeaking == true) {
             viewModel.tts?.stop()
             upTtsMenu(false)
         } else {
-            binding.webView.settings.javaScriptEnabled = true
             binding.webView.evaluateJavascript("document.documentElement.outerHTML") {
                 val html = StringEscapeUtils.unescapeJson(it)
                     .replace("^\"|\"$".toRegex(), "")
@@ -436,9 +434,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 }
 
                 "legado", "yuedu" -> {
-                    startActivity<OnLineImportActivity> {
-                        data = url
-                    }
+                    showDialogFragment(FileAssociationDialog(url))
                     return true
                 }
 

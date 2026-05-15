@@ -15,7 +15,6 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogFileChooserBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookAdapter
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
@@ -71,7 +70,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
 //    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         initMenu()
         initView()
         viewModel.filesLiveData.observe(viewLifecycleOwner) {
@@ -95,7 +93,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
     }
 
     private fun initView() {
-        binding.layTop.setBackgroundColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(activity)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()

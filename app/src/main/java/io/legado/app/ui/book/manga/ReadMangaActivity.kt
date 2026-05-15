@@ -53,6 +53,7 @@ import io.legado.app.ui.book.read.MangaMenu
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.toc.TocActivityResult
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.utils.ACache
@@ -150,10 +151,12 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         }
 
     private var imageSrc: String? = null
-    private val saveImage = registerForActivityResult(io.legado.app.ui.file.HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val saveImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
             viewModel.saveImage(imageSrc, uri)
+        }
         }
     }
 

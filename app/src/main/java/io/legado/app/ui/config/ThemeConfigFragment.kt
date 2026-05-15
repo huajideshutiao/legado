@@ -29,6 +29,7 @@ import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -60,9 +61,10 @@ class ThemeConfigFragment : PreferenceFragment(),
 
     private val requestCodeBgLight = 121
     private val requestCodeBgDark = 122
-    private val selectImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            when (it.requestCode) {
+    private val selectImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
+                when (result.requestCode) {
                 requestCodeBgLight -> setBgFromUri(uri, PreferKey.bgImage) {
                     upTheme(false)
                 }
@@ -71,6 +73,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                     upTheme(true)
                 }
             }
+        }
         }
     }
 

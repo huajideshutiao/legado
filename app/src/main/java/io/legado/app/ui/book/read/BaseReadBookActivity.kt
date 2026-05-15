@@ -32,6 +32,7 @@ import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.read.config.PaddingConfigDialog
 import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
@@ -58,7 +59,7 @@ abstract class BaseReadBookActivity :
     protected val menuLayoutIsVisible
         get() = bottomDialog > 0 || binding.readMenu.isVisible || binding.searchMenu.bottomMenuVisible
 
-    private val selectBookFolderResult = registerForActivityResult(HandleFileContract()) {
+    private val selectBookFolderResult = registerHandleFile {
         it.uri?.let { uri ->
             ReadBook.book?.let { book ->
                 FileDoc.fromUri(uri, true).find(book.originName)?.let { doc ->
@@ -127,7 +128,7 @@ abstract class BaseReadBookActivity :
     }
 
     private fun showCustomPageKeyConfig() {
-        PageKeyDialog(this).show()
+        PageKeyDialog().show(supportFragmentManager, "pageKey")
     }
 
     /**

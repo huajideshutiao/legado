@@ -25,7 +25,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.ui.association.JsActivity1
 import io.legado.app.ui.association.JsActivity2
-import io.legado.app.ui.association.OpenUrlConfirmActivity
+import io.legado.app.ui.association.OpenUrlConfirmDialog
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.EncoderUtils
@@ -46,7 +46,6 @@ import io.legado.app.utils.isMainThread
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.mapAsync
 import io.legado.app.utils.stackTraceStr
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.toStringArray
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -1001,13 +1000,13 @@ interface JsExtensions : JsEncodeUtils {
         require(url.length < 64 * 1024) { "openUrl parameter url too long" }
         rhinoContext.ensureActive()
         val source = getSource() ?: throw NoStackTraceException("openUrl source cannot be null")
-        appCtx.startActivity<OpenUrlConfirmActivity> {
-            putExtra("uri", url)
-            putExtra("mimeType", mimeType)
-            putExtra("sourceOrigin", source.getKey())
-            putExtra("sourceName", source.getTag())
-            putExtra("sourceType", source.getSourceType())
-        }
+        OpenUrlConfirmDialog.display(
+            url,
+            mimeType,
+            source.getKey(),
+            source.getTag(),
+            source.getSourceType()
+        )
     }
 
     /**

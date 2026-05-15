@@ -1,4 +1,4 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "RestrictedApi")
 
 package io.legado.app.utils
 

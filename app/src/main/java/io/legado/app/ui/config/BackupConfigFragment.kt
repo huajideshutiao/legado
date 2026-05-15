@@ -34,6 +34,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
@@ -64,16 +65,19 @@ class BackupConfigFragment : PreferenceFragment(),
     private var backupJob: Job? = null
     private var restoreJob: Job? = null
 
-    private val selectBackupPath = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectBackupPath by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             if (uri.isContentScheme()) {
                 AppConfig.backupPath = uri.toString()
             } else {
                 AppConfig.backupPath = uri.path
             }
         }
+        }
     }
-    private val backupDir = registerForActivityResult(HandleFileContract()) { result ->
+    private val backupDir by lazy {
+        registerHandleFile { result ->
         result.uri?.let { uri ->
             if (uri.isContentScheme()) {
                 AppConfig.backupPath = uri.toString()
@@ -85,9 +89,11 @@ class BackupConfigFragment : PreferenceFragment(),
                 }
             }
         }
+        }
     }
-    private val restoreDoc = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val restoreDoc by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             waitDialog.setText("恢复中…")
             waitDialog.show()
             val task = Coroutine.async {
@@ -99,10 +105,13 @@ class BackupConfigFragment : PreferenceFragment(),
                 task.cancel()
             }
         }
+        }
     }
-    private val restoreOld = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val restoreOld by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             ImportOldData.importUri(appCtx, uri)
+        }
         }
     }
 

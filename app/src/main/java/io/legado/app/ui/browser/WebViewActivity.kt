@@ -1,6 +1,7 @@
 package io.legado.app.ui.browser
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.net.http.SslError
@@ -32,8 +33,10 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.Download
-import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.association.FileAssociationDialog
+import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.ACache
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -42,7 +45,6 @@ import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setDarkeningAllowed
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -57,10 +59,12 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var webPic: String? = null
     private var isCloudflareChallenge = false
     private var isFullScreen = false
-    private val saveImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val saveImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
             viewModel.saveImage(webPic, uri.toString())
+        }
         }
     }
 
@@ -317,9 +321,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 }
 
                 "legado", "yuedu" -> {
-                    startActivity<OnLineImportActivity> {
-                        data = url
-                    }
+                    showDialogFragment(FileAssociationDialog(url))
                     return true
                 }
 

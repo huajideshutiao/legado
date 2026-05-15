@@ -14,6 +14,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -34,12 +35,14 @@ class CoverConfigFragment : PreferenceFragment(),
 
     private val requestCodeCover = 111
     private val requestCodeCoverDark = 112
-    private val selectImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            when (it.requestCode) {
+    private val selectImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
+                when (result.requestCode) {
                 requestCodeCover -> setCoverFromUri(PreferKey.defaultCover, uri)
                 requestCodeCoverDark -> setCoverFromUri(PreferKey.defaultCoverDark, uri)
             }
+        }
         }
     }
 

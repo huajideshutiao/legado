@@ -19,6 +19,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -51,14 +52,18 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     }
     private val importTocRuleKey = "tocRuleUrl"
 
-    private val importDoc = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val importDoc by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showDialogFragment(ImportTxtTocRuleDialog(uri.toString()))
         }
+        }
     }
-    private val exportResult = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val exportResult by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showExportSuccess(uri)
+        }
         }
     }
 

@@ -20,6 +20,7 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RealPathUtil
@@ -49,8 +50,9 @@ class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
         val curFontPath = callBack?.curFontPath ?: ""
         FontAdapter(requireContext(), curFontPath, this)
     }
-    private val selectFontDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectFontDir by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             if (uri.isContentScheme()) {
                 putPrefString(PreferKey.fontFolder, uri.toString())
                 val doc = DocumentFile.fromTreeUri(requireContext(), uri)
@@ -67,6 +69,7 @@ class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
                     loadFontFilesByPermission(path)
                 }
             }
+        }
         }
     }
 

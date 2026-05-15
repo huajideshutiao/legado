@@ -23,6 +23,7 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.book.import.BaseImportBookActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -52,10 +53,12 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
     private val adapter by lazy { ImportBookAdapter(this, this) }
     private var scanDocJob: Job? = null
 
-    private val selectFolder = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectFolder by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             AppConfig.importBookPath = uri.toString()
             initRootDoc(true)
+        }
         }
     }
 

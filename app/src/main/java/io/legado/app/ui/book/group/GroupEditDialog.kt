@@ -11,6 +11,7 @@ import io.legado.app.databinding.DialogBookGroupEditBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -36,13 +37,14 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     private val binding by viewBinding(DialogBookGroupEditBinding::bind)
     private val viewModel by viewModels<GroupViewModel>()
     private var bookGroup: BookGroup? = null
-    private val selectImage = registerForActivityResult(HandleFileContract()) {
-        it.uri ?: return@registerForActivityResult
-        readUri(it.uri) { fileDoc, inputStream ->
+    private val selectImage by lazy {
+        registerHandleFile { result ->
+            result.uri ?: return@registerHandleFile
+            readUri(result.uri) { fileDoc, inputStream ->
             try {
                 var file = requireContext().externalFiles
                 val suffix = fileDoc.name.substringAfterLast(".")
-                val fileName = it.uri.inputStream(requireContext()).getOrThrow().use { tmp ->
+                val fileName = result.uri.inputStream(requireContext()).getOrThrow().use { tmp ->
                     MD5Utils.md5Encode(tmp) + ".$suffix"
                 }
                 file = FileUtils.createFileIfNotExist(file, "covers", fileName)
@@ -53,6 +55,7 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
             } catch (e: Exception) {
                 appCtx.toastOnUi(e.localizedMessage)
             }
+        }
         }
     }
 

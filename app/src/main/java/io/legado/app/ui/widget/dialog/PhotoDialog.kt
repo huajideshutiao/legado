@@ -23,6 +23,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.setLayout
@@ -57,10 +58,12 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
-    private val saveImageLauncher = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val saveImageLauncher by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             ACache.get().put(AppConst.imagePathKey, uri.toString())
             doSaveImage(uri)
+        }
         }
     }
 

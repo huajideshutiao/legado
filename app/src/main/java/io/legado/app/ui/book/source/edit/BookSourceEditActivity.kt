@@ -31,6 +31,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -68,8 +69,8 @@ class BookSourceEditActivity :
     private val contentEntities: ArrayList<EditEntity> = ArrayList()
 
     //    private val reviewEntities: ArrayList<EditEntity> = ArrayList()
-    private val selectDoc = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val selectDoc = registerHandleFile { result ->
+        result.uri?.let { uri ->
             if (uri.isContentScheme()) {
                 sendText(uri.toString())
             } else {

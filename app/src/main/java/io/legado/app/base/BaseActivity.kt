@@ -153,7 +153,11 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     open fun initTheme() {
         // 在 super.onCreate 之前注入 Window 背景，防止过渡瞬间的黑屏/白屏闪烁
-        window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+        if (theme != Theme.Transparent) {
+            window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+        } else {
+            window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+        }
 
         val isDark = when (theme) {
             Theme.Dark -> true

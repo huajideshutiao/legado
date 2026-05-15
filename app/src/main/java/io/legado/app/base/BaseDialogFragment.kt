@@ -2,24 +2,20 @@ package io.legado.app.base
 
 import android.content.DialogInterface
 import android.content.DialogInterface.OnDismissListener
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import androidx.annotation.LayoutRes
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.setBackgroundKeepPadding
+import io.legado.app.lib.theme.filletBackground
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
@@ -38,38 +34,21 @@ abstract class BaseDialogFragment(
 
     override fun onStart() {
         super.onStart()
-        dialog?.window?.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-        if (adaptationSoftKeyboard) {
-            dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
-        } else if (AppConfig.isEInkMode) {
-            dialog?.window?.let {
+        dialog?.window?.let {
+            it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            it.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            val attr = it.attributes
+            if (AppConfig.isEInkMode) {
                 it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                val attr = it.attributes
                 attr.dimAmount = 0.0f
                 attr.windowAnimations = 0
-                it.attributes = attr
-                it.decorView.setBackgroundKeepPadding(R.color.transparent)
+            } else {
+                attr.windowAnimations = R.style.Animation_Dialog
             }
-            // 修改 gravity 的时机一般在子类的 onStart 方法中，因此需要在 onStart 之后执行.
-            lifecycle.addObserver(LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_START) {
-                    when (dialog?.window?.attributes?.gravity) {
-                        Gravity.TOP -> view?.setBackgroundResource(R.drawable.bg_eink_border_bottom)
-                        Gravity.BOTTOM -> view?.setBackgroundResource(R.drawable.bg_eink_border_top)
-                        else -> {
-                            val padding = 2.dpToPx()
-                            view?.setPadding(padding, padding, padding, padding)
-                            view?.setBackgroundResource(R.drawable.bg_eink_border_dialog)
-                        }
-                    }
-                }
-            })
-        }
-        dialog?.window?.let {
+            it.attributes = attr
             val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
             it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
         }
-
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,7 +66,7 @@ abstract class BaseDialogFragment(
             view.setOnClickListener { dismiss() }
         }
         if (!AppConfig.isEInkMode) {
-            view.setBackgroundColor(ThemeStore.backgroundColor())
+            view.background = requireContext().filletBackground
         }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()

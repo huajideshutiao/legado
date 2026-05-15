@@ -1,26 +1,23 @@
 package io.legado.app.ui.widget.number
 
 import android.content.Context
+import android.view.LayoutInflater
 import android.widget.NumberPicker
-import androidx.appcompat.app.AlertDialog
 import io.legado.app.R
-import io.legado.app.utils.applyTint
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.hideSoftInput
 
 
-class NumberPickerDialog(context: Context) {
-    private val builder = AlertDialog.Builder(context)
-    private var numberPicker: NumberPicker? = null
+class NumberPickerDialog(private val context: Context) {
+    private var title: CharSequence? = null
     private var maxValue: Int? = null
     private var minValue: Int? = null
     private var value: Int? = null
-
-    init {
-        builder.setView(R.layout.dialog_number_picker)
-    }
+    private var neutralButtonText: Int? = null
+    private var neutralButtonListener: (() -> Unit)? = null
 
     fun setTitle(title: String): NumberPickerDialog {
-        builder.setTitle(title)
+        this.title = title
         return this
     }
 
@@ -40,36 +37,33 @@ class NumberPickerDialog(context: Context) {
     }
 
     fun setCustomButton(textId: Int, listener: (() -> Unit)?): NumberPickerDialog {
-        builder.setNeutralButton(textId) { _, _ ->
-            numberPicker?.let {
-                it.clearFocus()
-                it.hideSoftInput()
-                listener?.invoke()
-            }
-        }
+        neutralButtonText = textId
+        neutralButtonListener = listener
         return this
     }
 
     fun show(callBack: ((value: Int) -> Unit)?) {
-        builder.setPositiveButton(R.string.ok) { _, _ ->
-            numberPicker?.let {
-                it.clearFocus()
-                it.hideSoftInput()
-                callBack?.invoke(it.value)
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_number_picker, null)
+        val numberPicker = dialogView.findViewById<NumberPicker>(R.id.number_picker)
+        minValue?.let { numberPicker.minValue = it }
+        maxValue?.let { numberPicker.maxValue = it }
+        value?.let { numberPicker.value = it }
+
+        context.alert(title = title) {
+            customView { dialogView }
+            positiveButton(R.string.ok) {
+                numberPicker.clearFocus()
+                numberPicker.hideSoftInput()
+                callBack?.invoke(numberPicker.value)
             }
-        }
-        builder.setNegativeButton(R.string.cancel, null)
-        val dialog = builder.show().applyTint()
-        numberPicker = dialog.findViewById(R.id.number_picker)
-        numberPicker?.let { np ->
-            minValue?.let {
-                np.minValue = it
-            }
-            maxValue?.let {
-                np.maxValue = it
-            }
-            value?.let {
-                np.value = it
+            negativeButton(R.string.cancel)
+            neutralButtonText?.let { textId ->
+                neutralButton(textId) {
+                    numberPicker.clearFocus()
+                    numberPicker.hideSoftInput()
+                    neutralButtonListener?.invoke()
+                }
             }
         }
     }

@@ -5,9 +5,12 @@ import android.content.DialogInterface
 import android.graphics.drawable.Drawable
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
+import androidx.core.graphics.drawable.toDrawable
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.filletBackground
 import io.legado.app.utils.applyTint
 
 internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<AlertDialog> {
@@ -142,21 +145,19 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
     }
 
     override fun build(): AlertDialog {
-        val dialog = builder.create()
-        if (AppConfig.isEInkMode) {
-            dialog.window?.run {
-                val attr = attributes
-                attr.dimAmount = 0f
-                attr.windowAnimations = 0
-                attributes = attr
-                setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
-            }
-        }
-        return dialog
+        return applyStyle(builder.create())
     }
 
     override fun show(): AlertDialog {
-        val dialog = builder.show().applyTint()
+        return applyStyle(builder.show().applyTint())
+    }
+
+    private fun applyStyle(dialog: AlertDialog): AlertDialog {
+        dialog.window?.run {
+            val width = (ctx.resources.displayMetrics.widthPixels * 0.95).toInt()
+            setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+            setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
+        }
         if (AppConfig.isEInkMode) {
             dialog.window?.run {
                 val attr = attributes
@@ -165,6 +166,15 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
                 attributes = attr
                 setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
             }
+        } else {
+            dialog.window?.run {
+                val attr = attributes
+                attr.dimAmount = 0.6f
+                attr.windowAnimations = R.style.Animation_Dialog
+                attributes = attr
+            }
+            dialog.findViewById<View>(androidx.appcompat.R.id.parentPanel)?.background =
+                ctx.filletBackground
         }
         return dialog
     }

@@ -89,7 +89,7 @@ import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.dict.DictDialog
-import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
@@ -108,7 +108,6 @@ import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
-import io.legado.app.utils.launch
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.postEvent
@@ -197,7 +196,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.loadOrUpContent()
             }
         }
-    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
+    private val selectImageDir = registerHandleFile {
         it.uri?.let { uri ->
             ACache.get().put(AppConst.imagePathKey, uri.toString())
             viewModel.saveImage(it.value, uri)
@@ -1574,28 +1573,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.setProgress(progress)
             }
             noButton()
-        }
-    }
-
-    override fun finish() {
-        val book = ReadBook.book ?: return super.finish()
-
-        if (ReadBook.inBookshelf) {
-            return super.finish()
-        }
-
-        if (!AppConfig.showAddToShelfAlert) {
-            viewModel.removeFromBookshelf { super.finish() }
-        } else {
-            alert(title = getString(R.string.add_to_bookshelf)) {
-                setMessage(getString(R.string.check_add_bookshelf, book.name))
-                okButton {
-                    ReadBook.book?.save()
-                    ReadBook.inBookshelf = true
-                    setResult(RESULT_OK)
-                }
-                noButton { viewModel.removeFromBookshelf { super.finish() } }
-            }
         }
     }
 

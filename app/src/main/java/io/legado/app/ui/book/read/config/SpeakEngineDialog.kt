@@ -29,6 +29,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
@@ -62,14 +63,18 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private var ttsEngine: String? = ReadAloud.ttsEngine
     private val sysTtsViews = arrayListOf<RadioButton>()
     private val callBack: CallBack? get() = parentFragment as? CallBack
-    private val importDocResult = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val importDocResult by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showDialogFragment(ImportHttpTtsDialog(uri.toString()))
         }
+        }
     }
-    private val exportDirResult = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val exportDirResult by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showExportSuccess(uri)
+        }
         }
     }
 

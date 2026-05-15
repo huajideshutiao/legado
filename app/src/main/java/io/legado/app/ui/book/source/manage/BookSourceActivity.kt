@@ -40,6 +40,7 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.config.CheckSourceConfig
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -102,12 +103,12 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
 
-    private val importDoc = registerForActivityResult(HandleFileContract()) {
+    private val importDoc = registerHandleFile {
         it.uri?.let { uri ->
             showDialogFragment(ImportBookSourceDialog(uri.toString()))
         }
     }
-    private val exportDir = registerForActivityResult(HandleFileContract()) {
+    private val exportDir = registerHandleFile {
         it.uri?.let { uri ->
             showExportSuccess(uri)
         }

@@ -556,9 +556,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         }
 
         val names = resolutions.map { it.name }.toTypedArray()
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(R.string.resolution)
-            .setSingleChoiceItems(names, viewModel.currentResolutionIndex) { dialog, which ->
+        alert(titleResource = R.string.resolution) {
+            singleChoiceItems(names, viewModel.currentResolutionIndex) { dialog, which ->
                 binding.ivPlayer.hideController()
                 dialog.dismiss()
                 if (which != viewModel.currentResolutionIndex) {
@@ -567,7 +566,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                     switchResolution(which, position)
                 }
             }
-            .show()
+        }
     }
 
     private fun switchResolution(index: Int, seekPosition: Long) {

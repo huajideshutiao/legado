@@ -27,6 +27,7 @@ import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -37,6 +38,24 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  */
 class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification_code_view),
     Toolbar.OnMenuItemClickListener {
+
+    companion object {
+        fun display(
+            imageUrl: String,
+            sourceOrigin: String? = null,
+            sourceName: String? = null,
+            sourceType: Int
+        ) {
+            val activity = io.legado.app.help.LifecycleHelp.currentActivity
+            if (activity is androidx.appcompat.app.AppCompatActivity) {
+                activity.showDialogFragment(
+                    VerificationCodeDialog(imageUrl, sourceOrigin, sourceName, sourceType)
+                )
+            } else {
+                splitties.init.appCtx.toastOnUi("无法在后台显示验证码对话框")
+            }
+        }
+    }
 
     constructor(
         imageUrl: String,

@@ -68,6 +68,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.image.CoverImageView
@@ -118,9 +119,11 @@ class BookInfoActivity :
             if (!viewModel.inBookshelf) viewModel.delBook()
         }
     }
-    private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { treeUri ->
+    private val localBookTreeSelect by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
+        }
         }
     }
     private val readBookResult = registerForActivityResult(

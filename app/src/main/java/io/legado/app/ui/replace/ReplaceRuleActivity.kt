@@ -26,6 +26,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
@@ -76,14 +77,18 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 setResult(RESULT_OK)
             }
         }
-    private val importDoc = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val importDoc by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showDialogFragment(ImportReplaceRuleDialog(uri.toString()))
         }
+        }
     }
-    private val exportResult = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
+    private val exportResult by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
             showExportSuccess(uri)
+        }
         }
     }
 

@@ -16,12 +16,32 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
 
 class OpenUrlConfirmDialog() : BaseDialogFragment(R.layout.dialog_open_url_confirm),
     Toolbar.OnMenuItemClickListener {
+
+    companion object {
+        fun display(
+            uri: String,
+            mimeType: String?,
+            sourceOrigin: String? = null,
+            sourceName: String? = null,
+            sourceType: Int
+        ) {
+            val activity = io.legado.app.help.LifecycleHelp.currentActivity
+            if (activity is androidx.appcompat.app.AppCompatActivity) {
+                activity.showDialogFragment(
+                    OpenUrlConfirmDialog(uri, mimeType, sourceOrigin, sourceName, sourceType)
+                )
+            } else {
+                splitties.init.appCtx.toastOnUi("无法在后台显示跳转确认对话框")
+            }
+        }
+    }
 
     constructor(
         uri: String,

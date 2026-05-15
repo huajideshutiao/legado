@@ -23,6 +23,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.gone
@@ -43,12 +44,14 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     private var menu: Menu? = null
     private var searchView: SearchView? = null
     private val waitDialog by lazy { WaitDialog(this) }
-    private val exportDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            when (it.requestCode) {
+    private val exportDir by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
+                when (result.requestCode) {
                 1 -> viewModel.saveBookmark(uri)
                 2 -> viewModel.saveBookmarkMd(uri)
             }
+        }
         }
     }
 

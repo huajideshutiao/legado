@@ -5,7 +5,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
-import io.legado.app.ui.association.VerificationCodeActivity
+import io.legado.app.ui.association.VerificationCodeDialog
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.utils.isMainThread
 import io.legado.app.utils.startActivity
@@ -45,13 +45,13 @@ object SourceVerificationHelp {
         clearResult(source.getKey())
 
         if (!useBrowser) {
-            appCtx.startActivity<VerificationCodeActivity> {
-                putExtra("imageUrl", url)
-                putExtra("sourceOrigin", source.getKey())
-                putExtra("sourceName", source.getTag())
-                putExtra("sourceType", source.getSourceType())
-                IntentData.put(getVerificationResultKey(source), Thread.currentThread())
-            }
+            VerificationCodeDialog.display(
+                url,
+                source.getKey(),
+                source.getTag(),
+                source.getSourceType()
+            )
+            IntentData.put(getVerificationResultKey(source), Thread.currentThread())
         } else {
             startBrowser(source, url, title, true, refetchAfterSuccess)
         }

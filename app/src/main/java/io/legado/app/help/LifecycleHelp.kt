@@ -24,6 +24,17 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     private val services: MutableList<WeakReference<BaseService>> = arrayListOf()
     private var appFinishedListener: (() -> Unit)? = null
 
+    val currentActivity: Activity?
+        @Synchronized get() {
+            for (i in activities.size - 1 downTo 0) {
+                val activity = activities[i].get()
+                if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
+                    return activity
+                }
+            }
+            return null
+        }
+
     init {
         setOnAppFinishedListener {
             CbzFile.clear()

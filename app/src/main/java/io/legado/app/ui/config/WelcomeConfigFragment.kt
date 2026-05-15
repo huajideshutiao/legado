@@ -18,6 +18,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefString
@@ -38,12 +39,14 @@ class WelcomeConfigFragment : PreferenceFragment(),
 
     private val requestWelcomeImage = 221
     private val requestWelcomeImageDark = 222
-    private val selectImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            when (it.requestCode) {
+    private val selectImage by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { uri ->
+                when (result.requestCode) {
                 requestWelcomeImage -> setCoverFromUri(PreferKey.welcomeImage, uri)
                 requestWelcomeImageDark -> setCoverFromUri(PreferKey.welcomeImageDark, uri)
             }
+        }
         }
     }
 
