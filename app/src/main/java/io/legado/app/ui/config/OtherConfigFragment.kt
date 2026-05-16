@@ -22,8 +22,8 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
-import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
+import io.legado.app.ui.association.AssociationActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.showNumberPicker
@@ -48,7 +48,7 @@ class OtherConfigFragment : PreferenceFragment(),
     private val packageManager = appCtx.packageManager
     private val componentName = ComponentName(
         appCtx,
-        SharedReceiverActivity::class.java.name
+        AssociationActivity::class.java.name
     )
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->

@@ -59,10 +59,10 @@ fun Context.getSecondaryDisabledTextColor(dark: Boolean): Int {
 }
 
 val Context.primaryColor: Int
-    get() = ThemeStore.primaryColor(this)
+    get() = ThemeStore.backgroundColor(this)
 
 val Context.primaryColorDark: Int
-    get() = ThemeStore.primaryColorDark(this)
+    get() = ColorUtils.darkenColor(ThemeStore.backgroundColor(this))
 
 val Context.accentColor: Int
     get() = ThemeStore.accentColor(this)
@@ -86,10 +86,10 @@ val Context.secondaryDisabledTextColor: Int
     get() = getSecondaryDisabledTextColor(isDarkTheme)
 
 val Fragment.primaryColor: Int
-    get() = ThemeStore.primaryColor(requireContext())
+    get() = ThemeStore.backgroundColor(requireContext())
 
 val Fragment.primaryColorDark: Int
-    get() = ThemeStore.primaryColorDark(requireContext())
+    get() = ColorUtils.darkenColor(ThemeStore.backgroundColor(requireContext()))
 
 val Fragment.accentColor: Int
     get() = ThemeStore.accentColor(requireContext())
@@ -120,7 +120,7 @@ val Context.buttonDisabledColor: Int
     }
 
 val Context.isDarkTheme: Boolean
-    get() = ColorUtils.isColorLight(ThemeStore.primaryColor(this))
+    get() = ColorUtils.isColorLight(ThemeStore.backgroundColor(this))
 
 val Fragment.isDarkTheme: Boolean
     get() = requireContext().isDarkTheme

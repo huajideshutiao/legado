@@ -25,7 +25,6 @@ import splitties.init.appCtx
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
-    var useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
     var userAgent: String = getPrefUserAgent()
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
     var clickActionTL = appCtx.getPrefInt(PreferKey.clickActionTL, 2)
@@ -84,8 +83,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.getPrefBoolean(PreferKey.useZhLayout)
 
             PreferKey.userAgent -> userAgent = getPrefUserAgent()
-
-            PreferKey.antiAlias -> useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
 
             PreferKey.useDefaultCover -> useDefaultCover =
                 appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)

@@ -24,7 +24,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyOpenTint
@@ -170,7 +169,7 @@ abstract class BaseActivity<VB : ViewBinding>(
                     setTheme(R.style.AppTheme_Dark)
                 } else {
                     // 即使是亮色模式，如果配置的颜色过深，也强制使用暗色主题以保证文字可读性
-                    if (ColorUtils.isColorLight(primaryColor)) {
+                    if (ColorUtils.isColorLight(backgroundColor)) {
                         setTheme(R.style.AppTheme_Light)
                     } else {
                         setTheme(R.style.AppTheme_Dark)

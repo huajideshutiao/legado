@@ -3,12 +3,13 @@ package io.legado.app.lib.theme
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
-import android.graphics.Color
 import androidx.annotation.AttrRes
 import androidx.annotation.CheckResult
 import androidx.annotation.ColorInt
 import androidx.annotation.ColorRes
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.graphics.toColorInt
 import io.legado.app.utils.ColorUtils
 import splitties.init.appCtx
 
@@ -188,39 +189,13 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
 
         @CheckResult
         @ColorInt
-        fun primaryColor(context: Context = appCtx): Int {
-            return prefs(context).getInt(
-                ThemeStorePrefKeys.KEY_PRIMARY_COLOR,
-                ThemeUtils.resolveColor(
-                    context,
-                    androidx.appcompat.R.attr.colorPrimary,
-                    Color.parseColor("#455A64")
-                )
-            )
-        }
-
-        @CheckResult
-        @ColorInt
-        fun primaryColorDark(context: Context): Int {
-            return prefs(context).getInt(
-                ThemeStorePrefKeys.KEY_PRIMARY_COLOR_DARK,
-                ThemeUtils.resolveColor(
-                    context,
-                    androidx.appcompat.R.attr.colorPrimaryDark,
-                    Color.parseColor("#37474F")
-                )
-            )
-        }
-
-        @CheckResult
-        @ColorInt
         fun accentColor(context: Context = appCtx): Int {
             return prefs(context).getInt(
                 ThemeStorePrefKeys.KEY_ACCENT_COLOR,
                 ThemeUtils.resolveColor(
                     context,
                     androidx.appcompat.R.attr.colorAccent,
-                    Color.parseColor("#263238")
+                    "#263238".toColorInt()
                 )
             )
         }
@@ -230,7 +205,7 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
         fun statusBarColor(context: Context): Int {
             return prefs(context).getInt(
                 ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR,
-                primaryColor(context)
+                backgroundColor(context)
             )
         }
 
@@ -325,7 +300,7 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
             val prefs = prefs(context)
             val lastVersion = prefs.getInt(ThemeStorePrefKeys.IS_CONFIGURED_VERSION_KEY, -1)
             if (version > lastVersion) {
-                prefs.edit().putInt(ThemeStorePrefKeys.IS_CONFIGURED_VERSION_KEY, version).apply()
+                prefs.edit { putInt(ThemeStorePrefKeys.IS_CONFIGURED_VERSION_KEY, version) }
                 return false
             }
             return true

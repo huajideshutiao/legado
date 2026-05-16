@@ -646,7 +646,6 @@
     <string name="go_back">上级</string>
     <string name="tone_colour">在线朗读音色</string>
     <string name="select_count">（%1$d/%2$d）</string>
-    <string name="show_rss">显示订阅</string>
     <string name="service_stop">服务已停止</string>
     <string name="service_start">正在启动服务\n具体信息请查看通知栏</string>
     <string name="default_path">默认路径</string>
@@ -897,8 +896,6 @@
     <string name="pref_cronet_summary">使用 Cronet 网络组件</string>
     <string name="cronet_enabled">Cronet 已启用</string>
     <string name="cronet_download_failed">Cronet 下载失败</string>
-    <string name="anti_alias">抗锯齿</string>
-    <string name="pref_anti_alias_summary">绘制图片时抗锯齿</string>
     <string name="upload_url">上传 URL</string>
     <string name="download_url_rule">下载URL规则(downloadUrls)</string>
     <string name="sort_by_respondTime">响应时间排序</string>

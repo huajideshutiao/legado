@@ -14,8 +14,8 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.filletBackground
-import io.legado.app.lib.theme.primaryColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
@@ -61,7 +61,7 @@ abstract class BaseDialogFragment(
         }
         val toolbar = view.findViewById<View>(R.id.tool_bar)
         if (toolbar != null && !AppConfig.isEInkMode) {
-            toolbar.setBackgroundColor(requireContext().primaryColor)
+            toolbar.setBackgroundColor(requireContext().backgroundColor)
         }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()

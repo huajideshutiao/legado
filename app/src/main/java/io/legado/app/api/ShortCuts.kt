@@ -6,7 +6,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import io.legado.app.R
-import io.legado.app.receiver.SharedReceiverActivity
+import io.legado.app.ui.association.AssociationActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.main.MainActivity
 
@@ -40,7 +40,7 @@ object ShortCuts {
     }
 
     private fun buildReadAloudShortCutInfo(context: Context): ShortcutInfoCompat {
-        val readAloudIntent = buildIntent<SharedReceiverActivity>(context)
+        val readAloudIntent = buildIntent<AssociationActivity>(context)
         readAloudIntent.putExtra("action", "readAloud")
         return ShortcutInfoCompat.Builder(context, "readAloud")
             .setShortLabel(context.getString(R.string.read_aloud))

@@ -19,8 +19,8 @@ import androidx.core.view.children
 import com.google.android.material.appbar.AppBarLayout
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.activity
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import splitties.views.bottomPadding
@@ -180,7 +180,7 @@ class TitleBar @JvmOverloads constructor(
             if (AppConfig.isEInkMode) {
                 setBackgroundResource(R.drawable.bg_eink_border_bottom)
             } else {
-                setBackgroundColor(context.primaryColor)
+                setBackgroundColor(context.backgroundColor)
             }
 
             stateListAnimator = null

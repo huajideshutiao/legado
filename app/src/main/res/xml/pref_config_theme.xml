@@ -8,12 +8,6 @@
         android:title="@string/show_discovery"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="showRss"
-        android:title="@string/show_rss"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="bookshelfLayout"
         android:title="@string/bookshelf_layout" />
@@ -89,13 +83,6 @@
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
 
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_brown_500"
-            android:key="colorPrimary"
-            android:summary="@string/day_color_primary"
-            android:title="@string/primary"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.ColorPreference
             android:defaultValue="@color/md_red_600"
@@ -145,13 +132,6 @@
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
 
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_blue_grey_600"
-            android:key="colorPrimaryNight"
-            android:summary="@string/night_primary"
-            android:title="@string/primary"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.ColorPreference
             android:defaultValue="@color/md_deep_orange_800"

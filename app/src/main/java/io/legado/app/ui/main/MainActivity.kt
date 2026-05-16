@@ -9,7 +9,6 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.core.view.get
 import androidx.core.view.postDelayed
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
@@ -359,7 +358,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val showDiscovery = AppConfig.showDiscovery
         binding.bottomNavigationView.menu.let { menu ->
             menu.findItem(R.id.menu_discovery).isVisible = showDiscovery
-            menu.findItem(R.id.menu_rss).isVisible = false // hide rss tab
         }
         var index = 0
         if (showDiscovery) {
@@ -395,7 +393,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
-            binding.bottomNavigationView.menu[realPositions[position]].isChecked = true
+            val menuId = when (realPositions[position]) {
+                idExplore -> R.id.menu_discovery
+                idMy -> R.id.menu_my_config
+                else -> R.id.menu_bookshelf
+            }
+            binding.bottomNavigationView.menu.findItem(menuId).isChecked = true
         }
 
     }

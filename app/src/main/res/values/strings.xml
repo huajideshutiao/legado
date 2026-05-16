@@ -647,7 +647,6 @@
     <string name="go_back">Go back</string>
     <string name="tone_colour">Online Speech tone</string>
     <string name="select_count">(%1$d/%2$d)</string>
-    <string name="show_rss">Show RSS feeds</string>
     <string name="service_stop">Service stopped</string>
     <string name="service_start">Starting service\nChecking notification bar for details</string>
     <string name="default_path">Default path</string>
@@ -900,8 +899,6 @@
     <string name="pref_cronet_summary">use Cronet access network</string>
     <string name="cronet_enabled">Cronet enabled</string>
     <string name="cronet_download_failed">Cronet download failed</string>
-    <string name="anti_alias">Anti-Aliasing</string>
-    <string name="pref_anti_alias_summary">Anti-Aliasing when draw picture</string>
     <string name="upload_url">upload url</string>
     <string name="download_url_rule">downloadUrlRule(downloadUrls)</string>
     <string name="export_success">export success</string>

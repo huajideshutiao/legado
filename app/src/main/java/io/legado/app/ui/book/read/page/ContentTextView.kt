@@ -64,7 +64,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     //绘制图片的paint
     val imagePaint by lazy {
         Paint().apply {
-            isAntiAlias = AppConfig.useAntiAlias
+            isAntiAlias = true
         }
     }
 

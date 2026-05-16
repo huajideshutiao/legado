@@ -232,12 +232,27 @@
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true" /> <!-- 选择文件 -->
         <activity
-            android:name=".ui.association.FileAssociationActivity"
+            android:name=".ui.association.AssociationActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:excludeFromRecents="true"
             android:exported="true"
+            android:label="@string/receiving_shared_label"
             android:launchMode="singleTask"
             android:theme="@style/AppTheme.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -310,26 +325,7 @@
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".receiver.SharedReceiverActivity"
-            android:exported="true"
-            android:label="@string/receiving_shared_label"
-            android:theme="@style/AppTheme.Transparent">
-            <intent-filter>
-                <action android:name="android.intent.action.PROCESS_TEXT" />
 
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity>
         <!-- JS Activity -->
         <activity
             android:name=".ui.association.JsActivity1"

@@ -50,7 +50,7 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
         }
     }
 
-    private val isShell get() = activity is FileAssociationActivity
+    private val isShell get() = activity is AssociationActivity
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val uri = arguments?.getParcelable<Uri>("uri") ?: return dismiss()
