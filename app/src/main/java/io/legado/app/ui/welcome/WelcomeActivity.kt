@@ -44,7 +44,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
 
     override fun setupSystemBar() {
         fullScreen()
-        setStatusBarColorAuto(backgroundColor, true, fullScreen)
+        setStatusBarColorAuto(backgroundColor, fullScreen)
         upNavigationBarColor()
     }
 

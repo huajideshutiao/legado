@@ -198,9 +198,8 @@ abstract class BaseActivity<VB : ViewBinding>(
         if (fullScreen && !isInMultiWindow) {
             fullScreen()
         }
-        val isTransparentStatusBar = AppConfig.isTransparentStatusBar
-        val statusBarColor = ThemeStore.statusBarColor(this, isTransparentStatusBar)
-        setStatusBarColorAuto(statusBarColor, isTransparentStatusBar, fullScreen)
+        val statusBarColor = ThemeStore.statusBarColor(this)
+        setStatusBarColorAuto(statusBarColor, fullScreen)
         if (toolBarTheme == Theme.Dark) {
             setLightStatusBar(false)
         } else if (toolBarTheme == Theme.Light) {
@@ -210,12 +209,7 @@ abstract class BaseActivity<VB : ViewBinding>(
     }
 
     open fun upNavigationBarColor() {
-        if (AppConfig.immNavigationBar) {
-            setNavigationBarColorAuto(ThemeStore.navigationBarColor(this))
-        } else {
-            val nbColor = ColorUtils.darkenColor(ThemeStore.navigationBarColor(this))
-            setNavigationBarColorAuto(nbColor)
-        }
+        setNavigationBarColorAuto(ThemeStore.navigationBarColor(this))
     }
 
     open fun observeLiveBus() {

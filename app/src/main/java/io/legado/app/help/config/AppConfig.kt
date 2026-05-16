@@ -164,12 +164,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val textSelectAble: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.textSelectAble, true)
 
-    val isTransparentStatusBar: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.transparentStatusBar, true)
-
-    val immNavigationBar: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.immNavigationBar, true)
-
     val screenOrientation: String?
         get() = appCtx.getPrefString(PreferKey.screenOrientation)
 

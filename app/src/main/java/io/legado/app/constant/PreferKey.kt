@@ -79,8 +79,6 @@ object PreferKey {
     const val textBottomJustify = "textBottomJustify"
     const val autoReadSpeed = "autoReadSpeed"
     const val barElevation = "barElevation"
-    const val transparentStatusBar = "transparentStatusBar"
-    const val immNavigationBar = "immNavigationBar"
     const val defaultCover = "defaultCover"
     const val defaultCoverDark = "defaultCoverDark"
     const val replaceEnableDefault = "replaceEnableDefault"

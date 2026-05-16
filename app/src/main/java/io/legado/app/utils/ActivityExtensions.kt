@@ -95,16 +95,11 @@ fun Activity.fullScreen() {
 @Suppress("DEPRECATION")
 fun Activity.setStatusBarColorAuto(
     @ColorInt color: Int,
-    isTransparent: Boolean,
     fullScreen: Boolean
 ) {
     val isLightBar = ColorUtils.isColorLight(color)
     if (fullScreen) {
-        if (isTransparent) {
-            window.statusBarColor = Color.TRANSPARENT
-        } else {
-            window.statusBarColor = getCompatColor(R.color.status_bar_bag)
-        }
+        window.statusBarColor = Color.TRANSPARENT
     } else {
         window.statusBarColor = color
     }

@@ -164,7 +164,7 @@ abstract class BaseReadBookActivity :
                 ) {
                     ReadBookConfig.bgMeanColor
                 } else {
-                    ThemeStore.statusBarColor(this, AppConfig.isTransparentStatusBar)
+                    ThemeStore.statusBarColor(this)
                 }
             setLightStatusBar(ColorUtils.isColorLight(statusBarColor))
         }
@@ -199,7 +199,6 @@ abstract class BaseReadBookActivity :
             binding.readMenu.isVisible -> super.upNavigationBarColor()
             binding.searchMenu.bottomMenuVisible -> super.upNavigationBarColor()
             bottomDialog > 0 -> super.upNavigationBarColor()
-            !AppConfig.immNavigationBar -> super.upNavigationBarColor()
             else -> setNavigationBarColorAuto(ReadBookConfig.bgMeanColor)
         }
     }

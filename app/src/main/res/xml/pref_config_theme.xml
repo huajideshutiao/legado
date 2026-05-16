@@ -53,20 +53,6 @@
         android:title="@string/welcome_style"
         android:summary="@string/welcome_style_summary" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="transparentStatusBar"
-        android:summary="@string/status_bar_immersion"
-        android:title="@string/immersion_status_bar"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="immNavigationBar"
-        android:summary="@string/imm_navigation_bar_s"
-        android:title="@string/imm_navigation_bar"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="barElevation"
         android:summary="@string/bar_elevation_s"
