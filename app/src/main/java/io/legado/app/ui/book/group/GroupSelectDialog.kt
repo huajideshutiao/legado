@@ -48,11 +48,6 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
     private val callBack get() = (activity as? CallBack)
     private var groupId: Long = 0
 
-//    override fun onStart() {
-//        super.onStart()
-//        setLayout(0.9f, 0.9f)
-//    }
-
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
         arguments?.let {

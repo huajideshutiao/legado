@@ -21,7 +21,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
@@ -39,11 +38,6 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
                 isEdit = true
             }
         }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.run {

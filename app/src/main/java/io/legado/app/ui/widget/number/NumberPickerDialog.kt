@@ -1,23 +1,66 @@
 package io.legado.app.ui.widget.number
 
-import android.content.Context
+import android.app.Dialog
+import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.NumberPicker
 import io.legado.app.R
-import io.legado.app.lib.dialogs.alert
+import io.legado.app.base.BaseDialogFragment
+import io.legado.app.lib.dialogs.AndroidAlertBuilder
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.hideSoftInput
 
+class NumberPickerDialog : BaseDialogFragment(0) {
 
-class NumberPickerDialog(private val context: Context) {
-    private var title: CharSequence? = null
+    private var titleText: CharSequence? = null
+    private var titleResId: Int? = null
     private var maxValue: Int? = null
     private var minValue: Int? = null
     private var value: Int? = null
     private var neutralButtonText: Int? = null
     private var neutralButtonListener: (() -> Unit)? = null
+    private var callback: ((value: Int) -> Unit)? = null
+
+    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {}
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_number_picker, null)
+        val numberPicker = dialogView.findViewById<NumberPicker>(R.id.number_picker)
+        minValue?.let { numberPicker.minValue = it }
+        maxValue?.let { numberPicker.maxValue = it }
+        value?.let { numberPicker.value = it }
+
+        val builder = AndroidAlertBuilder(requireContext())
+        titleText?.let { builder.setTitle(it) }
+        titleResId?.let { builder.setTitle(it) }
+        builder.setCustomView(dialogView)
+        builder.positiveButton(R.string.ok) {
+            numberPicker.clearFocus()
+            numberPicker.hideSoftInput()
+            callback?.invoke(numberPicker.value)
+        }
+        builder.negativeButton(R.string.cancel)
+        neutralButtonText?.let { textId ->
+            builder.neutralButton(textId) {
+                numberPicker.clearFocus()
+                numberPicker.hideSoftInput()
+                neutralButtonListener?.invoke()
+            }
+        }
+        return builder.build().applyTint()
+    }
 
     fun setTitle(title: String): NumberPickerDialog {
-        this.title = title
+        titleText = title
+        titleResId = null
+        return this
+    }
+
+    fun setTitleRes(titleResId: Int): NumberPickerDialog {
+        this.titleResId = titleResId
+        titleText = null
         return this
     }
 
@@ -43,27 +86,17 @@ class NumberPickerDialog(private val context: Context) {
     }
 
     fun show(callBack: ((value: Int) -> Unit)?) {
-        val dialogView = LayoutInflater.from(context)
-            .inflate(R.layout.dialog_number_picker, null)
-        val numberPicker = dialogView.findViewById<NumberPicker>(R.id.number_picker)
-        minValue?.let { numberPicker.minValue = it }
-        maxValue?.let { numberPicker.maxValue = it }
-        value?.let { numberPicker.value = it }
+        this.callback = callBack
+    }
 
-        context.alert(title = title) {
-            customView { dialogView }
-            positiveButton(R.string.ok) {
-                numberPicker.clearFocus()
-                numberPicker.hideSoftInput()
-                callBack?.invoke(numberPicker.value)
-            }
-            negativeButton(R.string.cancel)
-            neutralButtonText?.let { textId ->
-                neutralButton(textId) {
-                    numberPicker.clearFocus()
-                    numberPicker.hideSoftInput()
-                    neutralButtonListener?.invoke()
-                }
+    companion object {
+        fun show(
+            fragmentManager: androidx.fragment.app.FragmentManager,
+            block: NumberPickerDialog.() -> Unit
+        ) {
+            NumberPickerDialog().apply {
+                block()
+                show(fragmentManager, "numberPickerDialog")
             }
         }
     }

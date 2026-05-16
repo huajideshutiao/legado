@@ -4,12 +4,10 @@ import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.LinearLayout
 import androidx.preference.Preference
 import io.legado.app.R
@@ -31,22 +29,14 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setupAsBottomDialog
 
 class MoreConfigDialog : BasePrefDialogFragment() {
     private val readPreferTag = "readPreferenceFragment"
 
     override fun onStart() {
         super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(R.color.background)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attributes = attr
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 360.dpToPx())
-        }
+        dialog?.window?.setupAsBottomDialog(360.dpToPx())
     }
 
     override fun onCreateView(
@@ -187,15 +177,16 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.pageTouchSlop -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.page_touch_slop_dialog_title))
-                        .setMaxValue(9999)
-                        .setMinValue(0)
-                        .setValue(AppConfig.pageTouchSlop)
-                        .show {
+                    NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                        setTitleRes(R.string.page_touch_slop_dialog_title)
+                        setMaxValue(9999)
+                        setMinValue(0)
+                        setValue(AppConfig.pageTouchSlop)
+                        show {
                             AppConfig.pageTouchSlop = it
                             postEvent(EventBus.UP_CONFIG, arrayListOf(4))
                         }
+                    }
                 }
             }
             return super.onPreferenceTreeClick(preference)

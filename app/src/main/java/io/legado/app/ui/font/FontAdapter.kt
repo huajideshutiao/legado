@@ -2,14 +2,12 @@ package io.legado.app.ui.font
 
 import android.content.Context
 import android.graphics.Typeface
-import android.os.Build
 import android.view.ViewGroup
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.ItemFontBinding
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.invisible
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.visible
@@ -36,14 +34,10 @@ class FontAdapter(context: Context, curFilePath: String, val callBack: CallBack)
         binding.run {
             kotlin.runCatching {
                 val typeface: Typeface? = if (item.isContentScheme) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.contentResolver
-                            .openFileDescriptor(item.uri, "r")?.use {
-                                Typeface.Builder(it.fileDescriptor).build()
-                            }
-                    } else {
-                        Typeface.createFromFile(RealPathUtil.getPath(context, item.uri))
-                    }
+                    context.contentResolver
+                        .openFileDescriptor(item.uri, "r")?.use {
+                            Typeface.Builder(it.fileDescriptor).build()
+                        }
                 } else {
                     Typeface.createFromFile(item.uri.path!!)
                 }

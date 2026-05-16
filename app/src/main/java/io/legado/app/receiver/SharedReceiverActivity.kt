@@ -49,7 +49,7 @@ class SharedReceiverActivity : AppCompatActivity() {
         val result = StringBuilder()
         for (url in urls) {
             if (url.matches("http.+".toRegex()))
-                result.append("\n").append(url.trim { it <= ' ' })
+                result.append("\n").append(url.trim())
         }
         if (result.length > 1) {
             startActivity<MainActivity>()

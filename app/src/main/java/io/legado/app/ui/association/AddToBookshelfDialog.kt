@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
@@ -19,7 +18,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -43,11 +41,6 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
 
     val binding by viewBinding(DialogAddToBookshelfBinding::bind)
     val viewModel by viewModels<ViewModel>()
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)

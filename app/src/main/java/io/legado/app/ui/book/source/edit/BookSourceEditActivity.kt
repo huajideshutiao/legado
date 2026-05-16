@@ -541,7 +541,7 @@ class BookSourceEditActivity :
     override fun onHelpActionSelect(action: String) {
         when (action) {
             "addGroup" -> alertGroups()
-            "urlOption" -> UrlOptionDialog(this) { sendText(it) }.show()
+            "urlOption" -> UrlOptionDialog.show(supportFragmentManager) { sendText(it) }
             "ruleHelp" -> showHelp("ruleHelp")
             "jsHelp" -> showHelp("jsHelp")
             "regexHelp" -> showHelp("regexHelp")

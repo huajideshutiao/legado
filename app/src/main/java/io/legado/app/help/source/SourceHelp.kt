@@ -50,6 +50,7 @@ object SourceHelp {
     fun deleteSource(key: String, @SourceType.Type type: Int) {
         when (type) {
             SourceType.book -> deleteBookSource(key)
+            SourceType.rss -> deleteBookSource(key)
         }
     }
 
@@ -85,6 +86,7 @@ object SourceHelp {
     fun enableSource(key: String, @SourceType.Type type: Int, enable: Boolean) {
         when (type) {
             SourceType.book -> appDb.bookSourceDao.enable(key, enable)
+            SourceType.rss -> appDb.bookSourceDao.enable(key, enable)
         }
     }
 

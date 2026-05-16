@@ -2,7 +2,6 @@ package io.legado.app.ui.book.bookmark
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -10,14 +9,13 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.DialogBookmarkBinding
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true) {
+class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
 
     constructor(bookmark: Bookmark, editPos: Int = -1) : this() {
         arguments = Bundle().apply {
@@ -27,11 +25,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true) {
     }
 
     private val binding by viewBinding(DialogBookmarkBinding::bind)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

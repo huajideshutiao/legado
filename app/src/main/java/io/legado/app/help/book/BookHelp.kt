@@ -481,7 +481,7 @@ object BookHelp {
     fun formatBookAuthor(author: String): String {
         return author
             .replace(AppPattern.authorRegex, "")
-            .trim { it <= ' ' }
+            .trim()
     }
 
     private val jaccardSimilarity by lazy {

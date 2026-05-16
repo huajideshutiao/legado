@@ -14,7 +14,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
+class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable),
     Toolbar.OnMenuItemClickListener {
 
     private val binding by viewBinding(DialogVariableBinding::bind)
@@ -36,11 +36,6 @@ class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
         }
         this.onSave = onSave
     }
-
-//    override fun onStart() {
-//        super.onStart()
-//        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-//    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

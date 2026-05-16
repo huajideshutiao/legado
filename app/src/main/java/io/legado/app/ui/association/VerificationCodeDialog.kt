@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import com.bumptech.glide.load.DataSource
@@ -25,7 +24,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ImageProvider
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -73,11 +71,6 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
 
     val binding by viewBinding(DialogVerificationCodeViewBinding::bind)
     val viewModel by viewModels<VerificationCodeViewModel>()
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     private var sourceOrigin: String? = null
 

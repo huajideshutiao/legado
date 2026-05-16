@@ -39,7 +39,7 @@ import splitties.init.appCtx
 import splitties.views.onClick
 
 
-class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
+class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
     private val source by lazy { (IntentData.source as? BaseSource) }

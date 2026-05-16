@@ -27,7 +27,7 @@ object ContentHelp {
         var buffer = StringBuilder((content1.length * 1.15).toInt())
         //          章节的文本格式为章节标题-空行-首段，所以处理段落时需要略过第一行文本。
         buffer.append("  ")
-        if (chapterName.trim { it <= ' ' } != p[0].trim { it <= ' ' }) {
+        if (chapterName.trim() != p[0].trim()) {
             // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
             buffer.append(p[0].replace("[\u3000\\s]+".toRegex(), ""))
         }

@@ -13,7 +13,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.addCallback
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
@@ -109,7 +108,6 @@ abstract class BaseActivity<VB : ViewBinding>(
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         findViewById<TitleBar>(R.id.title_bar)

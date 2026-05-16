@@ -43,7 +43,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     private lateinit var tabLayout: TabLayout
     private var menu: Menu? = null
     private var searchView: SearchView? = null
-    private val waitDialog by lazy { WaitDialog(this) }
+    private val waitDialog by lazy { WaitDialog.from(this) }
     private val exportDir by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
@@ -179,9 +179,9 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     }
 
     private fun upBookAndToc(book: Book) {
-        waitDialog.show()
+        waitDialog.show(supportFragmentManager)
         viewModel.upBookTocRule(book) {
-            waitDialog.dismiss()
+            waitDialog.dismissSafe()
             if (ReadBook.book == book) {
                 if (it == null) {
                     ReadBook.upMsg(null)

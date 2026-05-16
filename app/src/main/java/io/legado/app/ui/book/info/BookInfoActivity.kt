@@ -154,7 +154,7 @@ class BookInfoActivity :
         if (it.resultCode != RESULT_CANCELED) viewModel.upSource()
     }
     private var chapterChanged = false
-    private val waitDialog by lazy { WaitDialog(this) }
+    private val waitDialog by lazy { WaitDialog.from(this) }
     private var editMenuItem: MenuItem? = null
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
@@ -716,7 +716,7 @@ class BookInfoActivity :
     }
 
     private fun upWaitDialogStatus(isShow: Boolean) {
-        if (isShow) waitDialog.run { setText("Loading....."); show() }
-        else waitDialog.dismiss()
+        if (isShow) waitDialog.run { setText("Loading....."); show(supportFragmentManager) }
+        else waitDialog.dismissSafe()
     }
 }

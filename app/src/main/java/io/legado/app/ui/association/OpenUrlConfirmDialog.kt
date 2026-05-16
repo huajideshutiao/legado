@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.core.net.toUri
 import androidx.fragment.app.viewModels
@@ -15,7 +14,6 @@ import io.legado.app.databinding.DialogOpenUrlConfirmBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -61,11 +59,6 @@ class OpenUrlConfirmDialog() : BaseDialogFragment(R.layout.dialog_open_url_confi
 
     val binding by viewBinding(DialogOpenUrlConfirmBinding::bind)
     val viewModel by viewModels<OpenUrlConfirmViewModel>()
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         initMenu()

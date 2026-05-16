@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -409,7 +410,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
                     break;
                 }
                 tocResource = resources
-                        .getByIdOrHref(possibleNcxItemId.toUpperCase());
+                    .getByIdOrHref(possibleNcxItemId.toUpperCase(Locale.ROOT));
                 if (tocResource != null) {
                     break;
                 }
@@ -421,7 +422,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
             Log.e(TAG,
                     "Could not find table of contents resource. Tried resource with id '"
                             + tocResourceId + "', " + Constants.DEFAULT_TOC_ID + ", "
-                            + Constants.DEFAULT_TOC_ID.toUpperCase()
+                        + Constants.DEFAULT_TOC_ID.toUpperCase(Locale.ROOT)
                             + " and any NCX resource.");
         }
         return tocResource;

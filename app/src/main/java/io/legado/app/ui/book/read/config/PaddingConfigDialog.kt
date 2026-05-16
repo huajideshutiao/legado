@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read.config
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -11,7 +10,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogReadPaddingBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
@@ -26,7 +24,6 @@ class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
             attr.dimAmount = 0.0f
             it.attributes = attr
         }
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

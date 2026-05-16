@@ -3,7 +3,6 @@ package io.legado.app.ui.config
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -17,7 +16,6 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
@@ -27,11 +25,6 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
     Toolbar.OnMenuItemClickListener {
 
     private val binding by viewBinding(DialogDirectLinkUploadConfigBinding::bind)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

@@ -2,14 +2,12 @@ package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import androidx.core.view.get
 import com.github.liuyueyi.quick.transfer.constants.TransType
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseBottomDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
@@ -33,29 +31,14 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.views.onLongClick
 
-class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
+class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style),
     FontSelectDialog.CallBack {
 
     private val binding by viewBinding(DialogReadBookStyleBinding::bind)
     private val callBack get() = activity as? ReadBookActivity
     private lateinit var styleAdapter: StyleAdapter
 
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(R.color.background)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attributes = attr
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        (activity as ReadBookActivity).bottomDialog++
+    override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) {
         initView()
         initData()
         initViewEvent()
@@ -64,7 +47,6 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         ReadBookConfig.save()
-        (activity as ReadBookActivity).bottomDialog--
     }
 
     private fun initView() = binding.run {

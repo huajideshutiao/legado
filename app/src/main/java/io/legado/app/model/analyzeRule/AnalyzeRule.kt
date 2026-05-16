@@ -501,7 +501,7 @@ class AnalyzeRule(
         val jsMatcher = JS_PATTERN.matcher(ruleStr)
         while (jsMatcher.find()) {
             if (jsMatcher.start() > start) {
-                tmp = ruleStr.substring(start, jsMatcher.start()).trim { it <= ' ' }
+                tmp = ruleStr.substring(start, jsMatcher.start()).trim()
                 if (tmp.isNotEmpty()) {
                     ruleList.add(SourceRule(tmp, mMode))
                 }
@@ -511,7 +511,7 @@ class AnalyzeRule(
         }
 
         if (ruleStr.length > start) {
-            tmp = ruleStr.substring(start).trim { it <= ' ' }
+            tmp = ruleStr.substring(start).trim()
             if (tmp.isNotEmpty()) {
                 ruleList.add(SourceRule(tmp, mMode))
             }

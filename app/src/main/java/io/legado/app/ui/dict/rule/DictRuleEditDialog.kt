@@ -4,7 +4,6 @@ import android.app.Application
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import io.legado.app.R
@@ -19,11 +18,10 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, true),
+class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
     Toolbar.OnMenuItemClickListener {
 
     val viewModel by viewModels<DictRuleEditViewModel>()
@@ -33,11 +31,6 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
         arguments = Bundle().apply {
             putString("name", name)
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

@@ -19,7 +19,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -38,11 +37,6 @@ class ImportHttpTtsDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by viewModels<ImportHttpTtsViewModel>()
     private val adapter by lazy { SourcesAdapter(requireContext()) }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
@@ -64,10 +58,10 @@ class ImportHttpTtsDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
         binding.tvOk.visible()
         binding.tvOk.setOnClickListener {
-            val waitDialog = WaitDialog(requireContext())
-            waitDialog.show()
+            val waitDialog = WaitDialog.from(requireActivity())
+            waitDialog.show(requireActivity().supportFragmentManager)
             viewModel.importSelect {
-                waitDialog.dismiss()
+                waitDialog.dismissSafe()
                 dismissAllowingStateLoss()
             }
         }

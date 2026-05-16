@@ -1,15 +1,11 @@
 package io.legado.app.ui.book.read.config
 
 import android.annotation.SuppressLint
-import android.content.DialogInterface
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.SeekBar
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseBottomDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
@@ -19,7 +15,6 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.getPrefBoolean
@@ -29,35 +24,12 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 
 
-class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud) {
+class ReadAloudDialog : BaseBottomDialogFragment(R.layout.dialog_read_aloud) {
+    override val dismissWhenOtherBottomDialogShowing = true
     private val callBack: CallBack? get() = activity as? CallBack
     private val binding by viewBinding(DialogReadAloudBinding::bind)
 
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(R.color.background)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attributes = attr
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
-        (activity as ReadBookActivity).bottomDialog--
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val bottomDialog = (activity as ReadBookActivity).bottomDialog++
-        if (bottomDialog > 0) {
-            dismiss()
-            return
-        }
+    override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) {
         val bg = requireContext().bottomBackground
         val isLight = ColorUtils.isColorLight(bg)
         val textColor = requireContext().getPrimaryTextColor(isLight)

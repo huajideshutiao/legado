@@ -2,12 +2,14 @@ package io.legado.app.utils
 
 import android.app.Dialog
 import android.graphics.Color
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.forEach
 import androidx.fragment.app.DialogFragment
+import io.legado.app.R
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
@@ -30,9 +32,9 @@ fun AlertDialog.applyTint(): AlertDialog {
         val inset = (density * 16).toInt()
         setBackgroundDrawable(android.graphics.drawable.InsetDrawable(bg, inset))
 
-        // 统一宽度为屏幕窄边的 90%
+        // 统一宽度为屏幕窄边的 95%
         val dm = context.windowManager.windowSize
-        val width = (kotlin.math.min(dm.widthPixels, dm.heightPixels) * 0.9).toInt()
+        val width = (kotlin.math.min(dm.widthPixels, dm.heightPixels) * 0.95).toInt()
         setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
@@ -116,4 +118,15 @@ fun DialogFragment.setLayout(width: Int, height: Int) {
 
 fun Dialog.setLayout(width: Int, height: Int) {
     window?.setLayout(width, height)
+}
+
+fun android.view.Window.setupAsBottomDialog(height: Int = ViewGroup.LayoutParams.WRAP_CONTENT) {
+    clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    setBackgroundDrawableResource(R.color.background)
+    decorView.setPadding(0, 0, 0, 0)
+    val attr = attributes
+    attr.dimAmount = 0.0f
+    attr.gravity = Gravity.BOTTOM
+    attributes = attr
+    setLayout(ViewGroup.LayoutParams.MATCH_PARENT, height)
 }

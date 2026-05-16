@@ -3,11 +3,11 @@ package io.legado.app.ui.book.read.page.provider
 import android.graphics.Paint.FontMetrics
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import androidx.core.net.toUri
 import androidx.core.os.postDelayed
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
@@ -24,7 +24,6 @@ import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
@@ -724,16 +723,12 @@ object ChapterProvider {
     private fun getTypeface(fontPath: String): Typeface? {
         return kotlin.runCatching {
             when {
-                fontPath.isContentScheme() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
+                fontPath.isContentScheme() -> {
                     appCtx.contentResolver
-                        .openFileDescriptor(Uri.parse(fontPath), "r")!!
+                        .openFileDescriptor(fontPath.toUri(), "r")!!
                         .use {
                             Typeface.Builder(it.fileDescriptor).build()
                         }
-                }
-
-                fontPath.isContentScheme() -> {
-                    Typeface.createFromFile(RealPathUtil.getPath(appCtx, Uri.parse(fontPath)))
                 }
 
                 fontPath.isNotEmpty() -> Typeface.createFromFile(fontPath)

@@ -1,18 +1,14 @@
 package io.legado.app.ui.book.read.config
 
-import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.widget.TextView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.IBottomDialog
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogClickActionConfigBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -41,26 +37,7 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
         )
     }
 
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            setBackgroundDrawableResource(R.color.transparent)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        }
-    }
-
-    override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
-        (activity as? IBottomDialog)?.run {
-            bottomDialog--
-        }
-    }
-
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        (activity as? IBottomDialog)?.run {
-            bottomDialog++
-        }
-        view.setBackgroundColor(getCompatColor(R.color.translucent))
         initData()
         initViewEvent()
     }

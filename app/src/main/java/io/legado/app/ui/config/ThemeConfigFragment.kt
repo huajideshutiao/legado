@@ -176,33 +176,35 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (val key = preference.key) {
-            PreferKey.barElevation -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.bar_elevation))
-                .setMaxValue(32)
-                .setMinValue(0)
-                .setValue(AppConfig.elevation)
-                .setCustomButton((R.string.btn_default_s)) {
+            PreferKey.barElevation -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.bar_elevation)
+                setMaxValue(32)
+                setMinValue(0)
+                setValue(AppConfig.elevation)
+                setCustomButton((R.string.btn_default_s)) {
                     AppConfig.elevation = AppConst.sysElevation
                     recreateActivities()
                 }
-                .show {
+                show {
                     AppConfig.elevation = it
                     recreateActivities()
                 }
+            }
 
-            PreferKey.fontScale -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.font_scale))
-                .setMaxValue(16)
-                .setMinValue(8)
-                .setValue(10)
-                .setCustomButton((R.string.btn_default_s)) {
+            PreferKey.fontScale -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.font_scale)
+                setMaxValue(16)
+                setMinValue(8)
+                setValue(10)
+                setCustomButton((R.string.btn_default_s)) {
                     putPrefInt(PreferKey.fontScale, 0)
                     recreateActivities()
                 }
-                .show {
+                show {
                     putPrefInt(PreferKey.fontScale, it)
                     recreateActivities()
                 }
+            }
 
             PreferKey.bgImage -> selectBgAction(false)
             PreferKey.bgImageN -> selectBgAction(true)
@@ -221,14 +223,15 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bookshelfLayout -> configBookshelf()
 
             PreferKey.sourceEditMaxLine -> {
-                NumberPickerDialog(requireContext())
-                    .setTitle(getString(R.string.source_edit_text_max_line))
-                    .setMaxValue(Int.MAX_VALUE)
-                    .setMinValue(10)
-                    .setValue(AppConfig.sourceEditMaxLine)
-                    .show {
+                NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                    setTitleRes(R.string.source_edit_text_max_line)
+                    setMaxValue(Int.MAX_VALUE)
+                    setMinValue(10)
+                    setValue(AppConfig.sourceEditMaxLine)
+                    show {
                         AppConfig.sourceEditMaxLine = it
                     }
+                }
             }
         }
         return super.onPreferenceTreeClick(preference)

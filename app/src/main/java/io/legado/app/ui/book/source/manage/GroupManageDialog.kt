@@ -38,7 +38,7 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     override fun onStart() {
         super.onStart()
-        setLayout(0.9f, 0.9f)
+        setLayout(0.95f, 0.9f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

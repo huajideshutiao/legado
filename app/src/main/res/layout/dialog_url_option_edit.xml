@@ -6,7 +6,7 @@
     android:padding="16dp">
 
     <LinearLayout
-        android:id="@+id/vw_bg"
+        android:id="@+id/content_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/shape_card_view"

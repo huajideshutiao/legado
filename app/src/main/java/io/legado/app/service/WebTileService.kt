@@ -7,7 +7,6 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.view.WindowManager.BadTokenException
-import androidx.annotation.RequiresApi
 import io.legado.app.R
 import io.legado.app.constant.IntentAction
 import io.legado.app.utils.printOnDebug
@@ -16,7 +15,6 @@ import io.legado.app.utils.printOnDebug
 /**
  * web服务快捷开关
  */
-@RequiresApi(Build.VERSION_CODES.N)
 class WebTileService : TileService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

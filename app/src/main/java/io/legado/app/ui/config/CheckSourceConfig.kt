@@ -2,7 +2,6 @@ package io.legado.app.ui.config
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.PreferKey
@@ -10,7 +9,6 @@ import io.legado.app.databinding.DialogCheckSourceConfigBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.utils.putPrefString
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.views.onClick
@@ -21,11 +19,6 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
 
     //允许的最小超时时间，秒
     private val minTimeout = 0L
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

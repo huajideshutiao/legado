@@ -48,8 +48,7 @@ import kotlinx.coroutines.launch
  * txt目录规则
  */
 class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
-    Toolbar.OnMenuItemClickListener,
-    TxtTocRuleEditDialog.Callback {
+    Toolbar.OnMenuItemClickListener, TxtTocRuleEditDialog.Callback {
 
     constructor(tocRegex: String?) : this() {
         arguments = Bundle().apply {
@@ -66,14 +65,14 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
     private val importDoc by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            showDialogFragment(ImportTxtTocRuleDialog(uri.toString()))
-        }
+                showDialogFragment(ImportTxtTocRuleDialog(uri.toString()))
+            }
         }
     }
 
     override fun onStart() {
         super.onStart()
-        setLayout(0.9f, 0.8f)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -156,11 +155,9 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
     private fun showImportDialog() {
         val aCache = ACache.get(cacheDir = false)
         val defaultUrl = "https://gitee.com/fisher52/YueDuJson/raw/master/myTxtChapterRule.json"
-        val cacheUrls: MutableList<String> = aCache
-            .getAsString(importTocRuleKey)
-            ?.splitNotBlank(",")
-            ?.toMutableList()
-            ?: mutableListOf()
+        val cacheUrls: MutableList<String> =
+            aCache.getAsString(importTocRuleKey)?.splitNotBlank(",")?.toMutableList()
+                ?: mutableListOf()
         if (!cacheUrls.contains(defaultUrl)) {
             cacheUrls.add(0, defaultUrl)
         }
@@ -189,8 +186,7 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
     }
 
     inner class TocRegexAdapter(context: Context) :
-        RecyclerAdapter<TxtTocRule, ItemTocRegexBinding>(context),
-        ItemTouchCallback.Callback {
+        RecyclerAdapter<TxtTocRule, ItemTocRegexBinding>(context), ItemTouchCallback.Callback {
 
         val diffItemCallBack = object : DiffUtil.ItemCallback<TxtTocRule>() {
 

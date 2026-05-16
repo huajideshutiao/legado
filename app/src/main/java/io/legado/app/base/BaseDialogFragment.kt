@@ -2,12 +2,11 @@ package io.legado.app.base
 
 import android.content.DialogInterface
 import android.content.DialogInterface.OnDismissListener
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import androidx.annotation.LayoutRes
+import androidx.core.graphics.drawable.toDrawable
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
@@ -22,9 +21,10 @@ import kotlin.coroutines.CoroutineContext
 
 
 abstract class BaseDialogFragment(
-    @LayoutRes layoutID: Int,
-    private val adaptationSoftKeyboard: Boolean = false
+    @LayoutRes layoutID: Int
 ) : DialogFragment(layoutID) {
+
+    protected open val applyFilletBackground: Boolean = true
 
     private var onDismissListener: OnDismissListener? = null
 
@@ -36,7 +36,7 @@ abstract class BaseDialogFragment(
         super.onStart()
         dialog?.window?.let {
             it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            it.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            it.setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
             val attr = it.attributes
             if (AppConfig.isEInkMode) {
                 it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
@@ -51,21 +51,9 @@ abstract class BaseDialogFragment(
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            //不加这个android 5.0对话框顶部会有空白
-            setStyle(STYLE_NO_TITLE, 0)
-        }
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        if (adaptationSoftKeyboard) {
-            view.findViewById<View>(R.id.vw_bg)?.setOnClickListener(null)
-            view.setOnClickListener { dismiss() }
-        }
-        if (!AppConfig.isEInkMode) {
+        if (!AppConfig.isEInkMode && applyFilletBackground) {
             view.background = requireContext().filletBackground
         }
         onFragmentCreated(view, savedInstanceState)

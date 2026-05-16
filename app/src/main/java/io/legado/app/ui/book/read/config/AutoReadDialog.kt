@@ -1,15 +1,11 @@
 package io.legado.app.ui.book.read.config
 
-import android.content.DialogInterface
 import android.graphics.PorterDuff
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.SeekBar
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseBottomDialogFragment
 import io.legado.app.databinding.DialogAutoReadBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.bottomBackground
@@ -25,36 +21,14 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.util.Locale
 
 
-class AutoReadDialog : BaseDialogFragment(R.layout.dialog_auto_read) {
+class AutoReadDialog : BaseBottomDialogFragment(R.layout.dialog_auto_read) {
+
+    override val dismissWhenOtherBottomDialogShowing = true
 
     private val binding by viewBinding(DialogAutoReadBinding::bind)
     private val callBack: CallBack? get() = activity as? CallBack
 
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(R.color.background)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attributes = attr
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
-        (activity as ReadBookActivity).bottomDialog--
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
-        val bottomDialog = (activity as ReadBookActivity).bottomDialog++
-        if (bottomDialog > 0) {
-            dismiss()
-            return@run
-        }
+    override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) = binding.run {
         val bg = requireContext().bottomBackground
         val isLight = ColorUtils.isColorLight(bg)
         val textColor = requireContext().getPrimaryTextColor(isLight)

@@ -27,19 +27,10 @@ import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 
 class ReadAloudConfigDialog : BasePrefDialogFragment() {
     private val readAloudPreferTag = "readAloudPreferTag"
-
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            setBackgroundDrawableResource(R.color.transparent)
-            setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,

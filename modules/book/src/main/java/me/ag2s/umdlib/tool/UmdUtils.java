@@ -8,9 +8,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Random;
 import java.util.zip.Inflater;
-import java.nio.charset.StandardCharsets;
 
 
 public class UmdUtils {
@@ -61,7 +62,7 @@ public class UmdUtils {
             sTmp = Integer.toHexString(0xFF & bArr[i]);
             if (sTmp.length() < 2)
                 sb.append(0);
-            sb.append(sTmp.toUpperCase());
+            sb.append(sTmp.toUpperCase(Locale.ROOT));
         }
 
         return sb.toString();

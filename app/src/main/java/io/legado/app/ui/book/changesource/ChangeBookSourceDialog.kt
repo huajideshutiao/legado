@@ -70,7 +70,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     private val groups = linkedSetOf<String>()
     private val callBack: CallBack? get() = activity as? CallBack
     private val viewModel: ChangeBookSourceViewModel by viewModels()
-    private val waitDialog by lazy { WaitDialog(requireContext()) }
+    private val waitDialog by lazy { WaitDialog.from(requireActivity()) }
     private val adapter by lazy { ChangeBookSourceAdapter(requireContext(), viewModel, this) }
     private val editSourceResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
@@ -387,17 +387,17 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
 
     private fun changeSource(searchBook: SearchBook, onSuccess: (() -> Unit)? = null) {
         waitDialog.setText(R.string.load_toc)
-        waitDialog.show()
+        waitDialog.show(requireActivity().supportFragmentManager)
         val book = viewModel.bookMap[searchBook.primaryStr()] ?: searchBook.toBook()
         val coroutine = viewModel.getToc(book, { toc, source ->
-            waitDialog.dismiss()
+            waitDialog.dismissSafe()
             callBack?.changeTo(source, book, toc)
             onSuccess?.invoke()
         }, {
-            waitDialog.dismiss()
+            waitDialog.dismissSafe()
             AppLog.put("换源获取目录出错\n$it", it, true)
         })
-        waitDialog.setOnCancelListener {
+        waitDialog.onCancelListener = {
             coroutine.cancel()
         }
     }

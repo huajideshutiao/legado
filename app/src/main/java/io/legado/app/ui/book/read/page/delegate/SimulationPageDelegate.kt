@@ -10,7 +10,6 @@ import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.Region
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.view.MotionEvent
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.book.read.page.ReadView
@@ -301,11 +300,7 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
         }
         canvas.save()
         canvas.clipPath(mPath0)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            canvas.clipPath(mPath1)
-        } else {
-            canvas.clipPath(mPath1, Region.Op.INTERSECT)
-        }
+        canvas.clipPath(mPath1)
 
         mPaint.colorFilter = mColorMatrixFilter
         val dis = hypot(
@@ -359,11 +354,7 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
         mPath1.lineTo(mBezierStart1.x, mBezierStart1.y)
         mPath1.close()
         canvas.save()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            canvas.clipOutPath(mPath0)
-        } else {
-            canvas.clipPath(mPath0, Region.Op.XOR)
-        }
+        canvas.clipOutPath(mPath0)
         canvas.clipPath(mPath1, Region.Op.INTERSECT)
 
         var leftX: Int
@@ -396,11 +387,7 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
         mPath1.lineTo(mBezierStart2.x, mBezierStart2.y)
         mPath1.close()
         canvas.save()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            canvas.clipOutPath(mPath0)
-        } else {
-            canvas.clipPath(mPath0, Region.Op.XOR)
-        }
+        canvas.clipOutPath(mPath0)
         canvas.clipPath(mPath1)
 
         if (mIsRtOrLb) {
@@ -467,11 +454,7 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
         }
         canvas.save()
         canvas.clipPath(mPath0)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            canvas.clipPath(mPath1)
-        } else {
-            canvas.clipPath(mPath1, Region.Op.INTERSECT)
-        }
+        canvas.clipPath(mPath1)
         canvas.drawBitmap(bitmap, 0f, 0f, null)
         canvas.rotate(mDegrees, mBezierStart1.x, mBezierStart1.y)
         mBackShadowDrawable.setBounds(
@@ -498,11 +481,7 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
         mPath0.close()
 
         canvas.save()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            canvas.clipOutPath(mPath0)
-        } else {
-            canvas.clipPath(mPath0, Region.Op.XOR)
-        }
+        canvas.clipOutPath(mPath0)
         canvas.drawBitmap(bitmap, 0f, 0f, null)
         canvas.restore()
     }

@@ -46,7 +46,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     override fun onStart() {
         super.onStart()
-        setLayout(0.9f, 0.8f)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

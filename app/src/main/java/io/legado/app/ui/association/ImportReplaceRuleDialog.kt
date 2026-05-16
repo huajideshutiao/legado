@@ -28,7 +28,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -48,11 +47,6 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by viewModels<ImportReplaceRuleViewModel>()
     private val adapter by lazy { SourcesAdapter(requireContext()) }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
@@ -75,10 +69,10 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
         }
         binding.tvOk.visible()
         binding.tvOk.setOnClickListener {
-            val waitDialog = WaitDialog(requireContext())
-            waitDialog.show()
+            val waitDialog = WaitDialog.from(requireActivity())
+            waitDialog.show(requireActivity().supportFragmentManager)
             viewModel.importSelect {
-                waitDialog.dismiss()
+                waitDialog.dismissSafe()
                 dismissAllowingStateLoss()
             }
         }

@@ -90,15 +90,12 @@ class PermissionActivity : AppCompatActivity() {
                             && requestPermissionResult.launch(Permissions.POST_NOTIFICATIONS)
                         ) {
                             onRequestPermissionFinish()
-                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            //这种方案适用于 API 26, 即8.0（含8.0）以上可以用
+                        } else {
                             val intent = Intent()
                             intent.action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
                             intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
                             intent.putExtra(Settings.EXTRA_CHANNEL_ID, applicationInfo.uid)
                             settingActivityResult.launch(intent)
-                        } else {
-                            openSettingsActivity()
                         }
                     } catch (e: Exception) {
                         AppLog.put("请求通知权限出错\n$e", e, true)

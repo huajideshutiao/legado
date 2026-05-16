@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read.config
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
@@ -20,13 +19,12 @@ import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, true),
+class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long) : this() {
@@ -37,11 +35,6 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
 
     private val binding by viewBinding(DialogHttpTtsEditBinding::bind)
     private val viewModel by viewModels<HttpTtsEditViewModel>()
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

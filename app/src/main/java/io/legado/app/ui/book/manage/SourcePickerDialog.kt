@@ -106,14 +106,15 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
-            R.id.menu_change_source_delay -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.change_source_delay))
-                .setMaxValue(9999)
-                .setMinValue(0)
-                .setValue(AppConfig.batchChangeSourceDelay)
-                .show {
+            R.id.menu_change_source_delay -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.change_source_delay)
+                setMaxValue(9999)
+                setMinValue(0)
+                setValue(AppConfig.batchChangeSourceDelay)
+                show {
                     AppConfig.batchChangeSourceDelay = it
                 }
+            }
         }
         return true
     }

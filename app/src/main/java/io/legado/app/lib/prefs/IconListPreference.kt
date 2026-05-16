@@ -20,7 +20,6 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemIconPreferenceBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.getCompatDrawable
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 
@@ -127,11 +126,6 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         var dialogEntryValues: Array<CharSequence>? = null
         var dialogIconNames: Array<CharSequence>? = null
         private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-
-        override fun onStart() {
-            super.onStart()
-            setLayout(0.8f, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
 
         override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
             binding.toolBar.setBackgroundColor(primaryColor)

@@ -17,7 +17,6 @@ import io.legado.app.databinding.ItemAppLogBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.views.onClick
@@ -29,11 +28,6 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy {
         LogAdapter(requireContext())
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

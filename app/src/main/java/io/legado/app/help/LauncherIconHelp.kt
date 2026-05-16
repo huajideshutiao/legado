@@ -2,13 +2,10 @@ package io.legado.app.help
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
-import android.os.Build
-import io.legado.app.R
 import io.legado.app.ui.welcome.Launcher1
 import io.legado.app.ui.welcome.Launcher4
 import io.legado.app.ui.welcome.Launcher5
 import io.legado.app.ui.welcome.WelcomeActivity
-import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
 /**
@@ -25,10 +22,6 @@ object LauncherIconHelp {
 
     fun changeIcon(icon: String?) {
         if (icon.isNullOrEmpty()) return
-        if (Build.VERSION.SDK_INT < 26) {
-            appCtx.toastOnUi(R.string.change_icon_error)
-            return
-        }
         var hasEnabled = false
         componentNames.forEach {
             if (icon.equals(it.className.substringAfterLast("."), true)) {

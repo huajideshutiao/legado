@@ -38,7 +38,7 @@ import java.io.File
 class AboutFragment : PreferenceFragmentCompat() {
 
     private val waitDialog by lazy {
-        WaitDialog(requireContext())
+        WaitDialog.from(requireActivity())
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
@@ -86,7 +86,7 @@ class AboutFragment : PreferenceFragmentCompat() {
      * 检测更新
      */
     private fun checkUpdate() {
-        waitDialog.show()
+        waitDialog.show(requireActivity().supportFragmentManager)
         AppUpdate.gitHubUpdate?.run {
             check(lifecycleScope)
                 .onSuccess {
@@ -96,7 +96,7 @@ class AboutFragment : PreferenceFragmentCompat() {
                 }.onError {
                     appCtx.toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
                 }.onFinally {
-                    waitDialog.dismiss()
+                    waitDialog.dismissSafe()
                 }
         }
     }

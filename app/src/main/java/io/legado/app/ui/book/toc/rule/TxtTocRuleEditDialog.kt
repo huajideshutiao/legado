@@ -4,7 +4,6 @@ import android.app.Application
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import io.legado.app.R
@@ -22,14 +21,13 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
-class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit, true),
+class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long?) : this() {
@@ -42,11 +40,6 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
     private val binding by viewBinding(DialogTocRegexEditBinding::bind)
     private val viewModel by viewModels<ViewModel>()
     private val callback get() = (parentFragment as? Callback) ?: activity as? Callback
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

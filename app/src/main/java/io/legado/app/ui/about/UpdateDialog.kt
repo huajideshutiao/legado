@@ -2,14 +2,12 @@ package io.legado.app.ui.about
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogUpdateBinding
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.Download
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.noties.markwon.Markwon
@@ -29,11 +27,6 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_update) {
     }
 
     val binding by viewBinding(DialogUpdateBinding::bind)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

@@ -11,49 +11,49 @@ object BookType {
     /**
      * 8 文本
      */
-    const val text = 0b1000
+    const val text = 1 shl 3
 
     /**
      * 16 更新失败
      */
-    const val updateError = 0b10000
+    const val updateError = 1 shl 4
 
     /**
      * 32 音频
      */
-    const val audio = 0b100000
+    const val audio = 1 shl 5
 
     /**
      * 64 图片
      */
-    const val image = 0b1000000
+    const val image = 1 shl 6
 
     /**
      * 128 只提供下载服务的网站
      */
-    const val webFile = 0b10000000
+    const val webFile = 1 shl 7
 
     /**
      * 256 本地
      */
-    const val local = 0b100000000
+    const val local = 1 shl 8
 
     /**
      * 512 压缩包 表明书籍文件是从压缩包内解压来的
      */
-    const val archive = 0b1000000000
+    const val archive = 1 shl 9
 
     /**
      * 1024 未正式加入到书架的临时阅读书籍
      */
-    const val notShelf = 0b100_0000_0000
+    const val notShelf = 1 shl 10
 
-    const val video = 0b1000_0000_0000
+    const val video = 1 shl 11
 
     /**
      * 4096 订阅
      */
-    const val rss = 0b10000_0000_0000
+    const val rss = 1 shl 12
 
     @Target(AnnotationTarget.VALUE_PARAMETER)
     @Retention(AnnotationRetention.SOURCE)

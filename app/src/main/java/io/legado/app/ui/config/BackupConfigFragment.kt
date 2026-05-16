@@ -41,7 +41,6 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.launch
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
@@ -61,7 +60,7 @@ class BackupConfigFragment : PreferenceFragment(),
     MenuProvider {
 
     private val viewModel by activityViewModels<ConfigViewModel>()
-    private val waitDialog by lazy { WaitDialog(requireContext()) }
+    private val waitDialog by lazy { WaitDialog.from(requireActivity()) }
     private var backupJob: Job? = null
     private var restoreJob: Job? = null
 
@@ -95,13 +94,13 @@ class BackupConfigFragment : PreferenceFragment(),
         registerHandleFile { result ->
             result.uri?.let { uri ->
             waitDialog.setText("恢复中…")
-            waitDialog.show()
+                waitDialog.show(requireActivity().supportFragmentManager)
             val task = Coroutine.async {
                 Restore.restore(appCtx, uri)
             }.onFinally {
-                waitDialog.dismiss()
+                waitDialog.dismissSafe()
             }
-            waitDialog.setOnCancelListener {
+                waitDialog.onCancelListener = {
                 task.cancel()
             }
         }
@@ -291,10 +290,10 @@ class BackupConfigFragment : PreferenceFragment(),
 
     private fun backup(backupPath: String) {
         waitDialog.setText("备份中…")
-        waitDialog.setOnCancelListener {
+        waitDialog.onCancelListener = {
             backupJob?.cancel()
         }
-        waitDialog.show()
+        waitDialog.show(requireActivity().supportFragmentManager)
         backupJob?.cancel()
         backupJob = lifecycleScope.launch {
             try {
@@ -311,7 +310,7 @@ class BackupConfigFragment : PreferenceFragment(),
                 )
             } finally {
                 ensureActive()
-                waitDialog.dismiss()
+                waitDialog.dismissSafe()
             }
         }
     }
@@ -328,10 +327,10 @@ class BackupConfigFragment : PreferenceFragment(),
 
     fun restore() {
         waitDialog.setText(R.string.loading)
-        waitDialog.setOnCancelListener {
+        waitDialog.onCancelListener = {
             restoreJob?.cancel()
         }
-        waitDialog.show()
+        waitDialog.show(requireActivity().supportFragmentManager)
         Coroutine.async {
             restoreJob = coroutineContext[Job]
             showRestoreDialog(requireContext())
@@ -349,7 +348,7 @@ class BackupConfigFragment : PreferenceFragment(),
                 cancelButton()
             }
         }.onFinally {
-            waitDialog.dismiss()
+            waitDialog.dismissSafe()
         }
     }
 
@@ -379,16 +378,16 @@ class BackupConfigFragment : PreferenceFragment(),
 
     private fun restoreWebDav(name: String) {
         waitDialog.setText("恢复中…")
-        waitDialog.show()
+        waitDialog.show(requireActivity().supportFragmentManager)
         val task = Coroutine.async {
             AppWebDav.restoreWebDav(name)
         }.onError {
             AppLog.put("WebDav恢复出错\n${it.localizedMessage}", it)
             appCtx.toastOnUi("WebDav恢复出错\n${it.localizedMessage}")
         }.onFinally {
-            waitDialog.dismiss()
+            waitDialog.dismissSafe()
         }
-        waitDialog.setOnCancelListener {
+        waitDialog.onCancelListener = {
             task.cancel()
         }
     }
@@ -403,7 +402,7 @@ class BackupConfigFragment : PreferenceFragment(),
 
     override fun onDestroyView() {
         super.onDestroyView()
-        waitDialog.dismiss()
+        waitDialog.dismissSafe()
     }
 
 }

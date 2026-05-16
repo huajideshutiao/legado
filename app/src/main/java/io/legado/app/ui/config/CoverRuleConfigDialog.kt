@@ -3,7 +3,6 @@ package io.legado.app.ui.config
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -13,7 +12,6 @@ import io.legado.app.help.CacheManager
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.GSON
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
@@ -24,11 +22,6 @@ import splitties.views.onClick
 class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_config) {
 
     val binding by viewBinding(DialogCoverRuleConfigBinding::bind)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)

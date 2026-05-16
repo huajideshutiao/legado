@@ -113,10 +113,8 @@ internal class Request : OnRequestPermissionsResultCallback {
                 }
 
                 Permissions.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        if (!powerManager.isIgnoringBatteryOptimizations(appCtx.packageName)) {
-                            deniedPermissionList.add(permission)
-                        }
+                    if (!powerManager.isIgnoringBatteryOptimizations(appCtx.packageName)) {
+                        deniedPermissionList.add(permission)
                     }
                 }
 

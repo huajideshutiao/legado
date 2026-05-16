@@ -299,7 +299,7 @@ object FileBook : BaseFileBook {
             }
             name = tempFileName
                 .replace(AppPattern.nameRegex, "")
-                .trim { it <= ' ' }
+                .trim()
             author = BookHelp.formatBookAuthor(tempFileName.replace(name, ""))
                 .takeIf { it.length != tempFileName.length } ?: ""
         }

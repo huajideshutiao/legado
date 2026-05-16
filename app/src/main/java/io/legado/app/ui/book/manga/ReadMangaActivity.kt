@@ -8,6 +8,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.animation.LinearInterpolator
 import androidx.activity.viewModels
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
 import androidx.core.view.isGone
@@ -538,7 +539,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             R.id.menu_pre_manga_number -> {
                 showNumberPickerDialog(
                     0,
-                    getString(R.string.pre_download),
+                    R.string.pre_download,
                     AppConfig.mangaPreDownloadNum
                 ) {
                     AppConfig.mangaPreDownloadNum = it
@@ -572,7 +573,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
             R.id.menu_manga_auto_page_speed -> {
                 showNumberPickerDialog(
-                    1, getString(R.string.setting_manga_auto_page_speed),
+                    1, R.string.setting_manga_auto_page_speed,
                     AppConfig.mangaAutoPageSpeed
                 ) {
                     AppConfig.mangaAutoPageSpeed = it
@@ -799,18 +800,19 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     private fun showNumberPickerDialog(
         min: Int,
-        title: String,
+        @StringRes titleRes: Int,
         initValue: Int,
         callback: (Int) -> Unit,
     ) {
-        NumberPickerDialog(this)
-            .setTitle(title)
-            .setMaxValue(9999)
-            .setMinValue(min)
-            .setValue(initValue)
-            .show {
+        NumberPickerDialog.show(supportFragmentManager) {
+            setTitleRes(titleRes)
+            setMaxValue(9999)
+            setMinValue(min)
+            setValue(initValue)
+            show {
                 callback.invoke(it)
             }
+        }
     }
 
     private fun click(action: Int) {

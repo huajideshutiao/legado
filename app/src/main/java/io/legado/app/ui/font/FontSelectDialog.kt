@@ -1,10 +1,10 @@
 package io.legado.app.ui.font
 
-import android.net.Uri
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.widget.Toolbar
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,7 +19,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -75,7 +74,7 @@ class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
 
     override fun onStart() {
         super.onStart()
-        setLayout(0.9f, 0.9f)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -92,7 +91,7 @@ class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
             openFolder()
         } else {
             if (fontPath.isContentScheme()) {
-                val doc = DocumentFile.fromTreeUri(requireContext(), Uri.parse(fontPath))
+                val doc = DocumentFile.fromTreeUri(requireContext(), fontPath.toUri())
                 if (doc?.canRead() == true) {
                     loadFontFiles(FileDoc.fromDocumentFile(doc))
                 } else {

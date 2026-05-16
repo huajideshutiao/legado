@@ -92,46 +92,50 @@ class OtherConfigFragment : PreferenceFragment(),
                 mode = HandleFileContract.DIR_SYS
             }
 
-            PreferKey.preDownloadNum -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.pre_download))
-                .setMaxValue(9999)
-                .setMinValue(0)
-                .setValue(AppConfig.preDownloadNum)
-                .show {
+            PreferKey.preDownloadNum -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.pre_download)
+                setMaxValue(9999)
+                setMinValue(0)
+                setValue(AppConfig.preDownloadNum)
+                show {
                     AppConfig.preDownloadNum = it
                 }
+            }
 
-            PreferKey.threadCount -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.threads_num_title))
-                .setMaxValue(999)
-                .setMinValue(1)
-                .setValue(AppConfig.threadCount)
-                .show {
+            PreferKey.threadCount -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.threads_num_title)
+                setMaxValue(999)
+                setMinValue(1)
+                setValue(AppConfig.threadCount)
+                show {
                     AppConfig.threadCount = it
                 }
+            }
 
-            PreferKey.webPort -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.web_port_title))
-                .setMaxValue(60000)
-                .setMinValue(1024)
-                .setValue(AppConfig.webPort)
-                .show {
+            PreferKey.webPort -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                setTitleRes(R.string.web_port_title)
+                setMaxValue(60000)
+                setMinValue(1024)
+                setValue(AppConfig.webPort)
+                show {
                     AppConfig.webPort = it
                 }
+            }
 
             PreferKey.cleanCache -> clearCache()
             PreferKey.uploadRule -> showDialogFragment<DirectLinkUploadConfig>()
             PreferKey.checkSource -> showDialogFragment<CheckSourceConfig>()
             PreferKey.bitmapCacheSize -> {
-                NumberPickerDialog(requireContext())
-                    .setTitle(getString(R.string.bitmap_cache_size))
-                    .setMaxValue(1024)
-                    .setMinValue(1)
-                    .setValue(AppConfig.bitmapCacheSize)
-                    .show {
+                NumberPickerDialog.show(requireActivity().supportFragmentManager) {
+                    setTitleRes(R.string.bitmap_cache_size)
+                    setMaxValue(1024)
+                    setMinValue(1)
+                    setValue(AppConfig.bitmapCacheSize)
+                    show {
                         AppConfig.bitmapCacheSize = it
                         ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
                     }
+                }
             }
 
             PreferKey.clearWebViewData -> clearWebViewData()

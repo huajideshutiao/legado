@@ -110,7 +110,7 @@ class BookshelfManageActivity :
         binding.titleBar.findViewById(R.id.search_view)
     }
     private var books: List<Book>? = null
-    private val waitDialog by lazy { WaitDialog(this) }
+    private val waitDialog by lazy { WaitDialog.from(this) }
     private val exportDir by lazy {
         registerHandleFile { result ->
             var uri = result.uri ?: return@registerHandleFile
@@ -176,9 +176,9 @@ class BookshelfManageActivity :
         viewModel.batchChangeSourceState.observe(this) {
             if (it) {
                 waitDialog.setText(R.string.change_source_batch)
-                waitDialog.show()
+                waitDialog.show(supportFragmentManager)
             } else {
-                waitDialog.dismiss()
+                waitDialog.dismissSafe()
             }
         }
         viewModel.batchChangeSourceProcessLiveData.observe(this) {
@@ -299,7 +299,7 @@ class BookshelfManageActivity :
         binding.selectActionBar.inflateMenu(R.menu.bookshelf_menage_sel)
         binding.selectActionBar.setOnMenuItemClickListener(this)
         binding.selectActionBar.setCallBack(this)
-        waitDialog.setOnCancelListener {
+        waitDialog.onCancelListener = {
             viewModel.batchChangeSourceCoroutine?.cancel()
         }
     }
