@@ -349,7 +349,7 @@ class BookInfoActivity :
                 width = 0
                 weight = 1f
             }
-            llInfoTop.setPadding((-8).dpToPx(), 0, 0, 0)
+            llInfoTop.setPadding(0, 0, 0, 0)
 
             tvName.gravity = Gravity.START
             llLasted.gravity = Gravity.START
@@ -375,7 +375,7 @@ class BookInfoActivity :
                     width = LinearLayout.LayoutParams.MATCH_PARENT
                     weight = 0f
                 }
-                llInfoTop.setPadding(0, 0, 0, 0)
+                llInfoTop.setPadding(8.dpToPx()， 0， 8.dpToPx(), 0)
                 val gravity = Gravity.CENTER
                 tvName.gravity = gravity
                 llLasted.gravity = gravity
