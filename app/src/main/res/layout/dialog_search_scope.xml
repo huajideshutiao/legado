@@ -7,17 +7,11 @@
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/tool_bar"
+        style="@style/Style.DialogToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_menu"
-        android:elevation="5dp"
-        android:theme="?attr/actionBarStyle"
-        app:displayHomeAsUp="false"
-        app:fitStatusBar="false"
         app:layout_constraintTop_toTopOf="parent"
-        app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:title="@string/search_scope"
-        app:titleTextAppearance="@style/ToolbarTitle" />
+        app:title="@string/search_scope" />
 
     <RadioGroup
         android:id="@+id/rg_scope"

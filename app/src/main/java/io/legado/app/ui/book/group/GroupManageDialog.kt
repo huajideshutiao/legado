@@ -22,7 +22,6 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemBookGroupManageBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
@@ -53,7 +52,6 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.setTitle(R.string.group_manage)
         initView()
         initData()

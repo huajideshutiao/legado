@@ -12,7 +12,6 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
 import io.legado.app.databinding.DialogDictRuleEditBinding
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
@@ -34,7 +33,6 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.inflateMenu(R.menu.dict_rule_edit)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)

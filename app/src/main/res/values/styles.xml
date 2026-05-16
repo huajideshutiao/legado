@@ -52,6 +52,13 @@
 
     //**********System Style******************//
 
+    <style name="Style.DialogToolbar" parent="Widget.AppCompat.Toolbar">
+        <item name="android:elevation">5dp</item>
+        <item name="android:theme">?attr/actionBarStyle</item>
+        <item name="popupTheme">@style/AppTheme.PopupOverlay</item>
+        <item name="titleTextAppearance">@style/ToolbarTitle</item>
+    </style>
+
     <style name="Animation.Dialog" parent="android:Animation">
         <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
         <item name="android:windowExitAnimation">@anim/dialog_exit</item>

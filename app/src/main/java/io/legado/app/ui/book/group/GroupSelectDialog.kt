@@ -21,7 +21,6 @@ import io.legado.app.databinding.DialogBookGroupPickerBinding
 import io.legado.app.databinding.ItemGroupSelectBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
@@ -49,7 +48,6 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
     private var groupId: Long = 0
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         arguments?.let {
             groupId = it.getLong("groupId")
             requestCode = it.getInt("requestCode", -1)

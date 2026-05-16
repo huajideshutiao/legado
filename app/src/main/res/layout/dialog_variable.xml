@@ -4,23 +4,15 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_gravity="center"
-    android:orientation="vertical"
-    tools:ignore="UselessParent">
+    android:orientation="vertical">
 
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/tool_bar"
+            style="@style/Style.DialogToolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/background_menu"
-            android:elevation="5dp"
-            android:theme="?attr/actionBarStyle"
-            app:displayHomeAsUp="false"
-            app:fitStatusBar="false"
-            app:title="Set variable"
-            app:popupTheme="@style/AppTheme.PopupOverlay"
-            app:titleTextAppearance="@style/ToolbarTitle" />
+            app:title="Set variable" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:layout_width="match_parent"

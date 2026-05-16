@@ -15,6 +15,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.filletBackground
+import io.legado.app.lib.theme.primaryColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
@@ -36,7 +37,9 @@ abstract class BaseDialogFragment(
         super.onStart()
         dialog?.window?.let {
             it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            it.setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
+            if (view != null) {
+                it.setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
+            }
             val attr = it.attributes
             if (AppConfig.isEInkMode) {
                 it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
@@ -55,6 +58,10 @@ abstract class BaseDialogFragment(
         super.onViewCreated(view, savedInstanceState)
         if (!AppConfig.isEInkMode && applyFilletBackground) {
             view.background = requireContext().filletBackground
+        }
+        val toolbar = view.findViewById<View>(R.id.tool_bar)
+        if (toolbar != null && !AppConfig.isEInkMode) {
+            toolbar.setBackgroundColor(requireContext().primaryColor)
         }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()

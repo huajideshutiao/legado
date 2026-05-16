@@ -9,7 +9,6 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.databinding.DialogCoverRuleConfigBinding
 import io.legado.app.help.CacheManager
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toastOnUi
@@ -24,7 +23,6 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
     val binding by viewBinding(DialogCoverRuleConfigBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         initData()
         binding.tvCancel.onClick {
             dismissAllowingStateLoss()

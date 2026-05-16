@@ -8,12 +8,10 @@
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/tool_bar"
+        style="@style/Style.DialogToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="?attr/actionBarStyle"
-        app:title="@string/check_source_config"
-        app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:titleTextAppearance="@style/ToolbarTitle" />
+        app:title="@string/check_source_config" />
 
     <io.legado.app.ui.widget.text.TextInputLayout
         android:layout_width="match_parent"

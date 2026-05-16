@@ -1,27 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="16dp">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:background="@drawable/shape_card_view"
-        android:orientation="vertical"
-        tools:ignore="UselessParent">
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/tool_bar"
+            style="@style/Style.DialogToolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:theme="?attr/actionBarStyle"
-            app:title="@string/speak_engine"
-            app:popupTheme="@style/AppTheme.PopupOverlay"
-            app:titleTextAppearance="@style/ToolbarTitle" />
+            app:title="@string/speak_engine" />
 
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
@@ -148,5 +138,4 @@
 
         </androidx.core.widget.NestedScrollView>
 
-    </LinearLayout>
-</FrameLayout>
+</LinearLayout>

@@ -14,7 +14,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogTocRegexEditBinding
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
@@ -42,7 +41,6 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
     private val callback get() = (parentFragment as? Callback) ?: activity as? Callback
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         initMenu()
         viewModel.initData(arguments?.getLong("id")) {
             upRuleView(it)

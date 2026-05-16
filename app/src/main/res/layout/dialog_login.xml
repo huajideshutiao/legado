@@ -1,25 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_gravity="center"
-    android:orientation="vertical"
-    tools:ignore="UselessParent">
+    android:orientation="vertical">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/tool_bar"
+            style="@style/Style.DialogToolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/background_menu"
-            android:elevation="5dp"
-            android:theme="?attr/actionBarStyle"
-            app:title="@string/login"
-            app:displayHomeAsUp="false"
-            app:fitStatusBar="false"
-            app:popupTheme="@style/AppTheme.PopupOverlay"
-            app:titleTextAppearance="@style/ToolbarTitle" />
+            app:title="@string/login" />
 
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"

@@ -10,7 +10,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.databinding.DialogVariableBinding
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -38,7 +37,6 @@ class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         arguments?.let {
             binding.toolBar.title = it.getString("title")
             viewModel.init(it) {

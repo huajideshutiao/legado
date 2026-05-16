@@ -32,24 +32,29 @@ class NumberPickerDialog : BaseDialogFragment(0) {
         maxValue?.let { numberPicker.maxValue = it }
         value?.let { numberPicker.value = it }
 
-        val builder = AndroidAlertBuilder(requireContext())
-        titleText?.let { builder.setTitle(it) }
-        titleResId?.let { builder.setTitle(it) }
-        builder.setCustomView(dialogView)
-        builder.positiveButton(R.string.ok) {
-            numberPicker.clearFocus()
-            numberPicker.hideSoftInput()
-            callback?.invoke(numberPicker.value)
-        }
-        builder.negativeButton(R.string.cancel)
-        neutralButtonText?.let { textId ->
-            builder.neutralButton(textId) {
+        return AndroidAlertBuilder(requireContext()).apply {
+            titleText?.let { setTitle(it) }
+            titleResId?.let { setTitle(it) }
+            setCustomView(dialogView)
+            okButton {
                 numberPicker.clearFocus()
                 numberPicker.hideSoftInput()
-                neutralButtonListener?.invoke()
+                callback?.invoke(numberPicker.value)
             }
-        }
-        return builder.build().applyTint()
+            cancelButton()
+            neutralButtonText?.let { textId ->
+                neutralButton(textId) {
+                    numberPicker.clearFocus()
+                    numberPicker.hideSoftInput()
+                    neutralButtonListener?.invoke()
+                }
+            }
+        }.build()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (dialog as? androidx.appcompat.app.AlertDialog)?.applyTint()
     }
 
     fun setTitle(title: String): NumberPickerDialog {

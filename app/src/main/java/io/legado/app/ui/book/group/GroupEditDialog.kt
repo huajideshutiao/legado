@@ -2,14 +2,12 @@ package io.legado.app.ui.book.group
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.DialogBookGroupEditBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileUtils
@@ -59,7 +57,6 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         @Suppress("DEPRECATION")
         bookGroup = arguments?.getParcelable("group")
         bookGroup?.let {

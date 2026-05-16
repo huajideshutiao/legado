@@ -90,7 +90,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     private fun initView() = binding.run {
-        toolBar.setBackgroundColor(primaryColor)
         toolBar.setTitle(R.string.speak_engine)
         recyclerView.setEdgeEffectColor(primaryColor)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())

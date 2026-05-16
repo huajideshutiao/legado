@@ -20,7 +20,6 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ImageProvider
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.applyTint
@@ -78,7 +77,6 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
         initMenu()
         val arguments = arguments ?: return@run
         viewModel.initData(arguments)
-        toolBar.setBackgroundColor(primaryColor)
         toolBar.subtitle = arguments.getString("sourceName")
         sourceOrigin = arguments.getString("sourceOrigin")
         val imageUrl = arguments.getString("imageUrl") ?: return@run

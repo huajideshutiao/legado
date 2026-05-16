@@ -8,7 +8,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogTextViewBinding
 import io.legado.app.help.IntentData
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLayout
@@ -56,7 +55,6 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.inflateMenu(R.menu.dialog_text)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener {

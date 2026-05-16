@@ -3,18 +3,15 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
     android:orientation="vertical">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/tool_bar"
+        style="@style/Style.DialogToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="?attr/actionBarStyle"
-        app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:title="edit"
-        app:titleTextAppearance="@style/ToolbarTitle"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:title="edit" />
 
     <io.legado.app.lib.theme.view.ThemeEditText
         android:id="@+id/content_view"

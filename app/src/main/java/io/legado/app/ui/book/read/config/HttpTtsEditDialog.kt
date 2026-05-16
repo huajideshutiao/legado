@@ -11,7 +11,6 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogHttpTtsEditBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
@@ -37,7 +36,6 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
     private val viewModel by viewModels<HttpTtsEditViewModel>()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.tvUrl.run {
             addLegadoPattern()
             addJsonPattern()

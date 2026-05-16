@@ -23,7 +23,6 @@ import io.legado.app.databinding.ItemServerSelectBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.showDialogFragment
@@ -47,7 +46,6 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { ServersAdapter(requireContext()) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.setTitle(R.string.server_config)
         initView()
         initData()
