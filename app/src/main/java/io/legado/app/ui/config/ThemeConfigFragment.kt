@@ -30,7 +30,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -174,34 +174,30 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (val key = preference.key) {
-            PreferKey.barElevation -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.bar_elevation)
-                setMaxValue(32)
-                setMinValue(0)
-                setValue(AppConfig.elevation)
-                setCustomButton((R.string.btn_default_s)) {
+            PreferKey.barElevation -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.bar_elevation,
+                max = 32, min = 0, value = AppConfig.elevation,
+                neutralButton = R.string.btn_default_s to {
                     AppConfig.elevation = AppConst.sysElevation
                     recreateActivities()
                 }
-                show {
-                    AppConfig.elevation = it
-                    recreateActivities()
-                }
+            ) {
+                AppConfig.elevation = it
+                recreateActivities()
             }
 
-            PreferKey.fontScale -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.font_scale)
-                setMaxValue(16)
-                setMinValue(8)
-                setValue(10)
-                setCustomButton((R.string.btn_default_s)) {
+            PreferKey.fontScale -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.font_scale,
+                max = 16, min = 8, value = 10,
+                neutralButton = R.string.btn_default_s to {
                     putPrefInt(PreferKey.fontScale, 0)
                     recreateActivities()
                 }
-                show {
-                    putPrefInt(PreferKey.fontScale, it)
-                    recreateActivities()
-                }
+            ) {
+                putPrefInt(PreferKey.fontScale, it)
+                recreateActivities()
             }
 
             PreferKey.bgImage -> selectBgAction(false)
@@ -221,14 +217,12 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bookshelfLayout -> configBookshelf()
 
             PreferKey.sourceEditMaxLine -> {
-                NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                    setTitleRes(R.string.source_edit_text_max_line)
-                    setMaxValue(Int.MAX_VALUE)
-                    setMinValue(10)
-                    setValue(AppConfig.sourceEditMaxLine)
-                    show {
-                        AppConfig.sourceEditMaxLine = it
-                    }
+                showNumberPicker(
+                    requireContext(),
+                    titleResId = R.string.source_edit_text_max_line,
+                    max = Int.MAX_VALUE, min = 10, value = AppConfig.sourceEditMaxLine
+                ) {
+                    AppConfig.sourceEditMaxLine = it
                 }
             }
         }

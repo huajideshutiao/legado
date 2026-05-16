@@ -26,7 +26,7 @@ import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
@@ -92,49 +92,41 @@ class OtherConfigFragment : PreferenceFragment(),
                 mode = HandleFileContract.DIR_SYS
             }
 
-            PreferKey.preDownloadNum -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.pre_download)
-                setMaxValue(9999)
-                setMinValue(0)
-                setValue(AppConfig.preDownloadNum)
-                show {
-                    AppConfig.preDownloadNum = it
-                }
+            PreferKey.preDownloadNum -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.pre_download,
+                max = 9999, min = 0, value = AppConfig.preDownloadNum
+            ) {
+                AppConfig.preDownloadNum = it
             }
 
-            PreferKey.threadCount -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.threads_num_title)
-                setMaxValue(999)
-                setMinValue(1)
-                setValue(AppConfig.threadCount)
-                show {
-                    AppConfig.threadCount = it
-                }
+            PreferKey.threadCount -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.threads_num_title,
+                max = 999, min = 1, value = AppConfig.threadCount
+            ) {
+                AppConfig.threadCount = it
             }
 
-            PreferKey.webPort -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.web_port_title)
-                setMaxValue(60000)
-                setMinValue(1024)
-                setValue(AppConfig.webPort)
-                show {
-                    AppConfig.webPort = it
-                }
+            PreferKey.webPort -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.web_port_title,
+                max = 60000, min = 1024, value = AppConfig.webPort
+            ) {
+                AppConfig.webPort = it
             }
 
             PreferKey.cleanCache -> clearCache()
             PreferKey.uploadRule -> showDialogFragment<DirectLinkUploadConfig>()
             PreferKey.checkSource -> showDialogFragment<CheckSourceConfig>()
             PreferKey.bitmapCacheSize -> {
-                NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                    setTitleRes(R.string.bitmap_cache_size)
-                    setMaxValue(1024)
-                    setMinValue(1)
-                    setValue(AppConfig.bitmapCacheSize)
-                    show {
-                        AppConfig.bitmapCacheSize = it
-                        ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
-                    }
+                showNumberPicker(
+                    requireContext(),
+                    titleResId = R.string.bitmap_cache_size,
+                    max = 1024, min = 1, value = AppConfig.bitmapCacheSize
+                ) {
+                    AppConfig.bitmapCacheSize = it
+                    ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
                 }
             }
 

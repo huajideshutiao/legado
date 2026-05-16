@@ -6,17 +6,19 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.view.View
+import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import android.widget.AdapterView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.Permissions
@@ -31,11 +33,11 @@ import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.io.File
 
-class HandleFileDialog : BaseDialogFragment(0) {
+class HandleFileDialog : DialogFragment() {
 
     companion object {
         fun show(
-            fragmentManager: androidx.fragment.app.FragmentManager,
+            fragmentManager: FragmentManager,
             mode: Int = 0,
             title: String? = null,
             allowExtensions: Array<String>? = null,
@@ -99,8 +101,6 @@ class HandleFileDialog : BaseDialogFragment(0) {
         } ?: onResult(null)
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {}
-
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         mode = arguments?.getInt("mode") ?: 0
         requestCode = arguments?.getInt("requestCode") ?: 0
@@ -136,11 +136,33 @@ class HandleFileDialog : BaseDialogFragment(0) {
             AdapterView.OnItemClickListener { _, _, position, _ ->
                 handleAction(selectList[position])
             }
+        dialog?.window?.let {
+            if (AppConfig.isEInkMode) {
+                it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                val attr = it.attributes
+                attr.dimAmount = 0f
+                attr.windowAnimations = 0
+                it.attributes = attr
+            } else {
+                val attr = it.attributes
+                attr.windowAnimations = R.style.Animation_Dialog
+                it.attributes = attr
+            }
+        }
     }
 
     override fun onCancel(dialog: DialogInterface) {
         if (!isLaunchingResult) {
             onResult(null)
+        }
+    }
+
+    override fun show(manager: FragmentManager, tag: String?) {
+        kotlin.runCatching {
+            manager.beginTransaction().remove(this).commit()
+            super.show(manager, tag)
+        }.onFailure {
+            AppLog.put("显示对话框失败 tag:$tag", it)
         }
     }
 

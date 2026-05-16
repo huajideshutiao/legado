@@ -55,7 +55,7 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
@@ -804,14 +804,12 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         initValue: Int,
         callback: (Int) -> Unit,
     ) {
-        NumberPickerDialog.show(supportFragmentManager) {
-            setTitleRes(titleRes)
-            setMaxValue(9999)
-            setMinValue(min)
-            setValue(initValue)
-            show {
-                callback.invoke(it)
-            }
+        showNumberPicker(
+            this,
+            titleResId = titleRes,
+            max = 9999, min = min, value = initValue
+        ) {
+            callback.invoke(it)
         }
     }
 

@@ -22,7 +22,7 @@ import io.legado.app.databinding.DialogSourcePickerBinding
 import io.legado.app.databinding.Item1lineTextBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setLayout
@@ -104,14 +104,12 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
-            R.id.menu_change_source_delay -> NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                setTitleRes(R.string.change_source_delay)
-                setMaxValue(9999)
-                setMinValue(0)
-                setValue(AppConfig.batchChangeSourceDelay)
-                show {
-                    AppConfig.batchChangeSourceDelay = it
-                }
+            R.id.menu_change_source_delay -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.change_source_delay,
+                max = 9999, min = 0, value = AppConfig.batchChangeSourceDelay
+            ) {
+                AppConfig.batchChangeSourceDelay = it
             }
         }
         return true

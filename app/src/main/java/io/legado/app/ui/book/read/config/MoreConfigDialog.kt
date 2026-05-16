@@ -22,7 +22,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
@@ -177,15 +177,13 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.pageTouchSlop -> {
-                    NumberPickerDialog.show(requireActivity().supportFragmentManager) {
-                        setTitleRes(R.string.page_touch_slop_dialog_title)
-                        setMaxValue(9999)
-                        setMinValue(0)
-                        setValue(AppConfig.pageTouchSlop)
-                        show {
-                            AppConfig.pageTouchSlop = it
-                            postEvent(EventBus.UP_CONFIG, arrayListOf(4))
-                        }
+                    showNumberPicker(
+                        requireContext(),
+                        titleResId = R.string.page_touch_slop_dialog_title,
+                        max = 9999, min = 0, value = AppConfig.pageTouchSlop
+                    ) {
+                        AppConfig.pageTouchSlop = it
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(4))
                     }
                 }
             }
