@@ -375,7 +375,7 @@ class BookInfoActivity :
                     width = LinearLayout.LayoutParams.MATCH_PARENT
                     weight = 0f
                 }
-                llInfoTop.setPadding(8.dpToPx()， 0， 8.dpToPx(), 0)
+                llInfoTop.setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
                 val gravity = Gravity.CENTER
                 tvName.gravity = gravity
                 llLasted.gravity = gravity
