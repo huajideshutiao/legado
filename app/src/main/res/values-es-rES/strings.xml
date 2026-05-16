@@ -640,7 +640,6 @@
     <string name="go_back">Atrás</string>
     <string name="tone_colour">Tono de voz en línea</string>
     <string name="select_count">(%1$d/%2$d)</string>
-    <string name="show_rss">Mostrar suscripción</string>
     <string name="service_stop">Servicio detenido</string>
     <string name="service_start">Iniciando el servicio\nComprobando la barra de notificaciones para más detalles</string>
     <string name="default_path">Carpeta predeterminada</string>
@@ -888,8 +887,6 @@
     <string name="background_image_hint">Disabled when 0, enable range from 1 to 25\nThe greater the radius, the stronger the effect of blurring</string>
     <string name="need_login">需登录</string>
     <string name="pref_cronet_summary">使用Cronet网络组件</string>
-    <string name="anti_alias">Anti-Aliasing</string>
-    <string name="pref_anti_alias_summary">Anti-Aliasing when draw picture</string>
     <string name="upload_url">创建分享链接</string>
     <string name="download_url_rule">downloadUrlRule(downloadUrls)</string>
     <string name="sort_by_respondTime">Ordenar por tiempo de respuesta</string>

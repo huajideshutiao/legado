@@ -642,7 +642,6 @@
     <string name="go_back">Voltar</string>
     <string name="tone_colour">Tom de voz online</string>
     <string name="select_count">(%1$d/%2$d)</string>
-    <string name="show_rss">Exibir assinatura</string>
     <string name="service_stop">Serviço parou</string>
     <string name="service_start">Iniciando o serviço\nVerificando a barra de notificações para detalhes</string>
     <string name="default_path">Pasta padrão</string>
@@ -889,8 +888,6 @@
     <string name="background_image_hint">Desativado quando 0, Ativado entre 1 e 25\n Quanto maior o raio, mais forte o efeito de desfocagem</string>
     <string name="need_login">Login necessário</string>
     <string name="pref_cronet_summary">Usando componentes de rede Cronet</string>
-    <string name="anti_alias">Anti-Aliasing</string>
-    <string name="pref_anti_alias_summary">Anti-Aliasing when draw picture</string>
     <string name="upload_url">创建分享链接</string>
     <string name="download_url_rule">downloadUrlRule(downloadUrls)</string>
     <string name="sort_by_respondTime">Classificar por tempo de resposta</string>

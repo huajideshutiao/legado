@@ -639,7 +639,6 @@
     <string name="go_back">上級</string>
     <string name="tone_colour">線上朗讀音色</string>
     <string name="select_count">(%1$d/%2$d)</string>
-    <string name="show_rss">顯示訂閱</string>
     <string name="service_stop">服務已停止</string>
     <string name="service_start">正在啟動服務\n具體訊息查看通知欄</string>
     <string name="default_path">預設路徑</string>
@@ -886,8 +885,6 @@
     <string name="check_source_show_debug_message_summary">書源校驗時顯示網路請求步驟和時間</string>
     <string name="need_login">需登入</string>
     <string name="pref_cronet_summary">使用Cronet網路元件</string>
-    <string name="anti_alias">抗鋸齒</string>
-    <string name="pref_anti_alias_summary">繪製圖片時抗鋸齒</string>
     <string name="upload_url">上傳URL</string>
     <string name="download_url_rule">下载URL规则(downloadUrls)</string>
     <string name="sort_by_respondTime">反應時間排序</string>
