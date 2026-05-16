@@ -1,8 +1,12 @@
 package io.legado.app.help.config
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.NinePatch
+import android.graphics.Rect
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.NinePatchDrawable
 import android.util.DisplayMetrics
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
@@ -19,6 +23,7 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -76,7 +81,7 @@ object ThemeConfig {
         return false
     }
 
-    fun getBgImage(context: Context, metrics: DisplayMetrics): Bitmap? {
+    fun getBgDrawable(context: Context, metrics: DisplayMetrics): Drawable? {
         val bgCfg = when (getTheme()) {
             Theme.Light -> Pair(
                 context.getPrefString(PreferKey.bgImage),
@@ -91,12 +96,28 @@ object ThemeConfig {
             else -> null
         } ?: return null
         if (bgCfg.first.isNullOrBlank()) return null
-        val bgImage = BitmapUtils
-            .decodeBitmap(bgCfg.first!!, metrics.widthPixels, metrics.heightPixels)
-        if (bgCfg.second == 0) {
-            return bgImage
+        val path = bgCfg.first!!
+        val blurRadius = bgCfg.second
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+
+        var bitmap = BitmapUtils.decodeBitmap(path, width, height) ?: return null
+
+        val chunk = bitmap.ninePatchChunk
+        if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
+            if (blurRadius > 0) {
+                bitmap = bitmap.stackBlur(blurRadius)
+            }
+            return NinePatchDrawable(context.resources, bitmap, chunk, Rect(), null)
         }
-        return bgImage?.stackBlur(bgCfg.second)
+
+        if (blurRadius > 0) {
+            bitmap = bitmap.stackBlur(blurRadius)
+        }
+
+        val resultBitmap = bitmap.centerCrop(width, height)
+        if (resultBitmap != bitmap) bitmap.recycle()
+        return BitmapDrawable(context.resources, resultBitmap)
     }
 
     fun upConfig() {

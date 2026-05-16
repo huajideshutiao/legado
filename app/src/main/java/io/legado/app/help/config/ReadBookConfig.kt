@@ -4,9 +4,12 @@ import android.graphics.Color.blue
 import android.graphics.Color.green
 import android.graphics.Color.red
 import android.graphics.Color.rgb
+import android.graphics.NinePatch
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.NinePatchDrawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.get
@@ -22,6 +25,7 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
+import io.legado.app.utils.centerCrop
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFolderReplace
 import io.legado.app.utils.externalCache
@@ -37,7 +41,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.resizeAndRecycle
 import splitties.init.appCtx
 import java.io.File
 import kotlin.math.roundToInt
@@ -757,7 +760,16 @@ object ReadBookConfig {
                                 null
                             }
                         }
-                        bitmap?.resizeAndRecycle(width, height)?.toDrawable(resources)
+                        bitmap?.let {
+                            val chunk = it.ninePatchChunk
+                            if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
+                                NinePatchDrawable(resources, it, chunk, Rect(), null)
+                            } else {
+                                val result = it.centerCrop(width, height)
+                                if (result != it) it.recycle()
+                                result.toDrawable(resources)
+                            }
+                        }
                     }
 
                     else -> {
@@ -766,7 +778,16 @@ object ReadBookConfig {
                             else FileUtils.getPath(appCtx.externalFiles, "bg", curBgStr())
                         }
                         val bitmap = BitmapUtils.decodeBitmap(path, width, height)
-                        bitmap?.resizeAndRecycle(width, height)?.toDrawable(resources)
+                        bitmap?.let {
+                            val chunk = it.ninePatchChunk
+                            if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
+                                NinePatchDrawable(resources, it, chunk, Rect(), null)
+                            } else {
+                                val result = it.centerCrop(width, height)
+                                if (result != it) it.recycle()
+                                result.toDrawable(resources)
+                            }
+                        }
                     }
                 }
             } catch (e: OutOfMemoryError) {

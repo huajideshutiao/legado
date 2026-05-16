@@ -6,7 +6,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Paint
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.get
 import androidx.core.graphics.scale
@@ -247,8 +250,26 @@ object BitmapUtils {
  */
 fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
     val bitmap = this.scale(newWidth, newHeight)
-    recycle()
+    if (bitmap != this) recycle()
     return bitmap
+}
+
+/**
+ * 根据目标宽高裁剪图片 (Center Crop)
+ */
+fun Bitmap.centerCrop(width: Int, height: Int): Bitmap {
+    if (this.width == width && this.height == height) return this
+    val result = Bitmap.createBitmap(width, height, config ?: Config.ARGB_8888)
+    val canvas = Canvas(result)
+    val scale = max(width.toFloat() / this.width, height.toFloat() / this.height)
+    val dx = (width - this.width * scale) / 2f
+    val dy = (height - this.height * scale) / 2f
+    val matrix = Matrix()
+    matrix.setScale(scale, scale)
+    matrix.postTranslate(dx, dy)
+    val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    canvas.drawBitmap(this, matrix, paint)
+    return result
 }
 
 /**

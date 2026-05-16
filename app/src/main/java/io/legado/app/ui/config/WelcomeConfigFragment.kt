@@ -155,8 +155,12 @@ class WelcomeConfigFragment : PreferenceFragment(),
                     op.inJustDecodeBounds = false
                     val originalBitmap = BitmapFactory.decodeStream(newInputStream, null, op)
                         ?: throw IllegalArgumentException("Failed to decode image from Uri")
-                    val croppedBitmap = Bitmap.createBitmap(originalBitmap, 0, 0, cropW, cropH)
+                    val startX = (originalWidth - cropW) / 2
+                    val startY = (originalHeight - cropH) / 2
+                    val croppedBitmap =
+                        Bitmap.createBitmap(originalBitmap, startX, startY, cropW, cropH)
                     val scaledBitmap = croppedBitmap.resizeAndRecycle(screenWidth, screenHeight)
+                    if (originalBitmap != croppedBitmap) originalBitmap.recycle()
                     ByteArrayOutputStream().use { webpData ->
                         scaledBitmap.compress(Bitmap.CompressFormat.WEBP, 80, webpData)
                         val finalBytes = webpData.toByteArray()
