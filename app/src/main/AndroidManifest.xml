@@ -240,20 +240,6 @@
             android:launchMode="singleTask"
             android:theme="@style/AppTheme.Transparent">
             <intent-filter>
-                <action android:name="android.intent.action.PROCESS_TEXT" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
@@ -325,6 +311,23 @@
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name=".ui.association.ProcessTextActivity"
+            android:exported="true"
+            android:label="@string/receiving_shared_label"
+            android:targetActivity=".ui.association.AssociationActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- JS Activity -->
         <activity

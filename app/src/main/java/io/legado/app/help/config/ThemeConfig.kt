@@ -4,12 +4,12 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.NinePatch
 import android.graphics.Rect
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import android.util.DisplayMetrics
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -43,6 +43,9 @@ import java.io.File
 object ThemeConfig {
     const val configFileName = "themeConfig.json"
     val configFilePath = FileUtils.getPath(appCtx.filesDir, configFileName)
+
+    private var bgDrawableCache: Drawable? = null
+    private var bgCacheKey: String? = null
 
     val configList: ArrayList<Config> by lazy {
         val cList = getConfigs() ?: DefaultData.themeConfigs
@@ -82,7 +85,8 @@ object ThemeConfig {
     }
 
     fun getBgDrawable(context: Context, metrics: DisplayMetrics): Drawable? {
-        val bgCfg = when (getTheme()) {
+        val theme = getTheme()
+        val bgCfg = when (theme) {
             Theme.Light -> Pair(
                 context.getPrefString(PreferKey.bgImage),
                 context.getPrefInt(PreferKey.bgImageBlurring, 0)
@@ -95,11 +99,22 @@ object ThemeConfig {
 
             else -> null
         } ?: return null
-        if (bgCfg.first.isNullOrBlank()) return null
+        if (bgCfg.first.isNullOrBlank()) {
+            bgDrawableCache = null
+            bgCacheKey = null
+            return null
+        }
         val path = bgCfg.first!!
         val blurRadius = bgCfg.second
         val width = metrics.widthPixels
         val height = metrics.heightPixels
+
+        val cacheKey = "$path-$blurRadius-$width-$height-$theme"
+        if (cacheKey == bgCacheKey) {
+            bgDrawableCache?.let {
+                return it.constantState?.newDrawable(context.resources) ?: it
+            }
+        }
 
         var bitmap = BitmapUtils.decodeBitmap(path, width, height) ?: return null
 
@@ -108,7 +123,10 @@ object ThemeConfig {
             if (blurRadius > 0) {
                 bitmap = bitmap.stackBlur(blurRadius)
             }
-            return NinePatchDrawable(context.resources, bitmap, chunk, Rect(), null)
+            val drawable = NinePatchDrawable(context.resources, bitmap, chunk, Rect(), null)
+            bgDrawableCache = drawable
+            bgCacheKey = cacheKey
+            return drawable.constantState?.newDrawable(context.resources) ?: drawable
         }
 
         if (blurRadius > 0) {
@@ -117,7 +135,10 @@ object ThemeConfig {
 
         val resultBitmap = bitmap.centerCrop(width, height)
         if (resultBitmap != bitmap) bitmap.recycle()
-        return BitmapDrawable(context.resources, resultBitmap)
+        val drawable = resultBitmap.toDrawable(context.resources)
+        bgDrawableCache = drawable
+        bgCacheKey = cacheKey
+        return drawable.constantState?.newDrawable(context.resources) ?: drawable
     }
 
     fun upConfig() {
@@ -304,6 +325,8 @@ object ThemeConfig {
     }
 
     fun clearBg() {
+        bgDrawableCache = null
+        bgCacheKey = null
         val bgImagePath = appCtx.getPrefString(PreferKey.bgImage)
         appCtx.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
             if (it.absolutePath != bgImagePath) {

@@ -5,8 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View.GONE
-import android.view.View.VISIBLE
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
@@ -33,7 +31,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
@@ -94,7 +91,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var isManualStopSearch = false
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.llInputHelp.setBackgroundColor(backgroundColor)
         initRecyclerView()
         initSearchView()
         initOtherView()
@@ -211,7 +207,10 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         })
         searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
-            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank())) {
+            val isScrollingHelp =
+                binding.rvBookshelfSearch.scrollState != RecyclerView.SCROLL_STATE_IDLE
+                    || binding.rvHistoryKey.scrollState != RecyclerView.SCROLL_STATE_IDLE
+            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank() && !isScrollingHelp)) {
                 visibleInputHelp(false)
             } else {
                 visibleInputHelp(true)
@@ -240,6 +239,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
         binding.rvHistoryKey.adapter = historyKeyAdapter
         binding.rvHistoryKey.applyNavigationBarMargin()
+        binding.rvHistoryKey.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(recyclerView, newState)
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    searchView.clearFocus()
+                }
+            }
+        })
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.itemAnimator = null
@@ -372,9 +379,11 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun visibleInputHelp(visible: Boolean) {
         if (visible) {
             upHistory(searchView.query.toString())
-            binding.llInputHelp.visibility = VISIBLE
+            binding.llInputHelp.visible()
+            binding.recyclerView.gone()
         } else {
-            binding.llInputHelp.visibility = GONE
+            binding.llInputHelp.gone()
+            binding.recyclerView.visible()
         }
     }
 

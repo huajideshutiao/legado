@@ -2,7 +2,6 @@ package io.legado.app.ui.widget.dialog
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogCodeViewBinding
@@ -12,7 +11,6 @@ import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableEdit
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class CodeDialog() : BaseDialogFragment(R.layout.dialog_code_view) {
@@ -26,11 +24,6 @@ class CodeDialog() : BaseDialogFragment(R.layout.dialog_code_view) {
     }
 
     val binding by viewBinding(DialogCodeViewBinding::bind)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         if (arguments?.getBoolean("disableEdit") == true) {

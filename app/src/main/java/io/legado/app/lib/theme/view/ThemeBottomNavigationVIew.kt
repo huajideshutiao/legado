@@ -8,22 +8,28 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ViewNavigationBadgeBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.getPrefString
 
 class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
     BottomNavigationView(context, attrs) {
 
     init {
-        val bgColor = context.bottomBackground
+        val bg =
+            context.getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+        val bgColor = if (bg.isNullOrBlank()) context.bottomBackground else Color.TRANSPARENT
         setBackgroundColor(bgColor)
-        val textIsDark = ColorUtils.isColorLight(bgColor)
+        val textIsDark =
+            ColorUtils.isColorLight(if (bg.isNullOrBlank()) bgColor else context.backgroundColor)
         val textColor = context.getSecondaryTextColor(textIsDark)
         val colorStateList = Selector.colorBuild()
             .setDefaultColor(textColor)

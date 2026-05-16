@@ -23,7 +23,6 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
 import io.legado.app.service.WebService
-import io.legado.app.ui.association.AssociationActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.showNumberPicker
@@ -48,7 +47,7 @@ class OtherConfigFragment : PreferenceFragment(),
     private val packageManager = appCtx.packageManager
     private val componentName = ComponentName(
         appCtx,
-        AssociationActivity::class.java.name
+        "io.legado.app.ui.association.ProcessTextActivity"
     )
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->

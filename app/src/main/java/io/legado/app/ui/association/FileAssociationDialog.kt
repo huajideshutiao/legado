@@ -42,11 +42,13 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     }
 
     private val viewModel by viewModels<FileAssociationViewModel>()
-    private val localBookTreeSelect = registerHandleFile { result ->
+    private val localBookTreeSelect by lazy {
+        registerHandleFile { result ->
         val uri = arguments?.getParcelable<Uri>("uri") ?: return@registerHandleFile
         result.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
             importBook(treeUri, uri)
+        }
         }
     }
 

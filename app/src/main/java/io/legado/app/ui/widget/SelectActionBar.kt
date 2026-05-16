@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PorterDuff
 import android.util.AttributeSet
 import android.view.LayoutInflater
@@ -10,7 +11,9 @@ import androidx.annotation.MenuRes
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.PopupMenu
 import io.legado.app.R
+import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ViewSelectActionBarBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
@@ -19,8 +22,8 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryDisabledTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.visible
-
 
 @Suppress("unused")
 class SelectActionBar @JvmOverloads constructor(
@@ -39,7 +42,13 @@ class SelectActionBar @JvmOverloads constructor(
 
     init {
         if (!isInEditMode) {
-            setBackgroundColor(context.bottomBackground)
+            val bg =
+                context.getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+            if (bg.isNullOrBlank()) {
+                setBackgroundColor(context.bottomBackground)
+            } else {
+                setBackgroundColor(Color.TRANSPARENT)
+            }
             elevation = context.elevation
             binding.cbSelectedAll.setTextColor(primaryTextColor)
             TintHelper.setTint(binding.cbSelectedAll, context.accentColor, !bgIsLight)

@@ -14,7 +14,10 @@ import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.google.android.flexbox.FlexWrap
@@ -45,7 +48,6 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
@@ -67,7 +69,6 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -78,6 +79,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
@@ -164,11 +166,15 @@ class BookInfoActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.run {
             titleBar.setBackgroundResource(R.color.transparent)
+            titleBarSpace.applyStatusBarPadding()
+            titleBarSpaceRight?.let { view ->
+                ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+                    val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+                    view.updateLayoutParams { height = statusBarHeight }
+                    insets
+                }
+            }
             refreshLayout?.setColorSchemeColors(accentColor)
-            arcView.setBgColor(backgroundColor)
-            llInfoTop.setBackgroundColor(backgroundColor)
-            llInfo.setBackgroundColor(backgroundColor)
-            flAction.setBackgroundColor(bottomBackground)
             flAction.applyNavigationBarPadding()
             tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
             tvToc.text = getString(R.string.loading)
@@ -326,46 +332,55 @@ class BookInfoActivity :
 
     private fun applyDevFeatLayout(book: Book) = binding.run {
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        if (!AppConfig.devFeat || book.isVideo || isLandscape) {
-            if (bgBook.isVisible) return@run
-            setLightStatusBar(false)
-            bgBook.visible()
-            arcView.visible()
-            titleBar.setTextColor(getPrimaryTextColor(false))
-            titleBar.setColorFilter(getPrimaryTextColor(false))
-            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Dark)
-            tvName.gravity = Gravity.CENTER
-            llLasted.gravity = Gravity.CENTER
-            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER
-            llTop?.orientation = LinearLayout.VERTICAL
-            rlCover?.layoutParams?.width = LinearLayout.LayoutParams.MATCH_PARENT
-            (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                weight = 0f
-            }
-            llInfoTop.setPadding(llInfoTop.paddingRight, 0, llInfoTop.paddingRight, 0)
-            lbWordCount.layoutParams.let {
-                (it as LinearLayout.LayoutParams).gravity = Gravity.CENTER
-            }
-        } else {
-            setLightStatusBar(isDarkTheme)
+        val useDevFeat = AppConfig.devFeat && !book.isVideo && !isLandscape
+
+        if (useDevFeat) {
+            setLightStatusBar(!isDarkTheme)
             bgBook.gone()
-            arcView.gone()
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
             titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Auto)
-            tvName.gravity = Gravity.START
-            llLasted.gravity = Gravity.START
-            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
-            llTop?.orientation = LinearLayout.HORIZONTAL
-            rlCover?.layoutParams?.width = LinearLayout.LayoutParams.WRAP_CONTENT
-            (llInfoTop.layoutParams as LinearLayout.LayoutParams).apply {
+
+            llTop.orientation = LinearLayout.HORIZONTAL
+            rlCover.updateLayoutParams {
+                width = LinearLayout.LayoutParams.WRAP_CONTENT
+            }
+            llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = 0
                 weight = 1f
             }
-            llInfoTop.setPadding(0, 0, llInfoTop.paddingRight, 0)
-            lbWordCount.layoutParams.let {
-                (it as LinearLayout.LayoutParams).gravity = Gravity.START
+            llInfoTop.setPadding((-8).dpToPx(), 0, 0, 0)
+
+            tvName.gravity = Gravity.START
+            llLasted.gravity = Gravity.START
+            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
+            lbWordCount.updateLayoutParams<LinearLayout.LayoutParams> {
+                this.gravity =
+                    Gravity.START
+            }
+        } else {
+            setLightStatusBar(false)
+            bgBook.visible()
+            titleBar.setTextColor(getPrimaryTextColor(false))
+            titleBar.setColorFilter(getPrimaryTextColor(false))
+            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Dark)
+
+            if (!isLandscape) {
+                llTop.orientation = LinearLayout.VERTICAL
+
+                rlCover.updateLayoutParams {
+                    width = LinearLayout.LayoutParams.MATCH_PARENT
+                }
+                llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
+                    width = LinearLayout.LayoutParams.MATCH_PARENT
+                    weight = 0f
+                }
+                llInfoTop.setPadding(0, 0, 0, 0)
+                val gravity = Gravity.CENTER
+                tvName.gravity = gravity
+                llLasted.gravity = gravity
+                (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = gravity
+                lbWordCount.updateLayoutParams<LinearLayout.LayoutParams> { this.gravity = gravity }
             }
         }
     }
@@ -400,7 +415,7 @@ class BookInfoActivity :
         container.removeAllViews()
 
         val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
-        val otherLabel = ""
+        val otherLabel = getString(R.string.other)
         kinds.forEach { kind ->
             val urlSplit = kind.split("::", limit = 2)
             val tagContent = urlSplit[0].trim()
@@ -457,7 +472,7 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) = binding.run {
-        ivCover.coverRatio = if (book.isVideo && bgBook.isVisible) CoverImageView.CoverRatio.VIDEO
+        ivCover.coverRatio = if (book.isVideo) CoverImageView.CoverRatio.VIDEO
         else CoverImageView.CoverRatio.NOVEL
         ivCover.load(
             book.getDisplayCover(),

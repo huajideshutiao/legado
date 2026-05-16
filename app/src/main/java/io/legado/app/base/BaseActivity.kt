@@ -3,6 +3,7 @@ package io.legado.app.base
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
@@ -19,6 +20,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
@@ -30,6 +32,7 @@ import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableAutoFill
 import io.legado.app.utils.fullScreen
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLightStatusBar
@@ -150,9 +153,15 @@ abstract class BaseActivity<VB : ViewBinding>(
     open fun initTheme() {
         // 在 super.onCreate 之前注入 Window 背景，防止过渡瞬间的黑屏/白屏闪烁
         if (theme != Theme.Transparent) {
-            window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+            val bg =
+                getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+            if (bg.isNullOrBlank()) {
+                window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+            } else {
+                window.setBackgroundDrawable(null)
+            }
         } else {
-            window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         }
 
         val isDark = when (theme) {
@@ -197,7 +206,10 @@ abstract class BaseActivity<VB : ViewBinding>(
         if (fullScreen && !isInMultiWindow) {
             fullScreen()
         }
-        val statusBarColor = ThemeStore.statusBarColor(this)
+        val bg =
+            getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+        val statusBarColor =
+            if (bg.isNullOrBlank()) ThemeStore.statusBarColor(this) else Color.TRANSPARENT
         setStatusBarColorAuto(statusBarColor, fullScreen)
         if (toolBarTheme == Theme.Dark) {
             setLightStatusBar(false)
@@ -208,7 +220,11 @@ abstract class BaseActivity<VB : ViewBinding>(
     }
 
     open fun upNavigationBarColor() {
-        setNavigationBarColorAuto(ThemeStore.navigationBarColor(this))
+        val bg =
+            getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+        val navColor =
+            if (bg.isNullOrBlank()) ThemeStore.navigationBarColor(this) else Color.TRANSPARENT
+        setNavigationBarColorAuto(navColor)
     }
 
     open fun observeLiveBus() {

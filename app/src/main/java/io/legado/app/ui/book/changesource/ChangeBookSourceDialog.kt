@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import android.widget.ImageButton
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
@@ -98,7 +97,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
 
     override fun onStart() {
         super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

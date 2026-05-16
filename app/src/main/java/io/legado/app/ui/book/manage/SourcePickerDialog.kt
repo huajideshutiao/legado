@@ -54,7 +54,7 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
 
     override fun onStart() {
         super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

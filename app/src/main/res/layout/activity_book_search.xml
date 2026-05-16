@@ -41,7 +41,6 @@
         android:id="@+id/ll_input_help"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:background="@color/background"
         android:clickable="true"
         android:focusable="true"
         android:orientation="vertical"

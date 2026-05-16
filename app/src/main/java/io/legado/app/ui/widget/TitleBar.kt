@@ -2,6 +2,7 @@ package io.legado.app.ui.widget
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.ColorDrawable
@@ -18,18 +19,19 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import com.google.android.material.appbar.AppBarLayout
 import io.legado.app.R
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.utils.activity
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import splitties.views.bottomPadding
 import splitties.views.topPadding
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 class TitleBar @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null
+    context: Context, attrs: AttributeSet? = null
 ) : AppBarLayout(context, attrs) {
 
     val toolbar: Toolbar
@@ -61,8 +63,7 @@ class TitleBar @JvmOverloads constructor(
 
     init {
         val a = context.obtainStyledAttributes(
-            attrs, R.styleable.TitleBar,
-            R.attr.titleBarStyle, 0
+            attrs, R.styleable.TitleBar, R.attr.titleBarStyle, 0
         )
         navigationIconTint = a.getColorStateList(R.styleable.TitleBar_navigationIconTint)
         navigationIconTintMode = a.getInt(R.styleable.TitleBar_navigationIconTintMode, 9)
@@ -91,8 +92,7 @@ class TitleBar @JvmOverloads constructor(
 
             if (a.hasValue(R.styleable.TitleBar_titleTextAppearance)) {
                 this.setTitleTextAppearance(
-                    context,
-                    a.getResourceId(R.styleable.TitleBar_titleTextAppearance, 0)
+                    context, a.getResourceId(R.styleable.TitleBar_titleTextAppearance, 0)
                 )
             }
 
@@ -102,8 +102,7 @@ class TitleBar @JvmOverloads constructor(
 
             if (a.hasValue(R.styleable.TitleBar_subtitleTextAppearance)) {
                 this.setSubtitleTextAppearance(
-                    context,
-                    a.getResourceId(R.styleable.TitleBar_subtitleTextAppearance, 0)
+                    context, a.getResourceId(R.styleable.TitleBar_subtitleTextAppearance, 0)
                 )
             }
 
@@ -112,18 +111,14 @@ class TitleBar @JvmOverloads constructor(
             }
 
 
-            if (a.hasValue(R.styleable.TitleBar_contentInsetLeft)
-                || a.hasValue(R.styleable.TitleBar_contentInsetRight)
-            ) {
+            if (a.hasValue(R.styleable.TitleBar_contentInsetLeft) || a.hasValue(R.styleable.TitleBar_contentInsetRight)) {
                 this.setContentInsetsAbsolute(
                     a.getDimensionPixelSize(R.styleable.TitleBar_contentInsetLeft, 0),
                     a.getDimensionPixelSize(R.styleable.TitleBar_contentInsetRight, 0)
                 )
             }
 
-            if (a.hasValue(R.styleable.TitleBar_contentInsetStart)
-                || a.hasValue(R.styleable.TitleBar_contentInsetEnd)
-            ) {
+            if (a.hasValue(R.styleable.TitleBar_contentInsetStart) || a.hasValue(R.styleable.TitleBar_contentInsetEnd)) {
                 this.setContentInsetsRelative(
                     a.getDimensionPixelSize(R.styleable.TitleBar_contentInsetStart, 0),
                     a.getDimensionPixelSize(R.styleable.TitleBar_contentInsetEnd, 0)
@@ -176,13 +171,17 @@ class TitleBar @JvmOverloads constructor(
                     windowInsets
                 }
             }
-
             if (AppConfig.isEInkMode) {
                 setBackgroundResource(R.drawable.bg_eink_border_bottom)
             } else {
-                setBackgroundColor(context.backgroundColor)
+                val bg =
+                    context.getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+                if (bg.isNullOrBlank()) {
+                    setBackgroundColor(context.backgroundColor)
+                } else {
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
             }
-
             stateListAnimator = null
             elevation = context.elevation
         }

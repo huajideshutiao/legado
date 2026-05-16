@@ -3,7 +3,6 @@ package io.legado.app.ui.book.changecover
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle.State.STARTED
@@ -44,7 +43,7 @@ class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
 
     override fun onStart() {
         super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
+        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

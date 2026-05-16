@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
@@ -24,7 +23,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -37,11 +35,6 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
 
     val binding by viewBinding(DialogContentEditBinding::bind)
     val viewModel by viewModels<ContentEditViewModel>()
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.title = ReadBook.curTextChapter?.title

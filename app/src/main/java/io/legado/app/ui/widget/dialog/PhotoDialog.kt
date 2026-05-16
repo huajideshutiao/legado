@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import android.view.View
-import android.view.ViewGroup
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
@@ -22,7 +21,6 @@ import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
@@ -55,7 +53,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
     override fun onStart() {
         super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
+        setLayout(0.95f, 0.8f)
     }
 
     private val saveImageLauncher by lazy {
