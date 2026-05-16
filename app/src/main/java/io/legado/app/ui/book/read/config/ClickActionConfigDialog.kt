@@ -1,13 +1,17 @@
 package io.legado.app.ui.book.read.config
 
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.TextView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogClickActionConfigBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -16,6 +20,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 点击区域设置
  */
 class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_config) {
+    override val applyFilletBackground: Boolean = false
     private val binding by viewBinding(DialogClickActionConfigBinding::bind)
     private val actions by lazy {
         linkedMapOf(
@@ -35,6 +40,39 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
             Pair(12, getString(R.string.sync_book_progress_t)),
             Pair(13, getString(R.string.read_aloud_pause_resume))
         )
+    }
+
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.let { window ->
+            window.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.run {
+                    if (ReadBookConfig.hideNavigationBar) {
+                        hide(WindowInsets.Type.navigationBars())
+                    }
+                    if (ReadBookConfig.hideStatusBar) {
+                        hide(WindowInsets.Type.statusBars())
+                    }
+                }
+            }
+            @Suppress("DEPRECATION")
+            var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_IMMERSIVE
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+            if (ReadBookConfig.hideNavigationBar) {
+                flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                flag = flag or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            }
+            if (ReadBookConfig.hideStatusBar) {
+                flag = flag or View.SYSTEM_UI_FLAG_FULLSCREEN
+            }
+            window.decorView.systemUiVisibility = flag
+        }
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

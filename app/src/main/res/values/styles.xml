@@ -53,7 +53,7 @@
     //**********System Style******************//
 
     <style name="Style.DialogToolbar" parent="Widget.AppCompat.Toolbar">
-        <item name="android:elevation">5dp</item>
+        <item name="android:elevation">0dp</item>
         <item name="android:theme">?attr/actionBarStyle</item>
         <item name="popupTheme">@style/AppTheme.PopupOverlay</item>
         <item name="titleTextAppearance">@style/ToolbarTitle</item>
