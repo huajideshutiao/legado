@@ -12,7 +12,6 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
-import androidx.core.graphics.get
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -36,6 +35,7 @@ import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
@@ -43,7 +43,6 @@ import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import splitties.init.appCtx
 import java.io.File
-import kotlin.math.roundToInt
 
 /**
  * 阅读界面配置
@@ -117,31 +116,22 @@ object ReadBookConfig {
 
     fun upBg(width: Int, height: Int) {
         val drawable = durConfig.curBgDrawable(width, height)
-        if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            bgMeanColor = run {
-                val width: Int = drawable.bitmap.width
-                val height: Int = drawable.bitmap.height
-                var pixel: Int
-                var pixelSumRed = 0
-                var pixelSumBlue = 0
-                var pixelSumGreen = 0
-                for (i in 0..99) {
-                    for (j in 70..99) {
-                        pixel =
-                            drawable.bitmap[(i * width / 100.toFloat()).roundToInt(), (j * height / 100.toFloat()).roundToInt()]
-                        pixelSumRed += red(pixel)
-                        pixelSumGreen += green(pixel)
-                        pixelSumBlue += blue(pixel)
-                    }
-                }
-                val averagePixelRed = pixelSumRed / 3000
-                val averagePixelBlue = pixelSumBlue / 3000
-                val averagePixelGreen = pixelSumGreen / 3000
+        if (drawable is BitmapDrawable && drawable.bitmap != null && !drawable.bitmap.isRecycled) {
+            bgMeanColor = try {
+                val bitmap = drawable.bitmap
+                val cropHeight = (bitmap.height * 0.3).toInt()
+                val cropTop = bitmap.height - cropHeight
+                // 复用优化后的取色工具，仅处理底部 30% 区域
+                val it = bitmap.getRepresentativeColor(0, cropTop, bitmap.width, cropHeight)
+                // 保留原有的微调巧思
                 rgb(
-                    averagePixelRed + 3,
-                    averagePixelGreen + 3,
-                    averagePixelBlue + 3
+                    (red(it) + 3).coerceAtMost(255),
+                    (green(it) + 3).coerceAtMost(255),
+                    (blue(it) + 3).coerceAtMost(255)
                 )
+            } catch (e: Exception) {
+                e.printOnDebug()
+                0
             }
         } else if (drawable is ColorDrawable) {
             bgMeanColor = drawable.color

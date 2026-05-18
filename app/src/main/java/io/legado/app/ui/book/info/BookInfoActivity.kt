@@ -20,6 +20,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
@@ -45,6 +46,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
@@ -488,7 +490,9 @@ class BookInfoActivity :
                 book.getDisplayCover(),
                 sourceOrigin = book.origin,
                 inBookshelf = viewModel.inBookshelf
-            ).into(bgBook)
+            ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
+                .placeholder(bgBook.drawable)
+                .into(bgBook)
         }
     }
 

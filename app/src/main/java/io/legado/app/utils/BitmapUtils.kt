@@ -11,7 +11,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import androidx.core.graphics.ColorUtils
-import androidx.core.graphics.get
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -55,25 +55,40 @@ object BitmapUtils {
     /**
      *计算 InSampleSize。缺省返回1
      * @param options BitmapFactory.Options,
-     * @param width  想要显示的图片的宽度
-     * @param height 想要显示的图片的高度
+     * @param reqWidth  想要显示的图片的宽度
+     * @param reqHeight 想要显示的图片的高度
      * @return
      */
     private fun calculateInSampleSize(
         options: BitmapFactory.Options,
-        width: Int? = null,
-        height: Int? = null
+        reqWidth: Int? = null,
+        reqHeight: Int? = null,
     ): Int {
-        //获取比例大小
-        val wRatio = width?.let { options.outWidth / it } ?: -1
-        val hRatio = height?.let { options.outHeight / it } ?: -1
-        //如果超出指定大小，则缩小相应的比例
-        return when {
-            wRatio > 1 && hRatio > 1 -> max(wRatio, hRatio)
-            wRatio > 1 -> wRatio
-            hRatio > 1 -> hRatio
-            else -> 1
+        val h = options.outHeight
+        val w = options.outWidth
+        var inSampleSize = 1
+        if (reqHeight != null && reqWidth != null) {
+            if (h > reqHeight || w > reqWidth) {
+                val halfHeight = h / 2
+                val halfWidth = w / 2
+                while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                    inSampleSize *= 2
+                }
+            }
+        } else if (reqWidth != null) {
+            if (w > reqWidth) {
+                val halfWidth = w / 2
+                while (halfWidth / inSampleSize >= reqWidth) {
+                    inSampleSize *= 2
+                }
+            }
+        } else if (reqHeight != null && h > reqHeight) {
+            val halfHeight = h / 2
+            while (halfHeight / inSampleSize >= reqHeight) {
+                inSampleSize *= 2
+            }
         }
+        return inSampleSize
     }
 
     /** 从path中获取Bitmap图片
@@ -138,16 +153,14 @@ object BitmapUtils {
         width: Int,
         height: Int
     ): Bitmap? {
-        var inputStream = context.assets.open(fileNameInAssets)
-        return inputStream.use {
-            val op = BitmapFactory.Options()
-            // inJustDecodeBounds如果设置为true,仅仅返回图片实际的宽和高,宽和高是赋值给opts.outWidth,opts.outHeight;
-            op.inJustDecodeBounds = true
-            BitmapFactory.decodeStream(inputStream, null, op) //获取尺寸信息
-            op.inSampleSize = calculateInSampleSize(op, width, height)
-            inputStream = context.assets.open(fileNameInAssets)
-            op.inJustDecodeBounds = false
-            BitmapFactory.decodeStream(inputStream, null, op)
+        val op = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.assets.open(fileNameInAssets).use {
+            BitmapFactory.decodeStream(it, null, op)
+        }
+        op.inSampleSize = calculateInSampleSize(op, width, height)
+        op.inJustDecodeBounds = false
+        return context.assets.open(fileNameInAssets).use {
+            BitmapFactory.decodeStream(it, null, op)
         }
     }
 
@@ -259,7 +272,7 @@ fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
  */
 fun Bitmap.centerCrop(width: Int, height: Int): Bitmap {
     if (this.width == width && this.height == height) return this
-    val result = Bitmap.createBitmap(width, height, config ?: Config.ARGB_8888)
+    val result = createBitmap(width, height, config ?: Config.ARGB_8888)
     val canvas = Canvas(result)
     val scale = max(width.toFloat() / this.width, height.toFloat() / this.height)
     val dx = (width - this.width * scale) / 2f
@@ -273,52 +286,60 @@ fun Bitmap.centerCrop(width: Int, height: Int): Bitmap {
 }
 
 /**
- * 获取图片代表性颜色 (近邻采样 + 饱和度提升)
+ * 获取图片代表性颜色 (支持区域裁剪 + 降采样 + 批量采样)
  */
-fun Bitmap.getRepresentativeColor(): Int {
-    val w = width
-    val h = height
+fun Bitmap.getRepresentativeColor(
+    left: Int = 0,
+    top: Int = 0,
+    regionWidth: Int = width,
+    regionHeight: Int = height
+): Int {
+    val targetSize = 64
+    val smallBitmap = if (regionWidth > targetSize || regionHeight > targetSize) {
+        val scale = targetSize.toFloat() / max(regionWidth, regionHeight)
+        val matrix = Matrix().apply { setScale(scale, scale) }
+        // native 级别同时完成裁剪和缩放，效率最高
+        Bitmap.createBitmap(this, left, top, regionWidth, regionHeight, matrix, true)
+    } else if (left != 0 || top != 0 || regionWidth != width || regionHeight != height) {
+        Bitmap.createBitmap(this, left, top, regionWidth, regionHeight)
+    } else {
+        this
+    }
 
-    val samplingCount = 25
-    val stepX = (w / samplingCount).coerceAtLeast(1)
-    val stepY = (h / samplingCount).coerceAtLeast(1)
+    val sw = smallBitmap.width
+    val sh = smallBitmap.height
+    val pixels = IntArray(sw * sh)
+    smallBitmap.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+
+    if (smallBitmap !== this) smallBitmap.recycle()
 
     var rSum = 0L
     var gSum = 0L
     var bSum = 0L
     var count = 0
-
     val hsl = FloatArray(3)
 
-    // 步进采样，避免创建临时 Bitmap
-    for (y in 0 until h step stepY) {
-        for (x in 0 until w step stepX) {
-            val pixel = this[x, y]
-            val a = (pixel shr 24) and 0xFF
-            if (a < 128) continue // 过滤透明部分
+    for (pixel in pixels) {
+        val a = (pixel shr 24) and 0xFF
+        if (a < 128) continue // 过滤透明部分
 
-            val r = (pixel shr 16) and 0xFF
-            val g = (pixel shr 8) and 0xFF
-            val b = pixel and 0xFF
+        val r = (pixel shr 16) and 0xFF
+        val g = (pixel shr 8) and 0xFF
+        val b = pixel and 0xFF
 
-            // 简单的效果优化：计算该像素的鲜艳度
-            // 只有当像素不是纯黑、纯白或纯灰色时，才赋予更高的权重，或者直接过滤
-            ColorUtils.RGBToHSL(r, g, b, hsl)
+        ColorUtils.RGBToHSL(r, g, b, hsl)
+        // 过滤：饱和度太低 (灰) 或 亮度太高/太低 (黑白) 的像素不计入代表色
+        if (hsl[1] < 0.1f || hsl[2] < 0.1f || hsl[2] > 0.9f) continue
 
-            // 过滤：饱和度太低 (灰) 或 亮度太高/太低 (黑白) 的像素不计入代表色
-            if (hsl[1] < 0.1f || hsl[2] < 0.1f || hsl[2] > 0.9f) continue
-
-            rSum += r
-            gSum += g
-            bSum += b
-            count++
-        }
+        rSum += r
+        gSum += g
+        bSum += b
+        count++
     }
 
     // 如果没有采到有效颜色（比如全是黑白），则重新以低要求采样或取中心点
     if (count == 0) {
-        val centerPixel = this[w / 2, h / 2]
-        return centerPixel
+        return if (pixels.isNotEmpty()) pixels[pixels.size / 2] else Color.TRANSPARENT
     }
 
     return Color.rgb(
@@ -328,209 +349,146 @@ fun Bitmap.getRepresentativeColor(): Int {
     )
 }
 
+/**
+ * StackBlur 算法优化
+ */
 fun Bitmap.stackBlur(radius: Int = 20, maxShortSide: Int = 400): Bitmap {
     val r = radius.coerceIn(1, 100)
     val originalWidth = width
     val originalHeight = height
 
-    // 1. 降采样：缩小图片以提升性能和模糊感
     val shortSide = min(originalWidth, originalHeight)
     val workingBitmap = if (shortSide > maxShortSide) {
         val scale = maxShortSide.toFloat() / shortSide
-        this.scale((originalWidth * scale).toInt(), (originalHeight * scale).toInt(), false)
+        // 模糊降采样不需要开启 filter (最近邻)
+        this.scale(
+            (originalWidth * scale).toInt(),
+            (originalHeight * scale).toInt(),
+            filter = false
+        )
     } else {
         this.copy(config ?: Config.ARGB_8888, true)
     }
 
     val w = workingBitmap.width
     val h = workingBitmap.height
-    val pix = IntArray(w * h)
+    val wh = w * h
+    val pix = IntArray(wh)
     workingBitmap.getPixels(pix, 0, w, 0, 0, w, h)
 
     val wm = w - 1
     val hm = h - 1
-    val wh = w * h
     val div = r + r + 1
-
-    val rSumArr = IntArray(wh)
-    val gSumArr = IntArray(wh)
-    val bSumArr = IntArray(wh)
-    val vmin = IntArray(max(w, h))
-
-    val divSum = (div + 1 shr 1) * (div + 1 shr 1)
-    val dv = IntArray(256 * divSum)
-    for (i in 0 until 256 * divSum) dv[i] = i / divSum
-
-    var yw = 0
-    var yi = 0
-    val stack = Array(div) { IntArray(3) }
-    var stackPointer: Int
-    var stackStart: Int
-    var sir: IntArray
-    var rbs: Int
     val r1 = r + 1
-    var rOutSum: Int
-    var gOutSum: Int
-    var bOutSum: Int
-    var rInSum: Int
-    var gInSum: Int
-    var bInSum: Int
-    var rSum: Int
-    var gSum: Int
-    var bSum: Int
+    val divSum = r1 * r1
 
+    val tempPix = IntArray(wh) // 内存优化：打包存储 RGB
+    val vmin = IntArray(max(w, h))
+    val dv = IntArray(256 * divSum) { it / divSum }
+    val stack = IntArray(div * 3) // 扁平化数组，减少小对象创建
+
+    var yi = 0
     for (y in 0 until h) {
-        rInSum = 0; gInSum = 0; bInSum = 0
-        rOutSum = 0; gOutSum = 0; bOutSum = 0
-        rSum = 0; gSum = 0; bSum = 0
+        var rInSum = 0
+        var gInSum = 0
+        var bInSum = 0
+        var rOutSum = 0
+        var gOutSum = 0
+        var bOutSum = 0
+        var rSum = 0
+        var gSum = 0
+        var bSum = 0
         for (i in -r..r) {
             val p = pix[yi + min(wm, max(i, 0))]
-            sir = stack[i + r]
-            sir[0] = p shr 16 and 0xff
-            sir[1] = p shr 8 and 0xff
-            sir[2] = p and 0xff
-            rbs = r1 - abs(i)
-            rSum += sir[0] * rbs
-            gSum += sir[1] * rbs
-            bSum += sir[2] * rbs
+            val sIdx = (i + r) * 3
+            stack[sIdx] = p shr 16 and 0xff
+            stack[sIdx + 1] = p shr 8 and 0xff
+            stack[sIdx + 2] = p and 0xff
+            val rbs = r1 - abs(i)
+            rSum += stack[sIdx] * rbs
+            gSum += stack[sIdx + 1] * rbs
+            bSum += stack[sIdx + 2] * rbs
             if (i > 0) {
-                rInSum += sir[0]
-                gInSum += sir[1]
-                bInSum += sir[2]
+                rInSum += stack[sIdx]; gInSum += stack[sIdx + 1]; bInSum += stack[sIdx + 2]
             } else {
-                rOutSum += sir[0]
-                gOutSum += sir[1]
-                bOutSum += sir[2]
+                rOutSum += stack[sIdx]; gOutSum += stack[sIdx + 1]; bOutSum += stack[sIdx + 2]
             }
         }
-        stackPointer = r
-
+        var stackPointer = r
         for (x in 0 until w) {
-            rSumArr[yi] = dv[rSum]
-            gSumArr[yi] = dv[gSum]
-            bSumArr[yi] = dv[bSum]
-
-            rSum -= rOutSum
-            gSum -= gOutSum
-            bSum -= bOutSum
-
-            stackStart = stackPointer - r + div
-            sir = stack[stackStart % div]
-
-            rOutSum -= sir[0]
-            gOutSum -= sir[1]
-            bOutSum -= sir[2]
-
-            if (y == 0) vmin[x] = min(x + r + 1, wm)
-            val p = pix[yw + vmin[x]]
-
-            sir[0] = p shr 16 and 0xff
-            sir[1] = p shr 8 and 0xff
-            sir[2] = p and 0xff
-
-            rInSum += sir[0]
-            gInSum += sir[1]
-            bInSum += sir[2]
-
-            rSum += rInSum
-            gSum += gInSum
-            bSum += bInSum
-
+            tempPix[yi] = (dv[rSum] shl 16) or (dv[gSum] shl 8) or dv[bSum]
+            rSum -= rOutSum; gSum -= gOutSum; bSum -= bOutSum
+            val sirIdx = ((stackPointer - r + div) % div) * 3
+            rOutSum -= stack[sirIdx]; gOutSum -= stack[sirIdx + 1]; bOutSum -= stack[sirIdx + 2]
+            if (y == 0) vmin[x] = min(x + r1, wm)
+            val p = pix[y * w + vmin[x]]
+            stack[sirIdx] = p shr 16 and 0xff
+            stack[sirIdx + 1] = p shr 8 and 0xff
+            stack[sirIdx + 2] = p and 0xff
+            rInSum += stack[sirIdx]; gInSum += stack[sirIdx + 1]; bInSum += stack[sirIdx + 2]
+            rSum += rInSum; gSum += gInSum; bSum += bInSum
             stackPointer = (stackPointer + 1) % div
-            sir = stack[stackPointer % div]
-
-            rOutSum += sir[0]
-            gOutSum += sir[1]
-            bOutSum += sir[2]
-
-            rInSum -= sir[0]
-            gInSum -= sir[1]
-            bInSum -= sir[2]
-
+            val nextSirIdx = stackPointer * 3
+            rOutSum += stack[nextSirIdx]; gOutSum += stack[nextSirIdx + 1]; bOutSum += stack[nextSirIdx + 2]
+            rInSum -= stack[nextSirIdx]; gInSum -= stack[nextSirIdx + 1]; bInSum -= stack[nextSirIdx + 2]
             yi++
         }
-        yw += w
     }
 
     for (x in 0 until w) {
-        rInSum = 0; gInSum = 0; bInSum = 0
-        rOutSum = 0; gOutSum = 0; bOutSum = 0
-        rSum = 0; gSum = 0; bSum = 0
+        var rInSum = 0
+        var gInSum = 0
+        var bInSum = 0
+        var rOutSum = 0
+        var gOutSum = 0
+        var bOutSum = 0
+        var rSum = 0
+        var gSum = 0
+        var bSum = 0
         var yp = -r * w
         for (i in -r..r) {
             yi = max(0, yp) + x
-            sir = stack[i + r]
-            sir[0] = rSumArr[yi]
-            sir[1] = gSumArr[yi]
-            sir[2] = bSumArr[yi]
-            rbs = r1 - abs(i)
-            rSum += rSumArr[yi] * rbs
-            gSum += gSumArr[yi] * rbs
-            bSum += bSumArr[yi] * rbs
+            val sIdx = (i + r) * 3
+            val pVal = tempPix[yi]
+            stack[sIdx] = pVal shr 16 and 0xff
+            stack[sIdx + 1] = pVal shr 8 and 0xff
+            stack[sIdx + 2] = pVal and 0xff
+            val rbs = r1 - abs(i)
+            rSum += stack[sIdx] * rbs
+            gSum += stack[sIdx + 1] * rbs
+            bSum += stack[sIdx + 2] * rbs
             if (i > 0) {
-                rInSum += sir[0]
-                gInSum += sir[1]
-                bInSum += sir[2]
+                rInSum += stack[sIdx]; gInSum += stack[sIdx + 1]; bInSum += stack[sIdx + 2]
             } else {
-                rOutSum += sir[0]
-                gOutSum += sir[1]
-                bOutSum += sir[2]
+                rOutSum += stack[sIdx]; gOutSum += stack[sIdx + 1]; bOutSum += stack[sIdx + 2]
             }
             if (i < hm) yp += w
         }
         yi = x
-        stackPointer = r
+        var stackPointer = r
         for (y in 0 until h) {
-            pix[yi] = -0x1000000 and pix[yi] or (dv[rSum] shl 16) or (dv[gSum] shl 8) or dv[bSum]
-
-            rSum -= rOutSum
-            gSum -= gOutSum
-            bSum -= bOutSum
-
-            stackStart = stackPointer - r + div
-            sir = stack[stackStart % div]
-
-            rOutSum -= sir[0]
-            gOutSum -= sir[1]
-            bOutSum -= sir[2]
-
+            pix[yi] = (pix[yi] and -0x1000000) or (dv[rSum] shl 16) or (dv[gSum] shl 8) or dv[bSum]
+            rSum -= rOutSum; gSum -= gOutSum; bSum -= bOutSum
+            val sirIdx = ((stackPointer - r + div) % div) * 3
+            rOutSum -= stack[sirIdx]; gOutSum -= stack[sirIdx + 1]; bOutSum -= stack[sirIdx + 2]
             if (x == 0) vmin[y] = min(y + r1, hm) * w
-            val p = x + vmin[y]
-
-            sir[0] = rSumArr[p]
-            sir[1] = gSumArr[p]
-            sir[2] = bSumArr[p]
-
-            rInSum += sir[0]
-            gInSum += sir[1]
-            bInSum += sir[2]
-
-            rSum += rInSum
-            gSum += gInSum
-            bSum += bInSum
-
+            val pVal = tempPix[x + vmin[y]]
+            stack[sirIdx] = pVal shr 16 and 0xff
+            stack[sirIdx + 1] = pVal shr 8 and 0xff
+            stack[sirIdx + 2] = pVal and 0xff
+            rInSum += stack[sirIdx]; gInSum += stack[sirIdx + 1]; bInSum += stack[sirIdx + 2]
+            rSum += rInSum; gSum += gInSum; bSum += bInSum
             stackPointer = (stackPointer + 1) % div
-            sir = stack[stackPointer % div]
-
-            rOutSum += sir[0]
-            gOutSum += sir[1]
-            bOutSum += sir[2]
-
-            rInSum -= sir[0]
-            gInSum -= sir[1]
-            bInSum -= sir[2]
-
+            val nextSirIdx = stackPointer * 3
+            rOutSum += stack[nextSirIdx]; gOutSum += stack[nextSirIdx + 1]; bOutSum += stack[nextSirIdx + 2]
+            rInSum -= stack[nextSirIdx]; gInSum -= stack[nextSirIdx + 1]; bInSum -= stack[nextSirIdx + 2]
             yi += w
         }
     }
-
     workingBitmap.setPixels(pix, 0, w, 0, 0, w, h)
 
-    // 2. 还原：拉伸回原图大小，由于是线性拉伸，模糊感会更自然
     return if (originalWidth != w || originalHeight != h) {
-        val result = workingBitmap.scale(originalWidth, originalHeight)
-        workingBitmap.recycle()
-        result
+        workingBitmap.resizeAndRecycle(originalWidth, originalHeight)
     } else {
         workingBitmap
     }
