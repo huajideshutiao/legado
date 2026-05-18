@@ -13,8 +13,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
 
     private val binding by viewBinding(DialogWaitBinding::bind)
-    private var pendingText: String? = null
-    private var pendingRes: Int? = null
+    private var msg: String? = null
     var onCancelListener: (() -> Unit)? = null
 
     override fun onStart() {
@@ -23,15 +22,17 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        pendingText?.let { binding.tvMsg.text = it }
-        pendingRes?.let { binding.tvMsg.setText(it) }
-        pendingText = null
-        pendingRes = null
+        val msg = savedInstanceState?.getString("msg") ?: msg
+        msg?.let { binding.tvMsg.text = it }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("msg", msg)
     }
 
     fun setText(text: String): WaitDialog {
-        pendingText = text
-        pendingRes = null
+        msg = text
         if (isAdded) {
             binding.tvMsg.text = text
         }
@@ -39,10 +40,9 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
     }
 
     fun setText(res: Int): WaitDialog {
-        pendingRes = res
-        pendingText = null
+        msg = getString(res)
         if (isAdded) {
-            binding.tvMsg.setText(res)
+            binding.tvMsg.text = msg
         }
         return this
     }
@@ -52,8 +52,10 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
     }
 
     fun dismissSafe() {
-        if (isAdded) {
-            dismiss()
+        kotlin.runCatching {
+            if (isAdded) {
+                dismissAllowingStateLoss()
+            }
         }
     }
 

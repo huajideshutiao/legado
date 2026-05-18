@@ -60,9 +60,12 @@ class BackupConfigFragment : PreferenceFragment(),
     MenuProvider {
 
     private val viewModel by activityViewModels<ConfigViewModel>()
-    private val waitDialog by lazy { WaitDialog.from(requireActivity()) }
     private var backupJob: Job? = null
     private var restoreJob: Job? = null
+
+    private fun getWaitDialog(): WaitDialog? {
+        return if (isAdded) WaitDialog.from(requireActivity()) else null
+    }
 
     private val selectBackupPath by lazy {
         registerHandleFile { result ->
@@ -93,17 +96,19 @@ class BackupConfigFragment : PreferenceFragment(),
     private val restoreDoc by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            waitDialog.setText("恢复中…")
-                waitDialog.show(requireActivity().supportFragmentManager)
-            val task = Coroutine.async {
-                Restore.restore(appCtx, uri)
-            }.onFinally {
-                waitDialog.dismissSafe()
+                getWaitDialog()?.let {
+                    it.setText("恢复中…")
+                    it.show(requireActivity().supportFragmentManager)
+                }
+                val task = Coroutine.async {
+                    Restore.restore(appCtx, uri)
+                }.onFinally {
+                    getWaitDialog()?.dismissSafe()
+                }
+                getWaitDialog()?.onCancelListener = {
+                    task.cancel()
+                }
             }
-                waitDialog.onCancelListener = {
-                task.cancel()
-            }
-        }
         }
     }
     private val restoreOld by lazy {
@@ -289,11 +294,13 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
     private fun backup(backupPath: String) {
-        waitDialog.setText("备份中…")
-        waitDialog.onCancelListener = {
-            backupJob?.cancel()
+        getWaitDialog()?.let {
+            it.setText("备份中…")
+            it.onCancelListener = {
+                backupJob?.cancel()
+            }
+            it.show(requireActivity().supportFragmentManager)
         }
-        waitDialog.show(requireActivity().supportFragmentManager)
         backupJob?.cancel()
         backupJob = lifecycleScope.launch {
             try {
@@ -309,8 +316,7 @@ class BackupConfigFragment : PreferenceFragment(),
                     )
                 )
             } finally {
-                ensureActive()
-                waitDialog.dismissSafe()
+                getWaitDialog()?.dismissSafe()
             }
         }
     }
@@ -326,11 +332,13 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
     fun restore() {
-        waitDialog.setText(R.string.loading)
-        waitDialog.onCancelListener = {
-            restoreJob?.cancel()
+        getWaitDialog()?.let {
+            it.setText(R.string.loading)
+            it.onCancelListener = {
+                restoreJob?.cancel()
+            }
+            it.show(requireActivity().supportFragmentManager)
         }
-        waitDialog.show(requireActivity().supportFragmentManager)
         Coroutine.async {
             restoreJob = coroutineContext[Job]
             showRestoreDialog(requireContext())
@@ -348,7 +356,7 @@ class BackupConfigFragment : PreferenceFragment(),
                 cancelButton()
             }
         }.onFinally {
-            waitDialog.dismissSafe()
+            getWaitDialog()?.dismissSafe()
         }
     }
 
@@ -377,18 +385,20 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
     private fun restoreWebDav(name: String) {
-        waitDialog.setText("恢复中…")
-        waitDialog.show(requireActivity().supportFragmentManager)
-        val task = Coroutine.async {
-            AppWebDav.restoreWebDav(name)
-        }.onError {
-            AppLog.put("WebDav恢复出错\n${it.localizedMessage}", it)
-            appCtx.toastOnUi("WebDav恢复出错\n${it.localizedMessage}")
-        }.onFinally {
-            waitDialog.dismissSafe()
-        }
-        waitDialog.onCancelListener = {
-            task.cancel()
+        getWaitDialog()?.let {
+            it.setText("恢复中…")
+            it.show(requireActivity().supportFragmentManager)
+            val task = Coroutine.async {
+                AppWebDav.restoreWebDav(name)
+            }.onError {
+                AppLog.put("WebDav恢复出错\n${it.localizedMessage}", it)
+                appCtx.toastOnUi("WebDav恢复出错\n${it.localizedMessage}")
+            }.onFinally {
+                getWaitDialog()?.dismissSafe()
+            }
+            it.onCancelListener = {
+                task.cancel()
+            }
         }
     }
 
@@ -402,7 +412,7 @@ class BackupConfigFragment : PreferenceFragment(),
 
     override fun onDestroyView() {
         super.onDestroyView()
-        waitDialog.dismissSafe()
+        getWaitDialog()?.dismissSafe()
     }
 
 }

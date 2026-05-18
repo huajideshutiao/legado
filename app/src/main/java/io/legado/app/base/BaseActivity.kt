@@ -15,6 +15,7 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.DialogFragment
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -231,6 +232,12 @@ abstract class BaseActivity<VB : ViewBinding>(
         observeEvent<String>(EventBus.RECREATE) {
             syncTheme()
         }
+    }
+
+    override fun recreate() {
+        (supportFragmentManager.findFragmentByTag("waitDialog") as? DialogFragment)
+            ?.dismissAllowingStateLoss()
+        super.recreate()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
