@@ -12,7 +12,7 @@
         android:orientation="horizontal">
 
         <!-- 左侧：封面与基本信息 -->
-        <FrameLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/header_container"
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -20,15 +20,23 @@
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/bg_book"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
                 android:contentDescription="@string/bg_image"
-                android:scaleType="centerCrop" />
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
 
                 <LinearLayout
                     android:id="@+id/title_bar_space"
@@ -143,10 +151,11 @@
                 android:layout_height="wrap_content"
                 android:background="@android:color/transparent"
                 app:elevation="0dp"
+                app:layout_constraintTop_toTopOf="parent"
                 app:themeMode="dark"
                 app:title="@string/book_info" />
 
-        </FrameLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- 右侧：详情、简介与操作栏 -->
         <LinearLayout

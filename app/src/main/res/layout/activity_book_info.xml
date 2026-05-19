@@ -26,22 +26,30 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <FrameLayout
+                <androidx.constraintlayout.widget.ConstraintLayout
                     android:id="@+id/header_container"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content">
 
                     <androidx.appcompat.widget.AppCompatImageView
                         android:id="@+id/bg_book"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
                         android:contentDescription="@string/bg_image"
-                        android:scaleType="centerCrop" />
+                        android:scaleType="centerCrop"
+                        app:layout_constraintBottom_toBottomOf="@+id/header_content_layout"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
 
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:id="@+id/header_content_layout"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical">
+                        android:orientation="vertical"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent">
 
                         <LinearLayout
                             android:id="@+id/title_bar_space"
@@ -145,7 +153,7 @@
                             </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
-                </FrameLayout>
+                </androidx.constraintlayout.widget.ConstraintLayout>
 
                 <LinearLayout
                     android:id="@+id/ll_info"

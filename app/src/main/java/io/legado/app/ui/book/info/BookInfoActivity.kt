@@ -474,10 +474,11 @@ class BookInfoActivity :
     }
 
     private fun showCover(book: Book) = binding.run {
+        val coverUrl = book.getDisplayCover()
         ivCover.coverRatio = if (book.isVideo) CoverImageView.CoverRatio.VIDEO
         else CoverImageView.CoverRatio.NOVEL
         ivCover.load(
-            book.getDisplayCover(),
+            coverUrl,
             book.name,
             book.getRealAuthor(),
             false,
@@ -485,14 +486,17 @@ class BookInfoActivity :
             inBookshelf = viewModel.inBookshelf
         )
         if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
-            BookCover.loadBlur(
-                Glide.with(this@BookInfoActivity),
-                book.getDisplayCover(),
-                sourceOrigin = book.origin,
-                inBookshelf = viewModel.inBookshelf
-            ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
-                .placeholder(bgBook.drawable)
-                .into(bgBook)
+            bgBook.post {
+                if (isFinishing || isDestroyed) return@post
+                BookCover.loadBlur(
+                    Glide.with(this@BookInfoActivity),
+                    coverUrl,
+                    sourceOrigin = book.origin,
+                    inBookshelf = viewModel.inBookshelf
+                ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
+                    .placeholder(bgBook.drawable)
+                    .into(bgBook)
+            }
         }
     }
 
