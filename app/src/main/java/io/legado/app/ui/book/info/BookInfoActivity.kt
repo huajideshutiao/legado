@@ -14,14 +14,11 @@ import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
-import com.bumptech.glide.request.target.Target
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
@@ -82,7 +79,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
@@ -167,27 +163,24 @@ class BookInfoActivity :
 
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.run {
-            titleBar.setBackgroundResource(R.color.transparent)
-            titleBarSpace.applyStatusBarPadding()
-            titleBarSpaceRight?.let { view ->
-                ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-                    val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-                    view.updateLayoutParams { height = statusBarHeight }
-                    insets
-                }
-            }
-            refreshLayout?.setColorSchemeColors(accentColor)
-            flAction.applyNavigationBarPadding()
-            tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
-            tvToc.text = getString(R.string.loading)
-            tvIntro.revealOnFocusHint = false
-        }
+        initView()
+        initData()
+        initViewEvent()
+    }
+
+    private fun initView() = binding.run {
+        titleBar.setBackgroundResource(R.color.transparent)
+        refreshLayout.setColorSchemeColors(accentColor)
+        flAction.applyNavigationBarPadding()
+        tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
+        tvIntro.revealOnFocusHint = false
+    }
+
+    private fun initData() {
         viewModel.bookData.observe(this) { showBook(it) }
         viewModel.chapterListData.observe(this) { upLoading(false, it) }
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
         viewModel.initData()
-        initViewEvent()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -219,36 +212,14 @@ class BookInfoActivity :
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        val book = viewModel.getBook()
         when (item.itemId) {
-            R.id.menu_edit -> viewModel.getBook()?.let {
+            R.id.menu_edit -> book?.let {
                 IntentData.book = it
                 infoEditResult.launch {}
             }
 
-            R.id.menu_share_it -> viewModel.curBook?.let { book ->
-                share(
-                    "[${
-                        GSON.toJson(
-                            mapOf(
-                                "bookUrl" to book.bookUrl,
-                                "tocUrl" to book.tocUrl,
-                                "origin" to book.origin,
-                                "originName" to book.originName,
-                                "name" to book.name,
-                                "author" to book.author,
-                                "kind" to book.kind,
-                                "coverUrl" to book.coverUrl,
-                                "customCoverUrl" to book.customCoverUrl,
-                                "intro" to book.intro,
-                                "customIntro" to book.customIntro,
-                                "type" to book.type,
-                                "wordCount" to book.wordCount
-                            )
-                        )
-                    }]"
-                )
-            }
-
+            R.id.menu_share_it -> viewModel.curBook?.let { shareBook(it) }
             R.id.menu_refresh -> refreshBook()
             R.id.menu_login -> viewModel.curBookSource?.let {
                 IntentData.book = viewModel.bookData.value
@@ -257,12 +228,13 @@ class BookInfoActivity :
 
             R.id.menu_top -> viewModel.topBook()
             R.id.menu_set_source_variable -> viewModel.curBookSource?.showSourceVariableDialog(this)
-            R.id.menu_set_book_variable -> viewModel.getBook()
-                ?.showBookVariableDialog(this, viewModel.curBookSource)
+            R.id.menu_set_book_variable -> book?.showBookVariableDialog(
+                this, viewModel.curBookSource
+            )
 
-            R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let { sendToClip(it) }
-            R.id.menu_copy_toc_url -> viewModel.getBook()?.tocUrl?.let { sendToClip(it) }
-            R.id.menu_can_update -> viewModel.getBook()?.let {
+            R.id.menu_copy_book_url -> book?.bookUrl?.let { sendToClip(it) }
+            R.id.menu_copy_toc_url -> book?.tocUrl?.let { sendToClip(it) }
+            R.id.menu_can_update -> book?.let {
                 it.canUpdate = !it.canUpdate
                 if (viewModel.inBookshelf) {
                     if (!it.canUpdate) it.removeType(BookType.updateError)
@@ -272,29 +244,52 @@ class BookInfoActivity :
 
             R.id.menu_clear_cache -> viewModel.clearCache()
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
-            R.id.menu_split_long_chapter -> {
+            R.id.menu_split_long_chapter -> book?.let {
                 upLoading(true)
-                viewModel.getBook()?.let {
-                    it.setSplitLongChapter(!item.isChecked)
-                    lifecycleScope.launch { viewModel.loadBookInfo(it) }
-                }
+                it.setSplitLongChapter(!item.isChecked)
+                lifecycleScope.launch { viewModel.loadBookInfo(it) }
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
             }
 
             R.id.menu_delete_alert -> LocalConfig.bookInfoDeleteAlert = !item.isChecked
-            R.id.menu_upload -> viewModel.getBook()?.let { book ->
-                if (book.getRemoteUrl() != null) {
-                    alert(R.string.draw, R.string.sure_upload) {
-                        okButton { viewModel.uploadBook(book) }
-                        cancelButton()
-                    }
-                } else viewModel.uploadBook(book)
-            }
-
-            R.id.menu_download_local -> viewModel.getBook()?.let { viewModel.downloadToLocal(it) }
+            R.id.menu_upload -> book?.let { uploadBook(it) }
+            R.id.menu_download_local -> book?.let { viewModel.downloadToLocal(it) }
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun shareBook(book: Book) {
+        share(
+            "[${
+                GSON.toJson(
+                    mapOf(
+                        "bookUrl" to book.bookUrl,
+                        "tocUrl" to book.tocUrl,
+                        "origin" to book.origin,
+                        "originName" to book.originName,
+                        "name" to book.name,
+                        "author" to book.author,
+                        "kind" to book.kind,
+                        "coverUrl" to book.coverUrl,
+                        "customCoverUrl" to book.customCoverUrl,
+                        "intro" to book.intro,
+                        "customIntro" to book.customIntro,
+                        "type" to book.type,
+                        "wordCount" to book.wordCount
+                    )
+                )
+            }]"
+        )
+    }
+
+    private fun uploadBook(book: Book) {
+        if (book.getRemoteUrl() != null) {
+            alert(R.string.draw, R.string.sure_upload) {
+                okButton { viewModel.uploadBook(book) }
+                cancelButton()
+            }
+        } else viewModel.uploadBook(book)
     }
 
     override fun observeLiveBus() {
@@ -345,54 +340,55 @@ class BookInfoActivity :
             titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Auto)
 
             llTop.orientation = LinearLayout.HORIZONTAL
-            rlCover.updateLayoutParams {
+            cvCover.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = LinearLayout.LayoutParams.WRAP_CONTENT
             }
             llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = 0
-                //weight = 1f
             }
-            llInfoTop.setPadding(0, 0, 0, 0)
+            llInfoTop.setPadding(0, 0, llInfoTop.paddingRight, 0)
             tvName.gravity = Gravity.START
-            llLasted.gravity = Gravity.START
-            lbWordCount.gravity = Gravity.START
+            llLasted.updateLayoutParams<LinearLayout.LayoutParams> {
+                gravity = Gravity.START
+            }
+            tvWordCount.gravity = Gravity.START
         } else {
             setLightStatusBar(false)
             bgBook.visible()
-            titleBar.setTextColor(getPrimaryTextColor(false))
-            titleBar.setColorFilter(getPrimaryTextColor(false))
+            val textColor = getPrimaryTextColor(false)
+            titleBar.setTextColor(textColor)
+            titleBar.setColorFilter(textColor)
             titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Dark)
 
             if (!isLandscape) {
                 llTop.orientation = LinearLayout.VERTICAL
-
-                rlCover.updateLayoutParams {
-                    width = LinearLayout.LayoutParams.MATCH_PARENT
+                cvCover.updateLayoutParams<LinearLayout.LayoutParams> {
+                    width = LinearLayout.LayoutParams.WRAP_CONTENT
                 }
                 llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                     width = LinearLayout.LayoutParams.MATCH_PARENT
-                    //weight = 0f
                 }
-                llInfoTop.setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
+                llInfoTop.setPadding(llInfoTop.paddingRight, 0, llInfoTop.paddingRight, 0)
                 tvName.gravity = Gravity.CENTER
-                llLasted.gravity = Gravity.CENTER
-                lbWordCount.gravity = Gravity.CENTER
+                llLasted.updateLayoutParams<LinearLayout.LayoutParams> {
+                    gravity = Gravity.CENTER
+                }
+                tvWordCount.gravity = Gravity.CENTER
             }
         }
     }
 
     private fun upKinds(book: Book) = binding.run {
-        // 提前稳定高度：如果知道肯定有文字，直接显示，避免后续协程回来后布局跳动
-        val hasWordCount = book.wordCount?.isNotBlank() == true
-        lbWordCount.isVisible = hasWordCount || book.isLocal
-        if (hasWordCount) lbWordCount.text = book.wordCount
+        val hasWordCount = !book.wordCount.isNullOrBlank()
+        tvWordCount.isVisible = hasWordCount || book.isLocal
+        if (hasWordCount) tvWordCount.text = book.wordCount
 
         lifecycleScope.launch {
             val wordCounts = arrayListOf<String>()
-            book.wordCount?.let { if (it.isNotBlank()) wordCounts.add(it) }
+            book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
             if (book.isLocal) {
-                withContext(IO) {
-                    val size = try {
+                val size = withContext(IO) {
+                    try {
                         if (book.bookUrl.startsWith("http", true) || book.bookUrl.startsWith(
                                 "dav", true
                             )
@@ -401,20 +397,23 @@ class BookInfoActivity :
                     } catch (_: Exception) {
                         0L
                     }
-                    if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
                 }
+                if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
             }
             if (wordCounts.isNotEmpty()) {
-                lbWordCount.isVisible = true
-                lbWordCount.text = wordCounts.joinToString(",")
+                tvWordCount.isVisible = true
+                tvWordCount.text = wordCounts.joinToString(",")
             }
             book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
         }
     }
 
     private fun bindKinds(container: LinearLayout, kinds: Array<String>) {
-        container.isVisible = kinds.isNotEmpty()
-        if (kinds.isEmpty()) return
+        if (kinds.isEmpty()) {
+            container.gone()
+            return
+        }
+        container.visible()
         container.removeAllViews()
 
         val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
@@ -424,10 +423,9 @@ class BookInfoActivity :
             val tagContent = urlSplit[0].trim()
             val groupSplit = tagContent.split(":", limit = 2)
 
-            if (groupSplit.size > 1 && groupSplit[0].isNotBlank() && groupSplit[1].isNotBlank()) {
-                val group = groupSplit[0].trim()
-                val value = groupSplit[1].trim()
-                groups.getOrPut(group) { mutableListOf() }.add(value to kind)
+            if (groupSplit.size > 1 && groupSplit.all { it.isNotBlank() }) {
+                groups.getOrPut(groupSplit[0].trim()) { mutableListOf() }
+                    .add(groupSplit[1].trim() to kind)
             } else if (tagContent.isNotBlank()) {
                 groups.getOrPut(otherLabel) { mutableListOf() }.add(tagContent to kind)
             }
@@ -440,15 +438,11 @@ class BookInfoActivity :
                 )
                 flexWrap = FlexWrap.WRAP
             }
-
             if (groups.size > 1 || groupName != otherLabel) {
                 addTagToFlexbox(flexboxLayout, groupName, null)
             }
-
             items.forEach { (value, fullKind) ->
-                if (value.isNotEmpty()) {
-                    addTagToFlexbox(flexboxLayout, value, fullKind)
-                }
+                if (value.isNotEmpty()) addTagToFlexbox(flexboxLayout, value, fullKind)
             }
             container.addView(flexboxLayout)
         }
@@ -487,22 +481,13 @@ class BookInfoActivity :
             inBookshelf = viewModel.inBookshelf
         )
         if (!AppConfig.isEInkMode && bgBook.isVisible) {
-            // 使用 stableHeight (以32像素为步长向上取整) 来锁定 Glide 采样尺寸。
-            // 这样当内容高度发生几像素的微调时，Glide Key 不变，ImageView 的 centerCrop 会做平滑位移，而不会触发重绘。
-            val currentHeight = bgBook.height.takeIf { it > 0 } ?: 0
-            val stableHeight =
-                if (currentHeight > 0) (currentHeight / 32 + 1) * 32 else Target.SIZE_ORIGINAL
-
             BookCover.loadBlur(
                 Glide.with(this@BookInfoActivity),
                 coverUrl,
                 sourceOrigin = book.origin,
                 inBookshelf = viewModel.inBookshelf
-            ).override(Target.SIZE_ORIGINAL, stableHeight)
-                .transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
-                .placeholder(bgBook.drawable)
-                .dontAnimate()
-                .into(bgBook)
+            ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
+                .placeholder(bgBook.drawable).into(bgBook)
         }
     }
 
@@ -546,9 +531,9 @@ class BookInfoActivity :
             }
         }
         tvShelf.onClick {
-            viewModel.getBook()?.let { book ->
+            viewModel.getBook()?.let {
                 if (viewModel.inBookshelf) deleteBook()
-                else if (book.isWebFile) showWebFileDownloadAlert()
+                else if (it.isWebFile) showWebFileDownloadAlert()
                 else viewModel.addToBookshelf {
                     setResult(RESULT_OK)
                     upTvBookshelf()
@@ -556,22 +541,20 @@ class BookInfoActivity :
             }
         }
         tvOrigin.onClick {
-            viewModel.getBook()?.let { book ->
-                if (book.isLocal) return@let
-                val source =
-                    viewModel.curBookSource ?: return@let toastOnUi(R.string.error_no_source)
-                editSourceResult.launch { IntentData.source = source }
-            }
+            if (viewModel.curBook?.isLocal == true) return@onClick
+            viewModel.curBookSource?.let { editSourceResult.launch { IntentData.source = it } }
+                ?: toastOnUi(R.string.error_no_source)
         }
         tvOrigin.onLongClick {
             viewModel.getBook()
                 ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getRealAuthor())) }
         }
         tvToc.onClick {
-            if (viewModel.chapterListData.value.isNullOrEmpty()) return@onClick toastOnUi(R.string.chapter_list_empty)
+            val chapters = viewModel.chapterListData.value
+            if (chapters.isNullOrEmpty()) return@onClick toastOnUi(R.string.chapter_list_empty)
             viewModel.getBook()?.let {
                 IntentData.book = it
-                IntentData.chapterList = viewModel.chapterListData.value
+                IntentData.chapterList = chapters
                 tocActivityResult.launch(it.bookUrl)
             }
         }
@@ -585,7 +568,9 @@ class BookInfoActivity :
                 if (authors.size == 1) search(authors[0])
                 else PopupMenu(this@BookInfoActivity, it).apply {
                     authors.forEachIndexed { index, s ->
-                        menu.add(0, index, index, s.split("::")[0])
+                        menu.add(
+                            0, index, index, s.split("::")[0]
+                        )
                     }
                     setOnMenuItemClickListener { menuItem -> search(authors[menuItem.itemId]); true }
                 }.show()
@@ -595,7 +580,7 @@ class BookInfoActivity :
             viewModel.getBook(false)
                 ?.let { startActivity<SearchActivity> { putExtra("key", it.name) } }
         }
-        refreshLayout?.setOnRefreshListener {
+        refreshLayout.setOnRefreshListener {
             refreshLayout.isRefreshing = false
             refreshBook()
         }

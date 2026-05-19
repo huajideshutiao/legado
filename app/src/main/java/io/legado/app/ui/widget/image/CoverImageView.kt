@@ -253,7 +253,7 @@ class CoverImageView @JvmOverloads constructor(
         this.bitmapPath = path
         this.name = name?.replace(AppPattern.bdRegex, "")?.trim()
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
-        defaultCover = true
+        defaultCover = drawable == BookCover.defaultDrawable
         invalidate()
         val requestManager = fragment?.let {
             lifecycle?.let { Glide.with(fragment).lifecycle(it) }
@@ -267,7 +267,8 @@ class CoverImageView @JvmOverloads constructor(
                 inBookshelf,
                 onLoadFinish
             )
-                .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
+                .addListener(glideListener).placeholder(drawable ?: BookCover.defaultDrawable)
+                .into(this)
             Unit
         }
         // 等待布局完成，确保Glide获取到最新的cover宽高
