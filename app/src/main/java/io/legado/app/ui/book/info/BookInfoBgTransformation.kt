@@ -33,7 +33,7 @@ class BookInfoBgTransformation : BitmapTransformation() {
             Color.argb(210, 0, 0, 0),       // 0.48f 开始柔和过渡
             Color.argb(165, 0, 0, 0),       // 0.63f 继续过渡
             Color.argb(110, 0, 0, 0),       // 0.77f 明显淡化
-            Color.argb(50, 0, 0, 0),        // 0.90f 接近透明
+            Color.argb(30, 0, 0, 0),        // 0.90f 接近透明
             Color.TRANSPARENT,              // 1f    完全透明
         )
         private val GRADIENT_STOPS = floatArrayOf(0f, 0.30f, 0.48f, 0.63f, 0.77f, 0.90f, 1f)

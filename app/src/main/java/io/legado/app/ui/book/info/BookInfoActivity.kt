@@ -16,6 +16,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
@@ -126,8 +127,8 @@ class BookInfoActivity :
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
             result.uri?.let { treeUri ->
-            AppConfig.defaultBookTreeUri = treeUri.toString()
-        }
+                AppConfig.defaultBookTreeUri = treeUri.toString()
+            }
         }
     }
     private val readBookResult = registerForActivityResult(
@@ -337,7 +338,7 @@ class BookInfoActivity :
         val useDevFeat = AppConfig.devFeat && !book.isVideo && !isLandscape
 
         if (useDevFeat) {
-            setLightStatusBar(!isDarkTheme)
+            setLightStatusBar(isDarkTheme)
             bgBook.gone()
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
@@ -349,17 +350,12 @@ class BookInfoActivity :
             }
             llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = 0
-                weight = 1f
+                //weight = 1f
             }
             llInfoTop.setPadding(0, 0, 0, 0)
-
             tvName.gravity = Gravity.START
             llLasted.gravity = Gravity.START
-            (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = Gravity.START
-            lbWordCount.updateLayoutParams<LinearLayout.LayoutParams> {
-                this.gravity =
-                    Gravity.START
-            }
+            lbWordCount.gravity = Gravity.START
         } else {
             setLightStatusBar(false)
             bgBook.visible()
@@ -375,14 +371,12 @@ class BookInfoActivity :
                 }
                 llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                     width = LinearLayout.LayoutParams.MATCH_PARENT
-                    weight = 0f
+                    //weight = 0f
                 }
                 llInfoTop.setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
-                val gravity = Gravity.CENTER
-                tvName.gravity = gravity
-                llLasted.gravity = gravity
-                (llLasted.layoutParams as LinearLayout.LayoutParams).gravity = gravity
-                lbWordCount.updateLayoutParams<LinearLayout.LayoutParams> { this.gravity = gravity }
+                tvName.gravity = Gravity.CENTER
+                llLasted.gravity = Gravity.CENTER
+                lbWordCount.gravity = Gravity.CENTER
             }
         }
     }
@@ -485,9 +479,8 @@ class BookInfoActivity :
             book.origin,
             inBookshelf = viewModel.inBookshelf
         )
-        if (!AppConfig.isEInkMode && (!AppConfig.devFeat || book.isVideo || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
-            bgBook.post {
-                if (isFinishing || isDestroyed) return@post
+        if (!AppConfig.isEInkMode && bgBook.isVisible) {
+            bgBook.doOnNextLayout {
                 BookCover.loadBlur(
                     Glide.with(this@BookInfoActivity),
                     coverUrl,

@@ -33,14 +33,12 @@
 
                     <androidx.appcompat.widget.AppCompatImageView
                         android:id="@+id/bg_book"
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="0dp"
                         android:contentDescription="@string/bg_image"
-                        android:scaleType="centerCrop"
-                        app:layout_constraintBottom_toBottomOf="@+id/header_content_layout"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintTop_toTopOf="parent" />
+                        android:scaleType="fitXY"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintTop_toTopOf="@id/header_content_layout" />
 
                     <LinearLayout
                         android:id="@+id/header_content_layout"
@@ -98,6 +96,7 @@
                                 android:id="@+id/ll_info_top"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:layout_weight="1"
                                 android:orientation="vertical"
                                 android:paddingLeft="8dp"
                                 android:paddingRight="8dp">
