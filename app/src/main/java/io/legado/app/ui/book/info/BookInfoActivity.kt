@@ -16,12 +16,12 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
+import com.bumptech.glide.request.target.Target
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
@@ -321,7 +321,6 @@ class BookInfoActivity :
 
     private fun showBook(book: Book) = binding.run {
         applyDevFeatLayout(book)
-        showCover(book)
         tvName.text = book.name
         tvAuthor.text = book.getRealAuthor()
         tvOrigin.text = book.originName
@@ -331,6 +330,7 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
+        showCover(book)
     }
 
     private fun applyDevFeatLayout(book: Book) = binding.run {
@@ -382,6 +382,11 @@ class BookInfoActivity :
     }
 
     private fun upKinds(book: Book) = binding.run {
+        // 提前稳定高度：如果知道肯定有文字，直接显示，避免后续协程回来后布局跳动
+        val hasWordCount = book.wordCount?.isNotBlank() == true
+        lbWordCount.isVisible = hasWordCount || book.isLocal
+        if (hasWordCount) lbWordCount.text = book.wordCount
+
         lifecycleScope.launch {
             val wordCounts = arrayListOf<String>()
             book.wordCount?.let { if (it.isNotBlank()) wordCounts.add(it) }
@@ -399,8 +404,10 @@ class BookInfoActivity :
                     if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
                 }
             }
-            lbWordCount.isVisible = wordCounts.isNotEmpty()
-            lbWordCount.text = wordCounts.joinToString(",")
+            if (wordCounts.isNotEmpty()) {
+                lbWordCount.isVisible = true
+                lbWordCount.text = wordCounts.joinToString(",")
+            }
             book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
         }
     }
@@ -480,16 +487,22 @@ class BookInfoActivity :
             inBookshelf = viewModel.inBookshelf
         )
         if (!AppConfig.isEInkMode && bgBook.isVisible) {
-            bgBook.doOnNextLayout {
-                BookCover.loadBlur(
-                    Glide.with(this@BookInfoActivity),
-                    coverUrl,
-                    sourceOrigin = book.origin,
-                    inBookshelf = viewModel.inBookshelf
-                ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
-                    .placeholder(bgBook.drawable)
-                    .into(bgBook)
-            }
+            // 使用 stableHeight (以32像素为步长向上取整) 来锁定 Glide 采样尺寸。
+            // 这样当内容高度发生几像素的微调时，Glide Key 不变，ImageView 的 centerCrop 会做平滑位移，而不会触发重绘。
+            val currentHeight = bgBook.height.takeIf { it > 0 } ?: 0
+            val stableHeight =
+                if (currentHeight > 0) (currentHeight / 32 + 1) * 32 else Target.SIZE_ORIGINAL
+
+            BookCover.loadBlur(
+                Glide.with(this@BookInfoActivity),
+                coverUrl,
+                sourceOrigin = book.origin,
+                inBookshelf = viewModel.inBookshelf
+            ).override(Target.SIZE_ORIGINAL, stableHeight)
+                .transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
+                .placeholder(bgBook.drawable)
+                .dontAnimate()
+                .into(bgBook)
         }
     }
 
