@@ -25,10 +25,14 @@ abstract class BaseFragment(@LayoutRes layoutID: Int) : Fragment(layoutID) {
         @SuppressLint("RestrictedApi")
         get() = SupportMenuInflater(requireContext())
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        observeLiveBus()
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         onMultiWindowModeChanged()
-        observeLiveBus()
         onFragmentCreated(view, savedInstanceState)
     }
 

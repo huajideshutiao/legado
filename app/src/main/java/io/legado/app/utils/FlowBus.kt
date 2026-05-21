@@ -6,7 +6,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -35,8 +34,8 @@ object FlowBus {
     ) {
         val flow = with(key)
         lifecycleOwner.lifecycleScope.launch {
-            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                flow.collectLatest { event ->
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                flow.collect { event ->
                     if (event is T) {
                         observer(event)
                     }
@@ -50,8 +49,8 @@ object FlowBus {
     ) {
         val flow = withSticky(key)
         lifecycleOwner.lifecycleScope.launch {
-            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                flow.collectLatest { event ->
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                flow.collect { event ->
                     if (event is T) {
                         observer(event)
                     }
