@@ -16,13 +16,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gedoor/legado.git"
+    "url": "git+https://github.com/huajideshutiao/legado.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/gedoor/legado/issues"
+    "url": "https://github.com/huajideshutiao/legado/issues"
   },
-  "homepage": "https://github.com/gedoor/legado#readme"
+  "homepage": "https://github.com/huajideshutiao/legado#readme"
 }

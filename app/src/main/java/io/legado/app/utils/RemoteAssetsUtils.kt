@@ -12,7 +12,7 @@ import java.net.URLEncoder
 object RemoteAssetsUtils {
 
     private const val BASE_URL = "https://fastly.jsdelivr.net/gh"
-    private const val BG_DIR = "gedoor/legado@master/app/src/main/assets/bg"
+    private const val BG_DIR = "huajideshutiao/legado@master/app/src/main/assets/bg"
     private const val BG_PREVIEW_DIR = "bg_preview"
     private const val TC_DIR =
         "liuyueyi/quick-chinese-transfer@master/transfer-core/src/main/resources/tc"

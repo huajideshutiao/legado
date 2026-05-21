@@ -15,7 +15,7 @@ jobs:
   stale:
 
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'gedoor/legado' }}
+    if: ${{ github.repository == 'huajideshutiao/legado' }}
     permissions:
       issues: write
 
