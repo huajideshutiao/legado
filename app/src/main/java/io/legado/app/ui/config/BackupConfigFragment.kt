@@ -63,8 +63,13 @@ class BackupConfigFragment : PreferenceFragment(),
     private var backupJob: Job? = null
     private var restoreJob: Job? = null
 
+    private var _waitDialog: WaitDialog? = null
     private fun getWaitDialog(): WaitDialog? {
-        return if (isAdded) WaitDialog.from(requireActivity()) else null
+        val activity = activity ?: return null
+        if (_waitDialog == null) {
+            _waitDialog = WaitDialog.from(activity)
+        }
+        return _waitDialog
     }
 
     private val selectBackupPath by lazy {
@@ -413,6 +418,7 @@ class BackupConfigFragment : PreferenceFragment(),
     override fun onDestroyView() {
         super.onDestroyView()
         getWaitDialog()?.dismissSafe()
+        _waitDialog = null
     }
 
 }

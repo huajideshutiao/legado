@@ -53,9 +53,7 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
 
     fun dismissSafe() {
         kotlin.runCatching {
-            if (isAdded) {
-                dismissAllowingStateLoss()
-            }
+            dismissAllowingStateLoss()
         }
     }
 
@@ -72,6 +70,11 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
                 dialog = WaitDialog()
             }
             return dialog
+        }
+
+        fun dismiss(activity: FragmentActivity?) {
+            val fm = activity?.supportFragmentManager ?: return
+            (fm.findFragmentByTag("waitDialog") as? WaitDialog)?.dismissSafe()
         }
     }
 }
