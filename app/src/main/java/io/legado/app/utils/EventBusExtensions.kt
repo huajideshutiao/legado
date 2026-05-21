@@ -13,6 +13,7 @@ fun eventObservable(tag: String): MutableSharedFlow<Any> {
 
 inline fun <reified EVENT : Any> postEvent(tag: String, event: EVENT) {
     FlowBus.with(tag).tryEmit(event)
+    FlowBus.withSticky(tag).tryEmit(event)
 }
 
 inline fun <reified EVENT : Any> postEventDelay(tag: String, event: EVENT, delay: Long) {
@@ -39,7 +40,7 @@ inline fun <reified EVENT : Any> AppCompatActivity.observeEventSticky(
     noinline observer: (EVENT) -> Unit
 ) {
     tags.forEach {
-        FlowBus.observe<EVENT>(this, it, observer)
+        FlowBus.observeSticky<EVENT>(this, it, observer)
     }
 }
 
@@ -57,7 +58,7 @@ inline fun <reified EVENT : Any> Fragment.observeEventSticky(
     noinline observer: (EVENT) -> Unit
 ) {
     tags.forEach {
-        FlowBus.observe<EVENT>(this, it, observer)
+        FlowBus.observeSticky<EVENT>(this, it, observer)
     }
 }
 
@@ -75,6 +76,6 @@ inline fun <reified EVENT : Any> LifecycleService.observeEventSticky(
     noinline observer: (EVENT) -> Unit
 ) {
     tags.forEach {
-        FlowBus.observe<EVENT>(this, it, observer)
+        FlowBus.observeSticky<EVENT>(this, it, observer)
     }
 }

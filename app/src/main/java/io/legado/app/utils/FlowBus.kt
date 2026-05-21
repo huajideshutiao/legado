@@ -12,23 +12,43 @@ import java.util.concurrent.ConcurrentHashMap
 
 object FlowBus {
     private val bus = ConcurrentHashMap<String, MutableSharedFlow<Any>>()
+    private val stickyBus = ConcurrentHashMap<String, MutableSharedFlow<Any>>()
 
     fun with(key: String): MutableSharedFlow<Any> {
         return bus.getOrPut(key) {
             MutableSharedFlow(
-                replay = 1,
-                extraBufferCapacity = 64,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST
+                replay = 0, extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
+        }
+    }
+
+    fun withSticky(key: String): MutableSharedFlow<Any> {
+        return stickyBus.getOrPut(key) {
+            MutableSharedFlow(
+                replay = 1, extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST
             )
         }
     }
 
     inline fun <reified T> observe(
-        lifecycleOwner: LifecycleOwner,
-        key: String,
-        noinline observer: (T) -> Unit
+        lifecycleOwner: LifecycleOwner, key: String, noinline observer: (T) -> Unit
     ) {
         val flow = with(key)
+        lifecycleOwner.lifecycleScope.launch {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                flow.collectLatest { event ->
+                    if (event is T) {
+                        observer(event)
+                    }
+                }
+            }
+        }
+    }
+
+    inline fun <reified T> observeSticky(
+        lifecycleOwner: LifecycleOwner, key: String, noinline observer: (T) -> Unit
+    ) {
+        val flow = withSticky(key)
         lifecycleOwner.lifecycleScope.launch {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 flow.collectLatest { event ->
