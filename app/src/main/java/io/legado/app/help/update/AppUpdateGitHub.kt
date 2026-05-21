@@ -52,9 +52,28 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
         scope: CoroutineScope,
     ): Coroutine<AppUpdate.UpdateInfo> {
         return Coroutine.async(scope) {
+            val supportedAbis = android.os.Build.SUPPORTED_ABIS
             getLatestRelease()
                 .filter { it.appVariant == checkVariant }
-                .firstOrNull { it.versionName > AppConst.appInfo.versionName }
+                .filter { it.versionName > AppConst.appInfo.versionName }
+                .minByOrNull { info ->
+                    // 架构匹配优先级排序：完全匹配 > all > 其他
+                    val abiScore = when {
+                        supportedAbis.any { abi ->
+                            val shortAbi = when {
+                                abi.startsWith("arm64") -> "arm64"
+                                abi.startsWith("armeabi-v7") -> "armv7"
+                                abi.startsWith("x86_64") -> "x64"
+                                else -> abi
+                            }
+                            info.name.contains(shortAbi, ignoreCase = true)
+                        } -> 0
+
+                        info.name.contains("all", ignoreCase = true) -> 1
+                        else -> 2
+                    }
+                    abiScore
+                }
                 ?.let {
                     return@async AppUpdate.UpdateInfo(
                         it.versionName,

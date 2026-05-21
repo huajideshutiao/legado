@@ -11,10 +11,9 @@ data class AppReleaseInfo(
     val note: String,
     val name: String,
     val downloadUrl: String,
-    val assetUrl: String
-) {
-    val versionName: String = name.split("_").getOrNull(2)?.dropLast(2) ?: ""
-}
+    val assetUrl: String,
+    val versionName: String
+)
 
 enum class AppVariant {
     OFFICIAL,
@@ -30,6 +29,9 @@ enum class AppVariant {
 
 @Keep
 data class GithubRelease(
+    val name: String?,
+    @SerializedName("tag_name")
+    val tagName: String?,
     val assets: List<Asset>?,
     val body: String,
     @SerializedName("prerelease")
@@ -37,9 +39,14 @@ data class GithubRelease(
 ) {
     fun gitReleaseToAppReleaseInfo(): List<AppReleaseInfo> {
         assets ?: throw NoStackTraceException("获取新版本出错")
+        val releaseVersion = if (isPreRelease) {
+            name?.substringAfterLast("_") ?: ""
+        } else {
+            tagName ?: ""
+        }
         return assets
             .filter { it.isValid }
-            .map { it.assetToAppReleaseInfo(isPreRelease, body) }
+            .map { it.assetToAppReleaseInfo(isPreRelease, body, releaseVersion) }
     }
 }
 
@@ -61,7 +68,11 @@ data class Asset(
     val isValid: Boolean
         get() = (contentType == "application/vnd.android.package-archive") && (state == "uploaded")
 
-    fun assetToAppReleaseInfo(preRelease: Boolean, note: String): AppReleaseInfo {
+    fun assetToAppReleaseInfo(
+        preRelease: Boolean,
+        note: String,
+        releaseVersion: String
+    ): AppReleaseInfo {
         val instant = Instant.parse(createdAt)
         val timestamp: Long = instant.toEpochMilli()
 
@@ -71,6 +82,12 @@ data class Asset(
             else -> AppVariant.OFFICIAL
         }
 
-        return AppReleaseInfo(appVariant, timestamp, note, name, apkUrl, url)
+        val versionName = if (releaseVersion.isNotBlank()) {
+            releaseVersion
+        } else {
+            name.split("_").getOrNull(2)?.dropLast(2) ?: ""
+        }
+
+        return AppReleaseInfo(appVariant, timestamp, note, name, apkUrl, url, versionName)
     }
 }

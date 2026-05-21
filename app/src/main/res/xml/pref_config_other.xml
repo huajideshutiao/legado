@@ -117,6 +117,14 @@
         app:entries="@array/default_app_variant"
         app:entryValues="@array/default_app_variant_value" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="autoCheckUpdate"
+        android:title="@string/auto_check_update"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.Preference
         android:key="webPort"
         android:title="@string/web_port_title"
