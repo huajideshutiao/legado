@@ -1,95 +1,37 @@
 package io.legado.app.ui.widget.dialog
 
-import android.app.Application
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import androidx.appcompat.widget.Toolbar
-import androidx.fragment.app.viewModels
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.BaseViewModel
+import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.databinding.DialogVariableBinding
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.requestInputMethod
 
-class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable),
-    Toolbar.OnMenuItemClickListener {
+/**
+ * 变量设置对话框
+ * 已经从 BaseDialogFragment 重构为更轻量级的 alert 实现
+ */
+object VariableDialog {
 
-    private val binding by viewBinding(DialogVariableBinding::bind)
-    private val viewModel by viewModels<ViewModel>()
-    private var onSave: ((key: String, variable: String?) -> Unit)? = null
-
-    constructor(
+    fun show(
+        activity: AppCompatActivity,
         title: String,
-        key: String,
         variable: String?,
         comment: String,
-        onSave: ((key: String, variable: String?) -> Unit)? = null
-    ) : this() {
-        arguments = Bundle().apply {
-            putString("title", title)
-            putString("key", key)
-            putString("variable", variable)
-            putString("comment", comment)
-        }
-        this.onSave = onSave
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        arguments?.let {
-            binding.toolBar.title = it.getString("title")
-            viewModel.init(it) {
-                binding.tvComment.text = viewModel.comment
-                binding.tvVariable.setText(viewModel.variable)
+        onSave: (variable: String?) -> Unit
+    ) {
+        activity.alert(title = title) {
+            val binding = DialogVariableBinding.inflate(activity.layoutInflater)
+            binding.tvVariable.setText(variable)
+            binding.tvComment.text = comment
+            customView { binding.root }
+            okButton {
+                onSave(binding.tvVariable.text?.toString())
             }
-        } ?: let {
-            dismiss()
-            return
-        }
-        binding.toolBar.inflateMenu(R.menu.save)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_save -> {
-                val key = viewModel.key ?: ""
-                val variable = binding.tvVariable.text?.toString()
-                onSave?.invoke(key, variable)
-                    ?: callback?.setVariable(key, variable)
-                dismissAllowingStateLoss()
-            }
-        }
-        return true
-    }
-
-    val callback get() = (parentFragment as? Callback) ?: (activity as? Callback)
-
-    class ViewModel(application: Application) : BaseViewModel(application) {
-
-        var key: String? = null
-        var comment: String? = null
-        var variable: String? = null
-
-        fun init(arguments: Bundle, onFinally: () -> Unit) {
-            if (key != null) return
-            execute {
-                key = arguments.getString("key")
-                comment = arguments.getString("comment")
-                variable = arguments.getString("variable")
-            }.onFinally {
-                onFinally.invoke()
-            }
-        }
-
-    }
-
-    interface Callback {
-
-        fun setVariable(key: String, variable: String?)
-
+            cancelButton()
+        }.applyTint().requestInputMethod()
     }
 
 }

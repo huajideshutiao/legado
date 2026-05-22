@@ -53,13 +53,22 @@ abstract class BaseDialogFragment(
             }
             it.attributes = attr
             val dm = resources.displayMetrics
-            val width = (kotlin.math.min(dm.widthPixels, dm.heightPixels) * 0.9).toInt()
-            val height = if (isFullHeight) {
-                (resources.displayMetrics.heightPixels * 0.8).toInt()
+            val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((800 * dm.density).toInt())
+            val maxHeight = (dm.heightPixels * 0.8).toInt()
+
+            if (isFullHeight) {
+                it.setLayout(width, maxHeight)
             } else {
-                WindowManager.LayoutParams.WRAP_CONTENT
+                it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+                it.findViewById<View>(android.R.id.content)?.let { content ->
+                    content.viewTreeObserver.addOnGlobalLayoutListener {
+                        if (content.height > maxHeight) {
+                            content.layoutParams.height = maxHeight
+                            content.requestLayout()
+                        }
+                    }
+                }
             }
-            it.setLayout(width, height)
         }
     }
 
@@ -67,6 +76,7 @@ abstract class BaseDialogFragment(
         super.onViewCreated(view, savedInstanceState)
         if (!AppConfig.isEInkMode && applyFilletBackground) {
             view.background = requireContext().filletBackground
+            view.clipToOutline = true
         }
         val toolbar = view.findViewById<View>(R.id.tool_bar)
         if (toolbar != null && !AppConfig.isEInkMode) {

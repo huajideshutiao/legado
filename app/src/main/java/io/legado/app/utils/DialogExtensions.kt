@@ -13,7 +13,6 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.filletBackground
-import splitties.systemservices.windowManager
 
 
 fun AlertDialog.applyTint(): AlertDialog {
@@ -41,10 +40,21 @@ fun AlertDialog.applyTint(): AlertDialog {
             setBackgroundDrawable(bg)
         }
 
-        // 统一宽度为屏幕窄边的 90%
-        val dm = context.windowManager.windowSize
-        val width = (kotlin.math.min(dm.widthPixels, dm.heightPixels) * 0.9).toInt()
+        // 统一宽度为屏幕对应边的 90%，并设置上限
+        val dm = context.resources.displayMetrics
+        val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((600 * dm.density).toInt())
+        val maxHeight = (dm.heightPixels * 0.8).toInt()
+        
         setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+
+        findViewById<View>(androidx.appcompat.R.id.parentPanel)?.let { v ->
+            v.viewTreeObserver.addOnGlobalLayoutListener {
+                if (v.height > maxHeight) {
+                    v.layoutParams.height = maxHeight
+                    v.requestLayout()
+                }
+            }
+        }
     }
 
     // 清除内部各组件背景，确保 Window 背景完整透出

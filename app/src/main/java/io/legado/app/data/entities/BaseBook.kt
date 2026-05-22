@@ -6,7 +6,6 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.splitNotBlank
 
 interface BaseBook : RuleDataInterface {
@@ -56,14 +55,12 @@ interface BaseBook : RuleDataInterface {
             "${sourceComment}\n$defaultComment"
         }
         val variable = getCustomVariable()
-        activity.showDialogFragment(
-            VariableDialog(
-                activity.getString(R.string.set_book_variable),
-                bookUrl,
-                variable,
-                comment
-            ) { _, v -> putCustomVariable(v) }
-        )
+        VariableDialog.show(
+            activity,
+            activity.getString(R.string.set_book_variable),
+            variable,
+            comment
+        ) { v -> putCustomVariable(v) }
     }
 
     override fun putBigVariable(key: String, value: String?) {

@@ -2,11 +2,7 @@ package io.legado.app.ui.association
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import androidx.appcompat.widget.Toolbar
-import androidx.fragment.app.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
@@ -14,90 +10,101 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogVerificationCodeViewBinding
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.onDismiss
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.ImageProvider
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import splitties.init.appCtx
 
 /**
  * 图片验证码对话框
- * 结果保存在内存中
- * val key = "${sourceOrigin ?: ""}_verificationResult"
- * CacheManager.get(key)
+ * 重构为使用 alert DSL 实现，菜单保持在右上角
  */
-class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification_code_view),
-    Toolbar.OnMenuItemClickListener {
+object VerificationCodeDialog {
 
-    companion object {
-        fun display(
-            imageUrl: String,
-            sourceOrigin: String? = null,
-            sourceName: String? = null,
-            sourceType: Int
-        ) {
-            val activity = io.legado.app.help.LifecycleHelp.currentActivity
-            if (activity is androidx.appcompat.app.AppCompatActivity) {
-                activity.showDialogFragment(
-                    VerificationCodeDialog(imageUrl, sourceOrigin, sourceName, sourceType)
-                )
-            } else {
-                splitties.init.appCtx.toastOnUi("无法在后台显示验证码对话框")
-            }
-        }
-    }
-
-    constructor(
+    fun display(
         imageUrl: String,
         sourceOrigin: String? = null,
         sourceName: String? = null,
         sourceType: Int
-    ) : this() {
-        arguments = Bundle().apply {
-            putString("imageUrl", imageUrl)
-            putString("sourceOrigin", sourceOrigin)
-            putString("sourceName", sourceName)
-            putInt("sourceType", sourceType)
+    ) {
+        val activity = io.legado.app.help.LifecycleHelp.currentActivity as? AppCompatActivity
+        if (activity == null) {
+            appCtx.toastOnUi("无法在后台显示验证码对话框")
+            return
         }
-    }
 
-    val binding by viewBinding(DialogVerificationCodeViewBinding::bind)
-    val viewModel by viewModels<VerificationCodeViewModel>()
+        val binding = DialogVerificationCodeViewBinding.inflate(activity.layoutInflater)
 
-    private var sourceOrigin: String? = null
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?): Unit = binding.run {
-        initMenu()
-        val arguments = arguments ?: return@run
-        viewModel.initData(arguments)
-        toolBar.subtitle = arguments.getString("sourceName")
-        sourceOrigin = arguments.getString("sourceOrigin")
-        val imageUrl = arguments.getString("imageUrl") ?: return@run
-        loadImage(imageUrl, sourceOrigin)
-        verificationCodeImageView.setOnClickListener {
-            showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
-        }
-    }
-
-    private fun initMenu() {
-        binding.toolBar.setOnMenuItemClickListener(this)
+        // 配置 Toolbar 以保持右上角菜单
+        binding.toolBar.setTitle(R.string.verification_code)
+        binding.toolBar.subtitle = sourceName
         binding.toolBar.inflateMenu(R.menu.verification_code)
-        binding.toolBar.menu.applyTint(requireContext())
+        binding.toolBar.menu.applyTint(activity)
+
+        val dialog = activity.alert {
+            customView { binding.root }
+
+            onDismiss {
+                SourceVerificationHelp.checkResult(sourceOrigin!!)
+            }
+        }
+
+        // 菜单点击事件
+        binding.toolBar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.menu_ok -> {
+                    val verificationCode = binding.verificationCode.text.toString()
+                    SourceVerificationHelp.setResult(sourceOrigin!!, verificationCode)
+                    dialog.dismiss()
+                }
+
+                R.id.menu_disable_source -> {
+                    sourceOrigin?.let { SourceHelp.enableSource(it, sourceType, false) }
+                    dialog.dismiss()
+                }
+
+                R.id.menu_delete_source -> {
+                    activity.alert(R.string.draw) {
+                        setMessage(activity.getString(R.string.sure_del) + "\n" + sourceName)
+                        noButton()
+                        yesButton {
+                            sourceOrigin?.let { SourceHelp.deleteSource(it, sourceType) }
+                            dialog.dismiss()
+                        }
+                    }
+                }
+            }
+            true
+        }
+
+        loadImage(activity, binding, imageUrl, sourceOrigin)
+
+        binding.verificationCodeImageView.setOnClickListener {
+            activity.showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
+        }
     }
 
     @SuppressLint("CheckResult")
-    private fun loadImage(url: String, sourceUrl: String?) {
+    private fun loadImage(
+        activity: AppCompatActivity,
+        binding: DialogVerificationCodeViewBinding,
+        url: String,
+        sourceUrl: String?
+    ) {
         ImageProvider.remove(url)
-        ImageLoader.loadBitmap(requireContext(), url).apply {
+        ImageLoader.loadBitmap(activity, url).apply {
             sourceUrl?.let {
                 apply(RequestOptions().set(OkHttpModelLoader.sourceOriginOption, it))
             }
@@ -122,47 +129,11 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
                     isFirstResource: Boolean
                 ): Boolean {
                     val bitmap = resource.copy(resource.config!!, true)
-                    ImageProvider.put(url, bitmap) // 传给 PhotoDialog
+                    ImageProvider.put(url, bitmap)
                     return false
                 }
             })
             .into(binding.verificationCodeImageView)
-    }
-
-    @SuppressLint("InflateParams")
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_ok -> {
-                val verificationCode = binding.verificationCode.text.toString()
-                SourceVerificationHelp.setResult(sourceOrigin!!, verificationCode)
-                dismiss()
-            }
-
-            R.id.menu_disable_source -> {
-                viewModel.disableSource {
-                    dismiss()
-                }
-            }
-
-            R.id.menu_delete_source -> {
-                alert(R.string.draw) {
-                    setMessage(getString(R.string.sure_del) + "\n" + viewModel.sourceName)
-                    noButton()
-                    yesButton {
-                        viewModel.deleteSource {
-                            dismiss()
-                        }
-                    }
-                }
-            }
-        }
-        return false
-    }
-
-    override fun onDestroy() {
-        SourceVerificationHelp.checkResult(sourceOrigin!!)
-        super.onDestroy()
-        activity?.finish()
     }
 
 }

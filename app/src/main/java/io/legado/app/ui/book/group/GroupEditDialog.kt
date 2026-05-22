@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.viewModels
 import io.legado.app.R
+import io.legado.app.R.string.delete
+import io.legado.app.R.string.sure_del
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.DialogBookGroupEditBinding
@@ -114,23 +116,17 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
 
             }
             btnDelete.onClick {
-                deleteGroup {
-                    bookGroup?.let {
-                        viewModel.delGroup(it) {
-                            dismiss()
+                alert(delete, sure_del) {
+                    yesButton {
+                        bookGroup?.let {
+                            viewModel.delGroup(it) {
+                                dismiss()
+                            }
                         }
                     }
+                    noButton()
                 }
             }
-        }
-    }
-
-    private fun deleteGroup(ok: () -> Unit) {
-        alert(R.string.delete, R.string.sure_del) {
-            yesButton {
-                ok.invoke()
-            }
-            noButton()
         }
     }
 
