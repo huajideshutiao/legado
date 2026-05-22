@@ -8,29 +8,28 @@ import androidx.annotation.Keep
 import io.legado.app.BuildConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
+import io.legado.app.lib.webdav.Authorization
+import io.legado.app.lib.webdav.WebDav
+import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.utils.LogUtils
+import okhttp3.Request
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
-import org.json.JSONObject
 import splitties.init.appCtx
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.math.BigInteger
-import java.net.HttpURLConnection
-import java.security.MessageDigest
+import java.io.IOException
 
 @Suppress("ConstPropertyName")
 @Keep
 object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterface {
 
     private const val soVersion = BuildConfig.Cronet_Version
-    private const val soName = "libcronet.$soVersion.so"
-    private val soUrl: String
+    private const val aarUrl =
+        "https://maven.aliyun.com/repository/google/org/chromium/net/cronet-embedded/$soVersion/cronet-embedded-$soVersion.aar"
+    private val soName = "libcronet.$soVersion.so"
     private val soFile: File
-    private val downloadFile: File
     private var cpuAbi: String? = null
-    private var md5: String
     var download = false
 
     @Volatile
@@ -38,12 +37,8 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
 
     init {
         val cpuAbi = getCpuAbi(appCtx)
-        soUrl =
-            "https://storage.googleapis.com/chromium-cronet/android/$soVersion/Release/cronet/libs/$cpuAbi/$soName"
-        md5 = getMd5(appCtx)
         val dir = appCtx.getDir("cronet", Context.MODE_PRIVATE)
         soFile = File(dir, cpuAbi).apply { mkdirs() }.resolve(soName)
-        downloadFile = File(appCtx.cacheDir, "so_download").apply { mkdirs() }.resolve(soName)
     }
 
     /**
@@ -70,7 +65,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     }
 
     fun isSoDownloaded(): Boolean {
-        return md5.length == 32 && soFile.exists() && md5 == getFileMD5(soFile)
+        return soFile.exists()
     }
 
     fun hasExternalProvider(): Boolean {
@@ -98,24 +93,38 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
             if (download) return@async
             download = true
             Coroutine.async {
+                val downloadFileTmp = File(appCtx.cacheDir, "so_download/$soName.tmp")
+                val downloadFile = File(appCtx.cacheDir, "so_download/$soName")
                 val result = if (downloadFile.exists()) true
                 else try {
-                    val connection = java.net.URL(soUrl).openConnection() as HttpURLConnection
-                    connection.inputStream.use { input ->
-                        downloadFile.parentFile?.mkdirs()
-                        downloadFile.outputStream().use { output ->
+                    val webDav = WebDav(aarUrl, Authorization("", ""))
+                    val response =
+                        webDav.webDavClient.newCall(Request.Builder().url(aarUrl).head().build())
+                            .execute()
+                    val fileSize = response.header("Content-Length")?.toLong() ?: -1L
+                    if (fileSize <= 0) throw IOException("Failed to get file size")
+                    val remoteZip = RemoteZipWrapper(webDav, "cronet.aar", fileSize)
+                    val entry = remoteZip.entries().asSequence().find {
+                        it.name.startsWith("jni/${getCpuAbi(appCtx)}/libcronet") && it.name.endsWith(
+                            ".so"
+                        )
+                    } ?: throw IOException("SO entry not found for ${getCpuAbi(appCtx)}")
+
+                    downloadFileTmp.parentFile?.mkdirs()
+                    remoteZip.getInputStream(entry)?.use { input ->
+                        downloadFileTmp.outputStream().use { output ->
                             input.copyTo(output)
                         }
                     }
-                    true
-                } catch (_: Throwable) {
-                    downloadFile.delete()
+                    downloadFileTmp.renameTo(downloadFile)
+                } catch (e: Throwable) {
+                    e.printStackTrace()
+                    downloadFileTmp.delete()
                     false
                 }
 
-                val fileMD5 = getFileMD5(downloadFile)
-                if (result && md5.equals(fileMD5, ignoreCase = true)) {
-                    FileInputStream(downloadFile).use { input ->
+                if (result && downloadFile.exists()) {
+                    downloadFile.inputStream().use { input ->
                         soFile.parentFile?.mkdirs()
                         FileOutputStream(soFile).use { output ->
                             input.copyTo(output)
@@ -134,12 +143,6 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     }
 
 
-    private fun getMd5(context: Context): String {
-        context.assets.open("cronet.json").bufferedReader().use { reader ->
-            return JSONObject(reader.readText()).optString(getCpuAbi(context), "")
-        }
-    }
-
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     override fun loadLibrary(libName: String) {
         if (!libName.contains("cronet")) {
@@ -149,7 +152,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
         try {
             System.loadLibrary(libName)
         } catch (_: Throwable) {
-            if (soFile.exists() && getFileMD5(soFile) == md5) {
+            if (soFile.exists()) {
                 System.load(soFile.absolutePath)
             }
         }
@@ -168,20 +171,4 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
         }.also { cpuAbi = it }
     }
 
-    private fun getFileMD5(file: File): String? {
-        if (!file.exists()) return null
-        return try {
-            val md = MessageDigest.getInstance("MD5")
-            file.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                var read: Int
-                while (input.read(buffer).also { read = it } > 0) {
-                    md.update(buffer, 0, read)
-                }
-            }
-            String.format("%032x", BigInteger(1, md.digest())).lowercase()
-        } catch (_: Exception) {
-            null
-        }
-    }
 }
