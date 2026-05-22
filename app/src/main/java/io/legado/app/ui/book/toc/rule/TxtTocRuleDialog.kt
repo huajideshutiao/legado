@@ -23,6 +23,11 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogTocRegexBinding
 import io.legado.app.databinding.ItemTocRegexBinding
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
@@ -32,7 +37,6 @@ import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.ACache
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
@@ -48,6 +52,8 @@ import kotlinx.coroutines.launch
  */
 class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
     Toolbar.OnMenuItemClickListener, TxtTocRuleEditDialog.Callback {
+
+    override val isFullHeight: Boolean = true
 
     constructor(tocRegex: String?) : this() {
         arguments = Bundle().apply {
@@ -67,11 +73,6 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
                 showDialogFragment(ImportTxtTocRuleDialog(uri.toString()))
             }
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

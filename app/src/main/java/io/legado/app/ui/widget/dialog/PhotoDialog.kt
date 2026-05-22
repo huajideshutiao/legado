@@ -24,7 +24,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.io.File
@@ -33,6 +32,8 @@ import java.io.File
  * 显示图片
  */
 class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
+
+    override val isFullHeight: Boolean = true
 
     constructor(src: String, sourceOrigin: String? = null) : this() {
         arguments = Bundle().apply {
@@ -49,11 +50,6 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         arguments?.getString("sourceOrigin")?.let {
             RequestOptions().set(OkHttpModelLoader.sourceOriginOption, it)
         } ?: RequestOptions()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
     }
 
     private val saveImageLauncher by lazy {

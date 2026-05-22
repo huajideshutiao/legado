@@ -19,7 +19,6 @@ import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemRadioButtonBinding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -32,6 +31,8 @@ import kotlinx.coroutines.withContext
 
 class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
+    override val isFullHeight: Boolean = true
+
     private val binding by viewBinding(DialogSearchScopeBinding::bind)
     private var sourceFlowJob: Job? = null
     val callback: Callback get() = parentFragment as? Callback ?: activity as Callback
@@ -41,11 +42,6 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     val adapter by lazy {
         RecyclerAdapter()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

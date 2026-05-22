@@ -11,11 +11,12 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemLogBinding
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 @Suppress("unused")
 class TextListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
+
+    override val isFullHeight: Boolean = true
 
     constructor(title: String, values: ArrayList<String>) : this() {
         arguments = Bundle().apply {
@@ -27,11 +28,6 @@ class TextListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { TextAdapter(requireContext()) }
     private var values: ArrayList<String>? = null
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.9f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
         arguments?.let {

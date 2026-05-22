@@ -26,6 +26,8 @@ import io.legado.app.databinding.DialogBookChangeSourceBinding
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
@@ -40,7 +42,6 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatDrawable
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -57,6 +58,8 @@ import kotlinx.coroutines.launch
 class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_source),
     Toolbar.OnMenuItemClickListener,
     ChangeBookSourceAdapter.CallBack {
+
+    override val isFullHeight: Boolean = true
 
     constructor(name: String, author: String) : this() {
         arguments = Bundle().apply {
@@ -93,11 +96,6 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
                 }
             }
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

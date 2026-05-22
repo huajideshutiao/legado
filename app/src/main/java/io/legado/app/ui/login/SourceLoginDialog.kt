@@ -18,6 +18,7 @@ import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint

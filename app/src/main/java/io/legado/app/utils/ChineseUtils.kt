@@ -8,6 +8,7 @@ import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.items
 
 private val T2S_EXCLUDE_LIST = listOf(
     "槃",

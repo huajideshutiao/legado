@@ -22,13 +22,15 @@ import io.legado.app.databinding.DialogMultipleEditTextBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.Item1lineTextAndDelBinding
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
@@ -42,13 +44,10 @@ import kotlinx.coroutines.launch
 class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
+    override val isFullHeight: Boolean = true
+
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { KeyAdapter(requireContext()) }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.9f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
@@ -101,7 +100,7 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
                 layout2.visible()
                 edit2.setText(keyboardAssist?.value)
             }
-            setCustomView(alertBinding.root)
+            customView { alertBinding.root }
             cancelButton()
             okButton {
                 lifecycleScope.launch(IO) {

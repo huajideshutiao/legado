@@ -21,7 +21,7 @@ import io.legado.app.databinding.ActivityReplaceRuleBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.*
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog

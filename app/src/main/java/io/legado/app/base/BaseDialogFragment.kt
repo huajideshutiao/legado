@@ -27,6 +27,7 @@ abstract class BaseDialogFragment(
 ) : DialogFragment(layoutID) {
 
     protected open val applyFilletBackground: Boolean = true
+    protected open val isFullHeight: Boolean = false
 
     private var onDismissListener: OnDismissListener? = null
 
@@ -50,8 +51,13 @@ abstract class BaseDialogFragment(
                 attr.windowAnimations = R.style.Animation_Dialog
             }
             it.attributes = attr
-            val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
-            it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+            val width = (resources.displayMetrics.widthPixels * 0.9).toInt()
+            val height = if (isFullHeight) {
+                (resources.displayMetrics.heightPixels * 0.8).toInt()
+            } else {
+                WindowManager.LayoutParams.WRAP_CONTENT
+            }
+            it.setLayout(width, height)
         }
     }
 

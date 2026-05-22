@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import io.legado.app.R
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.items
 
 
 class TextFontWeightConverter(context: Context, attrs: AttributeSet?) :

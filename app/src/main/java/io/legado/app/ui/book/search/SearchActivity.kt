@@ -28,7 +28,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.*
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor

@@ -11,11 +11,15 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.negativeButton
+import io.legado.app.lib.dialogs.onCancelled
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
@@ -70,7 +74,7 @@ class PermissionActivity : AppCompatActivity() {
                         val settingIntent =
                             Intent(
                                 Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                Uri.parse("package:$packageName")
+                                "package:$packageName".toUri()
                             )
                         settingActivityResult.launch(settingIntent)
                     } else {
@@ -111,7 +115,7 @@ class PermissionActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                        intent.data = Uri.parse("package:$packageName")
+                        intent.data = "package:$packageName".toUri()
                         val className =
                             "com.android.settings.fuelgauge.RequestIgnoreBatteryOptimizations"
                         val activities = packageManager.queryIntentActivities(

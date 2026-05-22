@@ -4,8 +4,13 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.widget.NumberPicker
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import io.legado.app.R
-import io.legado.app.lib.dialogs.AndroidAlertBuilder
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.neutralButton
+import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.dialogs.showWithTint
 import io.legado.app.utils.hideSoftInput
 
 fun showNumberPicker(
@@ -25,10 +30,10 @@ fun showNumberPicker(
     max?.let { numberPicker.maxValue = it }
     value?.let { numberPicker.value = it }
 
-    AndroidAlertBuilder(context).apply {
+    AlertDialog.Builder(context).apply {
         title?.let { setTitle(it) }
         titleResId?.let { setTitle(it) }
-        setCustomView(dialogView)
+        customView { dialogView }
         okButton {
             numberPicker.clearFocus()
             numberPicker.hideSoftInput()
@@ -42,5 +47,5 @@ fun showNumberPicker(
                 listener?.invoke()
             }
         }
-    }.show()
+    }.showWithTint()
 }

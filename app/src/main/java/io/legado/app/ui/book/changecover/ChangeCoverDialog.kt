@@ -12,7 +12,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogChangeCoverBinding
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -25,6 +24,8 @@ import kotlinx.coroutines.launch
 class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
     Toolbar.OnMenuItemClickListener,
     CoverAdapter.CallBack {
+
+    override val isFullHeight: Boolean = true
 
     constructor(name: String, author: String) : this() {
         arguments = Bundle().apply {
@@ -40,11 +41,6 @@ class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
 
     private val startStopMenuItem: MenuItem?
         get() = binding.toolBar.menu.findItem(R.id.menu_start_stop)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.change_cover_source)

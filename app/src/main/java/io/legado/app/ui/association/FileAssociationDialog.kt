@@ -13,6 +13,11 @@ import io.legado.app.constant.AppLog
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.dialogs.onCancelled
+import io.legado.app.lib.dialogs.onDismiss
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.file.HandleFileContract

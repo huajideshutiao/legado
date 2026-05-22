@@ -47,6 +47,9 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.singleChoiceItems
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.info.BookInfoActivity

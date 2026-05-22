@@ -24,6 +24,8 @@ import io.legado.app.databinding.ItemHttpTtsBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -38,7 +40,6 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.splitNotBlank
@@ -55,6 +56,8 @@ import kotlinx.coroutines.launch
  */
 class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
+
+    override val isFullHeight: Boolean = true
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel: SpeakEngineViewModel by viewModels()
@@ -76,11 +79,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             showExportSuccess(uri)
         }
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.9f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

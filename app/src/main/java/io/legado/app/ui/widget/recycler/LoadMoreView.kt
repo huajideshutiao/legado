@@ -9,6 +9,7 @@ import androidx.annotation.ColorRes
 import io.legado.app.R
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible

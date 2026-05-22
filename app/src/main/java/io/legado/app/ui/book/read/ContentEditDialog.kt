@@ -19,6 +19,8 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.applyTint
@@ -92,7 +94,7 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
             setTitle(R.string.edit)
             val alertBinding = DialogEditTextBinding.inflate(layoutInflater)
             alertBinding.editView.setText(chapter.title)
-            setCustomView(alertBinding.root)
+            customView { alertBinding.root }
             okButton {
                 chapter.title = alertBinding.editView.text.toString()
                 lifecycleScope.launch {

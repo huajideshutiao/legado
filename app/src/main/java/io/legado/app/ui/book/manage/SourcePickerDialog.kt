@@ -25,7 +25,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -40,6 +39,8 @@ import splitties.views.onClick
 class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
     Toolbar.OnMenuItemClickListener {
 
+    override val isFullHeight: Boolean = true
+
     private val binding by viewBinding(DialogSourcePickerBinding::bind)
     private val searchView: SearchView by lazy {
         binding.toolBar.findViewById(R.id.search_view)
@@ -51,11 +52,6 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
         SourceAdapter(requireContext())
     }
     private var sourceFlowJob: Job? = null
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.8f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         initView()

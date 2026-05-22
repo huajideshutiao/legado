@@ -18,25 +18,24 @@ package io.legado.app.lib.dialogs
 
 import android.content.Context
 import android.content.DialogInterface
+import androidx.appcompat.app.AlertDialog
 
 fun Context.selector(
     items: List<CharSequence>,
     onClick: (DialogInterface, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }
 
 fun <T> Context.selector(
     items: List<T>,
     onClick: (DialogInterface, T, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }
 
 fun Context.selector(
@@ -44,11 +43,10 @@ fun Context.selector(
     items: List<CharSequence>,
     onClick: (DialogInterface, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         this.setTitle(title)
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }
 
 fun <T> Context.selector(
@@ -56,11 +54,10 @@ fun <T> Context.selector(
     items: List<T>,
     onClick: (DialogInterface, T, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         this.setTitle(title)
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }
 
 fun Context.selector(
@@ -68,11 +65,10 @@ fun Context.selector(
     items: List<CharSequence>,
     onClick: (DialogInterface, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         this.setTitle(titleSource)
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }
 
 fun <T> Context.selector(
@@ -80,9 +76,8 @@ fun <T> Context.selector(
     items: List<T>,
     onClick: (DialogInterface, T, Int) -> Unit
 ) {
-    with(AndroidAlertBuilder(this)) {
+    AlertDialog.Builder(this).apply {
         this.setTitle(titleSource)
         items(items, onClick)
-        show()
-    }
+    }.showWithTint()
 }

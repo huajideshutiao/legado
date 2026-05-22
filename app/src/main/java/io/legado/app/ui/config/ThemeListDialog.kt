@@ -15,11 +15,12 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemThemeConfigBinding
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.getClipText
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -27,13 +28,10 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 class ThemeListDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
+    override val isFullHeight: Boolean = true
+
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { Adapter(requireContext()) }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.9f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.theme_list)

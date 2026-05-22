@@ -10,7 +10,6 @@ import io.legado.app.databinding.DialogTextViewBinding
 import io.legado.app.help.IntentData
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setHtml
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
@@ -23,6 +22,8 @@ import kotlinx.coroutines.withContext
 
 
 class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
+
+    override val isFullHeight: Boolean = true
 
     enum class Mode {
         MD, HTML, TEXT
@@ -48,11 +49,6 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     private val binding by viewBinding(DialogTextViewBinding::bind)
     private var time = 0L
     private var autoClose: Boolean = false
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.95f, 0.9f)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.inflateMenu(R.menu.dialog_text)

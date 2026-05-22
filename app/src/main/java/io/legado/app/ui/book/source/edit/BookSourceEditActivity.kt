@@ -22,6 +22,9 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.negativeButton
+import io.legado.app.lib.dialogs.onCancelled
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor

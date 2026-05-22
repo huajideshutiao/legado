@@ -15,6 +15,9 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogFileChooserBinding
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookAdapter
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE

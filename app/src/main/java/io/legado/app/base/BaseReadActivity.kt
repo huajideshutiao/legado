@@ -14,6 +14,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.okButton
 import io.legado.app.utils.getPrefString
 
 abstract class BaseReadActivity<VB : ViewBinding, VM : BaseReadViewModel>(
