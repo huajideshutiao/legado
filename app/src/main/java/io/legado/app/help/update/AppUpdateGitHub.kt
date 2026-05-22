@@ -50,7 +50,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
     override fun check(
         scope: CoroutineScope,
-    ): Coroutine<AppUpdate.UpdateInfo> {
+    ): Coroutine<AppUpdate.UpdateInfo?> {
         return Coroutine.async(scope) {
             val supportedAbis = android.os.Build.SUPPORTED_ABIS
             getLatestRelease()
@@ -82,7 +82,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
                         it.name
                     )
                 }
-                ?: throw NoStackTraceException("已是最新版本")
+                ?: return@async null
         }.timeout(10000)
     }
 }

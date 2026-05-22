@@ -321,7 +321,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         AppUpdate.gitHubUpdate?.run {
             check(lifecycleScope)
                 .onSuccess {
-                    showDialogFragment(UpdateDialog(it))
+                    if (it != null) {
+                        showDialogFragment(UpdateDialog(it))
+                    } else if (!isAuto) {
+                        toastOnUi(R.string.is_latest_version)
+                    }
                 }.onError {
                     if (!isAuto) {
                         toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")

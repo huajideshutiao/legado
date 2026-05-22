@@ -18,7 +18,7 @@ object AppUpdate {
 
     interface AppUpdateInterface {
 
-        fun check(scope: CoroutineScope): Coroutine<UpdateInfo>
+        fun check(scope: CoroutineScope): Coroutine<UpdateInfo?>
 
     }
 

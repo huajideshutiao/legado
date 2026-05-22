@@ -182,6 +182,7 @@
     <string name="paste_source">粘帖源</string>
     <string name="source_rule_s">源規則説明</string>
     <string name="check_update">檢查更新</string>
+    <string name="is_latest_version">已是最新版本</string>
     <string name="camera_scan">掃描 QR Code</string>
     <string name="scan_image">掃描本地圖片</string>
     <string name="rule_summary">規則説明</string>

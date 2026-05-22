@@ -90,9 +90,13 @@ class AboutFragment : PreferenceFragmentCompat() {
         AppUpdate.gitHubUpdate?.run {
             check(lifecycleScope)
                 .onSuccess {
-                    showDialogFragment(
-                        UpdateDialog(it)
-                    )
+                    if (it != null) {
+                        showDialogFragment(
+                            UpdateDialog(it)
+                        )
+                    } else {
+                        appCtx.toastOnUi(R.string.is_latest_version)
+                    }
                 }.onError {
                     appCtx.toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
                 }.onFinally {
