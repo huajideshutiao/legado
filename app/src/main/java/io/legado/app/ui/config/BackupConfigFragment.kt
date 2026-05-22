@@ -1,6 +1,5 @@
 package io.legado.app.ui.config
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.InputType
@@ -15,17 +14,11 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupConfig
 import io.legado.app.help.storage.ImportOldData
-import io.legado.app.help.storage.Restore
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.multiChoiceItems
@@ -49,12 +42,7 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toEditable
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Dispatchers.Main
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -64,17 +52,6 @@ class BackupConfigFragment : PreferenceFragment(),
     MenuProvider {
 
     private val viewModel by activityViewModels<ConfigViewModel>()
-    private var backupJob: Job? = null
-    private var restoreJob: Job? = null
-
-    private var _waitDialog: WaitDialog? = null
-    private fun getWaitDialog(): WaitDialog? {
-        val activity = activity ?: return null
-        if (_waitDialog == null) {
-            _waitDialog = WaitDialog.from(activity)
-        }
-        return _waitDialog
-    }
 
     private val selectBackupPath by lazy {
         registerHandleFile { result ->
@@ -105,18 +82,7 @@ class BackupConfigFragment : PreferenceFragment(),
     private val restoreDoc by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-                getWaitDialog()?.let {
-                    it.setText("恢复中…")
-                    it.show(requireActivity().supportFragmentManager)
-                }
-                val task = Coroutine.async {
-                    Restore.restore(appCtx, uri)
-                }.onFinally {
-                    getWaitDialog()?.dismissSafe()
-                }
-                getWaitDialog()?.onCancelListener = {
-                    task.cancel()
-                }
+                viewModel.restore(uri)
             }
         }
     }
@@ -171,6 +137,20 @@ class BackupConfigFragment : PreferenceFragment(),
         if (!LocalConfig.backupHelpVersionIsLast) {
             showHelp("webDavHelp")
         }
+        viewModel.backupRestoreState.observe(viewLifecycleOwner) { msg ->
+            activity?.let { a ->
+                if (msg != null) {
+                    WaitDialog.from(a)
+                        .setText(msg)
+                        .apply {
+                            onCancelListener = { viewModel.cancelBackupRestore() }
+                        }
+                        .show()
+                } else {
+                    WaitDialog.dismiss(a)
+                }
+            }
+        }
     }
 
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -214,7 +194,7 @@ class BackupConfigFragment : PreferenceFragment(),
         val preference = findPreference<Preference>(preferenceKey) ?: return
         when (preferenceKey) {
             PreferKey.webDavUrl ->
-                if (value.isNullOrBlank()) {
+                if (value == null) {
                     preference.summary = getString(R.string.web_dav_url_s)
                 } else {
                     preference.summary = value
@@ -303,31 +283,7 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
     private fun backup(backupPath: String) {
-        getWaitDialog()?.let {
-            it.setText("备份中…")
-            it.onCancelListener = {
-                backupJob?.cancel()
-            }
-            it.show(requireActivity().supportFragmentManager)
-        }
-        backupJob?.cancel()
-        backupJob = lifecycleScope.launch {
-            try {
-                Backup.backupLocked(requireContext(), backupPath)
-                appCtx.toastOnUi(R.string.backup_success)
-            } catch (e: Throwable) {
-                ensureActive()
-                AppLog.put("备份出错\n${e.localizedMessage}", e)
-                appCtx.toastOnUi(
-                    appCtx.getString(
-                        R.string.backup_fail,
-                        e.localizedMessage
-                    )
-                )
-            } finally {
-                getWaitDialog()?.dismissSafe()
-            }
-        }
+        viewModel.backup(backupPath)
     }
 
     private fun backupUsePermission(path: String) {
@@ -341,72 +297,27 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
     fun restore() {
-        getWaitDialog()?.let {
-            it.setText(R.string.loading)
-            it.onCancelListener = {
-                restoreJob?.cancel()
-            }
-            it.show(requireActivity().supportFragmentManager)
-        }
-        Coroutine.async {
-            restoreJob = coroutineContext[Job]
-            showRestoreDialog(requireContext())
-        }.onError {
-            AppLog.put("恢复备份出错WebDavError\n${it.localizedMessage}", it)
-            if (context == null) {
-                return@onError
-            }
-            alert {
-                setTitle(R.string.restore)
-                setMessage("WebDavError\n${it.localizedMessage}\n将从本地备份恢复。")
-                okButton {
-                    restoreFromLocal()
-                }
-                cancelButton()
-            }
-        }.onFinally {
-            getWaitDialog()?.dismissSafe()
-        }
-    }
-
-    private suspend fun showRestoreDialog(context: Context) {
-        val names = withContext(IO) { AppWebDav.getBackupNames() }
-        if (AppWebDav.isJianGuoYun && names.size > 700) {
-            context.toastOnUi("由于坚果云限制列出文件数量，部分备份可能未显示，请及时清理旧备份")
-        }
-        if (names.isNotEmpty()) {
-            currentCoroutineContext().ensureActive()
-            withContext(Main) {
-                context.selector(
-                    title = context.getString(R.string.select_restore_file),
+        viewModel.loadBackupNames { names ->
+            if (names.isNotEmpty()) {
+                requireContext().selector(
+                    title = getString(R.string.select_restore_file),
                     items = names
                 ) { _, index ->
-                    if (index in 0 until names.size) {
+                    if ((index in 0 until names.size)) {
                         listView.post {
-                            restoreWebDav(names[index])
+                            viewModel.restoreWebDav(names[index])
                         }
                     }
                 }
-            }
-        } else {
-            throw NoStackTraceException("Web dav no back up file")
-        }
-    }
-
-    private fun restoreWebDav(name: String) {
-        getWaitDialog()?.let {
-            it.setText("恢复中…")
-            it.show(requireActivity().supportFragmentManager)
-            val task = Coroutine.async {
-                AppWebDav.restoreWebDav(name)
-            }.onError {
-                AppLog.put("WebDav恢复出错\n${it.localizedMessage}", it)
-                appCtx.toastOnUi("WebDav恢复出错\n${it.localizedMessage}")
-            }.onFinally {
-                getWaitDialog()?.dismissSafe()
-            }
-            it.onCancelListener = {
-                task.cancel()
+            } else {
+                alert {
+                    setTitle(R.string.restore)
+                    setMessage("WebDav无备份文件\n将从本地备份恢复。")
+                    okButton {
+                        restoreFromLocal()
+                    }
+                    cancelButton()
+                }
             }
         }
     }
@@ -421,8 +332,7 @@ class BackupConfigFragment : PreferenceFragment(),
 
     override fun onDestroyView() {
         super.onDestroyView()
-        getWaitDialog()?.dismissSafe()
-        _waitDialog = null
+        WaitDialog.dismiss(activity)
     }
 
 }

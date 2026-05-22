@@ -15,7 +15,6 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.DialogFragment
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -28,6 +27,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.TitleBar
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
@@ -235,8 +235,7 @@ abstract class BaseActivity<VB : ViewBinding>(
     }
 
     override fun recreate() {
-        (supportFragmentManager.findFragmentByTag("waitDialog") as? DialogFragment)
-            ?.dismissAllowingStateLoss()
+        WaitDialog.dismiss(this)
         super.recreate()
     }
 

@@ -60,7 +60,7 @@ object AppWebDav {
 
     private val rootWebDavUrl: String
         get() {
-            val configUrl = appCtx.getPrefString(PreferKey.webDavUrl)?.trim()
+            val configUrl = appCtx.getPrefString(PreferKey.webDavUrl)
             var url = if (configUrl.isNullOrEmpty()) defaultWebDavUrl else configUrl
             if (!url.endsWith("/")) url = "${url}/"
             AppConfig.webDavDir?.trim()?.let {
@@ -310,7 +310,7 @@ object AppWebDav {
             getBookProgress(book)?.let { bookProgress ->
                 if (bookProgress.durChapterIndex > book.durChapterIndex
                     || (bookProgress.durChapterIndex == book.durChapterIndex
-                            && bookProgress.durChapterPos > book.durChapterPos)
+                        && bookProgress.durChapterPos > book.durChapterPos)
                 ) {
                     book.durChapterIndex = bookProgress.durChapterIndex
                     book.durChapterPos = bookProgress.durChapterPos

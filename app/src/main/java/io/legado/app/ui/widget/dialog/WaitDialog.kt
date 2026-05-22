@@ -1,84 +1,83 @@
 package io.legado.app.ui.widget.dialog
 
-import android.content.DialogInterface
-import android.os.Bundle
-import android.view.View
+import android.content.Context
+import android.view.LayoutInflater
+import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import io.legado.app.databinding.DialogWaitBinding
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.utils.applyTint
 
-class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
+class WaitDialog(context: Context) {
 
-    private val binding by viewBinding(DialogWaitBinding::bind)
-    private var msg: String? = null
-    private var msgResId: Int = 0
+    private val binding = DialogWaitBinding.inflate(LayoutInflater.from(context))
+    private val dialog: AlertDialog = AlertDialog.Builder(context).apply {
+        customView { binding.root }
+    }.create()
+
     var onCancelListener: (() -> Unit)? = null
 
-    override fun onStart() {
-        super.onStart()
-        dialog?.setCanceledOnTouchOutside(false)
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val savedMsg = savedInstanceState?.getString("msg")
-        val text = savedMsg ?: msg ?: if (msgResId != 0) getString(msgResId) else null
-        text?.let { binding.tvMsg.text = it }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putString("msg", msg)
+    init {
+        dialog.applyTint()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setOnCancelListener {
+            onCancelListener?.invoke()
+        }
     }
 
     fun setText(text: String): WaitDialog {
-        msg = text
-        msgResId = 0
-        if (isAdded) {
-            binding.tvMsg.text = text
-        }
+        binding.tvMsg.text = text
         return this
     }
 
-    fun setText(res: Int): WaitDialog {
-        msgResId = res
-        if (isAdded) {
-            msg = getString(res)
-            binding.tvMsg.text = msg
-        }
+    fun setText(@StringRes res: Int): WaitDialog {
+        binding.tvMsg.text = dialog.context.getString(res)
         return this
     }
 
-    fun show(manager: FragmentManager) {
-        show(manager, "waitDialog")
+    @Suppress("UNUSED_PARAMETER")
+    fun show(manager: FragmentManager? = null) {
+        if (!dialog.isShowing) {
+            kotlin.runCatching {
+                dialog.show()
+            }
+        }
     }
 
     fun dismissSafe() {
         kotlin.runCatching {
-            dismissAllowingStateLoss()
+            dialog.dismiss()
         }
-    }
-
-    override fun onCancel(dialog: DialogInterface) {
-        super.onCancel(dialog)
-        onCancelListener?.invoke()
     }
 
     companion object {
+        private val dialogMap = mutableMapOf<Int, WaitDialog>()
+
         fun from(activity: FragmentActivity): WaitDialog {
-            val fm = activity.supportFragmentManager
-            var dialog = fm.findFragmentByTag("waitDialog") as? WaitDialog
-            if (dialog == null) {
-                dialog = WaitDialog()
+            val hashCode = activity.hashCode()
+            var waitDialog = dialogMap[hashCode]
+            if (waitDialog == null || !waitDialog.dialog.isShowing) {
+                waitDialog = WaitDialog(activity)
+                dialogMap[hashCode] = waitDialog
+                activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+                    override fun onDestroy(owner: LifecycleOwner) {
+                        waitDialog.dismissSafe()
+                        dialogMap.remove(hashCode)
+                    }
+                })
             }
-            return dialog
+            return waitDialog
         }
 
         fun dismiss(activity: FragmentActivity?) {
-            val fm = activity?.supportFragmentManager ?: return
-            (fm.findFragmentByTag("waitDialog") as? WaitDialog)?.dismissSafe()
+            activity?.let {
+                dialogMap[it.hashCode()]?.dismissSafe()
+                dialogMap.remove(it.hashCode())
+            }
         }
     }
 }
