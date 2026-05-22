@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
-import android.os.ext.SdkExtensions
 import androidx.annotation.Keep
 import io.legado.app.BuildConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -48,12 +47,15 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     }
 
     /**
-     * 判断系统是否支持 HttpEngine (Android 14+ / API 34+)
+     * 判断系统是否支持 HttpEngine (Android 14+ / API 34+ / Backported API 30+)
      */
     fun isHttpEngineAvailable(): Boolean {
-        // 安卓 14 及以上，或者 SdkExtension 版本符合要求
-        return Build.VERSION.SDK_INT >= 30
-            && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 7
+        return try {
+            Class.forName("android.net.http.HttpEngine")
+            true
+        } catch (_: Throwable) {
+            hasExternalProvider()
+        }
     }
 
     /**
@@ -62,27 +64,34 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     override fun install(): Boolean {
         synchronized(this) {
             if (cacheInstall) return true
-            cacheInstall = isHttpEngineAvailable() ||
-                hasAvailableCronetProvider() ||
-                (md5.length == 32 && soFile.exists() && md5 == getFileMD5(soFile))
-            return cacheInstall
+            // 只要系统有潜力支持，或者本地 SO 已下载，就允许拦截器尝试初始化
+            return isHttpEngineAvailable() || hasExternalProvider() || isSoDownloaded()
+        }
+    }
+
+    fun isSoDownloaded(): Boolean {
+        return md5.length == 32 && soFile.exists() && md5 == getFileMD5(soFile)
+    }
+
+    fun hasExternalProvider(): Boolean {
+        return try {
+            CronetProvider.getAllProviders(appCtx).any {
+                it.isEnabled && it.name != CronetProvider.PROVIDER_NAME_FALLBACK && it.name != CronetProvider.PROVIDER_NAME_APP_PACKAGED
+            }
+        } catch (_: Throwable) {
+            false
         }
     }
 
     override fun preDownload(onComplete: ((Boolean) -> Unit)?) {
-        // 如果系统支持 HttpEngine，彻底跳过下载
-        if (isHttpEngineAvailable()) {
-            LogUtils.d(javaClass.simpleName, "系统支持 HttpEngine，跳过下载 SO")
+        // 优化逻辑：如果系统级 Provider 可用，则跳过下载
+        if (isHttpEngineAvailable() || hasExternalProvider()) {
+            LogUtils.d(javaClass.simpleName, "系统支持 Cronet，跳过下载 SO")
             onComplete?.invoke(true)
             return
         }
         Coroutine.async {
-            if (hasAvailableCronetProvider()) {
-                LogUtils.d(javaClass.simpleName, "发现可用 CronetProvider，跳过下载")
-                onComplete?.invoke(true)
-                return@async
-            }
-            if (soFile.exists() && md5 == getFileMD5(soFile)) {
+            if (isSoDownloaded()) {
                 onComplete?.invoke(true)
                 return@async
             }
@@ -124,16 +133,6 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
         }
     }
 
-    private fun hasAvailableCronetProvider(): Boolean {
-        return try {
-            CronetProvider.getAllProviders(appCtx).any {
-                it.isEnabled && it.name != CronetProvider.PROVIDER_NAME_FALLBACK
-            }
-        } catch (e: Throwable) {
-            LogUtils.d(javaClass.simpleName, "检查 CronetProvider 失败: ${e.message}")
-            false
-        }
-    }
 
     private fun getMd5(context: Context): String {
         context.assets.open("cronet.json").bufferedReader().use { reader ->

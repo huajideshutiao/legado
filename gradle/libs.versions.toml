@@ -27,6 +27,7 @@ nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
 preference = "1.2.1"
 quickChineseTransfer = "0.2.16"
+playServicesCronet = "18.1.1"
 
 splitties = "3.0.0"
 desugar = "2.1.5"
@@ -87,6 +88,7 @@ core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 
 httpengine-native-provider = { module = "org.chromium.net:httpengine-native-provider", version.ref = "cronet" }
+play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 
 libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }

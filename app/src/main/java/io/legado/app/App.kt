@@ -78,6 +78,15 @@ class App : Application() {
         Coroutine.async {
             if (AppConfig.isCronet) {
                 Cronet.preDownload(null)
+                // 尝试初始化 GMS Cronet Provider
+                runCatching {
+                    val installer =
+                        Class.forName("com.google.android.gms.net.CronetProviderInstaller")
+                    installer.getMethod("installWithSharedLibrary", Context::class.java)
+                        .invoke(null, this@App)
+                }.onFailure {
+                    LogUtils.d("App", "GMS Cronet not available: ${it.message}")
+                }
             }
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }

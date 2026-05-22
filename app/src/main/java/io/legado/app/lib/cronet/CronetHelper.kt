@@ -3,21 +3,19 @@
 package io.legado.app.lib.cronet
 
 import androidx.annotation.Keep
-import io.legado.app.constant.AppLog
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.cronet.CronetLoader.isHttpEngineAvailable
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.externalCache
 import okhttp3.Headers
 import okhttp3.MediaType
 import okhttp3.Request
 import org.chromium.net.CronetEngine.Builder.HTTP_CACHE_DISK
+import org.chromium.net.CronetProvider
 import org.chromium.net.ExperimentalCronetEngine
 import org.chromium.net.UploadDataProvider
 import org.chromium.net.UrlRequest
-import org.chromium.net.impl.HttpEngineNativeProvider
 import org.json.JSONObject
 import splitties.init.appCtx
 
@@ -53,30 +51,56 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
     }.onFailure {
         LogUtils.d("Cronet", "Failed to disable cert verify: ${it.message}")
     }
-    val builder = if (isHttpEngineAvailable()) {
-        HttpEngineNativeProvider(appCtx).createBuilder() as ExperimentalCronetEngine.Builder
-    } else {
-        ExperimentalCronetEngine.Builder(appCtx)
-    }.apply {
-            setStoragePath(appCtx.externalCache.absolutePath)
-            enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
-            enableQuic(true)
-            enableHttp2(true)
-            enablePublicKeyPinningBypassForLocalTrustAnchors(true)
-            enableBrotli(true)
-            setExperimentalOptions(options)
-        }
-    if (CronetLoader.install()) {
-        builder.setLibraryLoader(CronetLoader)
+
+    val providers = CronetProvider.getAllProviders(appCtx)
+
+    // 1. 优先尝试系统原生 HttpEngine (Android 14+) 或其他外部 Provider (GMS 等)
+    providers.find {
+        it.name != CronetProvider.PROVIDER_NAME_APP_PACKAGED &&
+            it.name != CronetProvider.PROVIDER_NAME_FALLBACK &&
+            it.isEnabled
+    }?.let { provider ->
         try {
+            val builder = provider.createBuilder() as ExperimentalCronetEngine.Builder
+            builder.applyConfig()
+            // 外部引擎严禁调用 setLibraryLoader
             val engine = builder.build()
-            LogUtils.d("Cronet Version (Downloaded):", engine.versionString)
+            LogUtils.d("Cronet", "Using External Provider: ${provider.name}")
             return engine
         } catch (e: Throwable) {
-            AppLog.put("初始化cronetEngine出错", e)
+            LogUtils.d("Cronet", "External Provider ${provider.name} init failed: ${e.message}")
         }
     }
+
+    // 2. 尝试使用下载的 146 SO
+    if (CronetLoader.isSoDownloaded()) {
+        providers.find { it.name == CronetProvider.PROVIDER_NAME_APP_PACKAGED }?.let { provider ->
+            try {
+                val builder = provider.createBuilder() as ExperimentalCronetEngine.Builder
+                builder.applyConfig()
+                builder.setLibraryLoader(CronetLoader)
+                val engine = builder.build()
+                LogUtils.d("Cronet", "Using Downloaded 146 SO")
+                return engine
+            } catch (e: Throwable) {
+                LogUtils.d("Cronet", "Downloaded SO build failed: ${e.message}")
+            }
+        }
+    }
+
+    // 3. 既无系统支持也无 SO，触发预下载
+    CronetLoader.preDownload(null)
     return null
+}
+
+private fun ExperimentalCronetEngine.Builder.applyConfig() {
+    setStoragePath(appCtx.externalCache.absolutePath)
+    enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
+    enableQuic(true)
+    enableHttp2(true)
+    enablePublicKeyPinningBypassForLocalTrustAnchors(true)
+    enableBrotli(true)
+    setExperimentalOptions(options)
 }
 
 val options by lazy {

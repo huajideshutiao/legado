@@ -219,10 +219,9 @@ dependencies {
     implementation(project(path: ':modules:rhino'))
 
     implementation(libs.okhttp)
-    implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
-    implementation(libs.httpengine.native.provider){
-        exclude group: 'org.chromium.net'
-    }
+    implementation fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar'], exclude: ['cronet_api.jar', 'cronet_shared_java.jar', 'cronet_impl_common_java.jar', 'cronet_impl_platform_java.jar'])
+    implementation(libs.httpengine.native.provider)
+    implementation(libs.play.services.cronet)
     implementation(libs.protobuf.javalite)
 
     implementation(libs.glide.glide)
