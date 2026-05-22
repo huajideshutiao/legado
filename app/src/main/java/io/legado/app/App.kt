@@ -9,7 +9,6 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Build
-import com.github.liuyueyi.quick.transfer.constants.TransType
 import com.script.rhino.ReadOnlyJavaObject
 import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.RhinoWrapFactory
@@ -47,7 +46,6 @@ import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.model.BookCover
-import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
@@ -99,14 +97,6 @@ class App : Application() {
             ThemeConfig.clearBg()
         }
         Coroutine.async {
-            when (AppConfig.chineseConverterType) {
-                1 -> {
-                    ChineseUtils.fixT2sDict()
-                    ChineseUtils.loadDict(TransType.TRADITIONAL_TO_SIMPLE)
-                }
-
-                2 -> ChineseUtils.loadDict(TransType.SIMPLE_TO_TRADITIONAL)
-            }
             //调整排序序号
             SourceHelp.adjustSortNumber()
             //同步阅读记录

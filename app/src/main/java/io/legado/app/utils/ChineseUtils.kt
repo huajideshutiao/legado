@@ -2,8 +2,11 @@ package io.legado.app.utils
 
 import android.content.Context
 import com.github.liuyueyi.quick.transfer.ChineseUtils
-import com.github.liuyueyi.quick.transfer.ChineseUtils.loadAdditionalDict
+import com.github.liuyueyi.quick.transfer.Trie
 import com.github.liuyueyi.quick.transfer.constants.TransType
+import com.github.liuyueyi.quick.transfer.dictionary.BasicDictionary
+import com.github.liuyueyi.quick.transfer.dictionary.DictionaryContainer
+import com.github.liuyueyi.quick.transfer.dictionary.DictionaryFactory
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -31,16 +34,41 @@ private val T2S_EXCLUDE_LIST = listOf(
 object ChineseUtils {
 
     private var fixed = false
+    private val loadedSet = hashSetOf<TransType>()
 
-    fun s2t(content: String): String = ChineseUtils.s2t(content)
+    private val dictionaryMapField by lazy {
+        DictionaryContainer::class.java.getDeclaredField("dictionaryMap").apply {
+            isAccessible = true
+        }
+    }
+
+    private val splitMethod by lazy {
+        DictionaryFactory::class.java.getDeclaredMethod(
+            "split", String::class.java, String::class.java
+        ).apply { isAccessible = true }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun getDictionaryMap(): MutableMap<String, BasicDictionary> {
+        return dictionaryMapField.get(DictionaryContainer.getInstance()) as MutableMap<String, BasicDictionary>
+    }
+
+    fun s2t(content: String): String {
+        loadDict(TransType.SIMPLE_TO_TRADITIONAL)
+        return ChineseUtils.s2t(content)
+    }
 
     fun t2s(content: String): String {
         if (!fixed) fixT2sDict()
+        loadDict(TransType.TRADITIONAL_TO_SIMPLE)
         return ChineseUtils.t2s(content)
     }
 
     fun unLoad(vararg transType: TransType) {
         ChineseUtils.unLoad(*transType)
+        synchronized(loadedSet) {
+            transType.forEach { loadedSet.remove(it) }
+        }
     }
 
     fun fixT2sDict() {
@@ -69,28 +97,60 @@ object ChineseUtils {
     }
 
     fun loadDict(transType: TransType) {
-        when (transType) {
-            TransType.SIMPLE_TO_TRADITIONAL -> loadDictFile(transType, "s2t.txt")
-            TransType.TRADITIONAL_TO_SIMPLE -> {
-                loadDictFile(transType, "t2s.txt")
-                loadDictFile(transType, "t2hk.txt")
-                loadDictFile(transType, "t2tw.txt")
-            }
+        if (loadedSet.contains(transType)) return
 
-            else -> Unit
+        val fileNames = when (transType) {
+            TransType.SIMPLE_TO_TRADITIONAL -> listOf("s2t.txt")
+            TransType.TRADITIONAL_TO_SIMPLE -> listOf("t2s.txt", "t2hk.txt", "t2tw.txt")
+            else -> return
         }
-    }
 
-    private fun loadDictFile(transType: TransType, fileName: String) {
-        Coroutine.async {
-            RemoteAssetsUtils.downloadTcIfNeeded(fileName)?.let { bytes ->
+        val charMap = HashMap<Char, Char>(8192)
+        val trie = Trie<String>()
+        var maxLen = 2
+        var hasCached = false
+        var allCached = true
+
+        fileNames.forEach { fileName ->
+            val file = RemoteAssetsUtils.getTcCachePath(fileName)
+            if (file.exists() && file.length() > 0) {
+                hasCached = true
                 runCatching {
-                    bytes.inputStream().bufferedReader().useLines { lines ->
-                        lines.mapNotNull { line ->
-                            line.split("=").takeIf { it.size == 2 }?.let { it[0] to it[1] }
-                        }.toMap()
-                    }.let { loadAdditionalDict(transType, it) }
+                    file.inputStream().bufferedReader().useLines { lines ->
+                        lines.forEach { line ->
+                            if (line.isNotEmpty() && !line.startsWith(DictionaryFactory.SHARP)) {
+                                @Suppress("UNCHECKED_CAST")
+                                val pair = splitMethod.invoke(
+                                    null,
+                                    line,
+                                    DictionaryFactory.EQUAL
+                                ) as Array<String>
+                                if (pair.size >= 2) {
+                                    val key = pair[0]
+                                    val value = pair[1]
+                                    if (key.length == 1 && value.length == 1) {
+                                        charMap[key[0]] = value[0]
+                                    } else {
+                                        trie.add(key, value)
+                                        if (key.length > maxLen) maxLen = key.length
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+            } else {
+                allCached = false
+                Coroutine.async { RemoteAssetsUtils.downloadTcIfNeeded(fileName) }
+            }
+        }
+
+        val map = getDictionaryMap()
+        if (hasCached || !map.containsKey(transType.type)) {
+            val dictionary = BasicDictionary(transType.type, charMap, trie, maxLen)
+            map[transType.type] = dictionary
+            if (allCached && hasCached) {
+                loadedSet.add(transType)
             }
         }
     }
