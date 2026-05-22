@@ -52,6 +52,10 @@ import java.time.format.DateTimeFormatter
 abstract class BaseReadBookActivity :
     BaseReadActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false) {
 
+    private fun android.widget.EditText.intOr(default: Int): Int {
+        return text?.toString()?.let { if (it.isEmpty()) default else it.toInt() } ?: default
+    }
+
     override val binding by viewBinding(ActivityBookReadBinding::inflate)
     override val viewModel by viewModels<ReadBookViewModel>()
     override val currentBook: Book?
@@ -158,8 +162,8 @@ abstract class BaseReadBookActivity :
             setLightStatusBar(ReadBookConfig.durConfig.curStatusIconDark())
         } else {
             val statusBarColor =
-                if (AppConfig.readBarStyleFollowPage
-                    && ReadBookConfig.durConfig.curBgType() == 0
+                if ((AppConfig.readBarStyleFollowPage
+                        && ReadBookConfig.durConfig.curBgType() == 0)
                     || useBgMeanColor
                 ) {
                     ReadBookConfig.bgMeanColor
@@ -219,12 +223,8 @@ abstract class BaseReadBookActivity :
                 customView { alertBinding.root }
                 okButton {
                     alertBinding.run {
-                        val start = editStart.text!!.toString().let {
-                            if (it.isEmpty()) 0 else it.toInt()
-                        }
-                        val end = editEnd.text!!.toString().let {
-                            if (it.isEmpty()) book.totalChapterNum else it.toInt()
-                        }
+                        val start = editStart.intOr(0)
+                        val end = editEnd.intOr(book.totalChapterNum)
                         CacheBook.start(this@BaseReadBookActivity, book, start - 1, end - 1)
                     }
                 }
@@ -265,12 +265,8 @@ abstract class BaseReadBookActivity :
             customView { alertBinding.root }
             okButton {
                 alertBinding.run {
-                    val start = editStart.text!!.toString().let {
-                        if (it.isEmpty()) 0 else it.toInt()
-                    }
-                    val num = editNum.text!!.toString().let {
-                        if (it.isEmpty()) book.totalChapterNum else it.toInt()
-                    }
+                    val start = editStart.intOr(0)
+                    val num = editNum.intOr(book.totalChapterNum)
                     val enabled = srEnabled.isChecked
                     val date = startDate.text!!.toString().let {
                         if (it.isEmpty()) LocalDate.now()

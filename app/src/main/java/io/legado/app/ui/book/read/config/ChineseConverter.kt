@@ -1,20 +1,18 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.Context
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
 import android.util.AttributeSet
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.ui.widget.text.StrokeTextView
 import io.legado.app.utils.ChineseUtils
 
-class ChineseConverter(context: Context, attrs: AttributeSet?) : StrokeTextView(context, attrs) {
+class ChineseConverter(context: Context, attrs: AttributeSet?) :
+    SegmentSelectTextView(context, attrs) {
 
-    private val spannableString = SpannableString("简/繁")
-    private var enabledSpan: ForegroundColorSpan = ForegroundColorSpan(context.accentColor)
-    var onChanged: (() -> Unit)? = null
+    override val segments = "简/繁"
+    override val segmentPositions = mapOf(
+        1 to (0 to 1),
+        2 to (2 to 3)
+    )
 
     init {
         text = spannableString
@@ -27,15 +25,6 @@ class ChineseConverter(context: Context, attrs: AttributeSet?) : StrokeTextView(
                 onChanged?.invoke()
             }
         }
-    }
-
-    private fun upUi(type: Int) {
-        spannableString.removeSpan(enabledSpan)
-        when (type) {
-            1 -> spannableString.setSpan(enabledSpan, 0, 1, Spannable.SPAN_INCLUSIVE_EXCLUSIVE)
-            2 -> spannableString.setSpan(enabledSpan, 2, 3, Spannable.SPAN_INCLUSIVE_EXCLUSIVE)
-        }
-        text = spannableString
     }
 
 }

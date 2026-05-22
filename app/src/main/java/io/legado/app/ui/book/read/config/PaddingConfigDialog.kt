@@ -58,56 +58,72 @@ class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
 
     private fun initView() = binding.run {
         //正文
-        dsbPaddingTop.onChanged = {
-            ReadBookConfig.paddingTop = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(10, 5))
-        }
-        dsbPaddingBottom.onChanged = {
-            ReadBookConfig.paddingBottom = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(10, 5))
-        }
-        dsbPaddingLeft.onChanged = {
-            ReadBookConfig.paddingLeft = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(10, 5))
-        }
-        dsbPaddingRight.onChanged = {
-            ReadBookConfig.paddingRight = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(10, 5))
-        }
-        //页眉
-        dsbHeaderPaddingTop.onChanged = {
-            ReadBookConfig.headerPaddingTop = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbHeaderPaddingBottom.onChanged = {
-            ReadBookConfig.headerPaddingBottom = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbHeaderPaddingLeft.onChanged = {
-            ReadBookConfig.headerPaddingLeft = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbHeaderPaddingRight.onChanged = {
-            ReadBookConfig.headerPaddingRight = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        //页脚
-        dsbFooterPaddingTop.onChanged = {
-            ReadBookConfig.footerPaddingTop = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbFooterPaddingBottom.onChanged = {
-            ReadBookConfig.footerPaddingBottom = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbFooterPaddingLeft.onChanged = {
-            ReadBookConfig.footerPaddingLeft = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        dsbFooterPaddingRight.onChanged = {
-            ReadBookConfig.footerPaddingRight = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
+        bindSeekBarConfigs(
+            listOf(
+                SeekBarConfigBinding(
+                    dsbPaddingTop,
+                    { ReadBookConfig.paddingTop = it },
+                    listOf(10, 5)
+                ),
+                SeekBarConfigBinding(
+                    dsbPaddingBottom,
+                    { ReadBookConfig.paddingBottom = it },
+                    listOf(10, 5)
+                ),
+                SeekBarConfigBinding(
+                    dsbPaddingLeft,
+                    { ReadBookConfig.paddingLeft = it },
+                    listOf(10, 5)
+                ),
+                SeekBarConfigBinding(
+                    dsbPaddingRight,
+                    { ReadBookConfig.paddingRight = it },
+                    listOf(10, 5)
+                ),
+                //页眉
+                SeekBarConfigBinding(
+                    dsbHeaderPaddingTop,
+                    { ReadBookConfig.headerPaddingTop = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbHeaderPaddingBottom,
+                    { ReadBookConfig.headerPaddingBottom = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbHeaderPaddingLeft,
+                    { ReadBookConfig.headerPaddingLeft = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbHeaderPaddingRight,
+                    { ReadBookConfig.headerPaddingRight = it },
+                    listOf(2)
+                ),
+                //页脚
+                SeekBarConfigBinding(
+                    dsbFooterPaddingTop,
+                    { ReadBookConfig.footerPaddingTop = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbFooterPaddingBottom,
+                    { ReadBookConfig.footerPaddingBottom = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbFooterPaddingLeft,
+                    { ReadBookConfig.footerPaddingLeft = it },
+                    listOf(2)
+                ),
+                SeekBarConfigBinding(
+                    dsbFooterPaddingRight,
+                    { ReadBookConfig.footerPaddingRight = it },
+                    listOf(2)
+                )
+            )
+        )
         cbShowTopLine.onCheckedChangeListener = { _, isChecked ->
             ReadBookConfig.showHeaderLine = isChecked
             postEvent(EventBus.UP_CONFIG, arrayListOf(2))

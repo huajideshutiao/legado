@@ -1,23 +1,21 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.Context
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
 import android.util.AttributeSet
 import io.legado.app.R
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.ui.widget.text.StrokeTextView
 
 
 class TextFontWeightConverter(context: Context, attrs: AttributeSet?) :
-    StrokeTextView(context, attrs) {
+    SegmentSelectTextView(context, attrs) {
 
-    private val spannableString = SpannableString(context.getString(R.string.font_weight_text))
-    private var enabledSpan: ForegroundColorSpan = ForegroundColorSpan(context.accentColor)
-    private var onChanged: (() -> Unit)? = null
+    override val segments = context.getString(R.string.font_weight_text)
+    override val segmentPositions = mapOf(
+        0 to (0 to 1),
+        1 to (2 to 3),
+        2 to (4 to 5)
+    )
 
     init {
         text = spannableString
@@ -29,14 +27,8 @@ class TextFontWeightConverter(context: Context, attrs: AttributeSet?) :
         }
     }
 
-    fun upUi(type: Int) {
-        spannableString.removeSpan(enabledSpan)
-        when (type) {
-            0 -> spannableString.setSpan(enabledSpan, 0, 1, Spannable.SPAN_INCLUSIVE_EXCLUSIVE)
-            1 -> spannableString.setSpan(enabledSpan, 2, 3, Spannable.SPAN_INCLUSIVE_EXCLUSIVE)
-            2 -> spannableString.setSpan(enabledSpan, 4, 5, Spannable.SPAN_INCLUSIVE_EXCLUSIVE)
-        }
-        text = spannableString
+    override fun upUi(type: Int) {
+        super.upUi(type)
     }
 
     private fun selectType() {
@@ -49,7 +41,4 @@ class TextFontWeightConverter(context: Context, attrs: AttributeSet?) :
         }
     }
 
-    fun onChanged(unit: () -> Unit) {
-        onChanged = unit
-    }
 }

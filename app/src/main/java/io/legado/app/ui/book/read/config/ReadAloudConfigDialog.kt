@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import io.legado.app.R
@@ -37,20 +36,12 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val view = LinearLayout(requireContext())
-        view.setBackgroundColor(requireContext().backgroundColor)
-        view.id = R.id.tag1
-        container?.addView(view)
-        return view
+        return createPrefContainer(container, requireContext().backgroundColor)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        var preferenceFragment = childFragmentManager.findFragmentByTag(readAloudPreferTag)
-        if (preferenceFragment == null) preferenceFragment = ReadAloudPreferenceFragment()
-        childFragmentManager.beginTransaction()
-            .replace(view.id, preferenceFragment, readAloudPreferTag)
-            .commit()
+        replacePreferenceFragment(view, readAloudPreferTag) { ReadAloudPreferenceFragment() }
     }
 
     class ReadAloudPreferenceFragment : PreferenceFragment(),

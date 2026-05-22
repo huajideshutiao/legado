@@ -17,13 +17,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getIndexById
 import io.legado.app.utils.postEvent
@@ -50,13 +47,11 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
     }
 
     private fun initView() = binding.run {
-        val bg = requireContext().bottomBackground
-        val isLight = ColorUtils.isColorLight(bg)
-        val textColor = requireContext().getPrimaryTextColor(isLight)
-        rootView.setBackgroundColor(bg)
-        tvPageAnim.setTextColor(textColor)
-        tvBgTs.setTextColor(textColor)
-        tvShareLayout.setTextColor(textColor)
+        val theme = createReadMenuTheme(requireContext())
+        rootView.applyMenuTheme(theme)
+        tvPageAnim.applyMenuThemeTextColor(theme)
+        tvBgTs.applyMenuThemeTextColor(theme)
+        tvShareLayout.applyMenuThemeTextColor(theme)
         dsbTextSize.valueFormat = {
             (it + 5).toString()
         }
@@ -71,8 +66,8 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             ItemReadStyleBinding.inflate(layoutInflater, it, false).apply {
                 ivStyle.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
                 ivStyle.setText(null)
-                ivStyle.setColorFilter(textColor)
-                ivStyle.borderColor = textColor
+                ivStyle.applyMenuThemeColorFilter(theme)
+                ivStyle.borderColor = theme.textColor
                 ivStyle.setImageResource(R.drawable.ic_add)
                 root.setOnClickListener {
                     ReadBookConfig.configList.add(ReadBookConfig.Config())

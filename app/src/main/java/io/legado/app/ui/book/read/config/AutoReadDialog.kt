@@ -8,15 +8,12 @@ import io.legado.app.R
 import io.legado.app.base.BaseBottomDialogFragment
 import io.legado.app.databinding.DialogAutoReadBinding
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.BaseReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.util.Locale
 
@@ -29,20 +26,18 @@ class AutoReadDialog : BaseBottomDialogFragment(R.layout.dialog_auto_read) {
     private val callBack: CallBack? get() = activity as? CallBack
 
     override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) = binding.run {
-        val bg = requireContext().bottomBackground
-        val isLight = ColorUtils.isColorLight(bg)
-        val textColor = requireContext().getPrimaryTextColor(isLight)
-        root.setBackgroundColor(bg)
-        tvReadSpeedTitle.setTextColor(textColor)
-        tvReadSpeed.setTextColor(textColor)
-        ivCatalog.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvCatalog.setTextColor(textColor)
-        ivMainMenu.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvMainMenu.setTextColor(textColor)
-        ivAutoPageStop.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvAutoPageStop.setTextColor(textColor)
-        ivSetting.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvSetting.setTextColor(textColor)
+        val theme = createReadMenuTheme(requireContext())
+        root.applyMenuTheme(theme)
+        tvReadSpeedTitle.applyMenuThemeTextColor(theme)
+        tvReadSpeed.applyMenuThemeTextColor(theme)
+        ivCatalog.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvCatalog.applyMenuThemeTextColor(theme)
+        ivMainMenu.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvMainMenu.applyMenuThemeTextColor(theme)
+        ivAutoPageStop.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvAutoPageStop.applyMenuThemeTextColor(theme)
+        ivSetting.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvSetting.applyMenuThemeTextColor(theme)
         initOnChange()
         initData()
         initEvent()

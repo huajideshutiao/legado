@@ -95,18 +95,21 @@ class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
             ReadBookConfig.titleMode = rgTitleMode.getIndexById(checkedId)
             postEvent(EventBus.UP_CONFIG, arrayListOf(5))
         }
-        dsbTitleSize.onChanged = {
-            ReadBookConfig.titleSize = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
-        dsbTitleTop.onChanged = {
-            ReadBookConfig.titleTopSpacing = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
-        dsbTitleBottom.onChanged = {
-            ReadBookConfig.titleBottomSpacing = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
+        bindSeekBarConfigs(
+            listOf(
+                SeekBarConfigBinding(dsbTitleSize, { ReadBookConfig.titleSize = it }, listOf(8, 5)),
+                SeekBarConfigBinding(
+                    dsbTitleTop,
+                    { ReadBookConfig.titleTopSpacing = it },
+                    listOf(8, 5)
+                ),
+                SeekBarConfigBinding(
+                    dsbTitleBottom,
+                    { ReadBookConfig.titleBottomSpacing = it },
+                    listOf(8, 5)
+                )
+            )
+        )
         llHeaderShow.setOnClickListener {
             val headerModes = ReadTipConfig.getHeaderModes(requireContext())
             context?.selector(items = headerModes.values.toList()) { _, i ->

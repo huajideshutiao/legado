@@ -30,18 +30,54 @@ import io.legado.app.utils.toStringArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
+
+data class SearchPosition(
+    val pageIndex: Int,
+    val lineIndex: Int,
+    val charIndex: Int,
+    val addLine: Int,
+    val charIndex2: Int
+)
 
 /**
  * 阅读界面数据处理
  */
 class ReadBookViewModel(application: Application) : BaseReadViewModel(application) {
     val permissionDenialLiveData = MutableLiveData<Int>()
-    var isInitFinish = false
-    var searchContentQuery = ""
-    var searchResultList: List<SearchResult>? = null
-    var searchResultIndex: Int = 0
+    val isInitFinishFlow = MutableStateFlow(false)
+    var isInitFinish: Boolean
+        get() = isInitFinishFlow.value
+        set(value) {
+            isInitFinishFlow.value = value
+        }
+
+    private val _searchContentQuery = MutableStateFlow("")
+    val searchContentQueryFlow: StateFlow<String> = _searchContentQuery
+    var searchContentQuery: String
+        get() = _searchContentQuery.value
+        set(value) {
+            _searchContentQuery.value = value
+        }
+
+    private val _searchResultList = MutableStateFlow<List<SearchResult>?>(null)
+    val searchResultListFlow: StateFlow<List<SearchResult>?> = _searchResultList
+    var searchResultList: List<SearchResult>?
+        get() = _searchResultList.value
+        set(value) {
+            _searchResultList.value = value
+        }
+
+    private val _searchResultIndex = MutableStateFlow(0)
+    val searchResultIndexFlow: StateFlow<Int> = _searchResultIndex
+    var searchResultIndex: Int
+        get() = _searchResultIndex.value
+        set(value) {
+            _searchResultIndex.value = value
+        }
 
     override var curBook: Book? = null
     override var inBookshelf: Boolean
@@ -202,7 +238,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
                     }
             }
         }
-        return true
+        return false
     }
 
     fun openChapter(index: Int, durChapterPos: Int = 0, success: (() -> Unit)? = null) {
@@ -275,8 +311,8 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
                 ?: return@execute
             val content = BookHelp.getContent(book, chapter) ?: return@execute
             val stringBuilder = StringBuilder()
-            content.toStringArray().forEach {
-                stringBuilder.insert(0, it)
+            content.toStringArray().reversed().forEach {
+                stringBuilder.append(it)
             }
             BookHelp.saveText(book, chapter, stringBuilder.toString())
             ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
@@ -289,7 +325,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     fun searchResultPositions(
         textChapter: TextChapter,
         searchResult: SearchResult
-    ): Array<Int> {
+    ): SearchPosition {
         // calculate search result's pageIndex
         val pages = textChapter.pages
         val content = textChapter.getContent()
@@ -342,7 +378,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             addLine = -1
             charIndex2 = charIndex + queryLength - curLineLength - 1
         }
-        return arrayOf(pageIndex, lineIndex, charIndex, addLine, charIndex2)
+        return SearchPosition(pageIndex, lineIndex, charIndex, addLine, charIndex2)
     }
 
     /**
@@ -402,7 +438,7 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
 
     override fun onCleared() {
         super.onCleared()
-        if (BaseReadAloudService.isRun && BaseReadAloudService.pause) {
+        if (BaseReadAloudService.isRun) {
             ReadAloud.stop(context)
         }
     }

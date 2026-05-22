@@ -6,7 +6,6 @@ import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.animation.Animation
-import android.widget.FrameLayout
 import android.widget.SeekBar
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -21,14 +20,11 @@ import io.legado.app.ui.book.manga.ReadMangaViewModel
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.ConstraintModify
 import io.legado.app.utils.activity
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
-import io.legado.app.utils.loadAnimation
-import io.legado.app.utils.modifyBegin
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
@@ -36,7 +32,7 @@ import io.legado.app.utils.visible
 class MangaMenu @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-) : FrameLayout(context, attrs) {
+) : BaseReadMenu(context, attrs) {
     private val binding = ViewMangaMenuBinding.inflate(LayoutInflater.from(context), this, true)
     private val callBack: CallBack get() = activity as CallBack
     private val viewModel: ReadMangaViewModel?
@@ -45,20 +41,6 @@ class MangaMenu @JvmOverloads constructor(
                 it
             )[ReadMangaViewModel::class.java]
         }
-    var canShowMenu: Boolean = false
-    private val menuTopIn: Animation by lazy {
-        loadAnimation(context, R.anim.anim_readbook_top_in)
-    }
-    private val menuTopOut: Animation by lazy {
-        loadAnimation(context, R.anim.anim_readbook_top_out)
-    }
-    private val menuBottomIn: Animation by lazy {
-        loadAnimation(context, R.anim.anim_readbook_bottom_in)
-    }
-    private val menuBottomOut: Animation by lazy {
-        loadAnimation(context, R.anim.anim_readbook_bottom_out)
-    }
-    private var isMenuOutAnimating = false
     private var bgColor = context.bottomBackground
 
     private val menuOutListener = object : Animation.AnimationListener {
@@ -102,7 +84,7 @@ class MangaMenu @JvmOverloads constructor(
     }
 
     private fun initView() = binding.run {
-        initAnimation()
+        initAnimation(menuInListener, menuOutListener)
         val brightnessBackground = GradientDrawable()
         brightnessBackground.cornerRadius = 5F.dpToPx()
         brightnessBackground.setColor(ColorUtils.adjustAlpha(bgColor, 0.5f))
@@ -117,30 +99,11 @@ class MangaMenu @JvmOverloads constructor(
         } else {
             titleBarAddition.gone()
         }
-        upBrightnessVwPos()
+        upBrightnessVwPos(binding.root)
         /**
          * 确保视图不被导航栏遮挡
          */
         bottomMenu.applyNavigationBarPadding()
-    }
-
-    private fun upBrightnessVwPos() {
-        if (AppConfig.brightnessVwPos) {
-            binding.root.modifyBegin()
-                .clear(R.id.ll_brightness, ConstraintModify.Anchor.LEFT)
-                .rightToRightOf(R.id.ll_brightness, R.id.vw_menu_root)
-                .commit()
-        } else {
-            binding.root.modifyBegin()
-                .clear(R.id.ll_brightness, ConstraintModify.Anchor.RIGHT)
-                .leftToLeftOf(R.id.ll_brightness, R.id.vw_menu_root)
-                .commit()
-        }
-    }
-
-    private fun initAnimation() {
-        menuTopIn.setAnimationListener(menuInListener)
-        menuTopOut.setAnimationListener(menuOutListener)
     }
 
     fun runMenuOut(anim: Boolean = !AppConfig.isEInkMode) {

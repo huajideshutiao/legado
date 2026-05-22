@@ -10,13 +10,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.toastOnUi
@@ -30,32 +27,30 @@ class ReadAloudDialog : BaseBottomDialogFragment(R.layout.dialog_read_aloud) {
     private val binding by viewBinding(DialogReadAloudBinding::bind)
 
     override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) {
-        val bg = requireContext().bottomBackground
-        val isLight = ColorUtils.isColorLight(bg)
-        val textColor = requireContext().getPrimaryTextColor(isLight)
+        val theme = createReadMenuTheme(requireContext())
         binding.run {
-            rootView.setBackgroundColor(bg)
-            tvPre.setTextColor(textColor)
-            tvNext.setTextColor(textColor)
-            ivPlayPrev.setColorFilter(textColor)
-            ivPlayPause.setColorFilter(textColor)
-            ivPlayNext.setColorFilter(textColor)
-            ivStop.setColorFilter(textColor)
-            ivTimer.setColorFilter(textColor)
-            tvTimer.setTextColor(textColor)
-            ivTtsSpeechReduce.setColorFilter(textColor)
-            tvTtsSpeed.setTextColor(textColor)
-            tvTtsSpeedValue.setTextColor(textColor)
-            ivTtsSpeechAdd.setColorFilter(textColor)
-            ivCatalog.setColorFilter(textColor)
-            tvCatalog.setTextColor(textColor)
-            ivMainMenu.setColorFilter(textColor)
-            tvMainMenu.setTextColor(textColor)
-            ivToBackstage.setColorFilter(textColor)
-            tvToBackstage.setTextColor(textColor)
-            ivSetting.setColorFilter(textColor)
-            tvSetting.setTextColor(textColor)
-            cbTtsFollowSys.setTextColor(textColor)
+            rootView.applyMenuTheme(theme)
+            tvPre.applyMenuThemeTextColor(theme)
+            tvNext.applyMenuThemeTextColor(theme)
+            ivPlayPrev.applyMenuThemeColorFilter(theme)
+            ivPlayPause.applyMenuThemeColorFilter(theme)
+            ivPlayNext.applyMenuThemeColorFilter(theme)
+            ivStop.applyMenuThemeColorFilter(theme)
+            ivTimer.applyMenuThemeColorFilter(theme)
+            tvTimer.applyMenuThemeTextColor(theme)
+            ivTtsSpeechReduce.applyMenuThemeColorFilter(theme)
+            tvTtsSpeed.applyMenuThemeTextColor(theme)
+            tvTtsSpeedValue.applyMenuThemeTextColor(theme)
+            ivTtsSpeechAdd.applyMenuThemeColorFilter(theme)
+            ivCatalog.applyMenuThemeColorFilter(theme)
+            tvCatalog.applyMenuThemeTextColor(theme)
+            ivMainMenu.applyMenuThemeColorFilter(theme)
+            tvMainMenu.applyMenuThemeTextColor(theme)
+            ivToBackstage.applyMenuThemeColorFilter(theme)
+            tvToBackstage.applyMenuThemeTextColor(theme)
+            ivSetting.applyMenuThemeColorFilter(theme)
+            tvSetting.applyMenuThemeTextColor(theme)
+            cbTtsFollowSys.applyMenuThemeTextColor(theme)
         }
         initData()
         initEvent()
@@ -157,10 +152,8 @@ class ReadAloudDialog : BaseBottomDialogFragment(R.layout.dialog_read_aloud) {
             binding.ivPlayPause.setImageResource(R.drawable.ic_play_24dp)
             binding.ivPlayPause.contentDescription = getString(R.string.audio_play)
         }
-        val bg = requireContext().bottomBackground
-        val isLight = ColorUtils.isColorLight(bg)
-        val textColor = requireContext().getPrimaryTextColor(isLight)
-        binding.ivPlayPause.setColorFilter(textColor)
+        val theme = createReadMenuTheme(requireContext())
+        binding.ivPlayPause.applyMenuThemeColorFilter(theme)
     }
 
     private fun upSeekTimer() {

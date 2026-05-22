@@ -70,19 +70,19 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var isMove = false
 
     //起始点
-    var startX: Float = 0f
-    var startY: Float = 0f
+    internal var startX: Float = 0f
+    internal var startY: Float = 0f
 
     //上一个触碰点
-    var lastX: Float = 0f
-    var lastY: Float = 0f
+    internal var lastX: Float = 0f
+    internal var lastY: Float = 0f
 
     //触碰点
-    var touchX: Float = 0f
-    var touchY: Float = 0f
+    internal var touchX: Float = 0f
+    internal var touchY: Float = 0f
 
     //是否停止动画动作
-    var isAbortAnim = false
+    internal var isAbortAnim = false
 
     //长按
     private var longPressed = false
@@ -91,14 +91,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
         longPressed = true
         onLongPress()
     }
-    var isTextSelected = false
-    var isImageMenuShowing = false
+    internal var isTextSelected = false
+    internal var isImageMenuShowing = false
     private var pressOnTextSelected = false
     private val initialTextPos = TextPos(0, 0, 0)
 
     private val slopSquare by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private var pageSlopSquare: Int = slopSquare
-    var pageSlopSquare2: Int = pageSlopSquare * pageSlopSquare
+    internal var pageSlopSquare2: Int = pageSlopSquare * pageSlopSquare
     private val clickArea = ClickArea()
     private val boundary by lazy { BreakIterator.getWordInstance(Locale.getDefault()) }
     private val upProgressThrottle = throttle(200) { post { upProgress() } }

@@ -8,7 +8,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.widget.LinearLayout
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
@@ -45,20 +44,12 @@ class MoreConfigDialog : BasePrefDialogFragment() {
         savedInstanceState: Bundle?
     ): View {
         (activity as ReadBookActivity).bottomDialog++
-        val view = LinearLayout(context)
-        view.setBackgroundColor(requireContext().bottomBackground)
-        view.id = R.id.tag1
-        container?.addView(view)
-        return view
+        return createPrefContainer(container, requireContext().bottomBackground)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        var preferenceFragment = childFragmentManager.findFragmentByTag(readPreferTag)
-        if (preferenceFragment == null) preferenceFragment = ReadPreferenceFragment()
-        childFragmentManager.beginTransaction()
-            .replace(view.id, preferenceFragment, readPreferTag)
-            .commit()
+        replacePreferenceFragment(view, readPreferTag) { ReadPreferenceFragment() }
     }
 
     override fun onDismiss(dialog: DialogInterface) {
