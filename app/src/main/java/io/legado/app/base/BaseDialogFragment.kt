@@ -59,15 +59,14 @@ abstract class BaseDialogFragment(
             if (isFullHeight) {
                 it.setLayout(width, maxHeight)
             } else {
-                it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
-                it.findViewById<View>(android.R.id.content)?.let { content ->
-                    content.viewTreeObserver.addOnGlobalLayoutListener {
-                        if (content.height > maxHeight) {
-                            content.layoutParams.height = maxHeight
-                            content.requestLayout()
-                        }
-                    }
-                }
+                val height = view?.let { v ->
+                    v.measure(
+                        View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.AT_MOST)
+                    )
+                    if (v.measuredHeight > maxHeight) maxHeight else WindowManager.LayoutParams.WRAP_CONTENT
+                } ?: WindowManager.LayoutParams.WRAP_CONTENT
+                it.setLayout(width, height)
             }
         }
     }

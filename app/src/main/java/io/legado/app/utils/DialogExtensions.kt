@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.forEach
 import io.legado.app.R
@@ -44,17 +45,16 @@ fun AlertDialog.applyTint(): AlertDialog {
         val dm = context.resources.displayMetrics
         val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((600 * dm.density).toInt())
         val maxHeight = (dm.heightPixels * 0.8).toInt()
-        
-        setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
 
-        findViewById<View>(androidx.appcompat.R.id.parentPanel)?.let { v ->
-            v.viewTreeObserver.addOnGlobalLayoutListener {
-                if (v.height > maxHeight) {
-                    v.layoutParams.height = maxHeight
-                    v.requestLayout()
-                }
-            }
-        }
+        val h = findViewById<View>(androidx.appcompat.R.id.parentPanel)?.let { v ->
+            v.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.AT_MOST)
+            )
+            if (v.measuredHeight > maxHeight) maxHeight else WindowManager.LayoutParams.WRAP_CONTENT
+        } ?: WindowManager.LayoutParams.WRAP_CONTENT
+
+        setLayout(width, h)
     }
 
     // 清除内部各组件背景，确保 Window 背景完整透出
@@ -82,6 +82,14 @@ fun AlertDialog.applyTint(): AlertDialog {
     getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(colorStateList)
     getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(colorStateList)
     getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(colorStateList)
+
+    // 统一文本颜色
+    findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(
+        ThemeStore.textColorPrimary(
+            context
+        )
+    )
+    findViewById<TextView>(android.R.id.message)?.setTextColor(ThemeStore.textColorSecondary(context))
 
     window?.decorView?.post {
         listView?.forEach {
