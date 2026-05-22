@@ -19,6 +19,7 @@ import splitties.systemservices.windowManager
 fun AlertDialog.applyTint(): AlertDialog {
     val context = context
     window?.apply {
+        decorView.setPadding(0, 0, 0, 0)
         if (AppConfig.isEInkMode) {
             val attr = attributes
             attr.dimAmount = 0f
@@ -36,10 +37,8 @@ fun AlertDialog.applyTint(): AlertDialog {
                 setColor(colorBackground)
                 alpha = 255
             }
-            // 直接设置 Window 背景为圆角矩形，并套用 InsetDrawable 保持对话框边距
-            val density = context.resources.displayMetrics.density
-            val inset = (density * 16).toInt()
-            setBackgroundDrawable(android.graphics.drawable.InsetDrawable(bg, inset))
+            // 直接设置 Window 背景为圆角矩形，保持和 BaseDialogFragment 宽度一致
+            setBackgroundDrawable(bg)
         }
 
         // 统一宽度为屏幕窄边的 90%

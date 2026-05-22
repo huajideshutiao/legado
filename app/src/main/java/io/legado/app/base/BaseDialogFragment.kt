@@ -38,6 +38,7 @@ abstract class BaseDialogFragment(
     override fun onStart() {
         super.onStart()
         dialog?.window?.let {
+            it.decorView.setPadding(0, 0, 0, 0)
             it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             if (view != null) {
                 it.setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
@@ -51,7 +52,8 @@ abstract class BaseDialogFragment(
                 attr.windowAnimations = R.style.Animation_Dialog
             }
             it.attributes = attr
-            val width = (resources.displayMetrics.widthPixels * 0.9).toInt()
+            val dm = resources.displayMetrics
+            val width = (kotlin.math.min(dm.widthPixels, dm.heightPixels) * 0.9).toInt()
             val height = if (isFullHeight) {
                 (resources.displayMetrics.heightPixels * 0.8).toInt()
             } else {

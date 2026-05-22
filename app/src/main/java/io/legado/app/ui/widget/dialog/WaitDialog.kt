@@ -14,6 +14,7 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
 
     private val binding by viewBinding(DialogWaitBinding::bind)
     private var msg: String? = null
+    private var msgResId: Int = 0
     var onCancelListener: (() -> Unit)? = null
 
     override fun onStart() {
@@ -22,8 +23,9 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val msg = savedInstanceState?.getString("msg") ?: msg
-        msg?.let { binding.tvMsg.text = it }
+        val savedMsg = savedInstanceState?.getString("msg")
+        val text = savedMsg ?: msg ?: if (msgResId != 0) getString(msgResId) else null
+        text?.let { binding.tvMsg.text = it }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -33,6 +35,7 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
 
     fun setText(text: String): WaitDialog {
         msg = text
+        msgResId = 0
         if (isAdded) {
             binding.tvMsg.text = text
         }
@@ -40,8 +43,9 @@ class WaitDialog : BaseDialogFragment(R.layout.dialog_wait) {
     }
 
     fun setText(res: Int): WaitDialog {
-        msg = getString(res)
+        msgResId = res
         if (isAdded) {
+            msg = getString(res)
             binding.tvMsg.text = msg
         }
         return this
