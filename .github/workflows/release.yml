@@ -54,14 +54,17 @@ jobs:
 
       - name: Release Apk Sign
         env:
-          RELEASE_KEY_STORE: ${{ secrets.RELEASE_KEY_STORE }}
+          RS_FILE: ${{ secrets.RELEASE_KEY_STORE }}
+          RS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RS_KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RS_STORE_PASS: ${{ secrets.RELEASE_STORE_PASSWORD }}
         run: |
           echo -e "\n" >> gradle.properties
-          echo RELEASE_KEY_ALIAS='${{ secrets.RELEASE_KEY_ALIAS }}' >> gradle.properties
-          echo RELEASE_KEY_PASSWORD='${{ secrets.RELEASE_KEY_PASSWORD }}' >> gradle.properties
-          echo RELEASE_STORE_PASSWORD='${{ secrets.RELEASE_STORE_PASSWORD }}' >> gradle.properties
+          echo RELEASE_KEY_ALIAS="$RS_ALIAS" >> gradle.properties
+          echo RELEASE_KEY_PASSWORD="$RS_KEY_PASS" >> gradle.properties
+          echo RELEASE_STORE_PASSWORD="$RS_STORE_PASS" >> gradle.properties
           echo RELEASE_STORE_FILE='./key.jks' >> gradle.properties
-          echo "$RELEASE_KEY_STORE" | base64 --decode > $GITHUB_WORKSPACE/app/key.jks
+          echo "$RS_FILE" | tr -d '[:space:]' | base64 --decode > $GITHUB_WORKSPACE/app/key.jks
 
       - name: Unify Version Name
         run: |
