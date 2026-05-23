@@ -33,23 +33,26 @@ object WebBook {
         filter: ((name: String, author: String) -> Boolean)? = null,
         shouldBreak: ((size: Int) -> Boolean)? = null,
         isSearch: Boolean = true,
+        onUrlResolved: ((AnalyzeUrl) -> Unit)? = null,
+        selectedOptions: Map<String, String>? = null,
     ): ArrayList<SearchBook> {
         var url = key
-        var key : String? = key
-        if (isSearch){
+        if (isSearch) {
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
             else url = bookSource.searchUrl!!
-        }else key = null
+        }
         val ruleData = RuleData()
         val analyzeUrl = AnalyzeUrl(
             mUrl = url,
-            key = key,
+            key = if (isSearch) key else null,
             page = page,
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
             ruleData = ruleData,
-            coroutineContext = currentCoroutineContext()
+            coroutineContext = currentCoroutineContext(),
+            selectedOptions = selectedOptions
         )
+        onUrlResolved?.invoke(analyzeUrl)
         val res = checkLogin(analyzeUrl, bookSource)
         return BookList.analyzeBookList(
             bookSource = bookSource,

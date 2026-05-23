@@ -3,10 +3,7 @@ package io.legado.app.ui.book.explore
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.HorizontalScrollView
-import android.widget.LinearLayout
 import androidx.activity.viewModels
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -14,7 +11,6 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
-import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isRss
@@ -24,8 +20,8 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
+import io.legado.app.ui.widget.setUpExploreOptions
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -79,6 +75,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.upStarLiveData.observe(this) { upStarIcon(it) }
         viewModel.sourceReadyLiveData.observe(this) {
             upAdapterByStyle(viewModel.exploreStyle)
+        }
+        viewModel.optionsReadyLiveData.observe(this) {
             initFilterView()
         }
     }
@@ -159,57 +157,10 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun initFilterView() {
-        if (viewModel.exploreOptions.isEmpty()) {
-            binding.llFilter.isVisible = false
-            return
-        }
-        binding.llFilter.isVisible = true
-        binding.llFilter.removeAllViews()
-        viewModel.exploreOptions.forEach { option ->
-            val scrollView = HorizontalScrollView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                overScrollMode = RecyclerView.OVER_SCROLL_NEVER
-                isFillViewport = true
-                scrollBarSize = 0
-            }
-            val linearLayout = LinearLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
-            }
-            scrollView.addView(linearLayout)
-            binding.llFilter.addView(scrollView)
-
-            // Label item
-            ItemFilletTextBinding.inflate(layoutInflater, linearLayout, true).apply {
-                textView.text = option.name
-                textView.alpha = 0.8f
-                textView.paint.isFakeBoldText = true
-            }
-            option.options.forEach { pair ->
-                val itemBinding = ItemFilletTextBinding.inflate(layoutInflater, linearLayout, true)
-                itemBinding.textView.text = pair.first
-                itemBinding.root.tag = pair.second
-                itemBinding.textView.alpha = if (pair.second == option.selectedValue) 1.0f else 0.5f
-                itemBinding.root.setOnClickListener {
-                    if (option.selectedValue != pair.second) {
-                        option.selectedValue = pair.second
-                        for (i in 0 until linearLayout.childCount) {
-                            val child = linearLayout.getChildAt(i)
-                            if (child.tag != null) {
-                                child.alpha = if (child.tag == option.selectedValue) 1.0f else 0.5f
-                            }
-                        }
-                        adapter.clearItems()
-                        loadMoreView.startLoad()
-                        viewModel.explore(true)
-                    }
-                }
-            }
+        binding.llFilter.setUpExploreOptions(viewModel.exploreOptions) {
+            adapter.clearItems()
+            loadMoreView.startLoad()
+            viewModel.explore(true)
         }
     }
 

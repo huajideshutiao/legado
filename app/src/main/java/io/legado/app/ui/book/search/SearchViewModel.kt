@@ -12,6 +12,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.utils.ConflateLiveData
 import io.legado.app.utils.toastOnUi
@@ -29,8 +30,10 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
     val searchScope: SearchScope = SearchScope(AppConfig.searchScope)
     var searchFinishLiveData = MutableLiveData<Boolean>()
     var isSearchLiveData = MutableLiveData<Boolean>()
+    val searchOptionsLiveData = MutableLiveData<Unit>()
     var searchKey: String = ""
     var hasMore = true
+    val searchOptions = mutableListOf<ExploreOption>()
     private var searchID = 0L
     private val searchModel = SearchModel(viewModelScope, object : SearchModel.CallBack {
 
@@ -57,6 +60,16 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
             exception?.let {
                 context.toastOnUi(it.localizedMessage)
             }
+        }
+
+        override fun onSearchOptionsResolved(options: List<ExploreOption>) {
+            searchOptions.clear()
+            searchOptions.addAll(options)
+            searchOptionsLiveData.postValue(Unit)
+        }
+
+        override fun getSearchOptions(): List<ExploreOption> {
+            return searchOptions
         }
 
     })
@@ -92,10 +105,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         return bookshelf.contains(key) || bookshelf.contains(bookUrl)
     }
 
-    /**
-     * 开始搜索
-     */
-    fun search(key: String) {
+    fun search(key: String, resetOptions: Boolean = true) {
         execute {
             if ((searchKey == key) || key.isNotEmpty()) {
             searchModel.cancelSearch()
@@ -103,17 +113,17 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
             searchBookLiveData.postValue(emptyList())
             searchKey = key
             hasMore = true
+                if (resetOptions) {
+                    searchOptions.clear()
+                }
             }
             if (searchKey.isEmpty()) {
                 return@execute
             }
-            searchModel.search(searchID, searchKey)
+            searchModel.search(searchID, searchKey, !resetOptions)
         }
     }
 
-    /**
-     * 停止搜索
-     */
     fun stop() {
         searchModel.cancelSearch()
     }
@@ -126,9 +136,6 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         searchModel.resume()
     }
 
-    /**
-     * 保存搜索关键字
-     */
     fun saveSearchKey(key: String) {
         execute {
             appDb.searchKeywordDao.get(key)?.let {
@@ -139,9 +146,6 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    /**
-     * 清楚搜索关键字
-     */
     fun clearHistory() {
         execute {
             appDb.searchKeywordDao.deleteAll()

@@ -5,6 +5,7 @@ import fi.iki.elonen.NanoWSD
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.GSON
@@ -93,5 +94,12 @@ class BookSearchWebSocket(handshakeRequest: NanoHTTPD.IHTTPSession) :
     override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) = close(normalClosure, SEARCH_FINISH, false)
 
     override fun onSearchCancel(exception: Throwable?) = close(normalClosure, exception?.toString() ?: SEARCH_FINISH, false)
+
+    override fun onSearchOptionsResolved(options: List<ExploreOption>) {
+    }
+
+    override fun getSearchOptions(): List<ExploreOption> {
+        return emptyList()
+    }
 
 }

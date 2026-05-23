@@ -17,6 +17,8 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
@@ -33,6 +35,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val booksData = MutableLiveData<List<SearchBook>>()
     val errorLiveData = MutableLiveData<String>()
     val sourceReadyLiveData = MutableLiveData<Unit>()
+    val optionsReadyLiveData = MutableLiveData<Unit>()
     val upStarLiveData = MutableLiveData<Boolean>()
     var bookSource: BookSource? = null
         private set
@@ -73,12 +76,16 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             exploreName = intent.getStringExtra("exploreName")
             optionRegexes.clear()
             if (bookSource == null) {
-                bookSource = IntentData.source as? BookSource ?: appDb.bookSourceDao.getBookSource(
-                    intent.getStringExtra("sourceUrl") ?: return@execute
+                bookSource =
+                    (IntentData.source as? BookSource) ?: appDb.bookSourceDao.getBookSource(
+                        intent.getStringExtra("sourceUrl") ?: return@execute,
                 )
             }
             parseExploreOptions()
             sourceReadyLiveData.postValue(Unit)
+            if (exploreOptions.isNotEmpty()) {
+                optionsReadyLiveData.postValue(Unit)
+            }
             upStarLiveData.postValue(isFavorite())
             explore()
         }
@@ -117,9 +124,14 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private fun parseExploreOptions() {
         val url = rawExploreUrl ?: return
         exploreOptions.clear()
+        parseOptionsFromUrl(url)
+    }
+
+    private fun parseOptionsFromUrl(url: String) {
         val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
         regex.findAll(url).forEach { match ->
             val name = match.groupValues[1]
+            if (exploreOptions.any { it.name == name }) return@forEach
             val pairs = match.groupValues[2].split(",").mapNotNull { s ->
                 val split = s.split(":", limit = 2)
                 val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
@@ -135,19 +147,24 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun explore(resetPage: Boolean = false) {
         val source = bookSource ?: return
-        var url = rawExploreUrl ?: return
+        val url = rawExploreUrl ?: return
         if (resetPage) {
             page = 1
             books.clear()
         }
-        exploreOptions.forEach { option ->
-            val regex = optionRegexes.getOrPut(option.name) {
-                "<${option.name}\\(.*?\\)>".toRegex()
-            }
-            url = url.replace(regex, option.selectedValue)
-        }
+        val selectedOptions = exploreOptions.associate { it.name to it.selectedValue }
         Coroutine.async(viewModelScope) {
-            getBookListAwait(source, url, page, isSearch = false)
+            getBookListAwait(
+                source, url, page, isSearch = false,
+                onUrlResolved = { analyzeUrl: AnalyzeUrl ->
+                    val oldSize = exploreOptions.size
+                    parseOptionsFromUrl(analyzeUrl.ruleUrl)
+                    if (exploreOptions.size > oldSize) {
+                        optionsReadyLiveData.postValue(Unit)
+                    }
+                },
+                selectedOptions = selectedOptions
+            )
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { searchBooks ->
             books.addAll(searchBooks)
             booksData.postValue(books.toList())
@@ -157,6 +174,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             errorLiveData.postValue(it.stackTraceStr)
         }
     }
+
 
     fun isInBookShelf(book: BaseBook): Boolean {
         val key = if (book.author.isNotBlank()) "${book.name}-${book.author}" else book.name
@@ -171,9 +189,5 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             }
         }
     }
-
-    data class ExploreOption(
-        val name: String, val options: List<Pair<String, String>>, var selectedValue: String
-    )
 
 }

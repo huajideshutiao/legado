@@ -9,6 +9,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.mapParallelSafe
@@ -42,14 +43,14 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var searchBooks = arrayListOf<SearchBook>()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
-
+    private var optionRegexes = mutableMapOf<String, Regex>()
 
     private fun initSearchPool(): ExecutorCoroutineDispatcher {
         return Executors
             .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     }
 
-    fun search(searchId: Long, key: String) {
+    fun search(searchId: Long, key: String, keepResolved: Boolean = false) {
         if (searchId != mSearchId) {
             if (key.isEmpty()) {
                 return
@@ -67,6 +68,9 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             mSearchId = searchId
             searchPage = 1
             searchPool = initSearchPool()
+            if (!keepResolved) {
+                optionRegexes.clear()
+            }
         } else {
             searchPage++
         }
@@ -77,22 +81,32 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         val precision = appCtx.getPrefBoolean(PreferKey.precisionSearch)
         var hasMore = false
         val pool = searchPool ?: return
+        val isSingleSource = bookSources.size == 1
+        val selectedOptions = callBack.getSearchOptions().associate { it.name to it.selectedValue }
         searchJob = scope.launch(pool) {
             flow {
-                bookSources.forEach {
-                    emit(it)
+                bookSources.forEach { source ->
+                    emit(source)
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(threadCount,bookSources.size) {
+            }.mapParallelSafe(threadCount, bookSources.size) { bookSource ->
                 withTimeout(timeLimit) {
                     WebBook.getBookListAwait(
-                        it, searchKey, searchPage,
+                        bookSource, searchKey, searchPage,
                         filter = { name, author ->
                             !precision || name.contains(searchKey) ||
-                                    author.contains(searchKey)
-                        })
+                                author.contains(searchKey)
+                        },
+                        onUrlResolved = if (isSingleSource) { analyzeUrl: AnalyzeUrl ->
+                            val options = parseOptionsFromUrl(analyzeUrl.ruleUrl)
+                            if (options.isNotEmpty()) {
+                                callBack.onSearchOptionsResolved(options)
+                            }
+                        } else null,
+                        selectedOptions = selectedOptions
+                    )
                 }
             }.onEach { items ->
                 for (book in items) {
@@ -119,7 +133,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             val otherData = arrayListOf<SearchBook>()
             copyData.forEach {
                 currentCoroutineContext().ensureActive()
-                if (it.name == searchKey || it.author == searchKey) {
+                if ((it.name == searchKey) || (it.author == searchKey)) {
                     equalData.add(it)
                 } else if (it.name.contains(searchKey) || it.author.contains(searchKey)) {
                     containsData.add(it)
@@ -129,11 +143,11 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             }
             newDataS.forEach { nBook ->
                 currentCoroutineContext().ensureActive()
-                if (nBook.name == searchKey || nBook.author == searchKey) {
+                if ((nBook.name == searchKey) || (nBook.author == searchKey)) {
                     var hasSame = false
                     equalData.forEach { pBook ->
                         currentCoroutineContext().ensureActive()
-                        if (pBook.name == nBook.name && pBook.author == nBook.author) {
+                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
                             pBook.addOrigin(nBook.origin)
                             hasSame = true
                         }
@@ -145,7 +159,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     var hasSame = false
                     containsData.forEach { pBook ->
                         currentCoroutineContext().ensureActive()
-                        if (pBook.name == nBook.name && pBook.author == nBook.author) {
+                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
                             pBook.addOrigin(nBook.origin)
                             hasSame = true
                         }
@@ -157,7 +171,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     var hasSame = false
                     otherData.forEach { pBook ->
                         currentCoroutineContext().ensureActive()
-                        if (pBook.name == nBook.name && pBook.author == nBook.author) {
+                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
                             pBook.addOrigin(nBook.origin)
                             hasSame = true
                         }
@@ -177,6 +191,27 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             searchBooks = equalData
         }
     }
+
+    private fun parseOptionsFromUrl(url: String): List<ExploreOption> {
+        val options = mutableListOf<ExploreOption>()
+        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
+        regex.findAll(url).forEach { match ->
+            val name = match.groupValues[1]
+            if (options.any { it.name == name }) return@forEach
+            val pairs = match.groupValues[2].split(",").mapNotNull { s ->
+                val split = s.split(":", limit = 2)
+                val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
+                if (first.isEmpty()) return@mapNotNull null
+                val second = split.getOrNull(1)?.trim() ?: first
+                first to second
+            }
+            if (pairs.isNotEmpty()) {
+                options.add(ExploreOption(name, pairs, pairs[0].second))
+            }
+        }
+        return options
+    }
+
 
     fun pause() {
         workingState.value = false
@@ -204,6 +239,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun onSearchSuccess(searchBooks: List<SearchBook>)
         fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean)
         fun onSearchCancel(exception: Throwable? = null)
+        fun onSearchOptionsResolved(options: List<ExploreOption>)
+        fun getSearchOptions(): List<ExploreOption>
     }
 
 }

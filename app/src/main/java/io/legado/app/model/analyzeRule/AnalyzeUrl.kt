@@ -86,11 +86,12 @@ class AnalyzeUrl(
     private val callTimeout: Long? = null,
     private var coroutineContext: CoroutineContext = EmptyCoroutineContext,
     headerMapF: Map<String, String>? = null,
-    hasLoginHeader: Boolean = true
+    hasLoginHeader: Boolean = true,
+    private val selectedOptions: Map<String, String>? = null
 ) : JsExtensions {
 
     var ruleUrl = ""
-        private set
+        internal set
     var url: String = ""
 
     //private set
@@ -154,11 +155,21 @@ class AnalyzeUrl(
      */
     fun initUrl() {
         ruleUrl = mUrl
-        //执行@js,<js></js>
         analyzeJs()
-        //替换参数
-        replaceKeyPageJs()
-        //处理URL
+        analyzeUrl()
+    }
+
+    private fun replaceDynamicOptions(curRuleUrl: String): String {
+        val options = selectedOptions ?: return curRuleUrl
+        if (options.isEmpty()) return curRuleUrl
+        val regex = "<(\\w+)\\(.*?\\)>".toRegex()
+        return curRuleUrl.replace(regex) { match ->
+            val name = match.groupValues[1]
+            options[name] ?: match.value
+        }
+    }
+
+    fun reAnalyzeUrl() {
         analyzeUrl()
     }
 
@@ -188,10 +199,10 @@ class AnalyzeUrl(
     /**
      * 替换关键字,页数,JS
      */
-    private fun replaceKeyPageJs() {
+    private fun replaceKeyPageJs(curRuleUrl: String): String {
         //先替换内嵌规则再替换页数规则，避免内嵌规则中存在大于小于号时，规则被切错
-        if (ruleUrl.contains("{{") && ruleUrl.contains("}}")) {
-            val res = RuleAnalyzer(ruleUrl).innerRule("{{", "}}") {
+        if (curRuleUrl.contains("{{") && curRuleUrl.contains("}}")) {
+            val res = RuleAnalyzer(curRuleUrl).innerRule("{{", "}}") {
                 when (val jsEval = evalJS(it) ?: "") {
                     is String -> jsEval
                     is Double if jsEval % 1.0 == 0.0 -> String.format("%.0f", jsEval)
@@ -199,21 +210,23 @@ class AnalyzeUrl(
                 }
             }
             if (res.isNotEmpty()) {
-                ruleUrl = res
+                return res
             }
         }
+        return curRuleUrl
     }
 
     /**
      * 解析Url
      */
     private fun analyzeUrl() {
-        var urlNoOption = ruleUrl
+        val finalUrl = replaceKeyPageJs(replaceDynamicOptions(ruleUrl))
+        var urlNoOption = finalUrl
         var urlOptionEnd = -1
-        if (ruleUrl.contains("{")) {
-            val urlMatcher = paramPattern.matcher(ruleUrl)
+        if (finalUrl.contains("{")) {
+            val urlMatcher = paramPattern.matcher(finalUrl)
             if (urlMatcher.find()) {
-                urlNoOption = ruleUrl.substring(0, urlMatcher.start())
+                urlNoOption = finalUrl.substring(0, urlMatcher.start())
                 urlOptionEnd = urlMatcher.end()
             }
         }
@@ -221,7 +234,7 @@ class AnalyzeUrl(
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
-            val urlOptionStr = ruleUrl.substring(urlOptionEnd)
+            val urlOptionStr = finalUrl.substring(urlOptionEnd)
             val urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
                 ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")
