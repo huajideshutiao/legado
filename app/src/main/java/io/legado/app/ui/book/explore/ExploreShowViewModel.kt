@@ -20,6 +20,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
@@ -43,7 +44,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private var rawExploreUrl: String? = null
     var exploreName: String? = null
     val exploreOptions = mutableListOf<ExploreOption>()
-    private var optionRegexes = mutableMapOf<String, Regex>()
     var page = 1
         private set
     private var books = linkedSetOf<SearchBook>()
@@ -74,7 +74,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         execute {
             rawExploreUrl = intent.getStringExtra("exploreUrl")
             exploreName = intent.getStringExtra("exploreName")
-            optionRegexes.clear()
             if (bookSource == null) {
                 bookSource =
                     (IntentData.source as? BookSource) ?: appDb.bookSourceDao.getBookSource(
@@ -124,24 +123,13 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private fun parseExploreOptions() {
         val url = rawExploreUrl ?: return
         exploreOptions.clear()
-        parseOptionsFromUrl(url)
+        mergeOptions(parseExploreOptionsFromUrl(url))
     }
 
-    private fun parseOptionsFromUrl(url: String) {
-        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
-        regex.findAll(url).forEach { match ->
-            val name = match.groupValues[1]
-            if (exploreOptions.any { it.name == name }) return@forEach
-            val pairs = match.groupValues[2].split(",").mapNotNull { s ->
-                val split = s.split(":", limit = 2)
-                val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
-                if (first.isEmpty()) return@mapNotNull null
-                val second = split.getOrNull(1)?.trim() ?: first
-                first to second
-            }
-            if (pairs.isNotEmpty()) {
-                exploreOptions.add(ExploreOption(name, pairs, pairs[0].second))
-            }
+    private fun mergeOptions(newOptions: List<ExploreOption>) {
+        newOptions.forEach { newOpt ->
+            if (exploreOptions.any { it.name == newOpt.name }) return@forEach
+            exploreOptions.add(newOpt)
         }
     }
 
@@ -158,7 +146,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 source, url, page, isSearch = false,
                 onUrlResolved = { analyzeUrl: AnalyzeUrl ->
                     val oldSize = exploreOptions.size
-                    parseOptionsFromUrl(analyzeUrl.ruleUrl)
+                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.rawRuleUrl))
                     if (exploreOptions.size > oldSize) {
                         optionsReadyLiveData.postValue(Unit)
                     }

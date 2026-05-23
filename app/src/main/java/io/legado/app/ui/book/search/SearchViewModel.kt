@@ -63,8 +63,21 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
 
         override fun onSearchOptionsResolved(options: List<ExploreOption>) {
+            val structureUnchanged = searchOptions.size == options.size &&
+                searchOptions.zip(options).all { (a, b) ->
+                    a.name == b.name && a.options == b.options
+                }
+            if (structureUnchanged) {
+                // 保留用户已选中的状态，仅在结构变化时通知 UI
+                return
+            }
+            val merged = options.map { newOpt ->
+                searchOptions.find { it.name == newOpt.name }
+                    ?.let { existing -> newOpt.copy(selectedValue = existing.selectedValue) }
+                    ?: newOpt
+            }
             searchOptions.clear()
-            searchOptions.addAll(options)
+            searchOptions.addAll(merged)
             searchOptionsLiveData.postValue(Unit)
         }
 
@@ -105,25 +118,32 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         return bookshelf.contains(key) || bookshelf.contains(bookUrl)
     }
 
+    /**
+     * 开始搜索
+     */
     fun search(key: String, resetOptions: Boolean = true) {
         execute {
             if ((searchKey == key) || key.isNotEmpty()) {
-            searchModel.cancelSearch()
-            searchID = System.currentTimeMillis()
-            searchBookLiveData.postValue(emptyList())
-            searchKey = key
-            hasMore = true
-                if (resetOptions) {
+                searchModel.cancelSearch()
+                searchID = System.currentTimeMillis()
+                searchBookLiveData.postValue(emptyList())
+                searchKey = key
+                hasMore = true
+                if (resetOptions && searchOptions.isNotEmpty()) {
                     searchOptions.clear()
+                    searchOptionsLiveData.postValue(Unit)
                 }
             }
             if (searchKey.isEmpty()) {
                 return@execute
             }
-            searchModel.search(searchID, searchKey, !resetOptions)
+            searchModel.search(searchID, searchKey)
         }
     }
 
+    /**
+     * 停止搜索
+     */
     fun stop() {
         searchModel.cancelSearch()
     }
@@ -136,6 +156,9 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         searchModel.resume()
     }
 
+    /**
+     * 保存搜索关键字
+     */
     fun saveSearchKey(key: String) {
         execute {
             appDb.searchKeywordDao.get(key)?.let {
@@ -146,6 +169,9 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    /**
+     * 清除搜索关键字
+     */
     fun clearHistory() {
         execute {
             appDb.searchKeywordDao.deleteAll()

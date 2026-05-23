@@ -43,14 +43,13 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var searchBooks = arrayListOf<SearchBook>()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
-    private var optionRegexes = mutableMapOf<String, Regex>()
 
     private fun initSearchPool(): ExecutorCoroutineDispatcher {
         return Executors
             .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     }
 
-    fun search(searchId: Long, key: String, keepResolved: Boolean = false) {
+    fun search(searchId: Long, key: String) {
         if (searchId != mSearchId) {
             if (key.isEmpty()) {
                 return
@@ -68,9 +67,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             mSearchId = searchId
             searchPage = 1
             searchPool = initSearchPool()
-            if (!keepResolved) {
-                optionRegexes.clear()
-            }
         } else {
             searchPage++
         }
@@ -100,7 +96,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                                 author.contains(searchKey)
                         },
                         onUrlResolved = if (isSingleSource) { analyzeUrl: AnalyzeUrl ->
-                            val options = parseOptionsFromUrl(analyzeUrl.ruleUrl)
+                            val options = parseExploreOptionsFromUrl(analyzeUrl.rawRuleUrl)
                             if (options.isNotEmpty()) {
                                 callBack.onSearchOptionsResolved(options)
                             }
@@ -191,27 +187,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             searchBooks = equalData
         }
     }
-
-    private fun parseOptionsFromUrl(url: String): List<ExploreOption> {
-        val options = mutableListOf<ExploreOption>()
-        val regex = "<(\\w+)\\((.*?)\\)>".toRegex()
-        regex.findAll(url).forEach { match ->
-            val name = match.groupValues[1]
-            if (options.any { it.name == name }) return@forEach
-            val pairs = match.groupValues[2].split(",").mapNotNull { s ->
-                val split = s.split(":", limit = 2)
-                val first = split.getOrNull(0)?.trim() ?: return@mapNotNull null
-                if (first.isEmpty()) return@mapNotNull null
-                val second = split.getOrNull(1)?.trim() ?: first
-                first to second
-            }
-            if (pairs.isNotEmpty()) {
-                options.add(ExploreOption(name, pairs, pairs[0].second))
-            }
-        }
-        return options
-    }
-
 
     fun pause() {
         workingState.value = false

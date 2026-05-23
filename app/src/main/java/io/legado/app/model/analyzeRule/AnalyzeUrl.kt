@@ -91,7 +91,14 @@ class AnalyzeUrl(
 ) : JsExtensions {
 
     var ruleUrl = ""
-        internal set
+        private set
+
+    /**
+     * `ruleUrl` 经过 @js / <js></js> 解析后、{{...}} 与 <name(opts)> 替换之前的形态，
+     * 供调用方发现 URL 中静态声明的可选项。
+     */
+    var rawRuleUrl = ""
+        private set
     var url: String = ""
 
     //private set
@@ -155,22 +162,33 @@ class AnalyzeUrl(
      */
     fun initUrl() {
         ruleUrl = mUrl
+        //执行@js,<js></js>
         analyzeJs()
+        rawRuleUrl = ruleUrl
+        //替换参数
+        ruleUrl = replaceKeyPageJs(replaceDynamicOptions(ruleUrl))
+        //处理URL
         analyzeUrl()
     }
 
     private fun replaceDynamicOptions(curRuleUrl: String): String {
-        val options = selectedOptions ?: return curRuleUrl
-        if (options.isEmpty()) return curRuleUrl
-        val regex = "<(\\w+)\\(.*?\\)>".toRegex()
+        val regex = "(?U)<(\\w+)\\((.*?)\\)>".toRegex()
         return curRuleUrl.replace(regex) { match ->
             val name = match.groupValues[1]
-            options[name] ?: match.value
+            selectedOptions?.get(name)
+                ?: firstDynamicOptionValue(match.groupValues[2])
+                ?: match.value
         }
     }
 
-    fun reAnalyzeUrl() {
-        analyzeUrl()
+    private fun firstDynamicOptionValue(optionsStr: String): String? {
+        optionsStr.split(",").forEach { s ->
+            val split = s.split(":", limit = 2)
+            val first = split.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@forEach
+            return split.getOrNull(1)?.trim() ?: first
+        }
+        return null
     }
 
     /**
@@ -220,13 +238,12 @@ class AnalyzeUrl(
      * 解析Url
      */
     private fun analyzeUrl() {
-        val finalUrl = replaceKeyPageJs(replaceDynamicOptions(ruleUrl))
-        var urlNoOption = finalUrl
+        var urlNoOption = ruleUrl
         var urlOptionEnd = -1
-        if (finalUrl.contains("{")) {
-            val urlMatcher = paramPattern.matcher(finalUrl)
+        if (ruleUrl.contains("{")) {
+            val urlMatcher = paramPattern.matcher(ruleUrl)
             if (urlMatcher.find()) {
-                urlNoOption = finalUrl.substring(0, urlMatcher.start())
+                urlNoOption = ruleUrl.substring(0, urlMatcher.start())
                 urlOptionEnd = urlMatcher.end()
             }
         }
@@ -234,7 +251,7 @@ class AnalyzeUrl(
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
-            val urlOptionStr = finalUrl.substring(urlOptionEnd)
+            val urlOptionStr = ruleUrl.substring(urlOptionEnd)
             val urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
                 ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")

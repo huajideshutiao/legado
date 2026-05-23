@@ -233,6 +233,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.rvBookshelfSearch.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(recyclerView, newState)
+                // 当用户开始拖拽列表时清除焦点（收起键盘）
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                     searchView.clearFocus()
                 }
@@ -346,6 +347,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 处理传入数据
+     */
     private fun receiptIntent(intent: Intent? = null) {
         val searchScope = intent?.getStringExtra("searchScope")
         searchScope?.let {
@@ -370,6 +374,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 滚动到底部事件
+     */
     private fun scrollToBottom() {
         if (isManualStopSearch) {
             return
@@ -379,17 +386,25 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 打开关闭输入帮助
+     */
     private fun visibleInputHelp(visible: Boolean) {
         if (visible) {
             upHistory(searchView.query.toString())
             binding.llInputHelp.visible()
             binding.recyclerView.gone()
+            binding.llFilter.gone()
         } else {
             binding.llInputHelp.gone()
             binding.recyclerView.visible()
+            binding.llFilter.isVisible = viewModel.searchOptions.isNotEmpty()
         }
     }
 
+    /**
+     * 更新搜索历史
+     */
     private fun upHistory(key: String? = null) {
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
@@ -422,6 +437,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 开始搜索
+     */
     private fun startSearch() {
         binding.refreshProgressBar.visible()
         binding.refreshProgressBar.isAutoLoading = true
@@ -429,6 +447,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.fbStartStop.visible()
     }
 
+    /**
+     * 搜索结束
+     */
     private fun searchFinally() {
         binding.refreshProgressBar.isAutoLoading = false
         binding.refreshProgressBar.gone()
@@ -470,10 +491,16 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 是否已经加入书架
+     */
     override fun isInBookshelf(book: SearchBook): Boolean {
         return viewModel.isInBookShelf(book)
     }
 
+    /**
+     * 显示书籍详情
+     */
     override fun showBookInfo(book: BaseBook, isClick: Boolean) {
         searchView.clearFocus()
         IntentData.book = book
@@ -489,6 +516,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 点击历史关键字
+     */
     override fun searchHistory(key: String) {
         lifecycleScope.launch {
             when {
@@ -507,6 +537,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
     }
 
+    /**
+     * 删除搜索记录
+     */
     override fun deleteHistory(searchKeyword: SearchKeyword) {
         viewModel.deleteHistory(searchKeyword)
     }
