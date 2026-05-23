@@ -6,7 +6,7 @@ data class ExploreOption(
     var selectedValue: String
 )
 
-private val exploreOptionRegex = "(?U)<(\\w+)\\((.*?)\\)>".toRegex()
+private val exploreOptionRegex = "<([^()<> \\s]+)\\(([^>]+)\\)>".toRegex()
 
 /**
  * 解析 URL 中 `<name(key1:value1,key2:value2,...)>` 形式的可选项声明。

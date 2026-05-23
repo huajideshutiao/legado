@@ -172,7 +172,7 @@ class AnalyzeUrl(
     }
 
     private fun replaceDynamicOptions(curRuleUrl: String): String {
-        val regex = "(?U)<(\\w+)\\((.*?)\\)>".toRegex()
+        val regex = "<([^()<> \\s]+)\\(([^>]+)\\)>".toRegex()
         return curRuleUrl.replace(regex) { match ->
             val name = match.groupValues[1]
             selectedOptions?.get(name)
