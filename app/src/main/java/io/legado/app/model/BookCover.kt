@@ -14,23 +14,17 @@ import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.entities.BaseSource
-import io.legado.app.data.entities.Book
 import io.legado.app.help.CacheManager
 import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
-import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 
 @Keep
@@ -152,47 +146,11 @@ object BookCover {
         return GSON.fromJsonObject<CoverRule>(CacheManager.get(coverRuleConfigKey)).getOrNull()
     }
 
-    suspend fun searchCover(book: Book): String? {
-        val config = getCoverRule()
-        if (!config.enable || config.searchUrl.isBlank() || config.coverRule.isBlank()) {
-            return null
-        }
-        val analyzeUrl = AnalyzeUrl(
-            config.searchUrl,
-            book.name,
-            source = config,
-            coroutineContext = currentCoroutineContext(),
-            hasLoginHeader = false
-        )
-        val res = analyzeUrl.getStrResponseAwait()
-        val analyzeRule = AnalyzeRule(book)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
-        analyzeRule.setContent(res.body)
-        analyzeRule.setRedirectUrl(res.url)
-        return analyzeRule.getString(config.coverRule, isUrl = true)
-    }
-
     @Keep
     data class CoverRule(
         var enable: Boolean = true,
         var searchUrl: String,
-        var coverRule: String,
-        override var concurrentRate: String? = null,
-        override var loginUrl: String? = null,
-        override var loginUi: String? = null,
-        override var header: String? = null,
-        override var jsLib: String? = null,
-        override var enabledCookieJar: Boolean? = false,
-        override var enableDangerousApi: Boolean? = false,
-    ) : BaseSource {
-
-        override fun getTag(): String {
-            return searchUrl
-        }
-
-        override fun getKey(): String {
-            return searchUrl
-        }
-    }
+        var coverRule: String
+    )
 
 }

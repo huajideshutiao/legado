@@ -3,6 +3,7 @@ package io.legado.app.ui.browser
 import android.app.Application
 import android.content.Intent
 import android.webkit.WebView
+import androidx.core.net.toUri
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppPattern.dataUriRegex
@@ -28,6 +29,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
     var sourceName: String = ""
     var sourceOrigin: String = ""
     var sourceType = SourceType.book
+    var isLogin: Boolean = false
 
     fun initData(
         intent: Intent,
@@ -40,15 +42,16 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             sourceName = intent.getStringExtra("sourceName") ?: ""
             sourceOrigin = intent.getStringExtra("sourceOrigin") ?: ""
             sourceType = intent.getIntExtra("sourceType", SourceType.book)
+            isLogin = intent.getBooleanExtra("isLogin", false)
             sourceVerificationEnable = intent.getBooleanExtra("sourceVerificationEnable", false)
             refetchAfterSuccess = intent.getBooleanExtra("refetchAfterSuccess", true)
-            if (!url.startsWith("data")&&!url.startsWith("http")) {
+            if (!isLogin && !url.startsWith("data") && !url.startsWith("http")) {
                 html = url
                 return@execute
             }
             val source = SourceHelp.getSource(sourceOrigin, sourceType)
             val analyzeUrl = AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
-            baseUrl = analyzeUrl.headerMap["Origin"] ?:analyzeUrl.url
+            baseUrl = analyzeUrl.headerMap["Origin"] ?: analyzeUrl.url
             headerMap.putAll(analyzeUrl.headerMap)
             if (analyzeUrl.isPost()) {
                 html = analyzeUrl.getStrResponseAwait(useWebView = false).body
@@ -67,7 +70,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
     fun saveImage(webPic: String?, path: String) {
         webPic ?: return
         execute {
-            FileUtils.saveImage(webPic, android.net.Uri.parse(path))
+            FileUtils.saveImage(webPic, path.toUri())
         }.onError {
             ACache.get().remove(imagePathKey)
             context.toastOnUi("保存图片失败:${it.localizedMessage}")

@@ -1,8 +1,8 @@
 package io.legado.app.ui.browser
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
@@ -19,6 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.core.view.size
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -28,13 +29,15 @@ import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.SourceVerificationHelp
-import io.legado.app.lib.dialogs.*
+import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.Download
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.association.FileAssociationDialog
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.ACache
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -43,6 +46,8 @@ import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setDarkeningAllowed
+import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.snackbar
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -57,6 +62,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var webPic: String? = null
     private var isCloudflareChallenge = false
     private var isFullScreen = false
+    private var checking = false
     private val saveImage by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
@@ -116,8 +122,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         when (item.itemId) {
             R.id.menu_open_in_browser -> openUrl(currentUrl)
             R.id.menu_copy_url -> sendToClip(currentUrl)
+            R.id.menu_refresh -> {
+                binding.progressBar.visible()
+                binding.progressBar.setDurProgress(0)
+                binding.webView.reload()
+            }
             R.id.menu_ok -> {
-                if (viewModel.sourceVerificationEnable) {
+                if (viewModel.isLogin) {
+                    if (!checking) {
+                        checking = true
+                        binding.titleBar.snackbar(R.string.check_host_cookie)
+                        binding.webView.reload()
+                    }
+                } else if (viewModel.sourceVerificationEnable) {
                     viewModel.saveVerificationResult(binding.webView) {
                         finish()
                     }
@@ -283,9 +300,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
             url?.let {
-                return shouldOverrideUrlLoading(Uri.parse(it))
+                return shouldOverrideUrlLoading(it.toUri())
             }
             return true
+        }
+
+        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            super.onPageStarted(view, url, favicon)
+            if (viewModel.isLogin) {
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.getCookie(url)?.let {
+                    CookieStore.setCookie(viewModel.sourceOrigin, it)
+                }
+            }
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
@@ -293,7 +320,11 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             val cookieManager = CookieManager.getInstance()
             url?.let {
                 CookieStore.setCookie(it, cookieManager.getCookie(it))
+                if (viewModel.isLogin) {
+                    CookieStore.setCookie(viewModel.sourceOrigin, cookieManager.getCookie(it))
+                }
             }
+            if (checking) finish()
             view?.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank()) {
                     binding.titleBar.title = title

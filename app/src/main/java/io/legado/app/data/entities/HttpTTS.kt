@@ -42,6 +42,10 @@ data class HttpTTS(
         return "httpTts:$id"
     }
 
+    override fun getSourceType(): Int {
+        return io.legado.app.constant.SourceType.tts
+    }
+
     @Suppress("MemberVisibilityCanBePrivate")
     companion object {
 

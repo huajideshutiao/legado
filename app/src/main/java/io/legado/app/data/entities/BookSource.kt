@@ -111,6 +111,14 @@ data class BookSource(
         return bookSourceUrl
     }
 
+    override fun getSourceType(): Int {
+        return if (bookSourceType == BookSourceType.rss) {
+            io.legado.app.constant.SourceType.rss
+        } else {
+            io.legado.app.constant.SourceType.book
+        }
+    }
+
     override fun hashCode(): Int {
         return bookSourceUrl.hashCode()
     }

@@ -42,15 +42,22 @@ object SourceHelp {
     fun getSource(key: String?, @SourceType.Type type: Int): BaseSource? {
         key ?: return null
         return when (type) {
-            SourceType.book -> appDb.bookSourceDao.getBookSource(key)
+            SourceType.book, SourceType.rss -> appDb.bookSourceDao.getBookSource(key)
+            SourceType.tts -> appDb.httpTTSDao.get(
+                key.substringAfter("httpTts:").toLongOrNull() ?: -1
+            )
             else -> null
         }
     }
 
     fun deleteSource(key: String, @SourceType.Type type: Int) {
         when (type) {
-            SourceType.book -> deleteBookSource(key)
-            SourceType.rss -> deleteBookSource(key)
+            SourceType.book, SourceType.rss -> deleteBookSource(key)
+            SourceType.tts -> appDb.httpTTSDao.get(
+                key.substringAfter("httpTts:").toLongOrNull() ?: -1
+            )?.let {
+                appDb.httpTTSDao.delete(it)
+            }
         }
     }
 
@@ -85,8 +92,8 @@ object SourceHelp {
 
     fun enableSource(key: String, @SourceType.Type type: Int, enable: Boolean) {
         when (type) {
-            SourceType.book -> appDb.bookSourceDao.enable(key, enable)
-            SourceType.rss -> appDb.bookSourceDao.enable(key, enable)
+            SourceType.book, SourceType.rss -> appDb.bookSourceDao.enable(key, enable)
+            SourceType.tts -> Unit
         }
     }
 

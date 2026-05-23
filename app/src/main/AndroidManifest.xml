@@ -214,11 +214,8 @@
         <activity
             android:name=".ui.browser.WebViewActivity"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:hardwareAccelerated="true"
             android:launchMode="standard" /> <!-- 书源登录 -->
-        <activity
-            android:name=".ui.login.SourceLoginActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true" /> <!-- 阅读记录 -->
         <activity
             android:name=".ui.about.ReadRecordActivity"
             android:configChanges="orientation|screenSize"

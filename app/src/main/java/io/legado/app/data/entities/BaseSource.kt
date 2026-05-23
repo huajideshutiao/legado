@@ -72,6 +72,8 @@ interface BaseSource : JsExtensions {
 
     fun getKey(): String
 
+    fun getSourceType(): Int
+
     override fun getSource(): BaseSource? {
         return this
     }
@@ -287,10 +289,17 @@ interface BaseSource : JsExtensions {
     }
 
     fun showLoginDialog(activity: AppCompatActivity) {
-        IntentData.source = this
         if (loginUi.isNullOrEmpty()) {
-            activity.startActivity<io.legado.app.ui.login.SourceLoginActivity>()
+            activity.startActivity<io.legado.app.ui.browser.WebViewActivity> {
+                putExtra("url", loginUrl)
+                putExtra("title", activity.getString(R.string.login_source, getTag()))
+                putExtra("sourceName", getTag())
+                putExtra("sourceOrigin", getKey())
+                putExtra("sourceType", getSourceType())
+                putExtra("isLogin", true)
+            }
         } else {
+            IntentData.source = this
             activity.showDialogFragment<SourceLoginDialog>()
         }
     }
