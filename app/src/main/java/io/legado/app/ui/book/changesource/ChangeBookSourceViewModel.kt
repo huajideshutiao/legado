@@ -493,7 +493,6 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun del(searchBook: SearchBook) {
         execute {
             SourceHelp.deleteBookSource(searchBook.origin)
-            //appDb.searchBookDao.delete(searchBook)
         }
         searchBooks.remove(searchBook)
         searchCallback?.upAdapter()

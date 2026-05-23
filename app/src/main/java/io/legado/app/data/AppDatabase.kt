@@ -22,7 +22,6 @@ import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
-import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
@@ -111,7 +110,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookSourceDao: BookSourceDao
     abstract val bookChapterDao: BookChapterDao
     abstract val replaceRuleDao: ReplaceRuleDao
-    abstract val searchBookDao: SearchBookDao
     abstract val searchKeywordDao: SearchKeywordDao
     abstract val bookmarkDao: BookmarkDao
     abstract val cookieDao: CookieDao

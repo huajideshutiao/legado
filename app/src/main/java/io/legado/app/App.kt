@@ -16,7 +16,6 @@ import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -48,12 +47,10 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.model.BookCover
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
-import io.legado.app.utils.getPrefBoolean
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.net.URL
-import java.util.concurrent.TimeUnit
 
 class App : Application() {
 
@@ -96,10 +93,6 @@ class App : Application() {
         }
         Coroutine.async {
             appDb.cacheDao.clearDeadline(System.currentTimeMillis())
-            if (getPrefBoolean(PreferKey.autoClearExpired, true)) {
-                val clearTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
-                appDb.searchBookDao.clearExpired(clearTime)
-            }
             BookHelp.clearInvalidCache()
             Backup.clearCache()
             ReadBookConfig.clearBgAndCache()

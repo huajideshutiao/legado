@@ -134,7 +134,6 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
         if (searchBook.name == name && searchBook.author == author
             && !searchBook.coverUrl.isNullOrEmpty()
         ) {
-            //appDb.searchBookDao.insert(searchBook)
             searchSuccess?.invoke(searchBook)
         }
     }

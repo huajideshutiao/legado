@@ -99,7 +99,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     book.releaseHtmlData()
                 }
                 hasMore = hasMore || items.isNotEmpty()
-                //appDb.searchBookDao.insert(*items.toTypedArray())
                 mergeItems(items, precision)
                 currentCoroutineContext().ensureActive()
                 callBack.onSearchSuccess(searchBooks)
