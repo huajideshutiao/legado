@@ -97,12 +97,6 @@
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
-        android:key="autoClearExpired"
-        android:summary="@string/auto_clear_expired_summary"
-        android:title="@string/auto_clear_expired" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
         android:key="showAddToShelfAlert"
         android:summary="@string/show_add_to_shelf_alert_summary"
         android:title="@string/show_add_to_shelf_alert_title" />

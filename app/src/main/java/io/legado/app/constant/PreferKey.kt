@@ -82,7 +82,6 @@ object PreferKey {
     const val defaultCoverDark = "defaultCoverDark"
     const val replaceEnableDefault = "replaceEnableDefault"
     const val showBrightnessView = "showBrightnessView"
-    const val autoClearExpired = "autoClearExpired"
     const val autoChangeSource = "autoChangeSource"
     const val importKeepName = "importKeepName"
     const val importKeepGroup = "importKeepGroup"
