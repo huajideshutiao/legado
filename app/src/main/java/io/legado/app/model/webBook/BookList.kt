@@ -79,20 +79,12 @@ object BookList {
             }
         }
         val collections: List<Any>
-        var reverse = false
         val bookListRule: BookListRule = when {
             isSearch -> bookSource.getSearchRule()
             bookSource.getExploreRule().bookList.isNullOrBlank() -> bookSource.getSearchRule()
             else -> bookSource.getExploreRule()
         }
-        var ruleList: String = bookListRule.bookList ?: ""
-        if (ruleList.startsWith("-")) {
-            reverse = true
-            ruleList = ruleList.substring(1)
-        }
-        if (ruleList.startsWith("+")) {
-            ruleList = ruleList.substring(1)
-        }
+        val (ruleList, reverse) = WebBook.parseRulePrefix(bookListRule.bookList)
         Debug.log(bookSource.bookSourceUrl, "┌获取书籍列表")
         collections = analyzeRule.getElements(ruleList)
         currentCoroutineContext().ensureActive()

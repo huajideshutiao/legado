@@ -175,16 +175,11 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setCoroutineContext(currentCoroutineContext())
-        //val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.setNextChapterUrl(nextChapterUrl)
         val nextUrlList = arrayListOf<String>()
         analyzeRule.setChapter(chapter)
         //获取正文
         val content = analyzeRule.getString(contentRule.content, unescape = false)
-//        content = HtmlFormatter.formatKeepImg(content, rUrl)
-//        if (content.indexOf('&') > -1) {
-//            content = StringEscapeUtils.unescapeHtml4(content)
-//        }
         //获取下一页链接
         if (getNextPageUrl) {
             val nextUrlRule = contentRule.nextContentUrl

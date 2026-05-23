@@ -414,40 +414,19 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun next() {
         stopPlay()
-        when (playMode) {
-            PlayMode.LIST_END_STOP -> {
-                if (durChapterIndex + 1 < simulatedChapterSize) {
-                    durChapterIndex += 1
-                    durChapterPos = 0
-                    durPlayUrl = ""
-                    saveRead()
-                    loadPlayUrl()
-                }
-            }
+        val newIndex = when (playMode) {
+            PlayMode.LIST_END_STOP ->
+                if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return
 
-            PlayMode.SINGLE_LOOP -> {
-                durChapterPos = 0
-                durPlayUrl = ""
-                saveRead()
-                loadPlayUrl()
-            }
-
-            PlayMode.RANDOM -> {
-                durChapterIndex = (0 until simulatedChapterSize).random()
-                durChapterPos = 0
-                durPlayUrl = ""
-                saveRead()
-                loadPlayUrl()
-            }
-
-            PlayMode.LIST_LOOP -> {
-                durChapterIndex = (durChapterIndex + 1) % simulatedChapterSize
-                durChapterPos = 0
-                durPlayUrl = ""
-                saveRead()
-                loadPlayUrl()
-            }
+            PlayMode.SINGLE_LOOP -> durChapterIndex
+            PlayMode.RANDOM -> (0 until simulatedChapterSize).random()
+            PlayMode.LIST_LOOP -> (durChapterIndex + 1) % simulatedChapterSize
         }
+        durChapterIndex = newIndex
+        durChapterPos = 0
+        durPlayUrl = ""
+        saveRead()
+        loadPlayUrl()
     }
 
     fun setTimer(minute: Int) {

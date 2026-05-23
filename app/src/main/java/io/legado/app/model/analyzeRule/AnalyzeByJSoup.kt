@@ -103,19 +103,7 @@ class AnalyzeByJSoup(doc: Any) {
                 }
             }
             if (results.isNotEmpty()) {
-                if ("%%" == ruleAnalyzes.elementsType) {
-                    for (i in results[0].indices) {
-                        for (temp in results) {
-                            if (i < temp.size) {
-                                textS.add(temp[i])
-                            }
-                        }
-                    }
-                } else {
-                    for (temp in results) {
-                        textS.addAll(temp)
-                    }
-                }
+                RuleCombiner.combineResults(results, ruleAnalyzes.elementsType, textS)
             }
         }
         return textS
@@ -173,19 +161,7 @@ class AnalyzeByJSoup(doc: Any) {
             }
         }
         if (elementsList.isNotEmpty()) {
-            if ("%%" == ruleAnalyzes.elementsType) {
-                for (i in 0 until elementsList[0].size) {
-                    for (es in elementsList) {
-                        if (i < es.size) {
-                            elements.add(es[i])
-                        }
-                    }
-                }
-            } else {
-                for (es in elementsList) {
-                    elements.addAll(es)
-                }
-            }
+            RuleCombiner.combineResults(elementsList, ruleAnalyzes.elementsType, elements)
         }
         return elements
     }

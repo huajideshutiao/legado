@@ -47,15 +47,7 @@ object BookChapterList {
         Debug.log(bookSource.bookSourceUrl, body, state = 30)
         val tocRule = bookSource.getTocRule()
         val nextUrlList = arrayListOf(redirectUrl)
-        var reverse = false
-        var listRule = tocRule.chapterList ?: ""
-        if (listRule.startsWith("-")) {
-            reverse = true
-            listRule = listRule.substring(1)
-        }
-        if (listRule.startsWith("+")) {
-            listRule = listRule.substring(1)
-        }
+        val (listRule, reverse) = WebBook.parseRulePrefix(tocRule.chapterList)
         var chapterData =
             analyzeChapterList(
                 book, baseUrl, redirectUrl, body,
@@ -228,10 +220,7 @@ object BookChapterList {
                 bookChapter.url = analyzeRule.getString(urlRule)
                 bookChapter.tag = analyzeRule.getString(upTimeRule)
                 val isVolume = analyzeRule.getString(isVolumeRule)
-                bookChapter.isVolume = false
-                if (isVolume.isTrue()) {
-                    bookChapter.isVolume = true
-                }
+                bookChapter.isVolume = isVolume.isTrue()
                 if (bookChapter.url.isEmpty()) {
                     if (bookChapter.isVolume) {
                         bookChapter.url = bookChapter.title + index

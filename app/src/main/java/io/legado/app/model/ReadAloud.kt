@@ -61,77 +61,41 @@ object ReadAloud {
         }
     }
 
-    fun pause(context: Context) {
+    private fun sendAction(context: Context, action: String, extra: Pair<String, Any>? = null) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.pause
+            intent.action = action
+            if (extra != null) {
+                val (key, value) = extra
+                when (value) {
+                    is Int -> intent.putExtra(key, value)
+                    is Long -> intent.putExtra(key, value)
+                    is Boolean -> intent.putExtra(key, value)
+                    is String -> intent.putExtra(key, value)
+                    else -> AppLog.put("ReadAloud.sendAction: 不支持的 extra 类型 ${value.javaClass}")
+                }
+            }
             context.startForegroundServiceCompat(intent)
         }
     }
 
-    fun resume(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.resume
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun pause(context: Context) = sendAction(context, IntentAction.pause)
 
-    fun stop(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.stop
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun resume(context: Context) = sendAction(context, IntentAction.resume)
 
-    fun prevParagraph(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.prevParagraph
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun stop(context: Context) = sendAction(context, IntentAction.stop)
 
-    fun nextParagraph(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.nextParagraph
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun prevParagraph(context: Context) = sendAction(context, IntentAction.prevParagraph)
 
-    fun prevChapter(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.prev
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun nextParagraph(context: Context) = sendAction(context, IntentAction.nextParagraph)
 
-    fun nextChapter(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.next
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun prevChapter(context: Context) = sendAction(context, IntentAction.prev)
 
-    fun upTtsSpeechRate(context: Context) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.upTtsSpeechRate
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun nextChapter(context: Context) = sendAction(context, IntentAction.next)
 
-    fun setTimer(context: Context, minute: Int) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = IntentAction.setTimer
-            intent.putExtra("minute", minute)
-            context.startForegroundServiceCompat(intent)
-        }
-    }
+    fun upTtsSpeechRate(context: Context) = sendAction(context, IntentAction.upTtsSpeechRate)
+
+    fun setTimer(context: Context, minute: Int) =
+        sendAction(context, IntentAction.setTimer, "minute" to minute)
 
 }

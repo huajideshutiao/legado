@@ -77,19 +77,7 @@ class AnalyzeByXPath(doc: Any) {
                 }
             }
             if (results.isNotEmpty()) {
-                if ("%%" == ruleAnalyzes.elementsType) {
-                    for (i in results[0].indices) {
-                        for (temp in results) {
-                            if (i < temp.size) {
-                                nodes.add(temp[i])
-                            }
-                        }
-                    }
-                } else {
-                    for (temp in results) {
-                        nodes.addAll(temp)
-                    }
-                }
+                RuleCombiner.combineResults(results, ruleAnalyzes.elementsType, nodes)
             }
         }
         return nodes
@@ -117,19 +105,7 @@ class AnalyzeByXPath(doc: Any) {
                 }
             }
             if (results.isNotEmpty()) {
-                if ("%%" == ruleAnalyzes.elementsType) {
-                    for (i in results[0].indices) {
-                        for (temp in results) {
-                            if (i < temp.size) {
-                                result.add(temp[i])
-                            }
-                        }
-                    }
-                } else {
-                    for (temp in results) {
-                        result.addAll(temp)
-                    }
-                }
+                RuleCombiner.combineResults(results, ruleAnalyzes.elementsType, result)
             }
         }
         return result

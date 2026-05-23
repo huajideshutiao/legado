@@ -676,17 +676,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         chapterLoadingJobs[chapter.index]?.cancel()
         val job = Coroutine.async(this, start = CoroutineStart.LAZY) {
-            val contentProcessor = ContentProcessor.get(book.name, book.origin)
-            val displayTitle = chapter.getDisplayTitle(
-                contentProcessor.getTitleReplaceRules(),
-                book.getUseReplaceRule()
-            )
-            val contents = contentProcessor
-                .getContent(book, chapter, content, includeTitle = false)
-            ensureActive()
-            val textChapter = ChapterProvider.getTextChapterAsync(
-                this, book, chapter, displayTitle, contents, simulatedChapterSize
-            )
+            val textChapter = processContent(book, chapter, content)
             when (val offset = chapter.index - durChapterIndex) {
                 0 -> curChapterLoadingLock.withLock {
                     withContext(Main) {
@@ -764,16 +754,7 @@ object ReadBook : CoroutineScope by MainScope() {
             return
         }
         kotlin.runCatching {
-            val contentProcessor = ContentProcessor.get(book.name, book.origin)
-            val displayTitle = chapter.getDisplayTitle(
-                contentProcessor.getTitleReplaceRules(),
-                book.getUseReplaceRule()
-            )
-            val contents = contentProcessor
-                .getContent(book, chapter, content, includeTitle = false)
-            val textChapter = ChapterProvider.getTextChapterAsync(
-                this@ReadBook, book, chapter, displayTitle, contents, simulatedChapterSize
-            )
+            val textChapter = processContent(book, chapter, content)
             when (val offset = chapter.index - durChapterIndex) {
                 0 -> {
                     curTextChapter?.cancelLayout()
@@ -831,6 +812,22 @@ object ReadBook : CoroutineScope by MainScope() {
             AppLog.put("ChapterProvider ERROR", it)
             appCtx.toastOnUi("ChapterProvider ERROR:\n${it.stackTraceStr}")
         }
+    }
+
+    private fun CoroutineScope.processContent(
+        book: Book, chapter: BookChapter, content: String
+    ): TextChapter {
+        val contentProcessor = ContentProcessor.get(book.name, book.origin)
+        val displayTitle = chapter.getDisplayTitle(
+            contentProcessor.getTitleReplaceRules(),
+            book.getUseReplaceRule()
+        )
+        val contents = contentProcessor
+            .getContent(book, chapter, content, includeTitle = false)
+        ensureActive()
+        return ChapterProvider.getTextChapterAsync(
+            this, book, chapter, displayTitle, contents, simulatedChapterSize
+        )
     }
 
     @Synchronized

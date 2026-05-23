@@ -315,4 +315,19 @@ object WebBook {
         return false
     }
 
+    data class ParsedRule(val rule: String, val reverse: Boolean)
+
+    internal fun parseRulePrefix(rule: String?): ParsedRule {
+        var reverse = false
+        var r = rule ?: ""
+        if (r.startsWith("-")) {
+            reverse = true
+            r = r.substring(1)
+        }
+        if (r.startsWith("+")) {
+            r = r.substring(1)
+        }
+        return ParsedRule(r, reverse)
+    }
+
 }

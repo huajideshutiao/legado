@@ -31,44 +31,49 @@ class RemoteBookWebDav(
     }
 
 
-    @Throws(Exception::class)
-    override suspend fun getRemoteBookList(path: String): MutableList<RemoteBook> {
+    private suspend fun <T> withNetworkCheck(block: suspend () -> T): T {
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
-        val remoteBooks = mutableListOf<RemoteBook>()
-        //读取文件列表
-        val remoteWebDavFileList: List<WebDavFile> = WebDav(path, authorization).listFiles()
-        //转化远程文件信息到本地对象
-        remoteWebDavFileList.forEach { webDavFile ->
-            if (webDavFile.isDir
-                || bookFileRegex.matches(webDavFile.displayName)
-                || archiveFileRegex.matches(webDavFile.displayName)
-            ) {
-                //扩展名符合阅读的格式则认为是书籍
-                remoteBooks.add(RemoteBook(webDavFile))
-            }
-        }
-        return remoteBooks
+        return block()
     }
 
-    override suspend fun getRemoteBook(path: String): RemoteBook? {
-        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+    @Throws(Exception::class)
+    override suspend fun getRemoteBookList(path: String): MutableList<RemoteBook> =
+        withNetworkCheck {
+            val remoteBooks = mutableListOf<RemoteBook>()
+            //读取文件列表
+            val remoteWebDavFileList: List<WebDavFile> =
+                WebDav(path, authorization).listFiles()
+            //转化远程文件信息到本地对象
+            remoteWebDavFileList.forEach { webDavFile ->
+                if (webDavFile.isDir
+                    || bookFileRegex.matches(webDavFile.displayName)
+                    || archiveFileRegex.matches(webDavFile.displayName)
+                ) {
+                    //扩展名符合阅读的格式则认为是书籍
+                    remoteBooks.add(RemoteBook(webDavFile))
+                }
+            }
+            remoteBooks
+        }
+
+    override suspend fun getRemoteBook(path: String): RemoteBook? = withNetworkCheck {
         val webDavFile = WebDav(path, authorization).getWebDavFile()
-            ?: return null
-        return RemoteBook(webDavFile)
+            ?: return@withNetworkCheck null
+        RemoteBook(webDavFile)
     }
 
     override suspend fun downloadRemoteBook(remoteBook: RemoteBook): Uri {
         AppConfig.defaultBookTreeUri
             ?: throw NoStackTraceException("没有设置书籍保存位置!")
-        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
-        val webdav = WebDav(remoteBook.path, authorization)
-        return webdav.downloadInputStream().let { inputStream ->
-            FileBook.saveBookFile(inputStream, remoteBook.filename)
+        return withNetworkCheck {
+            val webdav = WebDav(remoteBook.path, authorization)
+            webdav.downloadInputStream().let { inputStream ->
+                FileBook.saveBookFile(inputStream, remoteBook.filename)
+            }
         }
     }
 
-    override suspend fun upload(book: Book) {
-        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+    override suspend fun upload(book: Book) = withNetworkCheck {
         val localBookUri = book.bookUrl.toUri()
         val putUrl = "$rootBookUrl${book.originName}"
         val webDav = WebDav(putUrl, authorization)
@@ -83,9 +88,9 @@ class RemoteBookWebDav(
         book.update()
     }
 
-    override suspend fun delete(remoteBookUrl: String) {
-        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+    override suspend fun delete(remoteBookUrl: String) = withNetworkCheck {
         WebDav(remoteBookUrl, authorization).delete()
+        Unit
     }
 
     fun getWebDav(path: String): WebDav {

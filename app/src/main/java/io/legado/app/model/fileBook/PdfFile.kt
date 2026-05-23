@@ -139,24 +139,16 @@ class PdfFile(var book: Book) {
 
     }
 
-    private fun getContent(chapter: BookChapter): String? =
-        if (pdfRenderer == null) {
-            null
-        } else {
-            pdfRenderer?.let { renderer ->
-
-                buildString {
-                    val start = chapter.index * PAGE_SIZE
-                    val end = ((chapter.index + 1) * PAGE_SIZE).coerceAtMost(renderer.pageCount)
-                    (start until end).forEach {
-                        append("<img src=").append('"').append(it).append('"').append(" >")
-                            .append('\n')
-                    }
-
-                }
-
+    private fun getContent(chapter: BookChapter): String? = pdfRenderer?.let { renderer ->
+        buildString {
+            val start = chapter.index * PAGE_SIZE
+            val end = ((chapter.index + 1) * PAGE_SIZE).coerceAtMost(renderer.pageCount)
+            (start until end).forEach {
+                append("<img src=").append('"').append(it).append('"').append(" >")
+                    .append('\n')
             }
         }
+    }
 
 
     private fun getImage(href: String): InputStream? {
