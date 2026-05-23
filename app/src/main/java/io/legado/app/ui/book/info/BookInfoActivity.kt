@@ -207,7 +207,7 @@ class BookInfoActivity :
             isVisible = book?.isLocalTxt ?: false
         }
         menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
+            viewModel.curBookSource?.hasLogin() == true
         menu.findItem(R.id.menu_set_source_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_set_book_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag

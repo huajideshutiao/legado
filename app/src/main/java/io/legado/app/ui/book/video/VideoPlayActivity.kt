@@ -425,7 +425,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
+            viewModel.curBookSource?.hasLogin() == true
         menu.findItem(R.id.menu_shelf).apply {
             if (viewModel.inBookshelf) {
                 setIcon(R.drawable.ic_star)

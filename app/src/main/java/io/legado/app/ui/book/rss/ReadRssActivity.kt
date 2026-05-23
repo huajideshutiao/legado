@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.rss
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
@@ -44,10 +43,9 @@ import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.Download
+import io.legado.app.ui.association.FileAssociationDialog
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.association.FileAssociationDialog
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.ACache
 import io.legado.app.utils.gone
@@ -60,6 +58,7 @@ import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.share
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
@@ -147,7 +146,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible =
-            !viewModel.curBookSource?.loginUrl.isNullOrBlank()
+            viewModel.curBookSource?.hasLogin() == true
         return super.onMenuOpened(featureId, menu)
     }
 

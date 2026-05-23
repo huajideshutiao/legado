@@ -290,19 +290,23 @@ interface BaseSource : JsExtensions {
 
     fun showLoginDialog(activity: AppCompatActivity) {
         if (loginUi.isNullOrEmpty()) {
-            activity.startActivity<io.legado.app.ui.browser.WebViewActivity> {
-                putExtra("url", loginUrl)
-                putExtra("title", activity.getString(R.string.login_source, getTag()))
-                putExtra("sourceName", getTag())
-                putExtra("sourceOrigin", getKey())
-                putExtra("sourceType", getSourceType())
-                putExtra("isLogin", true)
+            if (!loginUrl.isNullOrBlank()) {
+                activity.startActivity<io.legado.app.ui.browser.WebViewActivity> {
+                    putExtra("url", loginUrl)
+                    putExtra("title", activity.getString(R.string.login_source, getTag()))
+                    putExtra("sourceName", getTag())
+                    putExtra("sourceOrigin", getKey())
+                    putExtra("sourceType", getSourceType())
+                    putExtra("isLogin", true)
+                }
             }
         } else {
             IntentData.source = this
             activity.showDialogFragment<SourceLoginDialog>()
         }
     }
+
+    fun hasLogin(): Boolean = !(loginUrl.isNullOrBlank() && loginUi.isNullOrBlank())
 
     fun showSourceVariableDialog(activity: AppCompatActivity) {
         if (this !is BookSource) return

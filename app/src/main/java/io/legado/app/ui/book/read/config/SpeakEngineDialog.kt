@@ -248,8 +248,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
                         val id = httpTTS.id.toString()
                         upTts(id)
-                        if (!httpTTS.loginUrl.isNullOrBlank()
-                            && httpTTS.getLoginInfo().isNullOrBlank()
+                        if (httpTTS.hasLogin() && httpTTS.getLoginInfo().isNullOrBlank()
                         ) {
                             httpTTS.showLoginDialog(activity as AppCompatActivity)
                         }

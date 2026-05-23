@@ -118,6 +118,7 @@ class AnalyzeUrl(
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
+        if (baseUrl.isBlank()) baseUrl = source?.getKey() ?: ""
         if (baseUrl.contains("{")) {
             val matcher = paramPattern.matcher(baseUrl)
             if (matcher.find()) {
@@ -126,10 +127,10 @@ class AnalyzeUrl(
         }
         // 直接前置执行 initUrl()，这样 source.header 里的 js 才能拿到相关参数
         initUrl()
-        
+
         // 保存 URL 级别的请求头临时拷贝
         val urlHeaders = LinkedHashMap(headerMap)
-        
+
         // 添加 source 级别的请求头
         if (headerMapF.isNullOrEmpty()) {
             val sourceHeaders = source?.getHeaderMap(hasLoginHeader, this::evalJS) ?: emptyMap()
@@ -138,12 +139,12 @@ class AnalyzeUrl(
         } else {
             headerMap.putAll(headerMapF)
         }
-        
+
         // 如果 URL 级别的请求头非空，再添加回去，确保 URL 级别的请求头不会被 source 级别的请求头覆盖
         if (urlHeaders.isNotEmpty()) {
             headerMap.putAll(urlHeaders)
         }
-        
+
         domain =
             NetworkUtils.getSubDomain(source?.getKey()?.takeIf { it.startsWith("http") } ?: url)
     }

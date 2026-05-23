@@ -81,28 +81,31 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
             R.id.menu_save -> viewModel.save(dataFromView()) {
                 toastOnUi("保存成功")
             }
+
             R.id.menu_login -> dataFromView().let { httpTts ->
-                if (httpTts.loginUrl.isNullOrBlank()) {
-                    toastOnUi("登录url不能为空")
-                } else {
+                if (httpTts.hasLogin()) {
                     viewModel.save(httpTts) {
                         httpTts.showLoginDialog(activity as AppCompatActivity)
                     }
-                }
+                } else toastOnUi("没有登陆界面")
             }
+
             R.id.menu_show_login_header -> alert {
                 setTitle(R.string.login_header)
                 dataFromView().getLoginHeader()?.let { loginHeader ->
                     setMessage(loginHeader)
                 }
             }
+
             R.id.menu_del_login_header -> dataFromView().removeLoginHeader()
             R.id.menu_copy_source -> dataFromView().let {
                 context?.sendToClip(GSON.toJson(it))
             }
+
             R.id.menu_paste_source -> viewModel.importFromClip {
                 initView(it)
             }
+
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
             R.id.menu_help -> showHelp("httpTTSHelp")
         }

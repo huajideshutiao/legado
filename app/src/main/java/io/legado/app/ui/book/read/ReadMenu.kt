@@ -23,7 +23,6 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
@@ -363,9 +362,9 @@ class ReadMenu @JvmOverloads constructor(
         //书源操作
         tvSourceAction.onClick {
             sourceMenu.menu.findItem(R.id.menu_login).isVisible =
-                !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
+                ReadBook.bookSource?.hasLogin() == true
             sourceMenu.menu.findItem(R.id.menu_chapter_pay).isVisible =
-                !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
+                ReadBook.bookSource?.hasLogin() == true
                         && ReadBook.curTextChapter?.isVip == true
                         && ReadBook.curTextChapter?.isPay != true
             sourceMenu.show()
