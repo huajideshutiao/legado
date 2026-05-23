@@ -42,7 +42,6 @@ import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
-import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
@@ -133,7 +132,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             //备份同步
             backupSync()
             //版本更新
-            checkUpdate(true)
+            if (AppConfig.autoCheckUpdate) {
+                AppUpdate.check(this@MainActivity.lifecycleScope, this@MainActivity, true)
+            }
         }
         lifecycleScope.launch {
             val isAutoRefreshedBook = savedInstanceState?.getBoolean("isAutoRefreshedBook") ?: false
@@ -308,27 +309,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     }
                 }
             }
-        }
-    }
-
-    /**
-     * 自动检查更新
-     */
-    private fun checkUpdate(isAuto: Boolean) {
-        if (isAuto && !AppConfig.autoCheckUpdate) return
-        AppUpdate.gitHubUpdate?.run {
-            check(lifecycleScope)
-                .onSuccess {
-                    if (it != null) {
-                        showDialogFragment(UpdateDialog(it))
-                    } else if (!isAuto) {
-                        toastOnUi(R.string.is_latest_version)
-                    }
-                }.onError {
-                    if (!isAuto) {
-                        toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
-                    }
-                }
         }
     }
 

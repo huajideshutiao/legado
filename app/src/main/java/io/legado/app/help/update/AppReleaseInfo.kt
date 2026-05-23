@@ -39,14 +39,15 @@ data class GithubRelease(
 ) {
     fun gitReleaseToAppReleaseInfo(): List<AppReleaseInfo> {
         assets ?: throw NoStackTraceException("获取新版本出错")
-        val releaseVersion = if (isPreRelease) {
+        // 如果是 beta 标签，版本号从标题提取（如 legado_3.24.030512），否则使用 tagName
+        val releaseVersion = if (tagName == "beta") {
             name?.substringAfterLast("_") ?: ""
         } else {
             tagName ?: ""
         }
         return assets
             .filter { it.isValid }
-            .map { it.assetToAppReleaseInfo(isPreRelease, body, releaseVersion) }
+            .map { it.assetToAppReleaseInfo(body, releaseVersion, tagName == "beta") }
     }
 }
 
@@ -69,25 +70,24 @@ data class Asset(
         get() = (contentType == "application/vnd.android.package-archive") && (state == "uploaded")
 
     fun assetToAppReleaseInfo(
-        preRelease: Boolean,
         note: String,
-        releaseVersion: String
+        releaseVersion: String,
+        isBetaTag: Boolean
     ): AppReleaseInfo {
         val instant = Instant.parse(createdAt)
         val timestamp: Long = instant.toEpochMilli()
 
         val appVariant = when {
-            preRelease && name.contains("releaseA") -> AppVariant.BETA_RELEASEA
-            preRelease && name.contains("release") -> AppVariant.BETA_RELEASE
+            // 严格遵循 test.yml 的重命名规则
+            isBetaTag && (name.contains("releaseA", true) || name.contains(
+                "共存",
+                true
+            )) -> AppVariant.BETA_RELEASEA
+
+            isBetaTag && name.contains("release", true) -> AppVariant.BETA_RELEASE
             else -> AppVariant.OFFICIAL
         }
 
-        val versionName = if (releaseVersion.isNotBlank()) {
-            releaseVersion
-        } else {
-            name.split("_").getOrNull(2)?.dropLast(2) ?: ""
-        }
-
-        return AppReleaseInfo(appVariant, timestamp, note, name, apkUrl, url, versionName)
+        return AppReleaseInfo(appVariant, timestamp, note, name, apkUrl, url, releaseVersion)
     }
 }

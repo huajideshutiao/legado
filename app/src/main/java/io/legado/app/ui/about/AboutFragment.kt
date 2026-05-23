@@ -1,9 +1,10 @@
 package io.legado.app.ui.about
 
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
@@ -15,7 +16,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
@@ -37,10 +37,6 @@ import java.io.File
 
 class AboutFragment : PreferenceFragmentCompat() {
 
-    private val waitDialog by lazy {
-        WaitDialog.from(requireActivity())
-    }
-
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.about)
         findPreference<Preference>("update_log")?.summary =
@@ -56,7 +52,9 @@ class AboutFragment : PreferenceFragmentCompat() {
         when (preference.key) {
             "contributors" -> openUrl(R.string.contributors_url)
             "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
-            "check_update" -> checkUpdate()
+            "check_update" -> {
+                AppUpdate.check(lifecycleScope, requireActivity() as AppCompatActivity)
+            }
             "mail" -> requireContext().sendMail(getString(R.string.email))
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
@@ -82,29 +80,6 @@ class AboutFragment : PreferenceFragmentCompat() {
         showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
     }
 
-    /**
-     * 检测更新
-     */
-    private fun checkUpdate() {
-        waitDialog.show(requireActivity().supportFragmentManager)
-        AppUpdate.gitHubUpdate?.run {
-            check(lifecycleScope)
-                .onSuccess {
-                    if (it != null) {
-                        showDialogFragment(
-                            UpdateDialog(it)
-                        )
-                    } else {
-                        appCtx.toastOnUi(R.string.is_latest_version)
-                    }
-                }.onError {
-                    appCtx.toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
-                }.onFinally {
-                    waitDialog.dismissSafe()
-                }
-        }
-    }
-
 
     private fun saveLog() {
         Coroutine.async {
@@ -116,7 +91,7 @@ class AboutFragment : PreferenceFragmentCompat() {
                 appCtx.toastOnUi("未开启日志记录，请去其他设置里打开记录日志")
                 delay(3000)
             }
-            val doc = FileDoc.fromUri(Uri.parse(backupPath), true)
+            val doc = FileDoc.fromUri(backupPath.toUri(), true)
             copyLogs(doc)
             copyHeapDump(doc)
             appCtx.toastOnUi("已保存至备份目录")
@@ -138,7 +113,7 @@ class AboutFragment : PreferenceFragmentCompat() {
             appCtx.toastOnUi("开始创建堆转储")
             System.gc()
             CrashHandler.doHeapDump(true)
-            val doc = FileDoc.fromUri(Uri.parse(backupPath), true)
+            val doc = FileDoc.fromUri(backupPath.toUri(), true)
             if (!copyHeapDump(doc)) {
                 appCtx.toastOnUi("未找到堆转储文件")
             } else {

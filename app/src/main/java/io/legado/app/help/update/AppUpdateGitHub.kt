@@ -16,36 +16,31 @@ import kotlinx.coroutines.CoroutineScope
 @Suppress("unused")
 object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
-    private val checkVariant: AppVariant
-        get() = when (AppConfig.updateToVariant) {
+    private fun getCheckVariant(): AppVariant {
+        return when (AppConfig.updateToVariant) {
             "official_version" -> AppVariant.OFFICIAL
             "beta_release_version" -> AppVariant.BETA_RELEASE
             "beta_releaseA_version" -> AppVariant.BETA_RELEASEA
-            else -> AppConst.appInfo.appVariant
+            else -> {
+                val variant = AppConst.appInfo.appVariant
+                if (variant == AppVariant.UNKNOWN) AppVariant.OFFICIAL else variant
+            }
         }
+    }
 
-    private suspend fun getLatestRelease(): List<AppReleaseInfo> {
-        val lastReleaseUrl = if (checkVariant.isBeta()) {
+    private suspend fun getLatestRelease(checkVariant: AppVariant): List<AppReleaseInfo> {
+        val url = if (checkVariant.isBeta()) {
             "https://api.github.com/repos/huajideshutiao/legado/releases/tags/beta"
         } else {
             "https://api.github.com/repos/huajideshutiao/legado/releases/latest"
         }
-        val res = okHttpClient.newCallResponse {
-            url(lastReleaseUrl)
+        okHttpClient.newCallResponse { url(url) }.use { res ->
+            if (!res.isSuccessful) throw NoStackTraceException("获取新版本出错(${res.code})")
+            val body = res.body.text()
+            if (body.isBlank()) throw NoStackTraceException("获取新版本出错")
+            return GSON.fromJsonObject<GithubRelease>(body).getOrThrow()
+                .gitReleaseToAppReleaseInfo()
         }
-        if (!res.isSuccessful) {
-            throw NoStackTraceException("获取新版本出错(${res.code})")
-        }
-        val body = res.body.text()
-        if (body.isBlank()) {
-            throw NoStackTraceException("获取新版本出错")
-        }
-        return GSON.fromJsonObject<GithubRelease>(body)
-            .getOrElse {
-                throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
-            }
-            .gitReleaseToAppReleaseInfo()
-            .sortedByDescending { it.createdAt }
     }
 
     override fun check(
@@ -53,7 +48,8 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
     ): Coroutine<AppUpdate.UpdateInfo?> {
         return Coroutine.async(scope) {
             val supportedAbis = android.os.Build.SUPPORTED_ABIS
-            getLatestRelease()
+            val checkVariant = getCheckVariant()
+            getLatestRelease(checkVariant)
                 .filter { it.appVariant == checkVariant }
                 .filter { it.versionName > AppConst.appInfo.versionName }
                 .minByOrNull { info ->
@@ -82,7 +78,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
                         it.name
                     )
                 }
-                ?: return@async null
+            return@async null
         }.timeout(10000)
     }
 }
