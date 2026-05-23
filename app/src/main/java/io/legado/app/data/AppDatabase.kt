@@ -39,7 +39,7 @@ import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.RuleSub
-import io.legado.app.data.entities.SearchBook
+
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
@@ -58,10 +58,10 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 80,
+    version = 81,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
-        ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
+        ReplaceRule::class, SearchKeyword::class, Cookie::class,
         Bookmark::class, TxtTocRule::class, ReadRecord::class, HttpTTS::class, Cache::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
     views = [BookSourcePart::class],

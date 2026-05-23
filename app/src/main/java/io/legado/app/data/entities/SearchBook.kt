@@ -2,12 +2,6 @@ package io.legado.app.data.entities
 
 import android.content.Context
 import android.os.Parcelable
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.Ignore
-import androidx.room.Index
-import androidx.room.PrimaryKey
 import io.legado.app.R
 import io.legado.app.constant.BookType
 import io.legado.app.utils.GSON
@@ -16,19 +10,7 @@ import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 
 @Parcelize
-@Entity(
-    tableName = "searchBooks",
-    indices = [(Index(value = ["bookUrl"], unique = true)),
-        (Index(value = ["origin"], unique = false))],
-    foreignKeys = [(ForeignKey(
-        entity = BookSource::class,
-        parentColumns = ["bookSourceUrl"],
-        childColumns = ["origin"],
-        onDelete = ForeignKey.CASCADE
-    ))]
-)
 data class SearchBook(
-    @PrimaryKey
     override var bookUrl: String = "",
     /** 书源 */
     override var origin: String = "",
@@ -48,17 +30,13 @@ data class SearchBook(
     override var variable: String? = null,
     override var originOrder: Int = 0,
     var chapterWordCountText: String? = null,
-    @ColumnInfo(defaultValue = "-1")
     var chapterWordCount: Int = -1,
-    @ColumnInfo(defaultValue = "-1")
     var respondTime: Int = -1
 ) : Parcelable, BaseBook, Comparable<SearchBook> {
 
-    @Ignore
     @IgnoredOnParcel
     override var infoHtml: String? = null
 
-    @Ignore
     @IgnoredOnParcel
     override var tocHtml: String? = null
 
@@ -71,14 +49,12 @@ data class SearchBook(
     }
 
     @delegate:Transient
-    @delegate:Ignore
     @IgnoredOnParcel
     override val variableMap: HashMap<String, String> by lazy {
         GSON.fromJsonObject<HashMap<String, String>>(variable).getOrNull() ?: HashMap()
     }
 
     @delegate:Transient
-    @delegate:Ignore
     @IgnoredOnParcel
     val origins: LinkedHashSet<String> by lazy { linkedSetOf(origin) }
 
