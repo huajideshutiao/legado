@@ -12,6 +12,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
@@ -35,8 +36,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.apache.commons.text.similarity.JaccardSimilarity
@@ -96,48 +99,68 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
-            val bookFolderNames = appDb.bookDao.allBookFolderNames.mapTo(hashSetOf()) {
+            val allBookFolderNames = appDb.bookDao.allBookFolderNames
+            val bookFolderNames = allBookFolderNames.mapTo(HashSet(allBookFolderNames.size)) {
                 it.name.replace(AppPattern.fileNameRegex, "").let { name ->
                     name.substring(0, min(9, name.length)) + MD5Utils.md5Encode16(it.bookUrl)
                 }
             }
+            val bookUrls = allBookFolderNames.mapTo(HashSet(allBookFolderNames.size)) { it.bookUrl }
             val cacheFolder = downloadDir.getFile(cacheFolderName)
-            // 1. 删除不在书架的书籍缓存
-            cacheFolder.listFiles()?.forEach { bookFile ->
-                if (bookFile.isDirectory && !bookFolderNames.contains(bookFile.name)) {
-                    FileUtils.delete(bookFile.absolutePath)
+            val cacheFiles = cacheFolder.listFiles()?.filter { it.isDirectory } ?: emptyList()
+
+            coroutineScope {
+                // 1. 删除不在书架的书籍缓存
+                cacheFiles.forEach { bookFile ->
+                    if (!bookFolderNames.contains(bookFile.name)) {
+                        launch { FileUtils.delete(bookFile, true) }
+                    }
                 }
-            }
-            // 2. 漫画图片缓存管理 (512MB)
-            val folders = cacheFolder.listFiles()?.filter { it.isDirectory } ?: return@withContext
-            val sortedFolders = folders.sortedBy { it.lastModified() }
-            var totalSize = 0L
-            val folderSizes = mutableMapOf<File, Long>()
-            for (folder in sortedFolders) {
-                var folderSize = 0L
-                folder.walkBottomUp().forEach {
-                    if (it.isFile) folderSize += it.length()
-                }
-                folderSizes[folder] = folderSize
-                totalSize += folderSize
-            }
-            val maxSize = 512 * 1024 * 1024L
-            if (totalSize > maxSize) {
-                for (folder in sortedFolders) {
-                    // 优先清理漫画 (包含images文件夹的)
-                    if (File(folder, cacheImageFolderName).exists()) {
-                        val size = folderSizes[folder] ?: 0L
-                        FileUtils.delete(folder.absolutePath)
-                        totalSize -= size
-                        if (totalSize <= maxSize) break
+                // 2. 删除不在书架的规则大数据
+                RuleBigDataHelp.bookData.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+                    launch {
+                        val bookUrlFile = dir.getFile("bookUrl.txt")
+                        val bookUrl = if (bookUrlFile.exists()) bookUrlFile.readText() else null
+                        if (bookUrl.isNullOrBlank() || !bookUrls.contains(bookUrl)) {
+                            FileUtils.delete(dir, true)
+                        }
                     }
                 }
             }
+
+            // 3. 漫画图片缓存管理 (512MB)
+            val validFolders = cacheFiles.filter { bookFolderNames.contains(it.name) }
+            if (validFolders.isNotEmpty()) {
+                val folderSizes = ConcurrentHashMap<File, Long>()
+                val mangaFolders = ConcurrentHashMap.newKeySet<File>()
+                validFolders.asFlow().onEachParallel(8) { folder ->
+                    val folderSize = folder.walk().filter { it.isFile }.sumOf { it.length() }
+                    folderSizes[folder] = folderSize
+                    if (File(folder, cacheImageFolderName).exists()) {
+                        mangaFolders.add(folder)
+                    }
+                }.collect()
+
+                var totalSize = folderSizes.values.sum()
+                val maxSize = 512 * 1024 * 1024L
+                if (totalSize > maxSize) {
+                    val sortedFolders = validFolders.sortedBy { it.lastModified() }
+                    for (folder in sortedFolders) {
+                        if (mangaFolders.contains(folder)) {
+                            val size = folderSizes[folder] ?: 0L
+                            FileUtils.delete(folder, true)
+                            totalSize -= size
+                            if (totalSize <= maxSize) break
+                        }
+                    }
+                }
+            }
+
             FileUtils.delete(ArchiveUtils.TEMP_PATH)
             val filesDir = appCtx.filesDir
-            FileUtils.delete("$filesDir/shareBookSource.json")
-            FileUtils.delete("$filesDir/shareRssSource.json")
-            FileUtils.delete("$filesDir/books.json")
+            FileUtils.delete(File(filesDir, "shareBookSource.json").absolutePath)
+            FileUtils.delete(File(filesDir, "shareRssSource.json").absolutePath)
+            FileUtils.delete(File(filesDir, "books.json").absolutePath)
         }
     }
 
