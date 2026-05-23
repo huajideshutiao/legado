@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
@@ -110,20 +109,6 @@ class CoverImageView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        // 防止绘制已被Glide回收的bitmap导致崩溃
-        val currentDrawable = drawable
-        if (currentDrawable is BitmapDrawable && currentDrawable.bitmap?.isRecycled == true) {
-            setImageDrawable(BookCover.defaultDrawable)
-            defaultCover = true
-
-            if (!filletPath.isEmpty) {
-                canvas.clipPath(filletPath)
-            }
-            if (defaultCover && !isInEditMode) {
-                drawNameAuthor(canvas)
-            }
-            return
-        }
         if (!filletPath.isEmpty) {
             canvas.clipPath(filletPath)
         }
@@ -227,14 +212,6 @@ class CoverImageView @JvmOverloads constructor(
         }
     }
 
-    private fun getSafePlaceholder(): Drawable {
-        val currentDrawable = drawable
-        if (currentDrawable is BitmapDrawable && currentDrawable.bitmap?.isRecycled == true) {
-            return BookCover.defaultDrawable
-        }
-        return currentDrawable ?: BookCover.defaultDrawable
-    }
-
     private val glideListener by lazy {
         object : RequestListener<Drawable> {
 
@@ -276,7 +253,7 @@ class CoverImageView @JvmOverloads constructor(
         this.bitmapPath = path
         this.name = name?.replace(AppPattern.bdRegex, "")?.trim()
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
-        defaultCover = drawable == BookCover.defaultDrawable
+        defaultCover = true
         invalidate()
         val requestManager = fragment?.let {
             lifecycle?.let { Glide.with(fragment).lifecycle(it) }
@@ -290,8 +267,7 @@ class CoverImageView @JvmOverloads constructor(
                 inBookshelf,
                 onLoadFinish
             )
-                .addListener(glideListener).placeholder(getSafePlaceholder())
-                .into(this)
+                .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
             Unit
         }
         // 等待布局完成，确保Glide获取到最新的cover宽高
