@@ -85,8 +85,7 @@ class ReadMangaViewModel(application: Application) :
         onChapterListUpdated(book, true)
     }
 
-    fun initMangaData(book: Book) {
-        val isDiffBook = curBook?.bookUrl != book.bookUrl
+    fun initMangaData(book: Book, isDiffBook: Boolean = curBook?.bookUrl != book.bookUrl) {
         curBook = book
         if (isDiffBook) {
             readRecord.bookName = book.name
@@ -624,8 +623,9 @@ class ReadMangaViewModel(application: Application) :
             when {
                 book != null -> {
                     chapterChanged = intent.getBooleanExtra("chapterChanged", false)
+                    val isSameBook = curBook?.bookUrl == book.bookUrl
                     upBook(book)
-                    initManga(curBook!!)
+                    initManga(curBook!!, isSameBook)
                 }
 
                 else -> context.getString(R.string.no_book)//没有找到书
@@ -637,9 +637,8 @@ class ReadMangaViewModel(application: Application) :
         }
     }
 
-    private fun initManga(book: Book) {
-        val isSameBook = curBook?.bookUrl == book.bookUrl
-        initMangaData(book)
+    private fun initManga(book: Book, isSameBook: Boolean) {
+        initMangaData(book, isDiffBook = !isSameBook)
         //开始加载内容
         if (!isSameBook) loadContent()
         else loadOrUpContent()

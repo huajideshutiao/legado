@@ -15,7 +15,6 @@ import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.filletBackground
 
-
 fun AlertDialog.applyTint(): AlertDialog {
     val context = context
     window?.apply {
@@ -28,7 +27,6 @@ fun AlertDialog.applyTint(): AlertDialog {
             setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
         } else {
             val attr = attributes
-            attr.dimAmount = 0.6f
             attr.windowAnimations = R.style.Animation_Dialog
             attributes = attr
             // 强制不透明背景色，防止主题设置了透明背景导致对话框看不见
