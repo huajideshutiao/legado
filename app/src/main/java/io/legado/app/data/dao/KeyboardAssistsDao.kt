@@ -24,7 +24,7 @@ interface KeyboardAssistsDao {
     @Query("select * from keyboardAssists where type = :type order by serialNo")
     fun flowByType(type: Int): Flow<List<KeyboardAssist>>
 
-    @get:Query("select max(serialNo) from keyboardAssists order by serialNo")
+    @get:Query("select max(serialNo) from keyboardAssists")
     val maxSerialNo: Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -7,11 +7,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
-import io.legado.app.constant.AppPattern
+import io.legado.app.data.dealGroups
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.utils.cnCompare
-import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -20,7 +18,7 @@ import kotlinx.coroutines.flow.map
 @Dao
 interface BookSourceDao {
 
-    @Query("select * from book_sources_part")
+    @Query("select * from book_sources_part order by customOrder asc")
     fun flowAll(): Flow<List<BookSourcePart>>
 
     @Query(
@@ -35,12 +33,13 @@ interface BookSourceDao {
 
     @Query(
         """select bp.*
-    from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl 
+    from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl
     where (:enabled IS NULL OR b.enabled = :enabled)
-    and (b.bookSourceName like '%' || :searchKey || '%' 
-    or b.bookSourceGroup like '%' || :searchKey || '%' 
-    or b.bookSourceUrl like '%' || :searchKey || '%'  
-    or b.bookSourceComment like '%' || :searchKey || '%')"""
+    and (b.bookSourceName like '%' || :searchKey || '%'
+    or b.bookSourceGroup like '%' || :searchKey || '%'
+    or b.bookSourceUrl like '%' || :searchKey || '%'
+    or b.bookSourceComment like '%' || :searchKey || '%')
+    order by b.customOrder asc"""
 )
 fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourcePart>>
 
@@ -54,15 +53,16 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     )
     fun flowGroupSearch(searchKey: String): Flow<List<BookSourcePart>>
 
-    @Query("select * from book_sources_part where enabled = :enabled")
+    @Query("select * from book_sources_part where enabled = :enabled order by customOrder asc")
     fun flowEnabled(enabled: Boolean = true): Flow<List<BookSourcePart>>
 
     @Query("select * from book_sources where enabled = :enabled")
     fun enabled(enabled: Boolean = true): List<BookSource>
 
     @Query(
-        """select * from book_sources_part 
-        where enabledExplore = :enabled and hasExploreUrl = 1"""
+        """select * from book_sources_part
+        where enabledExplore = :enabled and hasExploreUrl = 1
+        order by customOrder asc"""
     )
     fun flowExplore(enabled: Boolean = true): Flow<List<BookSourcePart>>
 
@@ -76,22 +76,24 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     fun flowNoGroup(): Flow<List<BookSourcePart>>
 
     @Query(
-        """select * from book_sources_part 
-        where enabledExplore = 1 
-        and hasExploreUrl = 1 
-        and (bookSourceGroup like '%' || :key || '%' 
-            or bookSourceName like '%' || :key || '%')"""
+        """select * from book_sources_part
+        where enabledExplore = 1
+        and hasExploreUrl = 1
+        and (bookSourceGroup like '%' || :key || '%'
+            or bookSourceName like '%' || :key || '%')
+        order by customOrder asc"""
     )
     fun flowExplore(key: String): Flow<List<BookSourcePart>>
 
     @Query(
-        """select * from book_sources_part 
-        where enabledExplore = 1 
-        and hasExploreUrl = 1 
+        """select * from book_sources_part
+        where enabledExplore = 1
+        and hasExploreUrl = 1
         and (bookSourceGroup = :key
-            or bookSourceGroup like :key || ',%' 
+            or bookSourceGroup like :key || ',%'
             or bookSourceGroup like  '%,' || :key
-            or bookSourceGroup like  '%,' || :key || ',%')"""
+            or bookSourceGroup like  '%,' || :key || ',%')
+        order by customOrder asc"""
     )
     fun flowGroupExplore(key: String): Flow<List<BookSourcePart>>
 
@@ -209,9 +211,12 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Query("delete from book_sources where bookSourceUrl = :key")
     fun delete(key: String)
 
+    @Query("delete from book_sources where bookSourceUrl in (:keys)")
+    fun deleteIn(keys: List<String>)
+
     @Transaction
     fun delete(bookSources: List<BookSourcePart>) {
-        for (bs in bookSources) delete(bs.bookSourceUrl)
+        bookSources.map { it.bookSourceUrl }.chunked(999) { chunk -> deleteIn(chunk) }
     }
 
     @get:Query("select min(customOrder) from book_sources")
@@ -229,19 +234,24 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Query("update book_sources set enabled = :enable where bookSourceUrl = :bookSourceUrl")
     fun enable(bookSourceUrl: String, enable: Boolean)
 
+    @Query("update book_sources set enabled = :enable where bookSourceUrl in (:urls)")
+    fun enableIn(urls: List<String>, enable: Boolean)
+
     @Transaction
     fun enable(enable: Boolean, bookSources: List<BookSourcePart>) {
-        for (bs in bookSources) enable(bs.bookSourceUrl, enable)
+        bookSources.map { it.bookSourceUrl }.chunked(999) { chunk -> enableIn(chunk, enable) }
     }
 
     @Query("update book_sources set enabledExplore = :enable where bookSourceUrl = :bookSourceUrl")
     fun enableExplore(bookSourceUrl: String, enable: Boolean)
 
+    @Query("update book_sources set enabledExplore = :enable where bookSourceUrl in (:urls)")
+    fun enableExploreIn(urls: List<String>, enable: Boolean)
+
     @Transaction
     fun enableExplore(enable: Boolean, bookSources: List<BookSourcePart>) {
-        for (bs in bookSources) {
-            enableExplore(bs.bookSourceUrl, enable)
-        }
+        bookSources.map { it.bookSourceUrl }
+            .chunked(999) { chunk -> enableExploreIn(chunk, enable) }
     }
 
     @Query(
@@ -271,18 +281,6 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     fun upGroup(bookSources: List<BookSourcePart>) {
         for (bs in bookSources) {
             bs.bookSourceGroup?.let { upGroup(bs.bookSourceUrl, it) }
-        }
-    }
-
-    private fun dealGroups(list: List<String>): List<String> {
-        val groups = linkedSetOf<String>()
-        list.forEach {
-            it.splitNotBlank(AppPattern.splitGroupRegex).forEach { group ->
-                groups.add(group)
-            }
-        }
-        return groups.sortedWith { o1, o2 ->
-            o1.cnCompare(o2)
         }
     }
 

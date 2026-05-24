@@ -77,5 +77,5 @@ data class BookSourcePart(
 }
 
 fun List<BookSourcePart>.toBookSource(): List<BookSource> {
-    return mapNotNull { it.getBookSource() }
+    return appDb.bookSourceDao.getBookSourcesFix(map { it.bookSourceUrl })
 }

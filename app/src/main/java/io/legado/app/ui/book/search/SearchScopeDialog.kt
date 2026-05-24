@@ -132,7 +132,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
                 AppLog.put("多分组/书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
                 screenSources.clear()
-                screenSources.addAll(data.sortedBy { it.customOrder })
+                screenSources.addAll(data)
                 adapter.notifyDataSetChanged()
                 delay(500)
             }
