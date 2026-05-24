@@ -54,7 +54,7 @@ jobs:
           echo RELEASE_KEY_PASSWORD="$RS_KEY_PASS" >> gradle.properties
           echo RELEASE_STORE_PASSWORD="$RS_STORE_PASS" >> gradle.properties
           echo RELEASE_STORE_FILE='./key.jks' >> gradle.properties
-          echo "$RS_FILE" | tr -d '[:space:]' | base64 --decode > $GITHUB_WORKSPACE/app/key.jks
+          echo "$RS_FILE" | python3 -c "import sys,base64; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read().strip()))" > $GITHUB_WORKSPACE/app/key.jks
 
       - name: Unify Version Name
         run: |

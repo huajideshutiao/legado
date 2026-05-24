@@ -285,10 +285,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    override fun scrollTo(pos: Int) {
-        (binding.rvFind.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pos, 0)
-    }
-
     override fun openExplore(source: BookSource, title: String, exploreUrl: String?) {
         if (exploreUrl.isNullOrBlank()) return
         IntentData.source = source

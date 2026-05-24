@@ -13,6 +13,7 @@ import androidx.core.view.children
 import androidx.core.view.isEmpty
 import androidx.core.view.isGone
 import androidx.core.view.isNotEmpty
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.recyclerview.widget.RecyclerView
 import androidx.transition.ChangeBounds
 import androidx.transition.TransitionManager
@@ -51,7 +52,11 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
     private val recycler = arrayListOf<View>()
     private var exIndex = -1
-    private var scrollTo = -1
+
+    companion object {
+        // Material standard duration：展开/收起动画统一固定时长，不再按内容高度计算
+        private const val EXPAND_DURATION_MS = 220L
+    }
 
     override fun getViewBinding(parent: ViewGroup): ItemFindBookBinding {
         return ItemFindBookBinding.inflate(inflater, parent, false)
@@ -105,10 +110,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         binding.rotateLoading.loadingColor = context.accentColor
         binding.rotateLoading.visible()
 
-        if (scrollTo >= 0) {
-            callBack.scrollTo(scrollTo)
-        }
-
         Coroutine.async(callBack.scope) {
             bookSource.exploreKinds()
         }.onSuccess { kindList ->
@@ -124,15 +125,12 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             }
         }.onFinally {
             binding.rotateLoading.gone()
-            if (scrollTo >= 0) {
-                callBack.scrollTo(scrollTo)
-                scrollTo = -1
-            }
         }
     }
 
     /**
-     * 执行高度展开动画及平滑同步滚动
+     * 高度展开动画：每帧只改高度，不在动画期间手动 scroll。
+     * 下方 item 的让位由 RecyclerView 默认行为完成；如果展开后底部超出视口，动画结束时再 smoothScroll 一次。
      */
     private fun executeExpandAnimation(binding: ItemFindBookBinding) {
         val flexbox = binding.flexbox
@@ -145,51 +143,48 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         val targetHeight = measureFlexboxTargetHeight(flexbox, root, rv)
         val parentHeight = rv?.height ?: context.resources.displayMetrics.heightPixels
         val animTargetHeight = targetHeight.coerceAtMost(parentHeight)
-        val durationMs = calculateDurationMs(animTargetHeight)
 
         flexbox.layoutParams.height = 0
 
-        // 【核心优化：记录动画开始前的初始位置和目标位置】
-        val startTop = root.top
-        val targetTop = rv?.paddingTop ?: 0
-        // 计算需要滚动的总距离
-        val totalScrollDistance = startTop - targetTop
-
         val animator = ValueAnimator.ofInt(0, animTargetHeight).apply {
+            interpolator = FastOutSlowInInterpolator()
+            duration = EXPAND_DURATION_MS
             addUpdateListener {
-                // fraction 是动画进度，范围 0.0 ~ 1.0，自带缓动效果
-                val fraction = it.animatedFraction
-
-                // 1. 驱动高度向下扩张
                 flexbox.layoutParams.height = it.animatedValue as Int
                 flexbox.requestLayout()
-
-                // 2. 驱动列表向上平滑滚动
-                if (rv != null) {
-                    // 计算在当前动画进度下，标题应该处于的 Y 轴位置
-                    val expectedTop = startTop - (totalScrollDistance * fraction).toInt()
-                    // 获取真实的当前位置
-                    val currentTop = root.top
-                    // 计算偏差值（包含动画所需的滚动量 + 修正由于高度变化带来的挤压偏移）
-                    val dy = currentTop - expectedTop
-
-                    // 利用底层的 scrollBy 逐帧推进滚动
-                    if (dy != 0) {
-                        rv.scrollBy(0, dy)
-                    }
-                }
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
                     flexbox.tag = null
+                    ensureExpandedItemVisible(root, rv)
                 }
             })
-            duration = durationMs
         }
 
         flexbox.tag = animator
         animator.start()
+    }
+
+    /**
+     * 展开完成后按需平滑滚动，让展开行尽量完整可见。
+     * 优先策略：底部超出 → 让标题贴顶（但不会把标题滚到顶部以上）；
+     *           顶部被切 → 把标题拉回到顶部；
+     *           其他情况不动。
+     */
+    private fun ensureExpandedItemVisible(itemView: View, rv: RecyclerView?) {
+        if (rv == null) return
+        val rvTop = rv.paddingTop
+        val rvBottom = rv.height - rv.paddingBottom
+        val viewTop = itemView.top
+        val viewBottom = itemView.bottom
+
+        val dy = when {
+            viewBottom > rvBottom -> (viewTop - rvTop).coerceAtLeast(0)
+            viewTop < rvTop -> viewTop - rvTop
+            else -> 0
+        }
+        if (dy != 0) rv.smoothScrollBy(0, dy)
     }
 
     /**
@@ -207,37 +202,18 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         if (!AppConfig.isEInkMode && isUpdate && flexbox.height > 0) {
             val rv = binding.root.parent as? RecyclerView
             val parentHeight = rv?.height ?: context.resources.displayMetrics.heightPixels
-            val startHeight = flexbox.height
+            val animStartHeight = flexbox.height.coerceAtMost(parentHeight)
 
-            // 视口裁剪：瞬间砍掉不可见部分
-            val animStartHeight = startHeight.coerceAtMost(parentHeight)
-            val durationMs = calculateDurationMs(animStartHeight)
-
-            if (startHeight > animStartHeight) {
+            if (flexbox.height > animStartHeight) {
                 flexbox.layoutParams.height = animStartHeight
             }
 
-            // 【核心优化 1：记录收起前的初始顶部坐标】
-            val startTop = binding.root.top
-            // 【核心优化 2：判断是否是单纯的收起动作】
-            // 如果 exIndex == -1，说明没有新的项正在展开，我们才去锁死当前视图。
-            val isPureCollapse = exIndex == -1
-
             val animator = ValueAnimator.ofInt(animStartHeight, 0).apply {
+                interpolator = FastOutSlowInInterpolator()
+                duration = EXPAND_DURATION_MS
                 addUpdateListener {
                     flexbox.layoutParams.height = it.animatedValue as Int
                     flexbox.requestLayout()
-
-                    // 【核心优化 3：单纯收起时的“静止锚点锁”】
-                    // 抵消由于高度缩小带来的 RecyclerView 默认滚动，让标题像钉在屏幕上一样平滑收起
-                    if (isPureCollapse && rv != null) {
-                        val currentTop = binding.root.top
-                        val dy = currentTop - startTop
-                        // 利用底层 scrollBy 逐帧将标题拉回原本的位置
-                        if (dy != 0) {
-                            rv.scrollBy(0, dy)
-                        }
-                    }
                 }
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
@@ -247,7 +223,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                         flexbox.tag = null
                     }
                 })
-                duration = durationMs
             }
 
             flexbox.tag = animator
@@ -279,14 +254,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
         flexbox.measure(widthSpec, heightSpec)
         return flexbox.measuredHeight
-    }
-
-    /**
-     * 根据高度计算动画时长
-     */
-    private fun calculateDurationMs(heightPx: Int): Long {
-        val density = context.resources.displayMetrics.density
-        return (heightPx / 2 / density).toLong().coerceAtLeast(150L)
     }
 
     private fun upKindList(flexbox: FlexboxLayout, source: BookSource, kinds: List<ExploreKind>) {
@@ -356,8 +323,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 if (oldEx != -1) notifyItemChanged(oldEx + getHeaderCount(), false)
 
                 if (exIndex != -1) {
-                    scrollTo = layoutPos
-                    callBack.scrollTo(layoutPos)
                     notifyItemChanged(layoutPos, false)
                 }
             }
@@ -411,7 +376,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
     interface CallBack {
         val scope: CoroutineScope
-        fun scrollTo(pos: Int)
         fun openExplore(source: BookSource, title: String, exploreUrl: String?)
         fun editSource(sourceUrl: String)
         fun toTop(source: BookSourcePart)
