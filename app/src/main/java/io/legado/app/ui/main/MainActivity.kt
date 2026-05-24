@@ -137,12 +137,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
         }
         lifecycleScope.launch {
-            val isAutoRefreshedBook = savedInstanceState?.getBoolean("isAutoRefreshedBook") ?: false
-            if (AppConfig.autoRefreshBook && !isAutoRefreshedBook) {
-                binding.viewPagerMain.postDelayed(1000) {
-                    viewModel.upAllBookToc()
-                }
-            }
             binding.viewPagerMain.postDelayed(3000) {
                 viewModel.postLoad()
             }
@@ -309,13 +303,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     }
                 }
             }
-        }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        if (AppConfig.autoRefreshBook) {
-            outState.putBoolean("isAutoRefreshedBook", true)
         }
     }
 

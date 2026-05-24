@@ -24,6 +24,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -233,8 +234,24 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
                 booksAdapter?.setItems(list)
                 (parentFragment as? BookshelfFragment1)?.updateTabTitle(groupId, list.size)
+                triggerAutoUpdate(list)
                 delay(100)
             }
+        }
+    }
+
+    /**
+     * 当前分组首次加载完成时, 对启用更新且超过10分钟未检查的书籍触发一次目录更新
+     */
+    private fun triggerAutoUpdate(books: List<Book>) {
+        if (!activityViewModel.markGroupAutoUpdated(groupId)) return
+        if (!AppConfig.autoRefreshBook || books.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val toUpdate = books.filter {
+            it.canUpdate && !it.isLocal && now - it.lastCheckTime > 10 * 60 * 1000L
+        }
+        if (toUpdate.isNotEmpty()) {
+            activityViewModel.upToc(toUpdate)
         }
     }
 

@@ -26,17 +26,17 @@ interface BookGroupDao {
     @get:Query(
         """
         with const as (SELECT sum(groupId) sumGroupId FROM book_groups where groupId > 0)
-        SELECT book_groups.* FROM book_groups join const 
-        where show > 0 
+        SELECT book_groups.* FROM book_groups join const
+        where show > 0
         and (
             (groupId >= 0  and exists (select 1 from books where `group` & book_groups.groupId > 0))
             or groupId = -1
             or (groupId = -2 and exists (select 1 from books where type & ${BookType.local} > 0))
             or (groupId = -3 and exists (select 1 from books where type & ${BookType.audio} > 0))
             or (groupId = -11 and exists (select 1 from books where type & ${BookType.updateError} > 0))
-            or (groupId = -4 
+            or (groupId = -4
                 and exists (
-                    select 1 from books 
+                    select 1 from books
                     where type & ${BookType.audio} = 0
                     and type & ${BookType.local} = 0
                     and const.sumGroupId & `group` = 0
@@ -44,7 +44,7 @@ interface BookGroupDao {
             )
             or (groupId = -5
                 and exists (
-                    select 1 from books 
+                    select 1 from books
                     where type & ${BookType.audio} = 0
                     and type & ${BookType.local} > 0
                     and const.sumGroupId & `group` = 0

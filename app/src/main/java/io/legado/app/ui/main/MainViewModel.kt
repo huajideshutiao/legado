@@ -60,6 +60,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         setMaxRecycledViews(0, 100)
     }
 
+    /**
+     * 本次应用进程内已触发过自动更新的分组ID, 避免 fragment 回收重建后再次触发
+     */
+    private val autoUpdatedGroups = ConcurrentHashMap.newKeySet<Long>()
+
+    fun markGroupAutoUpdated(groupId: Long): Boolean = autoUpdatedGroups.add(groupId)
+
 //    init {
 //        deleteNotShelfBook()
 //    }
@@ -85,12 +92,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun isUpdate(bookUrl: String): Boolean {
         return onUpTocBooks.contains(bookUrl)
-    }
-
-    fun upAllBookToc() {
-        execute {
-            addToWaitUp(appDb.bookDao.hasUpdateBooks)
-        }
     }
 
     fun upToc(books: List<Book>) {
