@@ -99,7 +99,7 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
-            val allBookFolderNames = appDb.bookDao.allBookFolderNames
+            val allBookFolderNames = appDb.bookDao.allBookUrlsWithName
             val bookFolderNames = allBookFolderNames.mapTo(HashSet(allBookFolderNames.size)) {
                 it.name.replace(AppPattern.fileNameRegex, "").let { name ->
                     name.substring(0, min(9, name.length)) + MD5Utils.md5Encode16(it.bookUrl)

@@ -71,9 +71,6 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE (`group` & :group) > 0")
     fun flowByUserGroup(group: Long): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE name like '%'||:key||'%' or author like '%'||:key||'%' or kind like '%'||:key||'%' or originName like '%'||:key||'%' or intro like '%'||:key||'%'")
-    fun flowSearch(key: String): Flow<List<Book>>
-
     @Query("SELECT * FROM books WHERE type & ${BookType.updateError} > 0")
     fun flowUpdateError(): Flow<List<Book>>
 
@@ -116,10 +113,7 @@ interface BookDao {
     val lastReadBook: Book?
 
     @get:Query("SELECT name, bookUrl FROM books")
-    val allBookFolderNames: List<BookFolder>
-
-    @get:Query("SELECT bookUrl FROM books")
-    val allBookUrls: List<String>
+    val allBookUrlsWithName: List<BookFolder>
 
     @get:Query("SELECT COUNT(*) FROM books")
     val allBookCount: Int

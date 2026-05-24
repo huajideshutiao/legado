@@ -137,7 +137,7 @@ object ImportOldData {
     private fun fromOldBooks(json: String): List<Book> {
         val books = mutableListOf<Book>()
         val items: List<Map<String, Any>> = jsonPath.parse(json).read("$")
-        val existingBooks = appDb.bookDao.allBookUrls.toSet()
+        val existingBooks = appDb.bookDao.allBookUrlsWithName.map { it.bookUrl }.toSet()
         for (item in items) {
             val jsonItem = jsonPath.parse(item)
             val book = Book()
