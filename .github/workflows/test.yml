@@ -50,15 +50,9 @@ jobs:
 
   build:
     needs: prepare
-    strategy:
-      matrix:
-        product: [ app ]
-        type: [ release, releaseA ]
-      fail-fast: false
     runs-on: ubuntu-latest
     env:
-      product: ${{ matrix.product }}
-      type: ${{ matrix.type }}
+      product: app
       VERSION: ${{ needs.prepare.outputs.version }}
       VERSIONL: ${{ needs.prepare.outputs.versionL }}
     steps:
@@ -86,46 +80,48 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build With Gradle
+      - name: Build Release (原包名)
         continue-on-error: true
         run: |
-          if [ ${{ env.type }} == 'release' ]; then
-            typeName="原包名"
-          else
-            typeName="共存"
-            sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
-          fi
           echo "统一版本号"
           sed "/def version/c def version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
-          echo "开始${{ env.product }}$typeName构建"
+          echo "开始${{ env.product }}原包名构建"
           chmod +x gradlew
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
           echo "修改APK文件名"
           mkdir -p ${{ github.workspace }}/apk/
           for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
             fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_${typeName}.apk"
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_原包名.apk"
           done
           echo "移动mapping文件"
           mkdir -p ${{ github.workspace }}/mapping/
           for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt`; do
             mv "$file" ${{ github.workspace }}/mapping/mapping.txt
           done
-
-      - name: Move Missing Rules Files
-        run: |
-          echo "移动missing_rules.txt文件"
-          mkdir -p ${{ github.workspace }}/mapping/
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt`; do
+          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null`; do
             mv "$file" ${{ github.workspace }}/mapping/missing_rules.txt
           done
 
-      - name: Upload Missing Rules File To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.${{ env.type }}.mapping.missing_rules
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/mapping/missing_rules.txt
+      - name: Build ReleaseA (共存)
+        continue-on-error: true
+        run: |
+          echo "修改applicationIdSuffix为共存版"
+          sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
+          echo "开始${{ env.product }}共存构建"
+          ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
+          echo "修改APK文件名"
+          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
+            fileName=$(basename "$file" .apk)
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_共存.apk"
+          done
+          echo "移动mapping文件"
+          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt`; do
+            mv "$file" ${{ github.workspace }}/mapping/mappingA.txt
+          done
+          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null`; do
+            mv "$file" ${{ github.workspace }}/mapping/missing_rulesA.txt
+          done
 
       - name: Check Build production
         run: |
@@ -139,25 +135,53 @@ jobs:
             exit 1
           fi
 
-      - name: Upload App To Artifact
+      - name: Upload App (原包名) To Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legado.${{ env.product }}.${{ env.type }}
+          name: legado.${{ env.product }}.release
           if-no-files-found: ignore
-          path: ${{ github.workspace }}/apk/*.apk
+          path: ${{ github.workspace }}/apk/*原包名*.apk
 
-      - name: Upload Mapping File To Artifact
+      - name: Upload App (共存) To Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legado.${{ env.product }}.${{ env.type }}.mapping
+          name: legado.${{ env.product }}.releaseA
+          if-no-files-found: ignore
+          path: ${{ github.workspace }}/apk/*共存*.apk
+
+      - name: Upload Mapping (原包名) To Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado.${{ env.product }}.release.mapping
           if-no-files-found: ignore
           path: ${{ github.workspace }}/mapping/mapping.txt
+
+      - name: Upload Mapping (共存) To Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado.${{ env.product }}.releaseA.mapping
+          if-no-files-found: ignore
+          path: ${{ github.workspace }}/mapping/mappingA.txt
+
+      - name: Upload Missing Rules (原包名) To Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado.${{ env.product }}.release.mapping.missing_rules
+          if-no-files-found: ignore
+          path: ${{ github.workspace }}/mapping/missing_rules.txt
+
+      - name: Upload Missing Rules (共存) To Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado.${{ env.product }}.releaseA.mapping.missing_rules
+          if-no-files-found: ignore
+          path: ${{ github.workspace }}/mapping/missing_rulesA.txt
 
   prerelease:
     needs: [ prepare, build ]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    env: 
+    env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -200,7 +224,7 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
-      
+
       - name: Create or update beta tag
         uses: richardsimko/update-tag@v1
         with:
