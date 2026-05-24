@@ -655,7 +655,7 @@
     <string name="app_folder_picker">自带文件夹选择器</string>
     <string name="app_file_picker">自带文件选择器</string>
     <string name="a10_permission_toast">Android 10 以上因系统权限限制可能无法读写文件</string>
-    <string name="add_to_text_context_menu_s">长按文字在操作菜单中显示阅读·搜索</string>
+    <string name="add_to_text_context_menu_s">长按文字在操作菜单中显示阅读</string>
     <string name="add_to_text_context_menu_t">文字操作显示搜索</string>
     <string name="record_log">记录日志</string>
     <string name="log">日志</string>

@@ -2,6 +2,7 @@ package io.legado.app.base
 
 import android.content.DialogInterface
 import android.content.DialogInterface.OnDismissListener
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -14,7 +15,6 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.filletBackground
 import kotlinx.coroutines.CoroutineScope
@@ -79,7 +79,7 @@ abstract class BaseDialogFragment(
         }
         val toolbar = view.findViewById<View>(R.id.tool_bar)
         if (toolbar != null && !AppConfig.isEInkMode) {
-            toolbar.setBackgroundColor(requireContext().backgroundColor)
+            toolbar.setBackgroundColor(Color.TRANSPARENT)
             toolbar.stateListAnimator = null
             toolbar.elevation = requireContext().elevation
         }

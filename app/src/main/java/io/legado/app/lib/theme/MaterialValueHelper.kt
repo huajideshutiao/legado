@@ -143,6 +143,6 @@ val Context.filletBackground: GradientDrawable
     get() {
         val background = GradientDrawable()
         background.cornerRadius = 5f.dpToPx()
-        background.setColor(backgroundColor)
+        background.setColor(bottomBackground)
         return background
     }

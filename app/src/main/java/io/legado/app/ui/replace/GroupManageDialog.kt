@@ -22,8 +22,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.requestInputMethod
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -41,7 +39,6 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { GroupAdapter(requireContext()) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        view.setBackgroundColor(backgroundColor)
         initView()
         initData()
     }
@@ -52,7 +49,6 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         toolBar.menu.applyTint(requireContext())
         toolBar.setOnMenuItemClickListener(this@GroupManageDialog)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        recyclerView.addItemDecoration(VerticalDivider(requireContext()))
         recyclerView.adapter = adapter
     }
 
@@ -118,7 +114,6 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             payloads: MutableList<Any>
         ) {
             binding.run {
-                root.setBackgroundColor(context.backgroundColor)
                 tvGroup.text = item
             }
         }

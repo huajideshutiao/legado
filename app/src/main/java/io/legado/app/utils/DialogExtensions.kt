@@ -30,7 +30,7 @@ fun AlertDialog.applyTint(): AlertDialog {
             attr.windowAnimations = R.style.Animation_Dialog
             attributes = attr
             // 强制不透明背景色，防止主题设置了透明背景导致对话框看不见
-            val colorBackground = ColorUtils.stripAlpha(ThemeStore.backgroundColor(context))
+            val colorBackground = ColorUtils.stripAlpha(ThemeStore.bottomBackground(context))
             val bg = context.filletBackground.apply {
                 setColor(colorBackground)
                 alpha = 255
