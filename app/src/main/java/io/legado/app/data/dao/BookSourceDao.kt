@@ -34,14 +34,13 @@ interface BookSourceDao {
     fun search(searchKey: String): List<BookSource>
 
     @Query(
-    """select bp.*
+        """select bp.*
     from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl 
     where (:enabled IS NULL OR b.enabled = :enabled)
     and (b.bookSourceName like '%' || :searchKey || '%' 
     or b.bookSourceGroup like '%' || :searchKey || '%' 
     or b.bookSourceUrl like '%' || :searchKey || '%'  
-    or b.bookSourceComment like '%' || :searchKey || '%')
-    order by b.customOrder asc"""
+    or b.bookSourceComment like '%' || :searchKey || '%')"""
 )
 fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourcePart>>
 
@@ -67,13 +66,12 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     )
     fun flowExplore(enabled: Boolean = true): Flow<List<BookSourcePart>>
 
-    @Query("select * from book_sources_part where hasLoginUrl = 1 order by customOrder asc")
+    @Query("select * from book_sources_part where hasLoginUrl = 1")
     fun flowLogin(): Flow<List<BookSourcePart>>
 
     @Query(
         """select * from book_sources_part 
-        where bookSourceGroup is null or bookSourceGroup = '' or bookSourceGroup like '%未分组%'
-        order by customOrder asc"""
+        where bookSourceGroup is null or bookSourceGroup = '' or bookSourceGroup like '%未分组%'"""
     )
     fun flowNoGroup(): Flow<List<BookSourcePart>>
 
@@ -82,8 +80,7 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
         where enabledExplore = 1 
         and hasExploreUrl = 1 
         and (bookSourceGroup like '%' || :key || '%' 
-            or bookSourceName like '%' || :key || '%') 
-        order by customOrder asc"""
+            or bookSourceName like '%' || :key || '%')"""
     )
     fun flowExplore(key: String): Flow<List<BookSourcePart>>
 
@@ -94,8 +91,7 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
         and (bookSourceGroup = :key
             or bookSourceGroup like :key || ',%' 
             or bookSourceGroup like  '%,' || :key
-            or bookSourceGroup like  '%,' || :key || ',%') 
-        order by customOrder asc"""
+            or bookSourceGroup like  '%,' || :key || ',%')"""
     )
     fun flowGroupExplore(key: String): Flow<List<BookSourcePart>>
 

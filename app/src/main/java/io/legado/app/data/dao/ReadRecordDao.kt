@@ -32,8 +32,7 @@ interface ReadRecordDao {
         select bookName, sum(readTime) as readTime, max(lastRead) as lastRead 
         from readRecord 
         where bookName like '%' || :searchKey || '%'
-        group by bookName 
-        order by bookName collate localized"""
+        group by bookName"""
     )
     fun search(searchKey: String): List<ReadRecordShow>
 

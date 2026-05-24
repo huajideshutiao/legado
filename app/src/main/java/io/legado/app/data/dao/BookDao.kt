@@ -43,7 +43,7 @@ interface BookDao {
     )
     fun flowRoot(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books order by durChapterTime desc")
+    @Query("SELECT * FROM books")
     fun flowAll(): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE type & ${BookType.audio} > 0")
@@ -74,7 +74,7 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE name like '%'||:key||'%' or author like '%'||:key||'%' or kind like '%'||:key||'%' or originName like '%'||:key||'%' or intro like '%'||:key||'%'")
     fun flowSearch(key: String): Flow<List<Book>>
 
-    @Query("SELECT * FROM books where type & ${BookType.updateError} > 0 order by durChapterTime desc")
+    @Query("SELECT * FROM books WHERE type & ${BookType.updateError} > 0")
     fun flowUpdateError(): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE (`group` & :group) > 0")
