@@ -11,10 +11,9 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'schedule')
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
-      play: ${{ steps.check.outputs.play }}
       sign: ${{ steps.check.outputs.sign }}
     steps:
       - id: set-ver
@@ -25,22 +24,13 @@ jobs:
           if [ ! -z "${{ secrets.RELEASE_KEY_STORE }}" ]; then
             echo "sign=yes" >> $GITHUB_OUTPUT
           fi
-          if [ ! -z "${{ secrets.SERVICE_ACCOUNT_JSON }}" ]; then
-            echo "play=yes" >> $GITHUB_OUTPUT
-          fi
 
   build:
     needs: prepare
     if: ${{ needs.prepare.outputs.sign }}
-    strategy:
-      matrix:
-        product: [ app, google ]
-      fail-fast: false
     runs-on: ubuntu-latest
     env:
-      product: ${{ matrix.product }}
       VERSION: ${{ needs.prepare.outputs.version }}
-      play: ${{ needs.prepare.outputs.play }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,9 +66,9 @@ jobs:
 
       - name: Build With Gradle
         run: |
-          echo "开始进行${{ env.product }}构建"
+          echo "开始进行app构建"
           chmod +x gradlew
-          ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
 
       - name: Generate Release Notes
         run: |
@@ -106,11 +96,10 @@ jobs:
       - name: Upload App To Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legado_${{ env.product }}
+          name: legado_app
           path: ${{ github.workspace }}/apk/*.apk
 
       - name: Release
-        if: ${{ env.product == 'app' }}
         uses: softprops/action-gh-release@v2
         with:
           name: legado_app_${{ env.VERSION }}
@@ -118,29 +107,12 @@ jobs:
           body_path: ${{ github.workspace }}/RELEASE_NOTES.md
           draft: false
           prerelease: false
-          files: ${{ github.workspace }}/apk/legado_app_*.apk
+          files: ${{ github.workspace }}/apk/legado_*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Prepare For GooglePlay
-        if: env.product == 'google' && env.play == 'yes'
-        run: |
-          mkdir -p ReleaseNotes
-          ln -s ${{ github.workspace }}/RELEASE_NOTES.md ReleaseNotes/whatsnew-en-US
-          ln -s ${{ github.workspace }}/RELEASE_NOTES.md ReleaseNotes/whatsnew-zh-CN
-
-      - name: Release To GooglePlay
-        if: env.product == 'google' && env.play == 'yes'
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-          packageName: io.legado.play
-          releaseFiles: ${{ github.workspace }}/apk/legado_google_*.apk
-          track: production
-          whatsNewDirectory: ${{ github.workspace }}/ReleaseNotes
 
       - name: Push Assets To "release" Branch
-        if: ${{ github.actor == 'gedoor' }}
+        if: ${{ github.actor == 'huajideshutiao' }}
         run: |
           cd $GITHUB_WORKSPACE/apk/
           git init
@@ -153,7 +125,7 @@ jobs:
           git push -f -u origin release
           
       - name: Purge Jsdelivr Cache
-        if: ${{ github.actor == 'gedoor' }}
+        if: ${{ github.actor == 'huajideshutiao' }}
         run: |
           result=$(curl -s https://purge.jsdelivr.net/gh/${{ github.actor }}/release@release/)
           if echo $result |grep -q 'success.*true'; then
