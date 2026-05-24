@@ -1,9 +1,6 @@
 name: Release Build
 
 on:
-  push:
-    branches:
-      - master
   schedule:
     - cron: '0 0 1,15 * *'
   workflow_dispatch:
@@ -11,7 +8,7 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
       sign: ${{ steps.check.outputs.sign }}
@@ -74,9 +71,7 @@ jobs:
         run: |
           echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
           echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          if [ "${{ github.event_name }}" == "push" ]; then
-            git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          elif [ "${{ github.event_name }}" == "schedule" ]; then
+          if [ "${{ github.event_name }}" == "schedule" ]; then
             git log --since="15 days ago" --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
           else
             git log -1 --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
@@ -110,5 +105,3 @@ jobs:
           files: ${{ github.workspace }}/apk/legado_*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
