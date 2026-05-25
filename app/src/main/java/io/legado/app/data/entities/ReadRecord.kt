@@ -7,13 +7,16 @@ import java.util.Calendar
 /**
  * 阅读记录：每本书按日期分行，主键 (bookName, day)，day 形如 20260525。
  * 「累计时长」「最后阅读日」均由 DAO 聚合查询导出，不再单独存字段。
+ * lastRead 为当日最后一次阅读的毫秒时间戳，用于排序与精确显示，老数据可能为 0。
  */
 @Entity(tableName = "readRecord", primaryKeys = ["bookName", "day"])
 data class ReadRecord(
     var bookName: String = "",
     var day: Int = 0,
     @ColumnInfo(defaultValue = "0")
-    var readTime: Long = 0L
+    var readTime: Long = 0L,
+    @ColumnInfo(defaultValue = "0")
+    var lastRead: Long = 0L
 ) {
     companion object {
         /** 把毫秒时间戳转成本地日期 yyyyMMdd 整数键 */

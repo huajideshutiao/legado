@@ -88,7 +88,7 @@ jobs:
         run: |
           echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
           echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          COMMITS=$(git log --since="15 days ago" --pretty=format:"- %.72s (%h)")
+          COMMITS=$(git log --since="15 days ago" --pretty=format:"- %<(72,trunc)%s (%h)")
           OLDEST=$(git log --since="15 days ago" --format="%H" | tail -1)
           BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
           COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"

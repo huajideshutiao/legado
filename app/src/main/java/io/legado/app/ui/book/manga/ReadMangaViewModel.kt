@@ -298,23 +298,20 @@ class ReadMangaViewModel(application: Application) :
         preDownload()
     }
 
-    fun saveRead(pageChanged: Boolean = false) {
+    fun saveRead() {
         execute {
             kotlin.runCatching {
                 val book = curBook ?: return@execute
                 book.lastCheckCount = 0
                 book.durChapterTime = System.currentTimeMillis()
-                val chapterChanged = book.durChapterIndex != durChapterIndex
                 book.durChapterIndex = durChapterIndex
                 book.durChapterPos =
                     durChapterPos * (if (curMangaChapter?.imageCount == durChapterPos + 1) -1 else 1)
-                if (!pageChanged || chapterChanged) {
-                    appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
-                        book.durChapterTitle = it.getDisplayTitle(
-                            ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
-                            book.getUseReplaceRule()
-                        )
-                    }
+                appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
+                    book.durChapterTitle = it.getDisplayTitle(
+                        ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
+                        book.getUseReplaceRule()
+                    )
                 }
                 appDb.bookDao.update(book)
             }.onFailure {

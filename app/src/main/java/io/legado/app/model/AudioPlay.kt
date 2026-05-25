@@ -350,6 +350,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun pause(context: Context) {
         upReadTime()
+        saveRead()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.pause
@@ -493,7 +494,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             val delta = now - readStartTime
             readStartTime = now
             if (delta <= 0) return@async
-            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), delta)
+            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), now, delta)
         }
     }
 

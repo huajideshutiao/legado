@@ -20,7 +20,7 @@ interface ReadRecordDao {
         """
         select bookName,
                sum(readTime) as readTime,
-               max(day) as lastRead
+               max(lastRead) as lastRead
         from readRecord
         group by bookName
         having sum(readTime) >= 60000
@@ -54,16 +54,22 @@ interface ReadRecordDao {
     fun getRangeStats(start: Int, end: Int): List<DailyStat>
 
     @Transaction
-    fun addReadTime(bookName: String, day: Int, delta: Long) {
-        insertIfAbsent(ReadRecord(bookName, day, 0L))
-        incrementReadTime(bookName, day, delta)
+    fun addReadTime(bookName: String, day: Int, lastRead: Long, delta: Long) {
+        insertIfAbsent(ReadRecord(bookName, day, 0L, lastRead))
+        incrementReadTime(bookName, day, lastRead, delta)
     }
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertIfAbsent(record: ReadRecord)
 
-    @Query("update readRecord set readTime = readTime + :delta where bookName = :bookName and day = :day")
-    fun incrementReadTime(bookName: String, day: Int, delta: Long)
+    @Query(
+        """
+        update readRecord
+        set readTime = readTime + :delta,
+            lastRead = case when :lastRead > lastRead then :lastRead else lastRead end
+        where bookName = :bookName and day = :day"""
+    )
+    fun incrementReadTime(bookName: String, day: Int, lastRead: Long, delta: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg readRecord: ReadRecord)

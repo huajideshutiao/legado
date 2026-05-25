@@ -133,7 +133,6 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             }
             false
         }
-        //.onFinally { ReadBook.saveRead() }
     }
 
     private suspend fun initBook(book: Book) {

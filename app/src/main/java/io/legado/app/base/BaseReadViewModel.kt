@@ -423,7 +423,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             val delta = now - readStartTime
             readStartTime = now
             if (delta <= 0) return@execute
-            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), delta)
+            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), now, delta)
         }
     }
 

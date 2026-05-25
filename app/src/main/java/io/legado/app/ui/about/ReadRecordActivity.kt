@@ -167,6 +167,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     private fun bindHeader(header: ViewReadRecordHeaderBinding) {
+        val bgColor = bottomBackground
+        header.cvStats.setCardBackgroundColor(bgColor)
+        header.cvHeatmap.setCardBackgroundColor(bgColor)
         header.ivPrevMonth.setOnClickListener { stepMonth(-1) }
         header.ivNextMonth.setOnClickListener {
             if (!isAtCurrentMonth()) stepMonth(1)
@@ -294,13 +297,15 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                         (day == 0 || it.day == day)
                 }
                 val items = if (day != 0) {
-                    filtered.map { ReadRecordShow(it.bookName, it.readTime, it.day) }
+                    filtered.map {
+                        ReadRecordShow(it.bookName, it.readTime, it.lastRead)
+                    }
                 } else {
                     filtered.groupBy { it.bookName }.map { (name, list) ->
                         ReadRecordShow(
                             bookName = name,
                             readTime = list.sumOf { it.readTime },
-                            lastRead = list.maxOf { it.day }
+                            lastRead = list.maxOf { it.lastRead }
                         )
                     }
                 }
@@ -403,7 +408,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             val item = adapter.getItem(dataIdx) ?: return false
             if (dataIdx == 0) return true
             val prev = adapter.getItem(dataIdx - 1) ?: return true
-            return prev.lastRead != item.lastRead
+            return ReadRecord.dayKey(prev.lastRead) != ReadRecord.dayKey(item.lastRead)
         }
     }
 
@@ -428,10 +433,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 formatDuring(todayTimeByBook[item.bookName] ?: 0L),
                 formatDuring(item.readTime)
             )
-            tvLast.text = if (book != null && book.durChapterTime > 0) {
-                minuteFormat.format(book.durChapterTime)
-            } else {
-                formatDayKey(item.lastRead)
+            tvLast.text = when {
+                item.lastRead > 0 -> minuteFormat.format(item.lastRead)
+                book != null && book.durChapterTime > 0 -> minuteFormat.format(book.durChapterTime)
+                else -> ""
             }
             tvLastUpdateTime.text = ""
             flHasNew.visibility = View.GONE
@@ -502,8 +507,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         }
     }
 
-    private fun formatDayKey(day: Int): String {
-        if (day <= 0) return ""
+    private fun formatDayKey(millis: Long): String {
+        if (millis <= 0L) return ""
+        val day = ReadRecord.dayKey(millis)
         val y = day / 10000
         val m = (day / 100) % 100
         val d = day % 100

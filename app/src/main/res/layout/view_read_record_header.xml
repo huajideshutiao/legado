@@ -8,6 +8,7 @@
 
     <!-- 统计卡：2x2 网格 -->
     <androidx.cardview.widget.CardView
+        android:id="@+id/cv_stats"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
@@ -137,6 +138,7 @@
 
     <!-- 月度热力图卡 -->
     <androidx.cardview.widget.CardView
+        android:id="@+id/cv_heatmap"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginLeft="12dp"

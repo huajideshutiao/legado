@@ -209,10 +209,10 @@ jobs:
           echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
           echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
           if [ "${{ github.event_name }}" == "push" ]; then
-            COMMITS=$(git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %.72s (%h)")
+            COMMITS=$(git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %<(72,trunc)%s (%h)")
             COMPARE_URL="https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}"
           else
-            COMMITS=$(git log -10 --pretty=format:"- %.72s (%h)")
+            COMMITS=$(git log -10 --pretty=format:"- %<(72,trunc)%s (%h)")
             OLDEST=$(git log -10 --format="%H" | tail -1)
             BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
             COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"

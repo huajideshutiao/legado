@@ -605,13 +605,17 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         newPlayer.prepare()
     }
 
-    override fun onDestroy() {
+    override fun onPause() {
+        super.onPause()
         val currentPlayer = player
         viewModel.saveRead(
             if ((currentPlayer?.currentPosition ?: 0) > (currentPlayer?.duration ?: 1) - 1000) 0L
             else currentPlayer?.currentPosition ?: 0L
         )
-        currentPlayer?.release()
+    }
+
+    override fun onDestroy() {
+        player?.release()
         super.onDestroy()
     }
 

@@ -296,7 +296,8 @@ object Restore {
     }
 
     /**
-     * 兼容旧备份 ([deviceId, bookName, readTime累计, lastRead毫秒]) 和新格式 ([bookName, day, readTime])。
+     * 兼容旧备份 ([deviceId, bookName, readTime累计, lastRead毫秒]) 和新格式
+     * ([bookName, day, readTime, lastRead?])。
      * 通过 day 字段是否存在判断格式：旧格式 day 缺失 → 解析为 0。
      */
     private data class ReadRecordBackup(
@@ -322,7 +323,7 @@ object Restore {
                 val day = ReadRecord.dayKey(ms)
                 val existing = dao.getDayReadTime(bookName, day) ?: 0L
                 if (total > existing) {
-                    dao.insert(ReadRecord(bookName, day, total))
+                    dao.insert(ReadRecord(bookName, day, total, ms))
                 }
             }
         } else {
@@ -330,7 +331,7 @@ object Restore {
                 if (b.bookName.isEmpty() || b.day == 0 || b.readTime <= 0) return@forEach
                 val existing = dao.getDayReadTime(b.bookName, b.day) ?: 0L
                 if (b.readTime > existing) {
-                    dao.insert(ReadRecord(b.bookName, b.day, b.readTime))
+                    dao.insert(ReadRecord(b.bookName, b.day, b.readTime, b.lastRead))
                 }
             }
         }

@@ -192,6 +192,8 @@ class AudioPlayService : BaseService(),
         }
         isRun = false
         abandonFocus()
+        AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
+        AudioPlay.saveRead()
         exoPlayer.release()
         mediaSessionCompat?.release()
         unregisterReceiver(broadcastReceiver)

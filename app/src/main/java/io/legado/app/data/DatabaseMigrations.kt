@@ -557,7 +557,7 @@ object DatabaseMigrations {
     private val migration_81_82 = object : Migration(81, 82) {
         override fun migrate(db: SupportSQLiteDatabase) {
             // 旧 readRecord: (deviceId, bookName, readTime累计, lastRead毫秒)
-            // 新 readRecord: (bookName, day yyyyMMdd, readTime增量) PK(bookName, day)
+            // 新 readRecord: (bookName, day yyyyMMdd, readTime增量, lastRead毫秒) PK(bookName, day)
             //
             // 迁移策略：按 bookName 聚合，把全部累计时长归到 dayKey(maxLastRead) 那一天。
             // 历史细分数据无法还原，至少保住总时长和"最后阅读日"。
@@ -574,7 +574,7 @@ object DatabaseMigrations {
                 }
             }
 
-            // 2. 重建表
+            // 2. 重建表（含 lastRead 列）
             db.execSQL("DROP TABLE readRecord")
             db.execSQL(
                 """
@@ -582,6 +582,7 @@ object DatabaseMigrations {
                     bookName TEXT NOT NULL,
                     day INTEGER NOT NULL,
                     readTime INTEGER NOT NULL DEFAULT 0,
+                    lastRead INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY(bookName, day)
                 )
                 """.trimIndent()
@@ -594,8 +595,8 @@ object DatabaseMigrations {
                 val ms = if (row.lastRead > 0) row.lastRead else now
                 val day = io.legado.app.data.entities.ReadRecord.dayKey(ms)
                 db.execSQL(
-                    "INSERT OR REPLACE INTO readRecord(bookName, day, readTime) VALUES(?, ?, ?)",
-                    arrayOf<Any>(row.bookName, day, row.readTime)
+                    "INSERT OR REPLACE INTO readRecord(bookName, day, readTime, lastRead) VALUES(?, ?, ?, ?)",
+                    arrayOf<Any>(row.bookName, day, row.readTime, ms)
                 )
             }
         }
