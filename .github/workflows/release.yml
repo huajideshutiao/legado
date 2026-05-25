@@ -61,33 +61,51 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build With Gradle
+      - name: Build Release (原包名)
         run: |
-          echo "开始进行app构建"
+          echo "开始app原包名构建"
           chmod +x gradlew
           ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
+          mkdir -p ${{ github.workspace }}/apk/
+          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
+            fileName=$(basename "$file" .apk)
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_原包名.apk"
+          done
+
+      - name: Build ReleaseA (共存)
+        continue-on-error: true
+        run: |
+          echo "修改applicationIdSuffix为共存版"
+          sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle -i
+          echo "开始app共存构建"
+          ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
+          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
+            fileName=$(basename "$file" .apk)
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_共存.apk"
+          done
 
       - name: Generate Release Notes
         run: |
           echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
           echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          if [ "${{ github.event_name }}" == "schedule" ]; then
-            git log --since="15 days ago" --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          COMMITS=$(git log --since="15 days ago" --pretty=format:"- %.72s (%h)")
+          OLDEST=$(git log --since="15 days ago" --format="%H" | tail -1)
+          BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
+          COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"
+
+          if [ -n "$COMMITS" ]; then
+            echo "$COMMITS" | head -25 >> ${{ github.workspace }}/RELEASE_NOTES.md
+            TOTAL=$(echo "$COMMITS" | wc -l)
+            if [ "$TOTAL" -gt 25 ]; then
+              echo "- *……还有 $((TOTAL - 25)) 条提交未显示*" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            fi
+            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "[查看完整提交记录 →](${COMPARE_URL})" >> ${{ github.workspace }}/RELEASE_NOTES.md
           else
-            git log -1 --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          fi
-          
-          # 兜底：如果日志内容为空（除了标题），补充默认说明
-          if [ $(cat ${{ github.workspace }}/RELEASE_NOTES.md | wc -l) -le 2 ]; then
             echo "- 定期维护编译，无代码变更。" >> ${{ github.workspace }}/RELEASE_NOTES.md
           fi
           cat ${{ github.workspace }}/RELEASE_NOTES.md
 
-      - name: Organize the Files
-        run: |
-          mkdir -p ${{ github.workspace }}/apk/
-          cp -rf ${{ github.workspace }}/app/build/outputs/apk/*/*/*.apk ${{ github.workspace }}/apk/
-          
       - name: Upload App To Artifact
         uses: actions/upload-artifact@v4
         with:

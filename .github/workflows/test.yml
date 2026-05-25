@@ -206,14 +206,26 @@ jobs:
 
       - name: Generate Release Notes
         run: |
+          echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+          echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
           if [ "${{ github.event_name }}" == "push" ]; then
-            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
-            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-            git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            COMMITS=$(git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %.72s (%h)")
+            COMPARE_URL="https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}"
           else
-            echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
+            COMMITS=$(git log -10 --pretty=format:"- %.72s (%h)")
+            OLDEST=$(git log -10 --format="%H" | tail -1)
+            BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
+            COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"
+          fi
+
+          if [ -n "$COMMITS" ]; then
+            echo "$COMMITS" | head -20 >> ${{ github.workspace }}/RELEASE_NOTES.md
+            TOTAL=$(echo "$COMMITS" | wc -l)
+            if [ "$TOTAL" -gt 20 ]; then
+              echo "- *……还有 $((TOTAL - 20)) 条提交未显示*" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            fi
             echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-            git log -1 --pretty=format:"- %s (%h)" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "[查看完整提交记录 →](${COMPARE_URL})" >> ${{ github.workspace }}/RELEASE_NOTES.md
           fi
           cat ${{ github.workspace }}/RELEASE_NOTES.md
 
