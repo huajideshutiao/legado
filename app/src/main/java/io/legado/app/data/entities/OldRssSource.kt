@@ -79,7 +79,10 @@ data class OldRssSource(
 
         val mStyle = style ?: ""
         val mInjectJs = injectJs ?: ""
-        val webJs = (if (mStyle.isNotEmpty()) "var style = document.createElement('style');\nstyle.innerHTML = \"${org.apache.commons.text.StringEscapeUtils.escapeEcmaScript(mStyle)}\";\ndocument.head.appendChild(style);\n" else "") + mInjectJs
+        val webJs =
+            (if (mStyle.isNotEmpty()) "var style = document.createElement('style');\nstyle.innerHTML = \"${
+                io.legado.app.utils.EscapeUtils.escapeEcmaScript(mStyle)
+            }\";\ndocument.head.appendChild(style);\n" else "") + mInjectJs
 
         bookSource.ruleContent = ContentRule(
             content = ruleContent,

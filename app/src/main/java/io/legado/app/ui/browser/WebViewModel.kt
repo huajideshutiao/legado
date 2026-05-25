@@ -14,10 +14,10 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ACache
+import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
-import org.apache.commons.text.StringEscapeUtils
 
 class WebViewModel(application: Application) : BaseViewModel(application) {
     var intent: Intent? = null
@@ -100,7 +100,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
         } else {
             webView.evaluateJavascript("document.documentElement.outerHTML") {
                 execute {
-                    html = StringEscapeUtils.unescapeJson(it).trim('"')
+                    html = EscapeUtils.unescapeJson(it).trim('"')
                     SourceVerificationHelp.setResult(sourceOrigin, html ?: "")
                 }.onSuccess {
                     success.invoke()

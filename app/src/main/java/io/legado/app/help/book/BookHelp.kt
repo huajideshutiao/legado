@@ -18,6 +18,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.MD5Utils
@@ -42,7 +43,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
-import org.apache.commons.text.similarity.JaccardSimilarity
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -507,10 +507,6 @@ object BookHelp {
             .trim()
     }
 
-    private val jaccardSimilarity by lazy {
-        JaccardSimilarity()
-    }
-
     /**
      * 根据目录名获取当前章节
      */
@@ -536,7 +532,7 @@ object BookHelp {
         if (oldName.isNotEmpty()) {
             for (i in min..max) {
                 val newName = getPureChapterName(newChapterList[i].title)
-                val temp = jaccardSimilarity.apply(oldName, newName)
+                val temp = EscapeUtils.jaccardSimilarity(oldName, newName)
                 if (temp > nameSim) {
                     nameSim = temp
                     newIndex = i

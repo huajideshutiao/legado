@@ -1,7 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
 import io.legado.app.help.book.BookContent
-import org.apache.commons.text.StringEscapeUtils
+import io.legado.app.utils.EscapeUtils
 
 object ChapterContentParser {
 
@@ -78,7 +78,7 @@ object ChapterContentParser {
 
     private fun decodeHtml(html: String): String {
         return if (html.contains('&')) {
-            StringEscapeUtils.unescapeHtml4(html)
+            EscapeUtils.unescapeHtml(html)
         } else {
             html
         }

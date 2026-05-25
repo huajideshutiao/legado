@@ -92,7 +92,6 @@ https://gedoor.github.io/Disclaimer
 > * org.nanohttpd:nanohttpd-websocket
 > * cn.bingoogolapple:bga-qrcode-zxing
 > * com.jaredrummler:colorpicker
-> * org.apache.commons:commons-text
 > * io.noties.markwon:core
 > * io.noties.markwon:image-glide
 > * com.hankcs:hanlp

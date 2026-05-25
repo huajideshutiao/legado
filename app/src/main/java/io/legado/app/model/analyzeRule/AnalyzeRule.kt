@@ -18,6 +18,7 @@ import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.NetworkUtils
@@ -31,7 +32,6 @@ import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.nodes.Node
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
@@ -310,7 +310,7 @@ class AnalyzeRule(
         if (result == null) result = ""
         val resultStr = result.toString()
         val str = if (unescape && resultStr.indexOf('&') > -1) {
-            StringEscapeUtils.unescapeHtml4(resultStr)
+            EscapeUtils.unescapeHtml(resultStr)
         } else {
             resultStr
         }

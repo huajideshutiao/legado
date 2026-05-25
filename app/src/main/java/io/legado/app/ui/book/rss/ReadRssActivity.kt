@@ -48,6 +48,7 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.ACache
+import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isTrue
@@ -65,7 +66,6 @@ import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.launch
-import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.Jsoup
 import splitties.views.bottomPadding
 import java.net.URLDecoder
@@ -330,7 +330,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             upTtsMenu(false)
         } else {
             binding.webView.evaluateJavascript("document.documentElement.outerHTML") {
-                val html = StringEscapeUtils.unescapeJson(it)
+                val html = EscapeUtils.unescapeJson(it)
                     .replace("^\"|\"$".toRegex(), "")
                 viewModel.readAloud(
                     Jsoup.parse(html)

@@ -6,9 +6,11 @@ import android.provider.Settings
 import androidx.annotation.Keep
 import io.legado.app.BuildConfig
 import io.legado.app.help.update.AppVariant
-import org.apache.commons.lang3.time.FastDateFormat
 import splitties.init.appCtx
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Suppress("ConstPropertyName")
 @SuppressLint("SimpleDateFormat")
@@ -31,16 +33,25 @@ object AppConst {
     private const val BETA_SIGNATURE =
         "93A28468B0F69E8D14C8A99AB45841CEF902BBBA3761BBFEE02E67CBA801563E"
 
-    val timeFormat: FastDateFormat by lazy {
-        FastDateFormat.getInstance("HH:mm")
+    val timeFormat: ThreadSafeDateFormat by lazy {
+        ThreadSafeDateFormat("HH:mm")
     }
 
-    val dateFormat: FastDateFormat by lazy {
-        FastDateFormat.getInstance("yyyy/MM/dd HH:mm")
+    val dateFormat: ThreadSafeDateFormat by lazy {
+        ThreadSafeDateFormat("yyyy/MM/dd HH:mm")
     }
 
-    val fileNameFormat: FastDateFormat by lazy {
-        FastDateFormat.getInstance("yy-MM-dd-HH-mm-ss")
+    val fileNameFormat: ThreadSafeDateFormat by lazy {
+        ThreadSafeDateFormat("yy-MM-dd-HH-mm-ss")
+    }
+
+    class ThreadSafeDateFormat(pattern: String) {
+        private val tl = ThreadLocal.withInitial {
+            SimpleDateFormat(pattern, Locale.getDefault())
+        }
+
+        fun format(date: Date): String = tl.get()!!.format(date)
+        fun format(millis: Long): String = tl.get()!!.format(Date(millis))
     }
 
     const val imagePathKey = "imagePath"

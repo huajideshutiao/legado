@@ -40,7 +40,7 @@ object HtmlFormatter {
         val str = StringBuilder()
         val tmp = html.indexOf("<")
         if (tmp == -1 || html.indexOf(">", tmp) == -1) {
-            html.lines().forEach {
+            EscapeUtils.unescapeHtml(html).lines().forEach {
                 val oo = it.trim()
                 if (oo == "") return@forEach
                 if (str.isNotEmpty()) str.append("\n")

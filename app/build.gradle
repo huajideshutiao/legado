@@ -237,7 +237,6 @@ dependencies {
     implementation libs.glide.recyclerview
 
     implementation(libs.androidsvg)
-    implementation(libs.glide.svg)
 
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
@@ -245,8 +244,6 @@ dependencies {
     implementation(libs.colorpicker)
 
     implementation libs.libarchive
-
-    implementation(libs.commons.text)
 
     implementation(libs.markwon.core)
     implementation(libs.markwon.image.glide)

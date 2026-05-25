@@ -465,7 +465,11 @@ object DatabaseMigrations {
                     )
                     val ruleContent = io.legado.app.data.entities.rule.ContentRule(
                         content = ruleContentStr,
-                        webJs = (if (style.isNotEmpty()) "var style = document.createElement('style');\nstyle.innerHTML = \"${org.apache.commons.text.StringEscapeUtils.escapeEcmaScript(style)}\";\ndocument.head.appendChild(style);\n" else "") + injectJs,
+                        webJs = (if (style.isNotEmpty()) "var style = document.createElement('style');\nstyle.innerHTML = \"${
+                            io.legado.app.utils.EscapeUtils.escapeEcmaScript(
+                                style
+                            )
+                        }\";\ndocument.head.appendChild(style);\n" else "") + injectJs,
                         shouldOverrideUrlLoading = shouldOverrideUrlLoading
                     )
 
