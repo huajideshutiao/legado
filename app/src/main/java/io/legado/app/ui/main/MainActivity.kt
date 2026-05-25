@@ -9,7 +9,6 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.core.view.postDelayed
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
@@ -136,11 +135,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 AppUpdate.check(this@MainActivity.lifecycleScope, this@MainActivity, true)
             }
         }
-        lifecycleScope.launch {
-            binding.viewPagerMain.postDelayed(3000) {
-                viewModel.postLoad()
-            }
-        }
+        viewModel.postLoad()
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {

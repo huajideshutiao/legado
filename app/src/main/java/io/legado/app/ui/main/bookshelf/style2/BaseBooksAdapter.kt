@@ -98,8 +98,18 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         }
     }
 
+    /** bookUrl → position 索引, 仅主线程访问 (ListListener 和 notification 都在主线程) */
+    private val bookUrlToPosition = HashMap<String, Int>()
+
     private val asyncListDiffer by lazy {
-        AsyncListDiffer(this, diffItemCallback)
+        AsyncListDiffer(this, diffItemCallback).apply {
+            addListListener { _, current ->
+                bookUrlToPosition.clear()
+                current.forEachIndexed { index, item ->
+                    if (item is Book) bookUrlToPosition[item.bookUrl] = index
+                }
+            }
+        }
     }
 
     fun updateItems() {
@@ -107,16 +117,11 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
     }
 
     fun notification(bookUrl: String) {
-        for (i in 0 until itemCount) {
-            getItem(i).let {
-                if (it is Book && it.bookUrl == bookUrl) {
-                    notifyItemChanged(i, Bundle().apply {
-                        putString("refresh", null)
-                    })
-                    return
-                }
-            }
-        }
+        val position = bookUrlToPosition[bookUrl] ?: return
+        if (position !in 0 until itemCount) return
+        notifyItemChanged(position, Bundle().apply {
+            putString("refresh", null)
+        })
     }
 
     fun getItems() = asyncListDiffer.currentList

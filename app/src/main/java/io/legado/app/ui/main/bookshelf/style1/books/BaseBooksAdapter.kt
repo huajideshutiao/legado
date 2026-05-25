@@ -75,19 +75,26 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         holder.itemView.setOnLongClickListener(null)
     }
 
-    fun notification(bookUrl: String) {
-        getItems().forEachIndexed { i, it ->
-            if (it.bookUrl == bookUrl) {
-                notifyItemChanged(
-                    i,
-                    Bundle().apply {
-                        putString("refresh", null)
-                        putString("lastUpdateTime", null)
-                    }
-                )
-                return
-            }
+    /** bookUrl → position 索引, 仅主线程访问 (onCurrentListChanged 和 notification 都在主线程) */
+    private val bookUrlToPosition = HashMap<String, Int>()
+
+    override fun onCurrentListChanged() {
+        bookUrlToPosition.clear()
+        getItems().forEachIndexed { index, book ->
+            bookUrlToPosition[book.bookUrl] = index
         }
+    }
+
+    fun notification(bookUrl: String) {
+        val position = bookUrlToPosition[bookUrl] ?: return
+        if (position !in 0 until itemCount) return
+        notifyItemChanged(
+            position,
+            Bundle().apply {
+                putString("refresh", null)
+                putString("lastUpdateTime", null)
+            }
+        )
     }
 
     fun upLastUpdateTime() {

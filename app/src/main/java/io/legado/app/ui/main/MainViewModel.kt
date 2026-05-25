@@ -1,6 +1,7 @@
 package io.legado.app.ui.main
 
 import android.app.Application
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
@@ -9,6 +10,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -25,21 +27,26 @@ import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
+import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
@@ -48,7 +55,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private var threadCount = AppConfig.threadCount
     private var poolSize = min(threadCount, AppConst.MAX_THREAD)
     private var upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
-    private val waitUpTocBooks = LinkedList<String>()
+    private val waitLock = Any()
+    private val waitUpTocBooks = LinkedHashSet<String>()
     private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
     val onUpBooksLiveData = MutableLiveData<Int>()
     private var upTocJob: Job? = null
@@ -66,6 +74,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private val autoUpdatedGroups = ConcurrentHashMap.newKeySet<Long>()
 
     fun markGroupAutoUpdated(groupId: Long): Boolean = autoUpdatedGroups.add(groupId)
+
+    companion object {
+        /** 自动更新时, 距上次检查不足该时长的书籍跳过 */
+        private const val AUTO_UPDATE_STALE_MS = 10 * 60 * 1000L
+    }
 
 //    init {
 //        deleteNotShelfBook()
@@ -94,24 +107,98 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         return onUpTocBooks.contains(bookUrl)
     }
 
+    /**
+     * 主动更新目录, 不做时间窗判断 (用于下拉刷新 / 菜单项)
+     */
     fun upToc(books: List<Book>) {
-        execute(context = upTocPool) {
-            books.filter {
-                !it.isLocal && it.canUpdate
-            }.let {
-                addToWaitUp(it)
+        if (books.isEmpty()) return
+        viewModelScope.launch(Dispatchers.Default) {
+            val urls = books.mapNotNull {
+                if (!it.isLocal && it.canUpdate) it.bookUrl else null
             }
+            addToWaitUp(urls)
         }
     }
 
+    /**
+     * 自动更新目录, 跳过最近已检查过的书籍
+     */
+    fun scheduleAutoUpdate(books: List<Book>) {
+        if (books.isEmpty()) return
+        val now = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.Default) {
+            val urls = books.mapNotNull {
+                if (!it.isLocal && it.canUpdate
+                    && now - it.lastCheckTime > AUTO_UPDATE_STALE_MS
+                ) it.bookUrl else null
+            }
+            addToWaitUp(urls)
+        }
+    }
+
+    /**
+     * 观察一个分组的书籍列表, 并在首次发射时触发一次自动更新.
+     *
+     * 排序逻辑由调用方通过 [sorter] 提供 (style1 用本地 bookSort, style2 用 AppConfig 按 groupId 取).
+     * 生命周期感知由 [lifecycle] 接入: 只在 RESUMED 时下发, 与首次自动更新触发时机绑定.
+     * 上游在 Default 上执行, 调用方在 collect 块里只做 UI 更新.
+     */
+    fun observeGroupBooks(
+        groupId: Long,
+        lifecycle: Lifecycle,
+        sorter: (List<Book>) -> List<Book>,
+    ): Flow<List<Book>> = appDb.bookDao.flowByGroup(groupId)
+        .map { sorter(it) }
+        .flowWithLifecycleAndDatabaseChangeFirst(
+            lifecycle,
+            Lifecycle.State.RESUMED,
+            AppDatabase.BOOK_TABLE_NAME
+        )
+        .catch { AppLog.put("书架更新出错", it) }
+        .onEach { list ->
+            if (markGroupAutoUpdated(groupId) && AppConfig.autoRefreshBook) {
+                scheduleAutoUpdate(list)
+            }
+        }
+        .conflate()
+        .flowOn(Dispatchers.Default)
+
     @Synchronized
-    private fun addToWaitUp(books: List<Book>) {
-        books.forEach { book ->
-            if (!waitUpTocBooks.contains(book.bookUrl) && !onUpTocBooks.contains(book.bookUrl)) {
-                waitUpTocBooks.add(book.bookUrl)
+    private fun addToWaitUp(urls: Collection<String>) {
+        if (urls.isEmpty()) return
+        synchronized(waitLock) {
+            urls.forEach { url ->
+                if (url !in onUpTocBooks) {
+                    waitUpTocBooks.add(url) // LinkedHashSet 自带去重
+                }
             }
         }
         if (upTocJob == null) {
+            startUpTocJob()
+        }
+    }
+
+    private fun pollWaitUpTocBook(): String? = synchronized(waitLock) {
+        val iter = waitUpTocBooks.iterator()
+        if (iter.hasNext()) {
+            val value = iter.next()
+            iter.remove()
+            value
+        } else null
+    }
+
+    private fun waitUpTocBooksEmpty(): Boolean = synchronized(waitLock) {
+        waitUpTocBooks.isEmpty()
+    }
+
+    private fun waitUpTocBooksSize(): Int = synchronized(waitLock) {
+        waitUpTocBooks.size
+    }
+
+    @Synchronized
+    private fun onUpTocJobCompleted() {
+        upTocJob = null
+        if (!waitUpTocBooksEmpty()) {
             startUpTocJob()
         }
     }
@@ -122,7 +209,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         upTocJob = viewModelScope.launch(upTocPool) {
             flow {
                 while (true) {
-                    emit(waitUpTocBooks.poll() ?: break)
+                    emit(pollWaitUpTocBook() ?: break)
                 }
             }.onEachParallel(threadCount) {
                 onUpTocBooks.add(it)
@@ -133,10 +220,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 postEvent(EventBus.UP_BOOKSHELF, it)
                 postUpBooksLiveData()
             }.onCompletion {
-                upTocJob = null
-                if (waitUpTocBooks.isNotEmpty()) {
-                    startUpTocJob()
-                }
+                onUpTocJobCompleted()
                 if (it == null && cacheBookJob == null && !CacheBookService.isRun) {
                     //所有目录更新完再开始缓存章节
                     cacheBook()
@@ -190,7 +274,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun postUpBooksLiveData(reset: Boolean = false) {
         if (AppConfig.showWaitUpCount) {
-            onUpBooksLiveData.postValue(waitUpTocBooks.size + onUpTocBooks.size)
+            onUpBooksLiveData.postValue(waitUpTocBooksSize() + onUpTocBooks.size)
         } else if (reset) {
             onUpBooksLiveData.postValue(0)
         }
@@ -217,7 +301,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             launch {
                 while (isActive && CacheBook.isRun) {
                     //有目录更新是不缓存,优先更新目录,现在更多网站限制并发
-                    CacheBook.setWorkingState(waitUpTocBooks.isEmpty() && onUpTocBooks.isEmpty())
+                    CacheBook.setWorkingState(waitUpTocBooksEmpty() && onUpTocBooks.isEmpty())
                     delay(1000)
                 }
             }

@@ -16,15 +16,11 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.data.AppDatabase
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -32,19 +28,13 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.utils.cnCompare
-import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -202,57 +192,29 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun upRecyclerData() {
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
-            appDb.bookDao.flowByGroup(groupId).map { list ->
-                //排序
-                when (bookSort) {
-                    1 -> list.sortedByDescending { it.latestChapterTime }
-                    2 -> list.sortedWith { o1, o2 ->
-                        o1.name.cnCompare(o2.name)
-                    }
-
-                    3 -> list.sortedBy { it.order }
-
-                    // 综合排序 issue #3192
-                    4 -> list.sortedByDescending {
-                        max(it.latestChapterTime, it.durChapterTime)
-                    }
-                    // 按作者排序
-                    5 -> list.sortedWith { o1, o2 ->
-                        o1.author.cnCompare(o2.author)
-                    }
-
-                    else -> list.sortedByDescending { it.durChapterTime }
-                }
-            }.flowWithLifecycleAndDatabaseChangeFirst(
-                viewLifecycleOwner.lifecycle,
-                Lifecycle.State.RESUMED,
-                AppDatabase.BOOK_TABLE_NAME
-            ).catch {
-                AppLog.put("书架更新出错", it)
-            }.conflate().flowOn(Dispatchers.Default).collect { list ->
+            activityViewModel.observeGroupBooks(
+                groupId = groupId,
+                lifecycle = viewLifecycleOwner.lifecycle,
+                sorter = ::sortBooks,
+            ).collect { list ->
                 binding.tvEmptyMsg.isGone = list.isNotEmpty()
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
                 booksAdapter?.setItems(list)
                 (parentFragment as? BookshelfFragment1)?.updateTabTitle(groupId, list.size)
-                triggerAutoUpdate(list)
                 delay(100)
             }
         }
     }
 
-    /**
-     * 当前分组首次加载完成时, 对启用更新且超过10分钟未检查的书籍触发一次目录更新
-     */
-    private fun triggerAutoUpdate(books: List<Book>) {
-        if (!activityViewModel.markGroupAutoUpdated(groupId)) return
-        if (!AppConfig.autoRefreshBook || books.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val toUpdate = books.filter {
-            it.canUpdate && !it.isLocal && now - it.lastCheckTime > 10 * 60 * 1000L
-        }
-        if (toUpdate.isNotEmpty()) {
-            activityViewModel.upToc(toUpdate)
-        }
+    private fun sortBooks(list: List<Book>): List<Book> = when (bookSort) {
+        1 -> list.sortedByDescending { it.latestChapterTime }
+        2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+        3 -> list.sortedBy { it.order }
+        // 综合排序 issue #3192
+        4 -> list.sortedByDescending { max(it.latestChapterTime, it.durChapterTime) }
+        // 按作者排序
+        5 -> list.sortedWith { o1, o2 -> o1.author.cnCompare(o2.author) }
+        else -> list.sortedByDescending { it.durChapterTime }
     }
 
     private fun startLastUpdateTimeJob() {
