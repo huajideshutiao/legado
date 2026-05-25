@@ -775,6 +775,7 @@
     <string name="local_tts">本地TTS</string>
     <string name="thread_count">線程數</string>
     <string name="all_read_time">總閲讀時間</string>
+    <string name="read_record_today_total">今日 %1$s / 總 %2$s</string>
     <string name="un_select_all">全部唔要</string>
     <string name="delete_all">刪除所有</string>
     <string name="import_str">導入</string>

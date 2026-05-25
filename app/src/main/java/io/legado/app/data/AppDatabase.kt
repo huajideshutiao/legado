@@ -58,11 +58,12 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 81,
+    version = 82,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchKeyword::class, Cookie::class,
-        Bookmark::class, TxtTocRule::class, ReadRecord::class, HttpTTS::class, Cache::class,
+        Bookmark::class, TxtTocRule::class, ReadRecord::class,
+        HttpTTS::class, Cache::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
     views = [BookSourcePart::class],
     autoMigrations = [

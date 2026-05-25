@@ -17,9 +17,9 @@
             android:id="@+id/ll_about"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_margin="16dp"
             android:background="@drawable/shape_card_view"
             android:orientation="vertical"
-            android:layout_margin="6dp"
             android:padding="10dp">
 
             <TextView

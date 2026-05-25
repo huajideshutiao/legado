@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.constant.AppConst.androidId
 import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -165,20 +164,7 @@ object Restore {
         fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
             appDb.keyboardAssistsDao.insert(*it.toTypedArray())
         }
-        fileToListT<ReadRecord>(path, "readRecord.json")?.let {
-            it.forEach { readRecord ->
-                //判断是不是本机记录
-                if (readRecord.deviceId != androidId) {
-                    appDb.readRecordDao.insert(readRecord)
-                } else {
-                    val time = appDb.readRecordDao
-                        .getReadTime(readRecord.deviceId, readRecord.bookName)
-                    if (time == null || time < readRecord.readTime) {
-                        appDb.readRecordDao.insert(readRecord)
-                    }
-                }
-            }
-        }
+        restoreReadRecord(path)
         File(path, "servers.json").takeIf {
             it.exists()
         }?.runCatching {
@@ -307,6 +293,47 @@ object Restore {
             appCtx.toastOnUi("$fileName\n读取文件出错\n${e.localizedMessage}")
         }
         return null
+    }
+
+    /**
+     * 兼容旧备份 ([deviceId, bookName, readTime累计, lastRead毫秒]) 和新格式 ([bookName, day, readTime])。
+     * 通过 day 字段是否存在判断格式：旧格式 day 缺失 → 解析为 0。
+     */
+    private data class ReadRecordBackup(
+        val bookName: String = "",
+        val day: Int = 0,
+        val readTime: Long = 0,
+        val lastRead: Long = 0
+    )
+
+    private fun restoreReadRecord(path: String) {
+        val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
+        if (backups.isEmpty()) return
+        val isLegacy = backups.all { it.day == 0 }
+        val dao = appDb.readRecordDao
+        if (isLegacy) {
+            // 旧格式：按 bookName 聚合，统一归到 dayKey(maxLastRead) 那一天
+            val now = System.currentTimeMillis()
+            backups.groupBy { it.bookName }.forEach { (bookName, rows) ->
+                if (bookName.isEmpty()) return@forEach
+                val total = rows.sumOf { it.readTime }
+                if (total <= 0) return@forEach
+                val ms = rows.maxOfOrNull { it.lastRead }?.takeIf { it > 0 } ?: now
+                val day = ReadRecord.dayKey(ms)
+                val existing = dao.getDayReadTime(bookName, day) ?: 0L
+                if (total > existing) {
+                    dao.insert(ReadRecord(bookName, day, total))
+                }
+            }
+        } else {
+            backups.forEach { b ->
+                if (b.bookName.isEmpty() || b.day == 0 || b.readTime <= 0) return@forEach
+                val existing = dao.getDayReadTime(b.bookName, b.day) ?: 0L
+                if (b.readTime > existing) {
+                    dao.insert(ReadRecord(b.bookName, b.day, b.readTime))
+                }
+            }
+        }
     }
 
 }

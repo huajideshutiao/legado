@@ -20,7 +20,7 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_76_77, migration_79_80, migration_80_81
+            migration_76_77, migration_79_80, migration_80_81, migration_81_82
         )
     }
 
@@ -551,6 +551,53 @@ object DatabaseMigrations {
     private val migration_80_81 = object : Migration(80, 81) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("DROP TABLE IF EXISTS searchBooks")
+        }
+    }
+
+    private val migration_81_82 = object : Migration(81, 82) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 旧 readRecord: (deviceId, bookName, readTime累计, lastRead毫秒)
+            // 新 readRecord: (bookName, day yyyyMMdd, readTime增量) PK(bookName, day)
+            //
+            // 迁移策略：按 bookName 聚合，把全部累计时长归到 dayKey(maxLastRead) 那一天。
+            // 历史细分数据无法还原，至少保住总时长和"最后阅读日"。
+
+            // 1. 读出聚合后的旧数据
+            data class OldRow(val bookName: String, val readTime: Long, val lastRead: Long)
+
+            val rows = mutableListOf<OldRow>()
+            db.query(
+                "select bookName, sum(readTime), max(lastRead) from readRecord group by bookName"
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    rows.add(OldRow(cursor.getString(0), cursor.getLong(1), cursor.getLong(2)))
+                }
+            }
+
+            // 2. 重建表
+            db.execSQL("DROP TABLE readRecord")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS readRecord (
+                    bookName TEXT NOT NULL,
+                    day INTEGER NOT NULL,
+                    readTime INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(bookName, day)
+                )
+                """.trimIndent()
+            )
+
+            // 3. 写回
+            val now = System.currentTimeMillis()
+            for (row in rows) {
+                if (row.bookName.isEmpty() || row.readTime <= 0) continue
+                val ms = if (row.lastRead > 0) row.lastRead else now
+                val day = io.legado.app.data.entities.ReadRecord.dayKey(ms)
+                db.execSQL(
+                    "INSERT OR REPLACE INTO readRecord(bookName, day, readTime) VALUES(?, ?, ?)",
+                    arrayOf<Any>(row.bookName, day, row.readTime)
+                )
+            }
         }
     }
 

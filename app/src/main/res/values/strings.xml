@@ -791,6 +791,16 @@
     <string name="local_tts">Local TTS</string>
     <string name="thread_count">Thread count</string>
     <string name="all_read_time">Total read time</string>
+    <string name="today_read_time">Today</string>
+    <string name="read_record_today_total">Today %1$s / Total %2$s</string>
+    <string name="week_read_time">This week</string>
+    <string name="month_read_time">This month</string>
+    <string name="read_heatmap_title">Reading heatmap</string>
+    <string name="month_label_format">%1$d.%2$02d</string>
+    <string name="prev_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <string name="day_read_time_toast">%1$d-%2$02d-%3$02d: %4$s</string>
+    <string name="filter_by_day_label">%1$d-%2$02d-%3$02d  ✕</string>
     <string name="un_select_all">Unselect all</string>
     <string name="import_str">Import</string>
     <string name="export_str">Export</string>

@@ -42,4 +42,9 @@
         android:title="@string/enable_record"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_clear_all"
+        android:title="@string/delete_all"
+        app:showAsAction="never" />
+
 </menu>

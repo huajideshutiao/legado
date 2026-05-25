@@ -109,6 +109,11 @@ class HandleFileDialog : DialogFragment() {
         requestCode = arguments?.getInt("requestCode") ?: 0
         allowExtensions = arguments?.getStringArray("allowExtensions")
 
+        viewModel.errorLiveData.observe(this) {
+            toastOnUi(it)
+            dismiss()
+        }
+
         @Suppress("DEPRECATION", "UNCHECKED_CAST")
         val otherActions =
             arguments?.getSerializable("otherActions") as? ArrayList<SelectItem<Int>>
@@ -234,7 +239,7 @@ class HandleFileDialog : DialogFragment() {
 
             111 -> getFileData()?.let { fileData ->
                 viewModel.upload(fileData.name, fileData.data, fileData.type) { url ->
-                    onResult(url.toUri())
+                    deliverResult(url.toUri())
                 }
             }
 

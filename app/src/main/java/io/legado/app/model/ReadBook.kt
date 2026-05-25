@@ -103,7 +103,6 @@ object ReadBook : CoroutineScope by MainScope() {
         this.book = book
         if (isDiffBook){
             readRecord.bookName = book.name
-            readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         }
         if (chapterList?.get(0)?.bookUrl != book.bookUrl){
             chapterList = null
@@ -271,10 +270,17 @@ object ReadBook : CoroutineScope by MainScope() {
             if (!AppConfig.enableReadRecord) {
                 return@execute
             }
-            readRecord.readTime = readRecord.readTime + System.currentTimeMillis() - readStartTime
-            readStartTime = System.currentTimeMillis()
-            readRecord.lastRead = System.currentTimeMillis()
-            appDb.readRecordDao.insert(readRecord)
+            val bookName = readRecord.bookName
+            if (bookName.isEmpty()) return@execute
+            val now = System.currentTimeMillis()
+            val delta = now - readStartTime
+            readStartTime = now
+            if (delta <= 0) return@execute
+            appDb.readRecordDao.addReadTime(
+                bookName,
+                io.legado.app.data.entities.ReadRecord.dayKey(now),
+                delta
+            )
         }
     }
 
