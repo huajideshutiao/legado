@@ -140,8 +140,10 @@
 
 	<string-array name="rule_type">
 		<item>BookSource</item>
-		<item>RssSource</item>
 		<item>ReplaceRule</item>
+		<item>TxtTocRule</item>
+		<item>DictRule</item>
+		<item>HttpTts</item>
 	</string-array>
 
 	<string-array name="default_home_page">

@@ -78,6 +78,12 @@
             android:key="dictRuleManage"
             android:summary="@string/config_dict_rule"
             android:title="@string/dict_rule"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:icon="@drawable/ic_import"
+            android:key="ruleSubManage"
+            android:title="@string/rule_subscription"
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
