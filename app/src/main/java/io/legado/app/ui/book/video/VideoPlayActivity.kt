@@ -8,8 +8,6 @@ import android.icu.text.SimpleDateFormat
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.GestureDetector
 import android.view.Menu
 import android.view.MenuItem
@@ -108,6 +106,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     private inner class VideoGestureListener : GestureDetector.SimpleOnGestureListener() {
         private var originalSpeed = 1f
+        private var speedBoosted = false
         private var position = 0L
         private val screenWidth get() = Resources.getSystem().displayMetrics.widthPixels
         private val screenHeight = 350.dpToPx()
@@ -141,6 +140,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         override fun onLongPress(e: MotionEvent) {
             player?.let { p ->
                 originalSpeed = p.playbackParameters.speed
+                speedBoosted = true
                 val targetSpeed = originalSpeed * 2f
                 p.playbackParameters =
                     PlaybackParameters(targetSpeed, p.playbackParameters.pitch)
@@ -160,31 +160,28 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                 return true
             }
             lastScrollTime = currentTime
-            when (gestureMode) {
-                GestureMode.NONE -> {
-                    val deltaX = abs(e2.x - startX)
-                    val deltaY = abs(e2.y - startY)
+            if (gestureMode == GestureMode.NONE) {
+                val deltaX = abs(e2.x - startX)
+                val deltaY = abs(e2.y - startY)
 
-                    if (deltaX < deadZoneSize && deltaY < deadZoneSize) return false
+                if (deltaX < deadZoneSize && deltaY < deadZoneSize) return false
 
-                    gestureMode = when {
-                        deltaX > deltaY -> GestureMode.PROGRESS
-                        e1.x < screenWidth / 2 -> {
-                            currentBrightness = if (window.attributes.screenBrightness <= 0f) 0f
-                            else window.attributes.screenBrightness
-                            GestureMode.BRIGHTNESS
-                        }
-
-                        else -> {
-                            currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                            GestureMode.VOLUME
-                        }
+                gestureMode = when {
+                    deltaX > deltaY -> GestureMode.PROGRESS
+                    e1.x < screenWidth / 2 -> {
+                        currentBrightness = if (window.attributes.screenBrightness <= 0f) 0f
+                        else window.attributes.screenBrightness
+                        GestureMode.BRIGHTNESS
                     }
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        binding.tvVideoSpeed.visibility = View.VISIBLE
-                    }, 50)
-                }
 
+                    else -> {
+                        currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        GestureMode.VOLUME
+                    }
+                }
+                binding.tvVideoSpeed.visibility = View.VISIBLE
+            }
+            when (gestureMode) {
                 GestureMode.PROGRESS -> {
                     player?.let { p ->
                         position =
@@ -226,16 +223,19 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                         Locale.getDefault(), "音量: %d%%", deltaVolume * 100 / maxVolume
                     )
                 }
+
+                GestureMode.NONE -> {}
             }
             return true
         }
 
         fun onUp() {
-            player?.let { p ->
-                if (p.playbackParameters.speed != originalSpeed) {
+            if (speedBoosted) {
+                player?.let { p ->
                     p.playbackParameters =
                         PlaybackParameters(originalSpeed, p.playbackParameters.pitch)
                 }
+                speedBoosted = false
             }
             when (gestureMode) {
                 GestureMode.PROGRESS -> {
@@ -263,17 +263,9 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             updateResolutionButtonText()
         }
         viewModel.resolutions.observe(this) { resolutions ->
-            val btn =
-                binding.ivPlayer.findViewById<android.widget.TextView>(R.id.tv_force_resolution)
-            if (resolutions.isNullOrEmpty() || resolutions.size <= 1) {
-                btn?.setOnClickListener {
-                    player?.let { p ->
-                        TrackSelectionDialogBuilder(
-                            this, getString(R.string.resolution), p, C.TRACK_TYPE_VIDEO
-                        ).build().show()
-                    }
-                }
-            } else {
+            if (!resolutions.isNullOrEmpty() && resolutions.size > 1) {
+                val btn = binding.ivPlayer
+                    .findViewById<android.widget.TextView>(R.id.tv_force_resolution)
                 btn?.visibility = View.VISIBLE
                 updateResolutionButtonText()
             }
@@ -281,8 +273,10 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         viewModel.chapterListData.observe(this) {
             binding.titleBar.title = viewModel.curBook?.name ?: ""
             if (it.size > 1) {
-                binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
-                binding.recyclerView.adapter = adapter
+                if (binding.recyclerView.adapter == null) {
+                    binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
+                    binding.recyclerView.adapter = adapter
+                }
                 adapter.setItems(it)
                 binding.recyclerView.scrollToPosition(viewModel.curBook!!.durChapterIndex)
                 adapter.upDisplayTitles(viewModel.curBook!!.durChapterIndex)
@@ -308,7 +302,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         }
         binding.ivPlayer.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
-            if (event.action == MotionEvent.ACTION_UP) {
+            if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
                 gestureListener.onUp()
             }
             true
@@ -381,7 +375,6 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         val p = player ?: ExoPlayerHelper.createHttpExoPlayer(this).apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    super.onPlaybackStateChanged(playbackState)
                     if (playbackState == Player.STATE_READY) {
                         hasRefreshedOnPlayError = false
                     }
@@ -402,7 +395,6 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                         }
                         AppLog.put(msg, error, true)
                     }
-                    super.onPlayerError(error)
                 }
             })
             binding.ivPlayer.player = this
@@ -412,8 +404,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             if (viewModel.position != 0L) {
                 seekTo(viewModel.position)
             }
-            play()
             prepare()
+            play()
         }
     }
 
