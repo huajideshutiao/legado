@@ -1,5 +1,6 @@
 package io.legado.app.ui.about
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -9,8 +10,6 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.dpToPx
@@ -33,6 +32,7 @@ class MonthHeatMapView @JvmOverloads constructor(
     private val cellGap = 3f.dpToPx()
     private val cellRadius = 4f.dpToPx()
     private val headerHeight = 22f.dpToPx()
+    private val selectedInfoHeight = 28f.dpToPx()
     private val legendHeight = 24f.dpToPx()
     private val legendCellSize = 12f.dpToPx()
     private val legendCellGap = 3f.dpToPx()
@@ -56,6 +56,10 @@ class MonthHeatMapView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         textSize = 11f.spToPx()
     }
+    private val selectedInfoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = 12f.spToPx()
+    }
     private val legendTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 10f.spToPx()
     }
@@ -72,11 +76,11 @@ class MonthHeatMapView @JvmOverloads constructor(
     private val todayMonth: Int
     private val todayDay: Int
 
-    /** 6 档色阶对应的 alpha 值 (0..255)。索引 0 = 完全没读，5 = 满 8 小时及以上 */
+    /** 6 档色阶对应的 alpha 值 (0..255)。索引 0 = 完全没读，5 = 满 12 小时及以上 */
     private val levelAlphas = intArrayOf(24, 64, 112, 160, 208, 255)
 
-    /** 单日满色阶对应的毫秒上限：8 小时 */
-    private val maxReadMillis = 8L * 60L * 60L * 1000L
+    /** 单日满色阶对应的毫秒上限：12 小时 */
+    private val maxReadMillis = 12L * 60L * 60L * 1000L
 
     var onDayClick: ((day: Int, readTime: Long, selected: Boolean) -> Unit)? = null
 
@@ -91,8 +95,9 @@ class MonthHeatMapView @JvmOverloads constructor(
         }
         headerPaint.color = ColorUtils.setAlphaComponent(context.secondaryTextColor, 200)
         legendTextPaint.color = ColorUtils.setAlphaComponent(context.secondaryTextColor, 200)
-        selectedRingPaint.color = context.backgroundColor
-        todayLinePaint.color = context.bottomBackground
+        selectedInfoPaint.color = context.primaryTextColor
+        selectedRingPaint.color = 0xC8767676.toInt()
+        todayLinePaint.color = 0xC8767676.toInt()
         isClickable = true
     }
 
@@ -132,7 +137,8 @@ class MonthHeatMapView @JvmOverloads constructor(
         val avail = width - paddingLeft - paddingRight
         val cellSize = if (avail > 0) avail / 7f else 0f
         val rows = rowCount().coerceAtLeast(1)
-        val height = paddingTop + headerHeight + cellSize * rows + legendHeight + paddingBottom
+        val height =
+            paddingTop + headerHeight + cellSize * rows + selectedInfoHeight + legendHeight + paddingBottom
         setMeasuredDimension(width, height.toInt())
     }
 
@@ -155,6 +161,7 @@ class MonthHeatMapView @JvmOverloads constructor(
         val days = daysInMonth()
         val accent = context.accentColor
         dayTextPaint.color = context.primaryTextColor
+        selectedInfoPaint.color = context.primaryTextColor
 
         for (d in 1..days) {
             val idx = first + d - 1
@@ -178,7 +185,7 @@ class MonthHeatMapView @JvmOverloads constructor(
 
             // 今天加下划线，紧贴文字基线下方
             if (year == todayYear && month == todayMonth && d == todayDay) {
-                val underlineY = cy + dayTextPaint.descent() + 1.5f.dpToPx()
+                val underlineY = cy + dayTextPaint.descent() + 4f.dpToPx()
                 val underlineHalf = (right - left) * 0.3f
                 canvas.drawLine(
                     cx - underlineHalf, underlineY,
@@ -193,7 +200,9 @@ class MonthHeatMapView @JvmOverloads constructor(
             }
         }
 
-        drawLegend(canvas, accent, gridTop + cellSize * rowCount())
+        val infoTop = gridTop + cellSize * rowCount()
+        drawSelectedInfo(canvas, infoTop)
+        drawLegend(canvas, accent, infoTop + selectedInfoHeight)
     }
 
     private fun drawLegend(canvas: Canvas, accent: Int, top: Float) {
@@ -225,9 +234,30 @@ class MonthHeatMapView @JvmOverloads constructor(
         canvas.drawText(moreText, cellX, textBaseline, legendTextPaint)
     }
 
+    private fun drawSelectedInfo(canvas: Canvas, top: Float) {
+        if (selectedDay == 0) return
+        val readTime = data[selectedDay] ?: 0L
+        val text = "${month}月${selectedDay}日 · ${formatDuration(readTime)}"
+        val cx = paddingLeft + (width - paddingLeft - paddingRight) / 2f
+        val cy = top + selectedInfoHeight / 2f -
+            (selectedInfoPaint.descent() + selectedInfoPaint.ascent()) / 2f
+        canvas.drawText(text, cx, cy, selectedInfoPaint)
+    }
+
+    private fun formatDuration(ms: Long): String {
+        if (ms <= 0L) return "0 分钟"
+        val hours = ms / 3_600_000L
+        val minutes = (ms % 3_600_000L) / 60_000L
+        return buildString {
+            if (hours > 0) append("${hours} 小时")
+            if (hours > 0 && minutes > 0) append(" ")
+            if (minutes > 0) append("${minutes} 分钟")
+        }
+    }
+
     private fun levelFor(value: Long): Int {
         if (value <= 0L) return 0
-        // 固定 8 小时上限，按 1/5 分段：1.6h / 3.2h / 4.8h / 6.4h / 8h+
+        // 固定 12 小时上限，按 1/5 分段：2.4h / 4.8h / 7.2h / 9.6h / 12h+
         val ratio = (value.toFloat() / maxReadMillis).coerceAtMost(1f)
         return when {
             ratio <= 0.2f -> 1
@@ -238,6 +268,7 @@ class MonthHeatMapView @JvmOverloads constructor(
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_UP) {
             val avail = width - paddingLeft - paddingRight
@@ -264,7 +295,4 @@ class MonthHeatMapView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
-    override fun performClick(): Boolean {
-        return super.performClick()
-    }
 }

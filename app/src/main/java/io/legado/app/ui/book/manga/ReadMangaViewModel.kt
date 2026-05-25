@@ -11,7 +11,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
@@ -59,8 +58,6 @@ class ReadMangaViewModel(application: Application) :
     var prevMangaChapter: MangaChapter? = null
     var curMangaChapter: MangaChapter? = null
     var nextMangaChapter: MangaChapter? = null
-    var readStartTime: Long = System.currentTimeMillis()
-    private val readRecord = ReadRecord()
     private val loadingChapters = arrayListOf<Int>()
     var simulatedChapterSize = 0
     var preDownloadTask: Job? = null
@@ -117,25 +114,6 @@ class ReadMangaViewModel(application: Application) :
         nextMangaChapter = null
     }
 
-    //每次切换章节更新阅读记录
-    fun upReadTime() {
-        execute {
-            if (!AppConfig.enableReadRecord) {
-                return@execute
-            }
-            val bookName = readRecord.bookName
-            if (bookName.isEmpty()) return@execute
-            val now = System.currentTimeMillis()
-            val delta = now - readStartTime
-            readStartTime = now
-            if (delta <= 0) return@execute
-            appDb.readRecordDao.addReadTime(
-                bookName,
-                io.legado.app.data.entities.ReadRecord.dayKey(now),
-                delta
-            )
-        }
-    }
 
     @Synchronized
     private fun addLoading(index: Int): Boolean {

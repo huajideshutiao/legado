@@ -11,7 +11,6 @@
         android:entryValues="@array/theme_mode_v"
         android:icon="@drawable/ic_cfg_theme"
         android:key="themeMode"
-        android:summary="@string/theme_mode_desc"
         android:title="@string/theme_mode"
         app:iconSpaceReserved="false" />
 
@@ -40,7 +39,6 @@
     <io.legado.app.lib.prefs.Preference
         android:icon="@drawable/ic_cfg_other"
         android:key="setting"
-        android:summary="@string/other_setting_s"
         android:title="@string/other_setting"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
@@ -62,21 +60,18 @@
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_cfg_replace"
             android:key="replaceManage"
-            android:summary="@string/replace_purify_desc"
             android:title="@string/replace_purify"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_cfg_source"
             android:key="txtTocRuleManage"
-            android:summary="@string/config_txt_toc_rule"
             android:title="@string/txt_toc_rule"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_translate"
             android:key="dictRuleManage"
-            android:summary="@string/config_dict_rule"
             android:title="@string/dict_rule"
             app:iconSpaceReserved="false" />
 
@@ -99,14 +94,12 @@
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_bookmark"
             android:key="bookmark"
-            android:summary="@string/all_bookmark"
             android:title="@string/bookmark"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_history"
             android:key="readRecord"
-            android:summary="@string/read_record_summary"
             android:title="@string/read_record"
             app:iconSpaceReserved="false" />
 

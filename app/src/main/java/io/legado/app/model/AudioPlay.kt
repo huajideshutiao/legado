@@ -12,12 +12,14 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
@@ -61,6 +63,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     private var activityContext: Context? = null
     private var serviceContext: Context? = null
     private val context: Context get() = activityContext ?: serviceContext ?: appCtx
+    private val readRecord = ReadRecord()
+    private var readStartTime = System.currentTimeMillis()
     var callback: CallBack? = null
     var book: Book? = null
     var chapterSize = 0
@@ -103,6 +107,8 @@ object AudioPlay : CoroutineScope by MainScope() {
         stop()
         status = Status.STOP
         AudioPlay.book = book
+        readRecord.bookName = book.name
+        readStartTime = System.currentTimeMillis()
         if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl) {
             chapterList = null
         }
@@ -343,6 +349,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun pause(context: Context) {
+        upReadTime()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.pause
@@ -351,6 +358,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun resume(context: Context) {
+        readStartTime = System.currentTimeMillis()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.resume
@@ -359,6 +367,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun stop() {
+        upReadTime()
         if (AudioPlayService.isRun) {
             context.startService<AudioPlayService> {
                 action = IntentAction.stop
@@ -472,6 +481,19 @@ object AudioPlay : CoroutineScope by MainScope() {
                 }
             }
             book.update()
+        }
+    }
+
+    fun upReadTime() {
+        Coroutine.async {
+            if (!AppConfig.enableReadRecord) return@async
+            val bookName = readRecord.bookName
+            if (bookName.isEmpty()) return@async
+            val now = System.currentTimeMillis()
+            val delta = now - readStartTime
+            readStartTime = now
+            if (delta <= 0) return@async
+            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), delta)
         }
     }
 

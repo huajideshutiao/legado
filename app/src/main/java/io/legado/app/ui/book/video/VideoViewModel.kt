@@ -37,6 +37,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun initData() {
         execute {
             upBook(IntentData.book ?: return@execute)
+            readRecord.bookName = curBook!!.name
             position = curBook!!.durChapterPos.toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook!!.durChapterIndex])
@@ -142,6 +143,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun delBook(success: (() -> Unit)?) = delBook(false, success)
 
     fun saveRead(position: Long) {
+        upReadTime()
         Coroutine.async {
             curBook!!.apply {
                 lastCheckCount = 0

@@ -267,9 +267,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun upReadTime() {
         executor.execute {
-            if (!AppConfig.enableReadRecord) {
-                return@execute
-            }
+            if (!AppConfig.enableReadRecord) return@execute
             val bookName = readRecord.bookName
             if (bookName.isEmpty()) return@execute
             val now = System.currentTimeMillis()
