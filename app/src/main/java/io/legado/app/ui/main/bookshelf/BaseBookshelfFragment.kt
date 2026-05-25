@@ -56,11 +56,14 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     abstract val groupId: Long
     abstract val books: List<Book>
     private var groupsLiveData: LiveData<List<BookGroup>>? = null
-    private val waitDialog by lazy {
-        WaitDialog.from(requireActivity()).apply {
+    private var waitDialog: WaitDialog? = null
+
+    private fun ensureWaitDialog(): WaitDialog {
+        return waitDialog ?: WaitDialog.from(requireActivity()).apply {
             onCancelListener = {
                 viewModel.addBookJob?.cancel()
             }
+            waitDialog = this
         }
     }
 
@@ -117,9 +120,9 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     override fun observeLiveBus() {
         viewModel.addBookProgressLiveData.observe(this) { count ->
             if (count < 0) {
-                waitDialog.dismissSafe()
+                waitDialog?.dismissSafe()
             } else {
-                waitDialog.setText("添加中... ($count)")
+                ensureWaitDialog().setText("添加中... ($count)")
             }
         }
     }
@@ -133,8 +136,10 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             customView { alertBinding.root }
             okButton {
                 alertBinding.editView.text?.toString()?.let {
-                    waitDialog.setText("添加中...")
-                    waitDialog.show(requireActivity().supportFragmentManager)
+                    ensureWaitDialog().run {
+                        setText("添加中...")
+                        show(requireActivity().supportFragmentManager)
+                    }
                     viewModel.addBookByUrl(it)
                 }
             }

@@ -24,8 +24,8 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
@@ -72,97 +72,103 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
     }
 
     fun importBookshelf(str: String, groupId: Long) {
+        var successCount = 0
         execute {
             val text = str.trim()
-            when {
+            val json = when {
                 text.isAbsUrl() -> {
                     okHttpClient.newCallResponseBody {
                         url(text)
-                    }.decompressed().text().let {
-                        importBookshelf(it, groupId)
-                    }
+                    }.decompressed().text().trim()
                 }
 
-                text.isJsonArray() -> {
-                    importBookshelfByJson(text, groupId)
-                }
-
-                else -> {
-                    throw NoStackTraceException("格式不对")
-                }
+                else -> text
             }
+            if (!json.isJsonArray()) {
+                throw NoStackTraceException("格式不对")
+            }
+            importBookshelfByJsonAwait(json, groupId) {
+                successCount++
+                addBookProgressLiveData.postValue(successCount)
+            }
+        }.onStart {
+            addBookProgressLiveData.postValue(0)
+        }.onSuccess {
+            context.toastOnUi(R.string.success)
         }.onError {
             context.toastOnUi(it.localizedMessage ?: "ERROR")
+        }.onFinally {
+            addBookProgressLiveData.postValue(-1)
         }
     }
 
-    private fun importBookshelfByJson(json: String, groupId: Long) {
-        execute {
-            val semaphore = Semaphore(AppConfig.threadCount)
-            GSON.fromJsonArray<Map<String, Any>>(json).getOrThrow().forEach { bookInfo ->
-                val name = bookInfo["name"] as String
-                val author = bookInfo["author"] as String
-                val origin = bookInfo["origin"] as String?
-                val bookUrl = bookInfo["bookUrl"] as String?
-                if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
-                semaphore.withPermit {
-                    (if (origin != null && bookUrl != null) {
-                        val book = Book(bookUrl)
-                        bookInfo.forEach { (key, value) ->
-                            if (value is String) {
-                                when (key) {
-                                    "name" -> book.name = value
-                                    "author" -> book.author = value
-                                    "kind" -> book.kind = value
-                                    "coverUrl" -> book.coverUrl = value
-                                    "customCoverUrl" -> book.customCoverUrl = value
-                                    "intro" -> book.intro = value
-                                    "customIntro" -> book.customIntro = value
-                                    "origin" -> book.origin = value
-                                    "originName" -> book.originName = value
-                                    "wordCount" -> book.wordCount = value
-                                    "tocUrl" -> book.tocUrl = value
-                                }
-                            } else if (value is Long) {
-                                when (key) {
-                                    "type" -> book.type = value.toInt()
-                                }
+    private suspend fun importBookshelfByJsonAwait(
+        json: String,
+        groupId: Long,
+        onBookAdded: () -> Unit,
+    ) = coroutineScope {
+        val semaphore = Semaphore(AppConfig.threadCount)
+        GSON.fromJsonArray<Map<String, Any>>(json).getOrThrow().forEach { bookInfo ->
+            val name = bookInfo["name"] as String
+            val author = bookInfo["author"] as String
+            val origin = bookInfo["origin"] as String?
+            val bookUrl = bookInfo["bookUrl"] as String?
+            if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
+            semaphore.withPermit {
+                (if (origin != null && bookUrl != null) {
+                    val book = Book(bookUrl)
+                    bookInfo.forEach { (key, value) ->
+                        if (value is String) {
+                            when (key) {
+                                "name" -> book.name = value
+                                "author" -> book.author = value
+                                "kind" -> book.kind = value
+                                "coverUrl" -> book.coverUrl = value
+                                "customCoverUrl" -> book.customCoverUrl = value
+                                "intro" -> book.intro = value
+                                "customIntro" -> book.customIntro = value
+                                "origin" -> book.origin = value
+                                "originName" -> book.originName = value
+                                "wordCount" -> book.wordCount = value
+                                "tocUrl" -> book.tocUrl = value
+                            }
+                        } else if (value is Long) {
+                            when (key) {
+                                "type" -> book.type = value.toInt()
+                            }
 
-                            }
                         }
-                        val bookSource = appDb.bookSourceDao.getBookSource(origin)
-                        if (bookSource == null) return@forEach
-                        else Coroutine.async(this) {
-                            getBookInfoAwait(bookSource, book)
-                        }.onSuccess {
-                            it.originName = bookSource.bookSourceName
-                            if (groupId > 0) it.group = groupId
-                            it.save()
-                        }
-                    } else {
-                        val bookSources = appDb.bookSourceDao.enabled()
-                        Coroutine.async(this, semaphore = semaphore) {
-                            for (s in bookSources) {
-                                val book = preciseSearchAwait(s, name, author).getOrNull()
-                                if (book != null) {
-                                    return@async Pair(book, s)
-                                }
-                            }
-                            throw NoStackTraceException("没有搜索到<$name>$author")
-                        }.onSuccess {
-                            val book = it.first
-                            if (groupId > 0) book.group = groupId
-                            book.save()
-                        }
-                    }).onError { e ->
-                        context.toastOnUi(e.localizedMessage)
                     }
+                    val bookSource = appDb.bookSourceDao.getBookSource(origin)
+                    if (bookSource == null) return@forEach
+                    else Coroutine.async(this) {
+                        getBookInfoAwait(bookSource, book)
+                    }.onSuccess {
+                        it.originName = bookSource.bookSourceName
+                        if (groupId > 0) it.group = groupId
+                        it.save()
+                        onBookAdded()
+                    }
+                } else {
+                    val bookSources = appDb.bookSourceDao.enabled()
+                    Coroutine.async(this, semaphore = semaphore) {
+                        for (s in bookSources) {
+                            val book = preciseSearchAwait(s, name, author).getOrNull()
+                            if (book != null) {
+                                return@async Pair(book, s)
+                            }
+                        }
+                        throw NoStackTraceException("没有搜索到<$name>$author")
+                    }.onSuccess {
+                        val book = it.first
+                        if (groupId > 0) book.group = groupId
+                        book.save()
+                        onBookAdded()
+                    }
+                }).onError { e ->
+                    AppLog.put("导入<$name>失败\n${e.localizedMessage}", e)
                 }
             }
-        }.onError {
-            it.printOnDebug()
-        }.onFinally {
-            context.toastOnUi(R.string.success)
         }
     }
 }

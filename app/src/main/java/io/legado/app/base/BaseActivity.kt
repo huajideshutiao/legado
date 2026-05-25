@@ -27,7 +27,6 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.TitleBar
-import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
@@ -232,11 +231,6 @@ abstract class BaseActivity<VB : ViewBinding>(
         observeEvent<String>(EventBus.RECREATE) {
             syncTheme()
         }
-    }
-
-    override fun recreate() {
-        WaitDialog.dismiss(this)
-        super.recreate()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

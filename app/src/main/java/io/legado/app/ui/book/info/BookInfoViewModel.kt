@@ -159,6 +159,7 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         archiveFileUri: Uri, archiveEntryName: String, success: ((Book) -> Unit)? = null
     ) {
         execute {
+            waitDialogData.postValue(true)
             val suffix = archiveEntryName.substringAfterLast(".")
             val book = bookData.value ?: throw NoStackTraceException("book is null")
             FileBook.importFromArchive(
@@ -170,6 +171,8 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
             success?.invoke(changeToLocalBook(it))
         }.onError {
             AppLog.put("importArchiveBook Error:\n${it.localizedMessage}", it, true)
+        }.onFinally {
+            waitDialogData.postValue(false)
         }
     }
 
