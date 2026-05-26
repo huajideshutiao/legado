@@ -361,6 +361,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 val found = books.isNotEmpty()
                 binding.tvBookShow.isVisible = found
                 binding.rvBookshelfSearch.isVisible = found
+                // 书架结果与历史词互斥：有结果时整块隐藏历史区，省得 FlexboxLayoutManager 白排版
+                binding.llHistoryBar.isVisible = !found
+                binding.rvHistoryKey.isVisible = !found
                 if (found) bookAdapter.setItems(books)
             }
         }

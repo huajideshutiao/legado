@@ -792,7 +792,7 @@
     <string name="thread_count">Thread count</string>
     <string name="all_read_time">Total read time</string>
     <string name="today_read_time">Today</string>
-    <string name="read_record_today_total">Today %1$s / Total %2$s</string>
+    <string name="read_record_today_total">Day %1$s / Total %2$s</string>
     <string name="week_read_time">This week</string>
     <string name="month_read_time">This month</string>
     <string name="read_heatmap_title">Reading heatmap</string>

@@ -80,8 +80,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     /** 当前列表对应的书籍信息（按 bookName 索引），用于渲染封面/作者 */
     private var bookMap: Map<String, Book> = emptyMap()
 
-    /** 每本书今日累计阅读时长（按 bookName 索引），用于条目展示「今日/总」 */
+    /** 每本书当日累计阅读时长（按 bookName 索引），用于「按名称/时长」排序时展示「当日/总」；
+     *  按时间排序且未筛选某日时不使用，此时列表已按 (bookName, day) 拆行，直接读 item.readTime */
     private var todayTimeByBook: Map<String, Long> = emptyMap()
+
+    /** 每本书总阅读时长（按 bookName 索引），仅 perDayMode 下使用，配合 item.readTime 展示「当日/总」 */
+    private var totalTimeByBook: Map<String, Long> = emptyMap()
 
     /** 进行中的列表刷新任务，键入搜索/翻月份时取消上一次，避免堆积 */
     private var initDataJob: Job? = null
@@ -311,6 +315,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val (weekStart, weekEnd) = weekRange(now)
         val (monthStart, monthEnd) = monthRange(now)
         val currentSortMode = sortMode
+        // 按时间排序且未筛选某日时，列表展示每本书每天一行，readTime 即当天时长；
+        // 其它情况按 bookName 聚合为一行，配合 todayPerBook 显示「当日/总」
+        val perDayMode = currentSortMode == 2 && day == 0
         initDataJob?.cancel()
         initDataJob = lifecycleScope.launch {
             val result = withContext(IO) {
@@ -321,9 +328,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 // 与列表展示口径一致，summary 与列表总和自洽
                 val dayForToday = if (day != 0) day else todayKey
                 val expected = records.size.coerceAtMost(256).coerceAtLeast(16)
-                val readTimeByBook = HashMap<String, Long>(expected)
-                val lastReadByBook = HashMap<String, Long>(expected)
-                val todayPerBook = HashMap<String, Long>(expected)
+                val readTimeByBook = if (perDayMode) null else HashMap<String, Long>(expected)
+                val lastReadByBook = if (perDayMode) null else HashMap<String, Long>(expected)
+                val todayPerBook = if (perDayMode) null else HashMap<String, Long>(expected)
+                val perDayItems = if (perDayMode) ArrayList<ReadRecordShow>(expected) else null
+                // perDayMode 下行只代表某天，仍需每本书的总时长展示「当日/总」
+                val totalByBook = if (perDayMode) HashMap<String, Long>(expected) else null
                 val dayBookNames = if (day != 0) HashSet<String>() else null
                 val keyEmpty = key.isEmpty()
                 var sumToday = 0L
@@ -340,33 +350,43 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     if (d in monthStart..monthEnd) sumMonth += rt
                     val name = r.bookName
                     if (!keyEmpty && !name.contains(key, ignoreCase = true)) continue
-                    readTimeByBook[name] = (readTimeByBook[name] ?: 0L) + rt
-                    val prevLast = lastReadByBook[name]
-                    if (prevLast == null || r.lastRead > prevLast) {
-                        lastReadByBook[name] = r.lastRead
-                    }
-                    if (d == dayForToday) {
-                        todayPerBook[name] = (todayPerBook[name] ?: 0L) + rt
+                    if (perDayMode) {
+                        perDayItems!!.add(ReadRecordShow(name, rt, r.lastRead))
+                        totalByBook!![name] = (totalByBook[name] ?: 0L) + rt
+                    } else {
+                        readTimeByBook!![name] = (readTimeByBook[name] ?: 0L) + rt
+                        val prevLast = lastReadByBook!![name]
+                        if (prevLast == null || r.lastRead > prevLast) {
+                            lastReadByBook[name] = r.lastRead
+                        }
+                        if (d == dayForToday) {
+                            todayPerBook!![name] = (todayPerBook[name] ?: 0L) + rt
+                        }
                     }
                     if (dayBookNames != null && d == day) {
                         dayBookNames.add(name)
                     }
                 }
-                val items = ArrayList<ReadRecordShow>(readTimeByBook.size)
-                if (dayBookNames != null) {
-                    for ((name, total) in readTimeByBook) {
-                        if (name in dayBookNames) {
-                            items.add(
-                                ReadRecordShow(name, total, lastReadByBook[name] ?: 0L)
+                val items: ArrayList<ReadRecordShow> = if (perDayMode) {
+                    perDayItems!!
+                } else {
+                    val out = ArrayList<ReadRecordShow>(readTimeByBook!!.size)
+                    if (dayBookNames != null) {
+                        for ((name, total) in readTimeByBook) {
+                            if (name in dayBookNames) {
+                                out.add(
+                                    ReadRecordShow(name, total, lastReadByBook!![name] ?: 0L)
+                                )
+                            }
+                        }
+                    } else {
+                        for ((name, total) in readTimeByBook) {
+                            out.add(
+                                ReadRecordShow(name, total, lastReadByBook!![name] ?: 0L)
                             )
                         }
                     }
-                } else {
-                    for ((name, total) in readTimeByBook) {
-                        items.add(
-                            ReadRecordShow(name, total, lastReadByBook[name] ?: 0L)
-                        )
-                    }
+                    out
                 }
                 val sortedItems = when (currentSortMode) {
                     1 -> items.apply { sortByDescending { it.readTime } }
@@ -375,20 +395,27 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                         sortWith { o1, o2 -> o1.bookName.cnCompare(o2.bookName) }
                     }
                 }
-                // groupBy 的 key 已唯一，无需再 distinct
-                val names = Array(sortedItems.size) { sortedItems[it].bookName }
+                // perDayMode 下同一本书会出现多次，查书需要去重
+                val names = if (perDayMode) {
+                    sortedItems.mapTo(LinkedHashSet(sortedItems.size)) { it.bookName }
+                        .toTypedArray()
+                } else {
+                    Array(sortedItems.size) { sortedItems[it].bookName }
+                }
                 val bookList = if (names.isEmpty()) emptyList()
                 else appDb.bookDao.findByName(*names)
                 InitResult(
                     sortedItems,
                     bookList.associateBy { it.name },
-                    todayPerBook,
+                    todayPerBook ?: emptyMap(),
+                    totalByBook ?: emptyMap(),
                     sumToday, sumWeek, sumMonth, sumAll
                 )
             }
             // 取消后会抛 CancellationException，不会跑到这里覆盖更新的状态
             bookMap = result.books
             todayTimeByBook = result.todayMap
+            totalTimeByBook = result.totalMap
             summaryToday = result.sumToday
             summaryWeek = result.sumWeek
             summaryMonth = result.sumMonth
@@ -402,6 +429,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val items: List<ReadRecordShow>,
         val books: Map<String, Book>,
         val todayMap: Map<String, Long>,
+        val totalMap: Map<String, Long>,
         val sumToday: Long,
         val sumWeek: Long,
         val sumMonth: Long,
@@ -519,10 +547,17 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             val book = bookMap[item.bookName]
             tvName.text = item.bookName
             tvAuthor.text = book?.author.orEmpty()
+            // perDayMode 下 item.readTime 就是当行那天的时长，「总」需要查 totalTimeByBook；
+            // 其它模式 item.readTime 已是全部累计，「当日」查 todayTimeByBook
+            val (dayTime, totalTime) = if (sortMode == 2 && filterDay == 0) {
+                item.readTime to (totalTimeByBook[item.bookName] ?: item.readTime)
+            } else {
+                (todayTimeByBook[item.bookName] ?: 0L) to item.readTime
+            }
             tvRead.text = getString(
                 R.string.read_record_today_total,
-                formatDuring(todayTimeByBook[item.bookName] ?: 0L),
-                formatDuring(item.readTime)
+                formatDuring(dayTime),
+                formatDuring(totalTime)
             )
             tvLast.text = when {
                 item.lastRead > 0 -> minuteFormat.format(item.lastRead)

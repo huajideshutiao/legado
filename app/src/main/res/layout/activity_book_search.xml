@@ -58,14 +58,15 @@
             android:text="@string/bookshelf"
             android:visibility="gone" />
 
-        <androidx.recyclerview.widget.RecyclerView
+        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
             android:id="@+id/rv_bookshelf_search"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:visibility="gone"
             tools:listitem="@layout/item_search" />
 
         <LinearLayout
+            android:id="@+id/ll_history_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">

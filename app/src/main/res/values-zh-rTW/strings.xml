@@ -781,7 +781,7 @@
     <string name="local_tts">本機TTS</string>
     <string name="thread_count">執行緒數</string>
     <string name="all_read_time">總閱讀時間</string>
-    <string name="read_record_today_total">今日 %1$s / 總 %2$s</string>
+    <string name="read_record_today_total">當日 %1$s / 總 %2$s</string>
     <string name="un_select_all">全不選</string>
     <string name="import_str">匯入</string>
     <string name="export_str">匯出</string>

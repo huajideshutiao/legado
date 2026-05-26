@@ -329,23 +329,31 @@ class FastScroller : LinearLayout {
     }
 
     private fun setRecyclerViewPosition(y: Float) {
-        mRecyclerView?.adapter?.let { adapter ->
-            val itemCount = adapter.itemCount
-            val proportion: Float = when {
-                mHandleView.y == 0f -> 0f
-                mHandleView.y + mHandleHeight >= mViewHeight - sTrackSnapRange -> 1f
-                else -> y / mViewHeight.toFloat()
-            }
-            var scrolledItemCount = (proportion * itemCount).roundToInt()
-            if (isLayoutReversed(mRecyclerView?.layoutManager)) {
-                scrolledItemCount = itemCount - scrolledItemCount
-            }
-            val targetPos = getValueInRange(0, itemCount - 1, scrolledItemCount)
-            mRecyclerView?.layoutManager?.scrollToPosition(targetPos)
-            mSectionIndexer?.let { sectionIndexer ->
-                if (mShowBubble) {
-                    mBubbleView.text = sectionIndexer.getSectionText(targetPos)
-                }
+        val recyclerView = mRecyclerView ?: return
+        val adapter = recyclerView.adapter ?: return
+        val proportion: Float = when {
+            mHandleView.y == 0f -> 0f
+            mHandleView.y + mHandleHeight >= mViewHeight - sTrackSnapRange -> 1f
+            else -> y / mViewHeight.toFloat()
+        }
+        val reversed = isLayoutReversed(recyclerView.layoutManager)
+        val effective = if (reversed) 1f - proportion else proportion
+        // 按像素滚动而非按 position：避免 scrollToPosition 把目标项强行对齐到顶部造成跳跃感
+        val range = recyclerView.computeVerticalScrollRange()
+        val extent = recyclerView.computeVerticalScrollExtent()
+        val maxOffset = (range - extent).coerceAtLeast(0)
+        val target = (maxOffset * effective).roundToInt()
+        val offset = recyclerView.computeVerticalScrollOffset()
+        recyclerView.scrollBy(0, target - offset)
+        mSectionIndexer?.let { sectionIndexer ->
+            if (mShowBubble) {
+                val itemCount = adapter.itemCount
+                val pos = getValueInRange(
+                    0,
+                    itemCount - 1,
+                    (effective * itemCount).roundToInt()
+                )
+                mBubbleView.text = sectionIndexer.getSectionText(pos)
             }
         }
     }
