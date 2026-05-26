@@ -2,91 +2,78 @@ package io.legado.app.help
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.help.tts.TextToSpeechEngine
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
+/**
+ * 一次性朗读单段文本(选词朗读、RSS 朗读)。
+ *
+ * 与 [io.legado.app.service.TTSReadAloudService] 的区别:
+ * - 不进入前台服务、不接管 MediaSession 与通知
+ * - 一分钟内没有朗读自动释放底层 TextToSpeech 资源
+ * - 仅广播 onStart / onDone 用于切换菜单按钮状态
+ */
 class TTS {
 
     private val handler by lazy { buildMainHandler() }
+    private val clearRunnable = Runnable { clearTts() }
 
-    private val tag = "legado_tts"
+    private var pendingText: String? = null
+    private var stateListener: SpeakStateListener? = null
 
-    private val clearTtsRunnable = Runnable { clearTts() }
+    private val engine: TextToSpeechEngine = TextToSpeechEngine()
 
-    private var speakStateListener: SpeakStateListener? = null
+    init {
+        engine.progressListener = object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                handler.removeCallbacks(clearRunnable)
+                stateListener?.onStart()
+            }
 
-    private var textToSpeech: TextToSpeech? = null
+            override fun onDone(utteranceId: String?) {
+                handler.postDelayed(clearRunnable, IDLE_TIMEOUT_MS)
+                stateListener?.onDone()
+            }
 
-    private var text: String? = null
-
-    private var onInit = false
-
-    private val initListener by lazy {
-        InitListener()
-    }
-
-    private val utteranceListener by lazy {
-        TTSUtteranceListener()
-    }
-
-    val isSpeaking: Boolean
-        get() {
-            return textToSpeech?.isSpeaking ?: false
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) = Unit
+            override fun onError(utteranceId: String?, errorCode: Int) = Unit
         }
-
-    fun setSpeakStateListener(speakStateListener: SpeakStateListener) {
-        this.speakStateListener = speakStateListener
     }
 
-    @Suppress("unused")
-    fun removeSpeakStateListener() {
-        speakStateListener = null
+    val isSpeaking: Boolean get() = engine.isSpeaking
+
+    fun setSpeakStateListener(listener: SpeakStateListener) {
+        stateListener = listener
     }
 
     @Synchronized
     fun speak(text: String) {
-        handler.removeCallbacks(clearTtsRunnable)
-        this.text = text
-        if (onInit) {
-            return
-        }
-        if (textToSpeech == null) {
-            onInit = true
-            textToSpeech = TextToSpeech(appCtx, initListener)
-        } else {
-            addTextToSpeakList()
-        }
+        handler.removeCallbacks(clearRunnable)
+        pendingText = text
+        engine.ensureReady { emitPending() }
     }
 
-    fun stop() {
-        textToSpeech?.stop()
-    }
+    fun stop() = engine.stop()
 
     @Synchronized
-    fun clearTts() {
-        textToSpeech?.let { tts ->
-            tts.stop()
-            tts.shutdown()
-        }
-        textToSpeech = null
-    }
+    fun clearTts() = engine.shutdown()
 
-    private fun addTextToSpeakList() {
-        val tts = textToSpeech ?: return
-        kotlin.runCatching {
-            var result = tts.speak("", TextToSpeech.QUEUE_FLUSH, null, null)
-            if (result == TextToSpeech.ERROR) {
+    private fun emitPending() {
+        val text = pendingText ?: return
+        runCatching {
+            // 先 FLUSH 一个空串清空队列;若直接返回 ERROR 说明实例被系统释放了,重启一次
+            if (engine.speak("") == TextToSpeech.ERROR) {
                 clearTts()
-                textToSpeech = TextToSpeech(appCtx, initListener)
+                engine.ensureReady { emitPending() }
                 return
             }
-            text?.splitNotBlank("\n")?.forEachIndexed { i, s ->
-                result = tts.speak(s, TextToSpeech.QUEUE_ADD, null, tag + i)
-                if (result == TextToSpeech.ERROR) {
+            text.splitNotBlank("\n").forEachIndexed { i, segment ->
+                if (engine.enqueue(segment, "$TAG_PREFIX$i") == TextToSpeech.ERROR) {
                     AppLog.put("tts朗读出错:$text")
                 }
             }
@@ -96,49 +83,13 @@ class TTS {
         }
     }
 
-    /**
-     * 初始化监听
-     */
-    private inner class InitListener : TextToSpeech.OnInitListener {
-
-        override fun onInit(status: Int) {
-            if (status == TextToSpeech.SUCCESS) {
-                textToSpeech?.setOnUtteranceProgressListener(utteranceListener)
-                addTextToSpeakList()
-            } else {
-                appCtx.toastOnUi(R.string.tts_init_failed)
-            }
-            onInit = false
-        }
-
-    }
-
-    /**
-     * 朗读监听
-     */
-    private inner class TTSUtteranceListener : UtteranceProgressListener() {
-
-        override fun onStart(utteranceId: String?) {
-            //开始朗读取消释放资源任务
-            handler.removeCallbacks(clearTtsRunnable)
-            speakStateListener?.onStart()
-        }
-
-        override fun onDone(utteranceId: String?) {
-            //一分钟没有朗读释放资源
-            handler.postDelayed(clearTtsRunnable, 60000L)
-            speakStateListener?.onDone()
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun onError(utteranceId: String?) {
-            //Deprecated
-        }
-
-    }
-
     interface SpeakStateListener {
         fun onStart()
         fun onDone()
+    }
+
+    companion object {
+        private const val TAG_PREFIX = "legado_tts"
+        private const val IDLE_TIMEOUT_MS = 60_000L
     }
 }

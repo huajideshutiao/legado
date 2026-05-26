@@ -5,6 +5,7 @@ object IntentAction {
     const val start = "start"
     const val play = "play"
     const val playData = "playData"
+    const val loadPlayUrl = "loadPlayUrl"
     const val lrc = "lrc"
     const val playNew = "playNew"
     const val stop = "stop"

@@ -1,6 +1,9 @@
 package io.legado.app.model
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
@@ -17,6 +20,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.CacheManager
 import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
@@ -25,6 +29,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
+import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 
 @Keep
@@ -136,6 +141,36 @@ object BookCover {
         }
         return ImageLoader.load(requestManager, path, inBookshelf).apply(options).apply(blurOptions)
             .error(requestManager.load(defaultDrawable).apply(blurOptions))
+    }
+
+    /**
+     * 媒体通知/MediaSession 通用的默认封面 Bitmap。
+     * 朗读和音频两个 Service 在没有真实封面时回退到这张。
+     */
+    val notificationDefaultCover: Bitmap by lazy {
+        BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
+    }
+
+    /**
+     * 异步加载封面 Bitmap 用于通知或 MediaSession metadata。
+     *
+     * - 仅在尺寸大于 16x16 时才回调,过小/损坏的图被视为加载失败
+     * - 加载失败/url 为空 时不调用 [onLoaded],调用方继续使用之前的 Bitmap 即可
+     */
+    fun loadNotificationCover(
+        context: Context,
+        url: String?,
+        scope: CoroutineScope,
+        onLoaded: (Bitmap) -> Unit,
+    ): Coroutine<Bitmap>? {
+        if (url.isNullOrBlank()) return null
+        return Coroutine.async(scope) {
+            ImageLoader.loadBitmap(context, url).submit().get()
+        }.onSuccess { bitmap ->
+            if (bitmap.width > 16 && bitmap.height > 16) {
+                onLoaded(bitmap)
+            }
+        }
     }
 
     fun getCoverRule(): CoverRule {

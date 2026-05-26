@@ -1,10 +1,7 @@
 package io.legado.app.model
 
-import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.Status
@@ -19,49 +16,47 @@ import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
-import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.currentCoroutineContext
-import org.mozilla.javascript.NativeArray
 import splitties.init.appCtx
 
-@SuppressLint("StaticFieldLeak")
+/**
+ * 音频播放跨组件共享状态 + Service 派发包装。
+ *
+ * 这里只保留:
+ * - 跨 Activity / Service 的可见状态 (book, chapter, durPlayUrl, lrc 等)
+ * - 向 [AudioPlayService] 派发命令的薄封装
+ * - 与 state 强耦合的写入操作 (saveRead, saveDurChapter, upDurChapter, playPositionChanged)
+ *
+ * 不在这里:
+ * - 歌词解析:见 [LrcParser]
+ * - 加载播放 URL / 封面 / 歌词:见 [AudioPlayService] (Service 拥有生命周期作用域,适合做异步加载)
+ *
+ * UI 更新一律通过 EventBus 推送(AUDIO_COVER / AUDIO_LRC / AUDIO_LOADING / ...),
+ * 不持有 Activity 引用以避免内存泄漏。
+ *
+ * UI 命令面应通过 AudioPlayViewModel,而不是直接调本对象。
+ */
 @Suppress("unused")
-object AudioPlay : CoroutineScope by MainScope() {
-    /**
-     * 播放模式枚举
-     */
+object AudioPlay {
+
     enum class PlayMode(val iconRes: Int) {
         LIST_END_STOP(R.drawable.ic_play_mode_list_end_stop),
         SINGLE_LOOP(R.drawable.ic_play_mode_single_loop),
         RANDOM(R.drawable.ic_play_mode_random),
         LIST_LOOP(R.drawable.ic_play_mode_list_loop);
 
-        fun next(): PlayMode {
-            return when (this) {
-                LIST_END_STOP -> SINGLE_LOOP
-                SINGLE_LOOP -> RANDOM
-                RANDOM -> LIST_LOOP
-                LIST_LOOP -> LIST_END_STOP
-            }
+        fun next(): PlayMode = when (this) {
+            LIST_END_STOP -> SINGLE_LOOP
+            SINGLE_LOOP -> RANDOM
+            RANDOM -> LIST_LOOP
+            LIST_LOOP -> LIST_END_STOP
         }
     }
 
     var playMode = PlayMode.LIST_END_STOP
     var status = Status.STOP
-    private var activityContext: Context? = null
-    private var serviceContext: Context? = null
-    private val context: Context get() = activityContext ?: serviceContext ?: appCtx
-    var callback: CallBack? = null
     var book: Book? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
@@ -75,7 +70,75 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
-    val loadingChapters = arrayListOf<Int>()
+
+    // ---------- Service 派发 ----------
+
+    /**
+     * 向 [AudioPlayService] 发送命令。
+     *
+     * @param requireRunning 仅在服务运行中才派发(默认 true)。
+     *                       播放/加载类命令需要设置为 false 来启动服务。
+     */
+    private inline fun sendAction(
+        action: String,
+        requireRunning: Boolean = true,
+        extras: Intent.() -> Unit = {}
+    ) {
+        if (requireRunning && !AudioPlayService.isRun) return
+        appCtx.startService<AudioPlayService> {
+            this.action = action
+            extras()
+        }
+    }
+
+    fun play() = sendAction(IntentAction.play, requireRunning = false)
+
+    private fun playNew() = sendAction(IntentAction.playNew, requireRunning = false)
+
+    fun stop() = sendAction(IntentAction.stop)
+
+    fun stopPlay() = sendAction(IntentAction.stopPlay)
+
+    fun pause() {
+        saveRead()
+        sendAction(IntentAction.pause)
+    }
+
+    fun resume() = sendAction(IntentAction.resume)
+
+    fun adjustSpeed(adjust: Float) =
+        sendAction(IntentAction.adjustSpeed) { putExtra("adjust", adjust) }
+
+    fun adjustProgress(position: Int) {
+        durChapterPos = position
+        saveRead()
+        sendAction(IntentAction.adjustProgress) { putExtra("position", position) }
+    }
+
+    fun setTimer(minute: Int) {
+        if (AudioPlayService.isRun) {
+            sendAction(IntentAction.setTimer) { putExtra("minute", minute) }
+        } else {
+            AudioPlayService.pendingTimerMinute = minute
+            postEvent(EventBus.AUDIO_DS, minute)
+        }
+    }
+
+    fun addTimer() = sendAction(IntentAction.addTimer, requireRunning = false)
+
+    /**
+     * 触发 Service 加载当前章节的播放 URL / 封面 / 歌词。
+     * Service 未运行时此调用会启动 Service。
+     */
+    fun loadOrUpPlayUrl() {
+        if (durPlayUrl.isEmpty()) {
+            sendAction(IntentAction.loadPlayUrl, requireRunning = false)
+        } else {
+            play()
+        }
+    }
+
+    // ---------- 状态变更 ----------
 
     fun changePlayMode() {
         playMode = playMode.next()
@@ -85,18 +148,11 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun upData(book: Book) {
         if (durChapterIndex != book.durChapterIndex || this.book?.bookUrl != book.bookUrl) {
             resetData(book)
-        } else {
-            durCoverUrl?.let { callback?.upCover(it) }
-            if (durLrcData == null) {
-                durChapter?.let { chapter ->
-                    bookSource?.let { source ->
-                        getLrcData(source, book, chapter)
-                    }
-                }
-            } else {
-                callback?.upLrc(durLrcData!!)
-            }
+            return
         }
+        durCoverUrl?.let { postEvent(EventBus.AUDIO_COVER, it) }
+        durLrcData?.let { postEvent(EventBus.AUDIO_LRC, it) }
+        postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
     fun resetData(book: Book) {
@@ -119,215 +175,6 @@ object AudioPlay : CoroutineScope by MainScope() {
         postEvent(EventBus.AUDIO_BUFFER_PROGRESS, 0)
     }
 
-    private fun addLoading(index: Int): Boolean {
-        synchronized(this) {
-            if (loadingChapters.contains(index)) return false
-            loadingChapters.add(index)
-            return true
-        }
-    }
-
-    private fun removeLoading(index: Int) {
-        synchronized(this) {
-            loadingChapters.remove(index)
-        }
-    }
-
-    fun loadOrUpPlayUrl() {
-        if (durPlayUrl.isEmpty()) {
-            loadPlayUrl()
-        } else {
-            upPlayUrl()
-        }
-    }
-
-    fun refreshChapter() {
-        durChapter?.let { chapter ->
-            chapter.resourceUrl = null
-            durPlayUrl = ""
-            loadPlayUrl()
-        }
-    }
-
-    private fun getCoverUrl(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter
-    ) {
-        Coroutine.async {
-            val musicCover = bookSource.getContentRule().musicCover
-            durCoverUrl = if (!musicCover.isNullOrBlank()) {
-                val analyzeRule = AnalyzeRule(book, bookSource)
-                analyzeRule.setCoroutineContext(currentCoroutineContext())
-                analyzeRule.setBaseUrl(chapter.url)
-                analyzeRule.setChapter(chapter)
-                analyzeRule.evalJS(musicCover).toString()
-            } else book.getDisplayCover()
-        }.onSuccess {
-            callback?.upCover(durCoverUrl!!)
-            context.startService<AudioPlayService> {
-                action = IntentAction.playData
-            }
-        }
-    }
-
-    private fun getLrcData(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter
-    ): Coroutine<MutableList<Pair<Int, String>>> {
-        return Coroutine.async {
-            val lrcRule = bookSource.getContentRule().lrcRule
-            val tmp = mutableListOf<Pair<Int, String>>()
-            var durLrcContent: NativeArray? = null
-            if (!lrcRule.isNullOrBlank()) {
-                val analyzeRule = AnalyzeRule(book, bookSource)
-                analyzeRule.setCoroutineContext(currentCoroutineContext())
-                analyzeRule.setBaseUrl(chapter.url)
-                analyzeRule.setChapter(chapter)
-                durLrcContent = analyzeRule.evalJS(lrcRule) as? NativeArray
-            }
-            if (durLrcContent != null) for (i in durLrcContent.indices) {
-                (durLrcContent[i] as String).replace("00-1", "000")
-                    .lineSequence().forEach { line ->
-                        val line = line.trim()
-                        if (line.length < 3) return@forEach
-                        val split = line.indexOf("]")
-                        if (split == -1) {
-                            tmp.add(Pair(-1, line))
-                            return@forEach
-                        }
-                        if (line[1].isDigit()) {
-                            val textPart = line.substring(split + 1)
-                            val matcherResult =
-                                Regex("\\d+").findAll(line.substring(1, split))
-                            val iterator = matcherResult.iterator()
-                            val min = iterator.next().groupValues[0].toInt()
-                            val sec = iterator.next().groupValues[0].toInt()
-                            val ms =
-                                if (iterator.hasNext()) iterator.next().groupValues[0].padEnd(
-                                    3,
-                                    '0'
-                                ).toInt()
-                                else 0
-                            val time = min * 60_000 + sec * 1000 + ms
-                            if (i != 0) {
-                                if (textPart.isBlank()) return@forEach
-                                val index = tmp.binarySearch { it.first.compareTo(time) }
-                                if (index == -1) return@forEach
-                                tmp[index] = Pair(
-                                    time,
-                                    "${tmp[index].second}\n$textPart"
-                                )
-                            } else {
-                                tmp.add(Pair(time, textPart))
-                            }
-                        }
-                    }
-                //sb网易云有的歌词乱序
-                if (i == 0) tmp.sortBy { it.first }
-            }
-            return@async tmp
-        }.onSuccess {
-            if (it.isEmpty()) return@onSuccess
-            durLrcData = it
-            callback?.upLrc(it)
-        }.onError {
-            AppLog.put("获取歌词出错\n$it", it, true)
-        }
-    }
-
-    /**
-     * 加载播放URL
-     */
-    private fun loadPlayUrl() {
-        val index = durChapterIndex
-        if (addLoading(index)) {
-            val book = book
-            val bookSource = bookSource
-            if (book != null && bookSource != null) {
-                upDurChapter()
-                val chapter = durChapter
-                if (chapter == null) {
-                    removeLoading(index)
-                    return
-                }
-                if (chapter.isVolume) {
-                    skipTo(index + 1)
-                    removeLoading(index)
-                    return
-                }
-                upLoading(true)
-                durCoverUrl = null
-                durLrcData = null
-                getCoverUrl(bookSource, book, chapter)
-                callback?.let { getLrcData(bookSource, book, chapter) }
-                Coroutine.async(this) {
-                    chapter.resourceUrl ?: getContentAwait(bookSource, book, chapter, needSave = false)
-                }.onSuccess { content ->
-                    if (content.isEmpty()) {
-                        appCtx.toastOnUi("未获取到资源链接")
-                    } else {
-                        if (chapter.resourceUrl != content) {
-                            chapter.resourceUrl = content
-                            if (inBookshelf) appDb.bookChapterDao.update(chapter)
-                        }
-                        contentLoadFinish(chapter, content)
-                    }
-                }.onError {
-                    AppLog.put("获取资源链接出错\n$it", it, true)
-                    upLoading(false)
-                }.onCancel {
-                    removeLoading(index)
-                }.onFinally {
-                    removeLoading(index)
-                }
-            } else {
-                removeLoading(index)
-                appCtx.toastOnUi("book or source is null")
-            }
-        }
-    }
-
-    /**
-     * 加载完成
-     */
-    private fun contentLoadFinish(chapter: BookChapter, content: String) {
-        if (chapter.index == book?.durChapterIndex) {
-            durPlayUrl = content
-            upPlayUrl()
-        }
-    }
-
-    private fun upPlayUrl() {
-        if (isPlayToEnd()) {
-            playNew()
-        } else {
-            play()
-        }
-    }
-
-    /**
-     * 播放当前章节
-     */
-    fun play() {
-        context.startService<AudioPlayService> {
-            action = IntentAction.play
-        }
-    }
-
-    /**
-     * 从头播放新章节
-     */
-    private fun playNew() {
-        context.startService<AudioPlayService> {
-            action = IntentAction.playNew
-        }
-    }
-
-    /**
-     * 更新当前章节
-     */
     fun upDurChapter() {
         val book = book ?: return
         durChapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(
@@ -336,82 +183,31 @@ object AudioPlay : CoroutineScope by MainScope() {
         )
         durAudioSize = durChapter?.end?.toInt() ?: 0
         durLrcData = null
-        callback?.upLrc(emptyList())
+        postEvent(EventBus.AUDIO_LRC, emptyList<Pair<Int, String>>())
         val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
-    fun pause(context: Context) {
-        saveRead()
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.pause
-            }
-        }
-    }
-
-    fun resume(context: Context) {
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.resume
-            }
-        }
-    }
-
-    fun stop() {
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.stop
-            }
-        }
-    }
-
-    fun adjustSpeed(adjust: Float) {
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.adjustSpeed
-                putExtra("adjust", adjust)
-            }
-        }
-    }
-
-    fun adjustProgress(position: Int) {
-        durChapterPos = position
-        saveRead()
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.adjustProgress
-                putExtra("position", position)
-            }
-        }
-    }
-
     fun skipTo(index: Int) {
-        Coroutine.async {
-            stopPlay()
-            if (index in 0..<simulatedChapterSize) {
-                durChapterIndex = index
-                durChapterPos = 0
-                durPlayUrl = ""
-                saveRead()
-                loadPlayUrl()
-            }
-        }
+        if (index !in 0..<simulatedChapterSize) return
+        stopPlay()
+        durChapterIndex = index
+        durChapterPos = 0
+        durPlayUrl = ""
+        saveRead()
+        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
     }
 
     fun prev() {
-        Coroutine.async {
-            stopPlay()
-            if (durChapterIndex > 0) {
-                durChapterIndex -= 1
-                durChapterPos = 0
-                durPlayUrl = ""
-                saveRead()
-                loadPlayUrl()
-            }
-        }
+        if (durChapterIndex <= 0) return
+        stopPlay()
+        durChapterIndex -= 1
+        durChapterPos = 0
+        durPlayUrl = ""
+        saveRead()
+        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
     }
 
     fun next() {
@@ -419,7 +215,6 @@ object AudioPlay : CoroutineScope by MainScope() {
         val newIndex = when (playMode) {
             PlayMode.LIST_END_STOP ->
                 if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return
-
             PlayMode.SINGLE_LOOP -> durChapterIndex
             PlayMode.RANDOM -> (0 until simulatedChapterSize).random()
             PlayMode.LIST_LOOP -> (durChapterIndex + 1) % simulatedChapterSize
@@ -428,33 +223,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         durChapterPos = 0
         durPlayUrl = ""
         saveRead()
-        loadPlayUrl()
-    }
-
-    fun setTimer(minute: Int) {
-        if (AudioPlayService.isRun) {
-            val intent = Intent(context, AudioPlayService::class.java)
-            intent.action = IntentAction.setTimer
-            intent.putExtra("minute", minute)
-            context.startService(intent)
-        } else {
-            AudioPlayService.timeMinute = minute
-            postEvent(EventBus.AUDIO_DS, minute)
-        }
-    }
-
-    fun addTimer() {
-        val intent = Intent(context, AudioPlayService::class.java)
-        intent.action = IntentAction.addTimer
-        context.startService(intent)
-    }
-
-    fun stopPlay() {
-        if (AudioPlayService.isRun) {
-            context.startService<AudioPlayService> {
-                action = IntentAction.stopPlay
-            }
-        }
+        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
     }
 
     fun saveRead() {
@@ -492,55 +261,6 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun playPositionChanged(position: Int) {
         durChapterPos = position
         saveRead()
-    }
-
-    fun upLoading(loading: Boolean) {
-        callback?.upLoading(loading)
-    }
-
-    private fun isPlayToEnd(): Boolean {
-        return durChapterIndex + 1 == simulatedChapterSize
-            && durChapterPos == durAudioSize
-    }
-
-    fun register(context: Context) {
-        activityContext = context
-        callback = context as CallBack
-        if (durLrcData == null && status != Status.STOP) {
-            durChapter?.let { chapter ->
-                bookSource?.let { source ->
-                    book?.let { book ->
-                        getLrcData(source, book, chapter)
-                    }
-                }
-            }
-        }
-        postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
-    }
-
-    fun unregister(context: Context) {
-        if (activityContext === context) {
-            activityContext = null
-            callback = null
-            durLrcData = null
-        }
-        coroutineContext.cancelChildren()
-    }
-
-    fun registerService(context: Context) {
-        serviceContext = context
-    }
-
-    fun unregisterService() {
-        serviceContext = null
-    }
-
-    interface CallBack {
-
-        fun upLoading(loading: Boolean)
-        fun upCover(url: String)
-        fun upLrc(lrc: List<Pair<Int, String>>)
-
     }
 
 }

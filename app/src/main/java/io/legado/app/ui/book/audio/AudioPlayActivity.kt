@@ -70,7 +70,7 @@ import java.util.Locale
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity :
     VMBaseActivity<ActivityAudioPlayBinding, AudioPlayViewModel>(toolBarTheme = Theme.Dark),
-    ChangeBookSourceDialog.CallBack, AudioPlay.CallBack {
+    ChangeBookSourceDialog.CallBack {
 
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
     override val viewModel by viewModels<AudioPlayViewModel>()
@@ -84,7 +84,7 @@ class AudioPlayActivity :
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
             if (it.first != AudioPlay.book?.durChapterIndex || it.second == 0) {
-                AudioPlay.skipTo(it.first)
+                viewModel.skipTo(it.first)
             }
         }
     }
@@ -97,7 +97,6 @@ class AudioPlayActivity :
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.setBackgroundResource(R.color.transparent)
-        AudioPlay.register(this)
         viewModel.titleData.observe(this) {
             binding.titleBar.title = it
         }
@@ -147,7 +146,7 @@ class AudioPlayActivity :
 
     private fun initView() {
         binding.ivPlayMode.setOnClickListener {
-            AudioPlay.changePlayMode()
+            viewModel.changePlayMode()
         }
         binding.ivCover.setOnClickListener {
             it.isGone = true
@@ -158,18 +157,10 @@ class AudioPlayActivity :
             updatePlayModeIcon()
         }
 
-        binding.fabPlayStop.setOnClickListener {
-            playButton()
-        }
-        binding.fabPlayStop.onLongClick {
-            AudioPlay.stop()
-        }
-        binding.ivSkipNext.setOnClickListener {
-            AudioPlay.next()
-        }
-        binding.ivSkipPrevious.setOnClickListener {
-            AudioPlay.prev()
-        }
+        binding.fabPlayStop.setOnClickListener { playButton() }
+        binding.fabPlayStop.onLongClick { viewModel.stop() }
+        binding.ivSkipNext.setOnClickListener { viewModel.next() }
+        binding.ivSkipPrevious.setOnClickListener { viewModel.prev() }
         binding.playerProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 binding.tvDurTime.text = progress.toDurationTime()
@@ -181,7 +172,7 @@ class AudioPlayActivity :
 
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 adjustProgress = false
-                AudioPlay.adjustProgress(seekBar.progress)
+                viewModel.adjustProgress(seekBar.progress)
             }
         })
         binding.ivChapter.setOnClickListener {
@@ -200,9 +191,9 @@ class AudioPlayActivity :
         }
         binding.llPlayMenu.applyNavigationBarPadding()
         binding.ivLrc.setOnPlayClickListener {
-            AudioPlay.adjustProgress(it)
+            viewModel.adjustProgress(it)
             binding.ivLrc.updateProgress(it)
-            if (AudioPlay.status == Status.PAUSE) AudioPlay.resume(this)
+            if (AudioPlay.status == Status.PAUSE) viewModel.resume()
         }
     }
 
@@ -210,13 +201,7 @@ class AudioPlayActivity :
         binding.ivPlayMode.setImageResource(playMode.iconRes)
     }
 
-    private fun playButton() {
-        when (AudioPlay.status) {
-            Status.PLAY -> AudioPlay.pause(this)
-            Status.PAUSE -> AudioPlay.resume(this)
-            else -> AudioPlay.loadOrUpPlayUrl()
-        }
-    }
+    private fun playButton() = viewModel.togglePlay()
 
     override val oldBook: Book?
         get() = AudioPlay.book
@@ -225,7 +210,7 @@ class AudioPlayActivity :
         if (book.isAudio) {
             viewModel.changeTo(source, book, toc)
         } else {
-            AudioPlay.stop()
+            viewModel.stop()
             lifecycleScope.launch {
                 withContext(IO) {
                     AudioPlay.book?.migrateTo(book, toc)
@@ -248,7 +233,7 @@ class AudioPlayActivity :
 
         if (!AppConfig.showAddToShelfAlert) {
             viewModel.removeFromBookshelf {
-                AudioPlay.stop()
+                viewModel.stop()
                 super.finish()
             }
         } else {
@@ -262,7 +247,7 @@ class AudioPlayActivity :
                 }
                 noButton {
                     viewModel.removeFromBookshelf {
-                        AudioPlay.stop()
+                        viewModel.stop()
                         super.finish()
                     }
 
@@ -274,9 +259,8 @@ class AudioPlayActivity :
     override fun onDestroy() {
         super.onDestroy()
         if (AudioPlay.status != Status.PLAY) {
-            AudioPlay.stop()
+            viewModel.stop()
         }
-        AudioPlay.unregister(this)
     }
 
     @SuppressLint("SetTextI18n")
@@ -336,51 +320,38 @@ class AudioPlayActivity :
             binding.tvTimer.text = "${it}m"
             binding.tvTimer.visible(it > 0)
         }
-    }
-
-    override fun upLoading(loading: Boolean) {
-        runOnUiThread {
-            binding.progressLoading.visible(loading)
+        observeEventSticky<Boolean>(EventBus.AUDIO_LOADING) {
+            binding.progressLoading.visible(it)
+        }
+        observeEventSticky<List<Pair<Int, String>>>(EventBus.AUDIO_LRC) {
+            binding.ivLrc.setLrcData(it)
+        }
+        observeEventSticky<String>(EventBus.AUDIO_COVER) {
+            updateCover(it)
         }
     }
 
-    override fun upLrc(lrc: List<Pair<Int, String>>) {
-        runOnUiThread {
-            binding.ivLrc.setLrcData(lrc)
-        }
-    }
-
-    override fun upCover(url: String) {
-        runOnUiThread {
-            val glide = Glide.with(this)
-            BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                .placeholder(binding.ivCover.drawable).into(binding.ivCover)
-            BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-                .into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
-                    override fun onResourceCleared(p0: Drawable?) {}
-                    override fun onLoadFailed(p0: Drawable?) {}
-                    override fun onResourceReady(
-                        p0: Drawable, p1: Transition<in Drawable>?
-                    ) {
-                        if (binding.ivBg.drawable != null) {
-                            // 2. 将旧图和新图包装进 TransitionDrawable
-                            val transitionDrawable =
-                                TransitionDrawable(arrayOf(binding.ivBg.drawable, p0))
-                            transitionDrawable.isCrossFadeEnabled = true
-                            view.setImageDrawable(transitionDrawable)
-                            transitionDrawable.startTransition(300)
-                        } else {
-                            // 如果原本没图，直接显示新图
-                            view.setImageDrawable(p0)
-                        }
-                        p0.toBitmapOrNull()?.let {
-                            updateLrcColor(it)
-                        }
+    private fun updateCover(url: String) {
+        val glide = Glide.with(this)
+        BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+            .placeholder(binding.ivCover.drawable).into(binding.ivCover)
+        BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
+            .into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
+                override fun onResourceCleared(p0: Drawable?) {}
+                override fun onLoadFailed(p0: Drawable?) {}
+                override fun onResourceReady(p0: Drawable, p1: Transition<in Drawable>?) {
+                    if (binding.ivBg.drawable != null) {
+                        val transitionDrawable =
+                            TransitionDrawable(arrayOf(binding.ivBg.drawable, p0))
+                        transitionDrawable.isCrossFadeEnabled = true
+                        view.setImageDrawable(transitionDrawable)
+                        transitionDrawable.startTransition(300)
+                    } else {
+                        view.setImageDrawable(p0)
                     }
-
-                })
-
-        }
+                    p0.toBitmapOrNull()?.let { updateLrcColor(it) }
+                }
+            })
     }
 
     private fun updateLrcColor(bitmap: Bitmap) {

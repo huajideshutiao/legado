@@ -94,18 +94,18 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 BaseReadAloudService.isRun -> {
                     if (BaseReadAloudService.isPlay()) {
                         ReadAloud.pause(context)
-                        AudioPlay.pause(context)
+                        AudioPlay.pause()
                     } else {
                         ReadAloud.resume(context)
-                        AudioPlay.resume(context)
+                        AudioPlay.resume()
                     }
                 }
 
                 AudioPlayService.isRun -> {
                     if (AudioPlayService.pause) {
-                        AudioPlay.resume(context)
+                        AudioPlay.resume()
                     } else {
-                        AudioPlay.pause(context)
+                        AudioPlay.pause()
                     }
                 }
 

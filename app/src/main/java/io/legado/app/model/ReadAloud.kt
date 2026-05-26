@@ -23,14 +23,10 @@ object ReadAloud {
 
     private fun getReadAloudClass(): Class<*> {
         val ttsEngine = ttsEngine
-        if (ttsEngine.isNullOrBlank()) {
-            return TTSReadAloudService::class.java
-        }
+        if (ttsEngine.isNullOrBlank()) return TTSReadAloudService::class.java
         if (StringUtils.isNumeric(ttsEngine)) {
             httpTTS = appDb.httpTTSDao.get(ttsEngine.toLong())
-            if (httpTTS != null) {
-                return HttpReadAloudService::class.java
-            }
+            if (httpTTS != null) return HttpReadAloudService::class.java
         }
         return TTSReadAloudService::class.java
     }
@@ -46,11 +42,12 @@ object ReadAloud {
         pageIndex: Int = ReadBook.durPageIndex,
         startPos: Int = 0
     ) {
-        val intent = Intent(context, aloudClass)
-        intent.action = IntentAction.play
-        intent.putExtra("play", play)
-        intent.putExtra("pageIndex", pageIndex)
-        intent.putExtra("startPos", startPos)
+        val intent = Intent(context, aloudClass).apply {
+            action = IntentAction.play
+            putExtra("play", play)
+            putExtra("pageIndex", pageIndex)
+            putExtra("startPos", startPos)
+        }
         LogUtils.d("ReadAloud", intent.toString())
         try {
             context.startForegroundServiceCompat(intent)
@@ -61,22 +58,17 @@ object ReadAloud {
         }
     }
 
-    private fun sendAction(context: Context, action: String, extra: Pair<String, Any>? = null) {
-        if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, aloudClass)
-            intent.action = action
-            if (extra != null) {
-                val (key, value) = extra
-                when (value) {
-                    is Int -> intent.putExtra(key, value)
-                    is Long -> intent.putExtra(key, value)
-                    is Boolean -> intent.putExtra(key, value)
-                    is String -> intent.putExtra(key, value)
-                    else -> AppLog.put("ReadAloud.sendAction: 不支持的 extra 类型 ${value.javaClass}")
-                }
-            }
-            context.startForegroundServiceCompat(intent)
+    private inline fun sendAction(
+        context: Context,
+        action: String,
+        extras: Intent.() -> Unit = {}
+    ) {
+        if (!BaseReadAloudService.isRun) return
+        val intent = Intent(context, aloudClass).apply {
+            this.action = action
+            extras()
         }
+        context.startForegroundServiceCompat(intent)
     }
 
     fun pause(context: Context) = sendAction(context, IntentAction.pause)
@@ -96,6 +88,5 @@ object ReadAloud {
     fun upTtsSpeechRate(context: Context) = sendAction(context, IntentAction.upTtsSpeechRate)
 
     fun setTimer(context: Context, minute: Int) =
-        sendAction(context, IntentAction.setTimer, "minute" to minute)
-
+        sendAction(context, IntentAction.setTimer) { putExtra("minute", minute) }
 }
