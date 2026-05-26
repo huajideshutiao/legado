@@ -15,7 +15,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
@@ -71,9 +70,6 @@ import kotlinx.coroutines.flow.take
 abstract class BaseReadViewModel(application: Application) : BaseViewModel(application) {
 
     protected var changeSourceCoroutine: Coroutine<*>? = null
-
-    val readRecord = ReadRecord()
-    var readStartTime: Long = System.currentTimeMillis()
 
     /**
      * 获取当前正在阅读/播放的书籍
@@ -412,19 +408,6 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      */
     protected open fun onUpSource(book: Book) {
         curBookSource = IntentData.source as? BookSource
-    }
-
-    fun upReadTime() {
-        execute {
-            if (!AppConfig.enableReadRecord) return@execute
-            val bookName = readRecord.bookName
-            if (bookName.isEmpty()) return@execute
-            val now = System.currentTimeMillis()
-            val delta = now - readStartTime
-            readStartTime = now
-            if (delta <= 0) return@execute
-            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), now, delta)
-        }
     }
 
     override fun onCleared() {

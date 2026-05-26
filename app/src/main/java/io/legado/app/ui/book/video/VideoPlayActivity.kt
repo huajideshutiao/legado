@@ -48,6 +48,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.singleChoiceItems
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -605,8 +606,14 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         newPlayer.prepare()
     }
 
+    override fun onResume() {
+        super.onResume()
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.VIDEO, viewModel.curBook?.name ?: "")
+    }
+
     override fun onPause() {
         super.onPause()
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.VIDEO)
         val currentPlayer = player
         viewModel.saveRead(
             if ((currentPlayer?.currentPosition ?: 0) > (currentPlayer?.duration ?: 1) - 1000) 0L

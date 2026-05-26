@@ -13,6 +13,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.GSON
@@ -37,7 +38,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun initData() {
         execute {
             upBook(IntentData.book ?: return@execute)
-            readRecord.bookName = curBook!!.name
+            ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, curBook!!.name)
             position = curBook!!.durChapterPos.toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook!!.durChapterIndex])
@@ -143,7 +144,6 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun delBook(success: (() -> Unit)?) = delBook(false, success)
 
     fun saveRead(position: Long) {
-        upReadTime()
         Coroutine.async {
             curBook!!.apply {
                 lastCheckCount = 0

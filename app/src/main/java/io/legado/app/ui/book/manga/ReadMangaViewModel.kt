@@ -24,6 +24,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaChapter
@@ -85,7 +86,7 @@ class ReadMangaViewModel(application: Application) :
     fun initMangaData(book: Book, isDiffBook: Boolean = curBook?.bookUrl != book.bookUrl) {
         curBook = book
         if (isDiffBook) {
-            readRecord.bookName = book.name
+            ReadTimeRecorder.setBook(ReadTimeRecorder.Source.MANGA, book.name)
         }
         val chapterList = chapterListData.value
         chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
@@ -294,7 +295,6 @@ class ReadMangaViewModel(application: Application) :
     }
 
     fun curPageChanged() {
-        upReadTime()
         preDownload()
     }
 

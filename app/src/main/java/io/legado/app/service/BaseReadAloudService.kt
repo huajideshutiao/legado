@@ -41,6 +41,7 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -152,6 +153,7 @@ abstract class BaseReadAloudService : BaseService(),
         initBroadcastReceiver()
         initPhoneStateListener()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.READ_ALOUD, ReadBook.book?.name ?: "")
         setTimer(AppConfig.ttsTimer)
         if (AppConfig.ttsTimer > 0) {
             toastOnUi("朗读定时 ${AppConfig.ttsTimer} 分钟")
@@ -194,6 +196,7 @@ abstract class BaseReadAloudService : BaseService(),
         }
         isRun = false
         pause = true
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
         postEvent(EventBus.ALOUD_STATE, Status.STOP)
@@ -299,6 +302,7 @@ abstract class BaseReadAloudService : BaseService(),
             wifiLock?.release()
         }
         pause = true
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
         if (abandonFocus) {
             abandonFocus()
         }
@@ -317,6 +321,7 @@ abstract class BaseReadAloudService : BaseService(),
 
     private fun resumeReadAloudInternal() {
         pause = false
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.READ_ALOUD, ReadBook.book?.name ?: "")
         needResumeOnAudioFocusGain = false
         needResumeOnCallStateIdle = false
         upReadAloudNotification()
@@ -680,7 +685,6 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     open fun nextChapter() {
-        ReadBook.upReadTime()
         AppLog.putDebug("${ReadBook.curTextChapter?.chapter?.title} 朗读结束跳转下一章并朗读")
         resumeReadAloudInternal()
         if (!ReadBook.moveToNextChapter(true)) {

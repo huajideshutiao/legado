@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -76,12 +75,10 @@ object ReadBook : CoroutineScope by MainScope() {
     var bookSource: BookSource? = null
     var msg: String? = null
     private val loadingChapters = arrayListOf<Int>()
-    private val readRecord = ReadRecord()
     private val chapterLoadingJobs = ConcurrentHashMap<Int, Coroutine<*>>()
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
     private val nextChapterLoadingLock = Mutex()
-    var readStartTime: Long = System.currentTimeMillis()
 
     /* 跳转进度前进度记录 */
     var lastBookProgress: BookProgress? = null
@@ -102,7 +99,7 @@ object ReadBook : CoroutineScope by MainScope() {
         val isDiffBook = this.book?.bookUrl != book.bookUrl
         this.book = book
         if (isDiffBook){
-            readRecord.bookName = book.name
+            ReadTimeRecorder.setBook(ReadTimeRecorder.Source.READ_BOOK, book.name)
         }
         if (chapterList?.get(0)?.bookUrl != book.bookUrl){
             chapterList = null
@@ -262,24 +259,6 @@ object ReadBook : CoroutineScope by MainScope() {
             } else {
                 syncSuccessAction?.invoke()
             }
-        }
-    }
-
-    fun upReadTime() {
-        executor.execute {
-            if (!AppConfig.enableReadRecord) return@execute
-            val bookName = readRecord.bookName
-            if (bookName.isEmpty()) return@execute
-            val now = System.currentTimeMillis()
-            val delta = now - readStartTime
-            readStartTime = now
-            if (delta <= 0) return@execute
-            appDb.readRecordDao.addReadTime(
-                bookName,
-                io.legado.app.data.entities.ReadRecord.dayKey(now),
-                now,
-                delta
-            )
         }
     }
 
@@ -468,7 +447,6 @@ object ReadBook : CoroutineScope by MainScope() {
                 }
             }
         }
-        upReadTime()
         preDownload()
     }
 

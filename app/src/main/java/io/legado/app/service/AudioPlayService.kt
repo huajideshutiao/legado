@@ -36,6 +36,7 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.AudioPlay.durLrcData
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
 import io.legado.app.receiver.MediaButtonReceiver
@@ -134,6 +135,7 @@ class AudioPlayService : BaseService(),
         initMediaSession()
         initBroadcastReceiver()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlay.book?.name ?: "")
         doDs()
         // 使用 Glide 加载图片，利用缓存机制避免重复下载
         loadCover(AudioPlay.durCoverUrl ?: AudioPlay.book?.getDisplayCover())
@@ -192,6 +194,7 @@ class AudioPlayService : BaseService(),
         }
         isRun = false
         abandonFocus()
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
         AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
         AudioPlay.saveRead()
         exoPlayer.release()
@@ -252,6 +255,7 @@ class AudioPlayService : BaseService(),
         }
         try {
             pause = true
+            ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
             if (abandonFocus) {
                 abandonFocus()
             }
@@ -279,6 +283,7 @@ class AudioPlayService : BaseService(),
         }
         try {
             pause = false
+            ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlay.book?.name ?: "")
             if (url.isEmpty()) {
                 AudioPlay.loadOrUpPlayUrl()
                 return

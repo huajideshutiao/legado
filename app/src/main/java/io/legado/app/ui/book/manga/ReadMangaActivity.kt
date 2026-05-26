@@ -37,6 +37,7 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -393,7 +394,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     override fun onResume() {
         super.onResume()
-        viewModel.readStartTime = System.currentTimeMillis()
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.MANGA, viewModel.curBook?.name ?: "")
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = {
             // 当网络是可用状态且无需初始化时同步进度（初始化中已有同步进度逻辑）
@@ -411,6 +412,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     override fun onPause() {
         super.onPause()
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.MANGA)
         if (viewModel.inBookshelf) {
             viewModel.saveRead()
             if (!BuildConfig.DEBUG) {
