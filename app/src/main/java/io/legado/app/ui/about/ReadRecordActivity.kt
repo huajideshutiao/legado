@@ -43,6 +43,8 @@ import io.legado.app.utils.spToPx
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -80,6 +82,23 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     /** 每本书今日累计阅读时长（按 bookName 索引），用于条目展示「今日/总」 */
     private var todayTimeByBook: Map<String, Long> = emptyMap()
+
+    /** 进行中的列表刷新任务，键入搜索/翻月份时取消上一次，避免堆积 */
+    private var initDataJob: Job? = null
+    private var heatmapJob: Job? = null
+
+    /** 搜索框节流任务，连续输入 300ms 内只触发一次列表刷新 */
+    private var searchDebounceJob: Job? = null
+
+    /** 顶部 4 个统计值的缓存，用于删除场景下增量更新，避免再查 DB */
+    private var summaryToday = 0L
+    private var summaryWeek = 0L
+    private var summaryMonth = 0L
+    private var summaryAll = 0L
+
+    companion object {
+        private const val SEARCH_DEBOUNCE_MS = 300L
+    }
 
     @SuppressLint("SimpleDateFormat")
     private val minuteFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
@@ -137,11 +156,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             R.id.menu_clear_all -> {
                 alert(R.string.delete, R.string.sure_del) {
                     yesButton {
-                        appDb.readRecordDao.clear()
-                        invalidateRecords()
-                        refreshSummary()
-                        refreshHeatmap()
-                        initData()
+                        lifecycleScope.launch {
+                            withContext(IO) { appDb.readRecordDao.clear() }
+                            // 直接清空内存缓存，initData 会基于空列表算出全 0 的 summary
+                            allRecords = emptyList()
+                            refreshHeatmap()
+                            initData()
+                        }
                     }
                     noButton()
                 }
@@ -160,7 +181,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             ViewReadRecordHeaderBinding.inflate(layoutInflater, parent, false).also {
                 headerBinding = it
                 bindHeader(it)
-                refreshSummary()
+                // header 可能在 initData 完成后才被 inflate；用当前缓存字段先渲染一次，
+                // 后续 initData 完成会再调 renderSummary 覆盖
+                renderSummary()
                 refreshHeatmap()
             }
         }
@@ -199,11 +222,20 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String): Boolean {
                 searchView.clearFocus()
+                // 提交时立即执行，不再等待节流窗口
+                searchDebounceJob?.cancel()
+                initData(query)
                 return false
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                initData(newText)
+                // 连续输入只在停顿 300ms 后才真正过一次 initData，
+                // 避免每个按键都对 allRecords 做一遍单遍聚合
+                searchDebounceJob?.cancel()
+                searchDebounceJob = lifecycleScope.launch {
+                    delay(SEARCH_DEBOUNCE_MS)
+                    initData(newText)
+                }
                 return false
             }
         })
@@ -233,27 +265,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         refreshHeatmap()
     }
 
-    private fun refreshSummary() {
-        lifecycleScope.launch {
-            val now = System.currentTimeMillis()
-            val today = ReadRecord.dayKey(now)
-            val (weekStart, weekEnd) = weekRange(now)
-            val (monthStart, monthEnd) = monthRange(now)
-            val dao = appDb.readRecordDao
-            val (todayTime, weekTime, monthTime, allTime) = withContext(IO) {
-                listOf(
-                    dao.getDayTime(today),
-                    dao.getRangeTime(weekStart, weekEnd),
-                    dao.getRangeTime(monthStart, monthEnd),
-                    dao.allTime
-                )
-            }
-            val header = headerBinding ?: return@launch
-            header.tvTodayValue.text = formatDuring(todayTime)
-            header.tvWeekValue.text = formatDuring(weekTime)
-            header.tvMonthValue.text = formatDuring(monthTime)
-            header.tvAllValue.text = formatDuring(allTime)
-        }
+    private fun renderSummary() {
+        val header = headerBinding ?: return
+        header.tvTodayValue.text = formatDuring(summaryToday)
+        header.tvWeekValue.text = formatDuring(summaryWeek)
+        header.tvMonthValue.text = formatDuring(summaryMonth)
+        header.tvAllValue.text = formatDuring(summaryAll)
     }
 
     private fun refreshHeatmap() {
@@ -263,7 +280,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         updateNextMonthEnabled()
         val year = heatmapYear
         val month = heatmapMonth
-        lifecycleScope.launch {
+        heatmapJob?.cancel()
+        heatmapJob = lifecycleScope.launch {
             val (start, end) = monthRange(year, month)
             val stats = withContext(IO) {
                 appDb.readRecordDao.getRangeStats(start, end)
@@ -288,51 +306,107 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         lastSearchKey = searchKey
         val day = filterDay
         val key = searchKey?.trim().orEmpty()
-        val todayKey = ReadRecord.dayKey()
-        lifecycleScope.launch {
-            val (sorted, books, todayMap) = withContext(IO) {
+        val now = System.currentTimeMillis()
+        val todayKey = ReadRecord.dayKey(now)
+        val (weekStart, weekEnd) = weekRange(now)
+        val (monthStart, monthEnd) = monthRange(now)
+        val currentSortMode = sortMode
+        initDataJob?.cancel()
+        initDataJob = lifecycleScope.launch {
+            val result = withContext(IO) {
                 val records = allRecords ?: appDb.readRecordDao.all.also { allRecords = it }
-                val filtered = records.filter {
-                    (key.isEmpty() || it.bookName.contains(key, ignoreCase = true)) &&
-                        (day == 0 || it.day == day)
+                // 单遍聚合：搜索过滤 + 总时长/最近阅读时间 + 当日时长 + 筛选日存在性
+                // + 顺手把 today/week/month/all 4 个 summary 也算了，省掉 4 次 DAO 查询
+                // 注：DAO.all 自带 readTime >= 60000 过滤，<1 分钟的零碎记录不计入；
+                // 与列表展示口径一致，summary 与列表总和自洽
+                val dayForToday = if (day != 0) day else todayKey
+                val expected = records.size.coerceAtMost(256).coerceAtLeast(16)
+                val readTimeByBook = HashMap<String, Long>(expected)
+                val lastReadByBook = HashMap<String, Long>(expected)
+                val todayPerBook = HashMap<String, Long>(expected)
+                val dayBookNames = if (day != 0) HashSet<String>() else null
+                val keyEmpty = key.isEmpty()
+                var sumToday = 0L
+                var sumWeek = 0L
+                var sumMonth = 0L
+                var sumAll = 0L
+                for (r in records) {
+                    val rt = r.readTime
+                    val d = r.day
+                    // summary 不受搜索词/筛选影响，先算
+                    sumAll += rt
+                    if (d == todayKey) sumToday += rt
+                    if (d in weekStart..weekEnd) sumWeek += rt
+                    if (d in monthStart..monthEnd) sumMonth += rt
+                    val name = r.bookName
+                    if (!keyEmpty && !name.contains(key, ignoreCase = true)) continue
+                    readTimeByBook[name] = (readTimeByBook[name] ?: 0L) + rt
+                    val prevLast = lastReadByBook[name]
+                    if (prevLast == null || r.lastRead > prevLast) {
+                        lastReadByBook[name] = r.lastRead
+                    }
+                    if (d == dayForToday) {
+                        todayPerBook[name] = (todayPerBook[name] ?: 0L) + rt
+                    }
+                    if (dayBookNames != null && d == day) {
+                        dayBookNames.add(name)
+                    }
                 }
-                val items = if (day != 0) {
-                    filtered.map {
-                        ReadRecordShow(it.bookName, it.readTime, it.lastRead)
+                val items = ArrayList<ReadRecordShow>(readTimeByBook.size)
+                if (dayBookNames != null) {
+                    for ((name, total) in readTimeByBook) {
+                        if (name in dayBookNames) {
+                            items.add(
+                                ReadRecordShow(name, total, lastReadByBook[name] ?: 0L)
+                            )
+                        }
                     }
                 } else {
-                    filtered.groupBy { it.bookName }.map { (name, list) ->
-                        ReadRecordShow(
-                            bookName = name,
-                            readTime = list.sumOf { it.readTime },
-                            lastRead = list.maxOf { it.lastRead }
+                    for ((name, total) in readTimeByBook) {
+                        items.add(
+                            ReadRecordShow(name, total, lastReadByBook[name] ?: 0L)
                         )
                     }
                 }
-                val sortedItems = when (sortMode) {
-                    1 -> items.sortedByDescending { it.readTime }
-                    2 -> items.sortedByDescending { it.lastRead }
-                    else -> items.sortedWith { o1, o2 ->
-                        o1.bookName.cnCompare(o2.bookName)
+                val sortedItems = when (currentSortMode) {
+                    1 -> items.apply { sortByDescending { it.readTime } }
+                    2 -> items.apply { sortByDescending { it.lastRead } }
+                    else -> items.apply {
+                        sortWith { o1, o2 -> o1.bookName.cnCompare(o2.bookName) }
                     }
                 }
-                val names = sortedItems.map { it.bookName }.distinct().toTypedArray()
+                // groupBy 的 key 已唯一，无需再 distinct
+                val names = Array(sortedItems.size) { sortedItems[it].bookName }
                 val bookList = if (names.isEmpty()) emptyList()
                 else appDb.bookDao.findByName(*names)
-                val todayPerBook = records.asSequence()
-                    .filter { it.day == todayKey }
-                    .associate { it.bookName to it.readTime }
-                Triple(sortedItems, bookList.associateBy { it.name }, todayPerBook)
+                InitResult(
+                    sortedItems,
+                    bookList.associateBy { it.name },
+                    todayPerBook,
+                    sumToday, sumWeek, sumMonth, sumAll
+                )
             }
-            bookMap = books
-            todayTimeByBook = todayMap
-            adapter.setItems(sorted)
+            // 取消后会抛 CancellationException，不会跑到这里覆盖更新的状态
+            bookMap = result.books
+            todayTimeByBook = result.todayMap
+            summaryToday = result.sumToday
+            summaryWeek = result.sumWeek
+            summaryMonth = result.sumMonth
+            summaryAll = result.sumAll
+            renderSummary()
+            adapter.setItems(result.items)
         }
     }
 
-    private fun invalidateRecords() {
-        allRecords = null
-    }
+    private data class InitResult(
+        val items: List<ReadRecordShow>,
+        val books: Map<String, Book>,
+        val todayMap: Map<String, Long>,
+        val sumToday: Long,
+        val sumWeek: Long,
+        val sumMonth: Long,
+        val sumAll: Long,
+    )
 
     private fun weekRange(now: Long): Pair<Int, Int> {
         val cal = Calendar.getInstance()
@@ -378,29 +452,46 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             parent: RecyclerView,
             state: RecyclerView.State
         ) {
+            // 入口早退：仅在按时间排序且未做单日筛选时才显示分段
+            if (sortMode != 2 || filterDay != 0) return
             if (isSectionStart(view, parent)) {
                 outRect.top = sectionHeight.toInt()
             }
         }
 
         override fun onDraw(c: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-            for (i in 0 until parent.childCount) {
+            if (sortMode != 2 || filterDay != 0) return
+            val childCount = parent.childCount
+            if (childCount == 0) return
+            // 循环不变量在外面算好：父视图宽度、文本基线偏移、headerCount
+            val width = parent.width.toFloat()
+            val baselineOffset = -(textPaint.descent() + textPaint.ascent()) / 2f
+            val headerCount = adapter.getHeaderCount()
+            for (i in 0 until childCount) {
                 val child = parent.getChildAt(i)
-                if (!isSectionStart(child, parent)) continue
                 val pos = parent.getChildAdapterPosition(child)
-                val dataIdx = pos - adapter.getHeaderCount()
+                if (pos == RecyclerView.NO_POSITION) continue
+                val dataIdx = pos - headerCount
+                if (dataIdx < 0) continue
                 val item = adapter.getItem(dataIdx) ?: continue
+                val itemDayKey = ReadRecord.dayKey(item.lastRead)
+                val isStart = if (dataIdx == 0) {
+                    true
+                } else {
+                    val prev = adapter.getItem(dataIdx - 1)
+                    prev == null || ReadRecord.dayKey(prev.lastRead) != itemDayKey
+                }
+                if (!isStart) continue
                 val bottom = child.top.toFloat()
                 val top = bottom - sectionHeight
-                c.drawRect(0f, top, parent.width.toFloat(), bottom, bgPaint)
-                val textY = (top + bottom) / 2f -
-                    (textPaint.descent() + textPaint.ascent()) / 2f
-                c.drawText(formatDayKey(item.lastRead), paddingHorizontal, textY, textPaint)
+                c.drawRect(0f, top, width, bottom, bgPaint)
+                val textY = (top + bottom) / 2f + baselineOffset
+                c.drawText(formatDayKey(itemDayKey), paddingHorizontal, textY, textPaint)
             }
         }
 
         private fun isSectionStart(view: View, parent: RecyclerView): Boolean {
-            if (sortMode != 2 || filterDay != 0) return false
+            // sortMode/filterDay 早退由调用方负责
             val pos = parent.getChildAdapterPosition(view)
             if (pos == RecyclerView.NO_POSITION) return false
             val dataIdx = pos - adapter.getHeaderCount()
@@ -477,11 +568,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             alert(R.string.delete) {
                 setMessage(getString(R.string.sure_del_any, item.bookName))
                 yesButton {
-                    appDb.readRecordDao.deleteByName(item.bookName)
-                    invalidateRecords()
-                    refreshSummary()
-                    refreshHeatmap()
-                    initData()
+                    val name = item.bookName
+                    lifecycleScope.launch {
+                        withContext(IO) { appDb.readRecordDao.deleteByName(name) }
+                        // 内存缓存直接同步删除，避免重新查 DAO.all
+                        allRecords = allRecords?.filterNot { it.bookName == name }
+                        refreshHeatmap()
+                        initData()
+                    }
                 }
                 noButton()
             }
@@ -509,10 +603,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun formatDayKey(millis: Long): String {
         if (millis <= 0L) return ""
-        val day = ReadRecord.dayKey(millis)
-        val y = day / 10000
-        val m = (day / 100) % 100
-        val d = day % 100
+        return formatDayKey(ReadRecord.dayKey(millis))
+    }
+
+    private fun formatDayKey(dayKey: Int): String {
+        if (dayKey <= 0) return ""
+        val y = dayKey / 10000
+        val m = (dayKey / 100) % 100
+        val d = dayKey % 100
         return "%d-%02d-%02d".format(y, m, d)
     }
 
