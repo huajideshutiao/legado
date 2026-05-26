@@ -46,6 +46,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import io.legado.app.utils.postEvent
@@ -56,8 +57,10 @@ import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.mozilla.javascript.NativeArray
 import splitties.systemservices.notificationManager
 
@@ -132,6 +135,17 @@ class AudioPlayService : BaseService(), Player.Listener {
     private var hasRefreshedOnPlayError = false
 
     private val loadingChapters = arrayListOf<Int>()
+
+    /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
+    private data class NotificationSnapshot(
+        val pause: Boolean,
+        val sleepMin: Int,
+        val bookName: String?,
+        val chapterTitle: String?,
+        val coverId: Int
+    )
+
+    private var lastNotificationSnapshot: NotificationSnapshot? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -302,6 +316,9 @@ class AudioPlayService : BaseService(), Player.Listener {
     private fun adjustProgress(position: Int) {
         this.position = position
         exoPlayer.seekTo(position.toLong())
+        upMediaSessionPlaybackState(
+            if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
+        )
         upPlayProgressForLrc()
     }
 
@@ -312,6 +329,8 @@ class AudioPlayService : BaseService(), Player.Listener {
                 playSpeed = adjust
                 exoPlayer.setPlaybackSpeed(playSpeed)
                 postEvent(EventBus.AUDIO_SPEED, playSpeed)
+                // 事件驱动版 lrc 推进的 delay 时长按 playSpeed 缩放,变速时需要重启重算
+                upPlayProgressForLrc()
             }
         }
     }
@@ -329,6 +348,9 @@ class AudioPlayService : BaseService(), Player.Listener {
                 postEvent(EventBus.AUDIO_STATE, AudioPlay.status)
                 postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
                 upMediaMetadata()
+                upMediaSessionPlaybackState(
+                    if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
+                )
                 upPlayProgress()
                 upPlayProgressForLrc()
                 AudioPlay.saveDurChapter(exoPlayer.duration)
@@ -380,8 +402,6 @@ class AudioPlayService : BaseService(), Player.Listener {
                 AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
-                postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
-                upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 if (upPlayProgressForLrcJob?.isActive != true && durLrcData?.isNotEmpty() == true) {
                     upPlayProgressForLrc()
                 }
@@ -390,24 +410,44 @@ class AudioPlayService : BaseService(), Player.Listener {
         }
     }
 
+    /**
+     * 推进当前章节歌词高亮位置。
+     *
+     * 节能策略两层:
+     * 1. 事件驱动: 按下一句歌词时间戳精确 delay,而非高频轮询;
+     *    一首歌只唤醒 N 行次,而非 时长(s)*20 次。
+     * 2. 订阅门控: 通过 FlowBus 的 subscriptionCount 感知是否有 Activity 在收事件,
+     *    没有时直接挂起整个循环,后台/锁屏场景零空转。
+     *
+     * 调用方在以下场景触发重启: STATE_READY / adjustProgress / 调整播放速度。
+     */
     private fun upPlayProgressForLrc() {
         upPlayProgressForLrcJob?.cancel()
         val lrc = durLrcData ?: return
         if (lrc.isEmpty() || lrc.last().first == -1) return
+        val subCount = FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount
 
         upPlayProgressForLrcJob = lifecycleScope.launch {
-            var position =
-                lrc.indexOfLast { it.first <= exoPlayer.currentPosition + 60 }.coerceAtLeast(0)
-            if (position != -1) postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-
             while (isActive) {
+                subCount.first { it > 0 }
                 val curLrc = durLrcData ?: break
-                if (position >= curLrc.size - 1) break
-                if (curLrc[position + 1].first <= exoPlayer.currentPosition + 60) {
+                var position = curLrc.indexOfLast { it.first <= exoPlayer.currentPosition + 60 }
+                    .coerceAtLeast(0)
+                postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+
+                while (isActive && position < curLrc.size - 1) {
+                    val remain = ((curLrc[position + 1].first - exoPlayer.currentPosition - 60)
+                        / playSpeed).toLong()
+                    if (remain > 0) {
+                        val dropped = withTimeoutOrNull(remain) {
+                            subCount.first { it == 0 }
+                            true
+                        } == true
+                        if (dropped) break
+                    }
                     position++
                     postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                 }
-                delay(50)
             }
         }
     }
@@ -524,6 +564,16 @@ class AudioPlayService : BaseService(), Player.Listener {
     }
 
     private fun upAudioPlayNotification() {
+        val snapshot = NotificationSnapshot(
+            pause = pause,
+            sleepMin = sleepTimer?.minutes ?: 0,
+            bookName = AudioPlay.book?.name,
+            chapterTitle = AudioPlay.durChapter?.title,
+            coverId = System.identityHashCode(cover)
+        )
+        if (snapshot == lastNotificationSnapshot) return
+        lastNotificationSnapshot = snapshot
+        upNotificationJob?.cancel()
         upNotificationJob = execute {
             try {
                 val notification = createNotification()
@@ -608,42 +658,44 @@ class AudioPlayService : BaseService(), Player.Listener {
             toastOnUi("book or source is null")
             return
         }
-        AudioPlay.upDurChapter()
-        val chapter = AudioPlay.durChapter
-        if (chapter == null) {
-            removeLoading(index)
-            return
-        }
-        if (chapter.isVolume) {
-            AudioPlay.skipTo(index + 1)
-            removeLoading(index)
-            return
-        }
-        postEvent(EventBus.AUDIO_LOADING, true)
-        AudioPlay.durCoverUrl = null
-        AudioPlay.durLrcData = null
-        loadCoverUrl(bookSource, book, chapter)
-        loadLrcData(bookSource, book, chapter)
-        execute {
-            chapter.resourceUrl
-                ?: getContentAwait(bookSource, book, chapter, needSave = false)
-        }.onSuccess { content ->
-            if (content.isEmpty()) {
-                toastOnUi("未获取到资源链接")
-            } else {
-                if (chapter.resourceUrl != content) {
-                    chapter.resourceUrl = content
-                    if (AudioPlay.inBookshelf) appDb.bookChapterDao.update(chapter)
-                }
-                contentLoadFinish(chapter, content)
+        lifecycleScope.launch {
+            AudioPlay.upDurChapter()
+            val chapter = AudioPlay.durChapter
+            if (chapter == null) {
+                removeLoading(index)
+                return@launch
             }
-        }.onError {
-            AppLog.put("获取资源链接出错\n$it", it, true)
-            postEvent(EventBus.AUDIO_LOADING, false)
-        }.onCancel {
-            removeLoading(index)
-        }.onFinally {
-            removeLoading(index)
+            if (chapter.isVolume) {
+                AudioPlay.skipTo(index + 1)
+                removeLoading(index)
+                return@launch
+            }
+            postEvent(EventBus.AUDIO_LOADING, true)
+            AudioPlay.durCoverUrl = null
+            AudioPlay.durLrcData = null
+            loadCoverUrl(bookSource, book, chapter)
+            loadLrcData(bookSource, book, chapter)
+            execute {
+                chapter.resourceUrl
+                    ?: getContentAwait(bookSource, book, chapter, needSave = false)
+            }.onSuccess { content ->
+                if (content.isEmpty()) {
+                    toastOnUi("未获取到资源链接")
+                } else {
+                    if (chapter.resourceUrl != content) {
+                        chapter.resourceUrl = content
+                        if (AudioPlay.inBookshelf) appDb.bookChapterDao.update(chapter)
+                    }
+                    contentLoadFinish(chapter, content)
+                }
+            }.onError {
+                AppLog.put("获取资源链接出错\n$it", it, true)
+                postEvent(EventBus.AUDIO_LOADING, false)
+            }.onCancel {
+                removeLoading(index)
+            }.onFinally {
+                removeLoading(index)
+            }
         }
     }
 

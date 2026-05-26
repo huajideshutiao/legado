@@ -4,6 +4,10 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.ReadTimeRecorder.end
+import io.legado.app.model.ReadTimeRecorder.flushAll
+import io.legado.app.model.ReadTimeRecorder.setBook
+import io.legado.app.model.ReadTimeRecorder.start
 
 /**
  * 阅读时长记录器: 以"开始 / 结束"为唯一触发点统一管理读时长落盘.
@@ -36,6 +40,10 @@ object ReadTimeRecorder {
     private val bookSessions = HashMap<String, BookSession>()
     private val lock = Any()
 
+    /** [flushAll] 的最小间隔, 防止短时间内连点 next/prev 触发多次零碎落盘 */
+    private const val FLUSH_ALL_DEBOUNCE_MS = 5000L
+    private var lastFlushAllAt = 0L
+
     /**
      * 标记 source 开始活跃. bookName 为空时仅占位 (pending), 等待 [setBook] 补齐书名后再正式计时.
      * 同一 source 切换到新书会先结算旧书.
@@ -63,8 +71,12 @@ object ReadTimeRecorder {
     }
 
     /**
-     * 通知 source 当前的书名. 仅当 source 已经 start 过 (active 或 pending) 时才生效.
-     * 用于 "异步加载书完成" 或 "切换书源" 等场景, 对未 start 的 source 无副作用.
+     * 通知 source 当前的书名 (异步加载书完成、切换书源等场景).
+     *
+     * 仅当 source 已经 start 过 (active 或 pending) 时才生效.
+     * 这是有意为之: 部分调用路径 (如 MediaButtonReceiver 触发 ReadBook.initData) 没有对应的
+     * Activity / Service 在前台, 不应在这里凭空创建会话. 让 setBook 对未 start 的 source 静默
+     * no-op, 是阻止幽灵会话泄漏的关键保证. 切勿改成 "找不到就 start" 的写法.
      */
     fun setBook(source: String, bookName: String) {
         if (bookName.isEmpty()) return
@@ -76,6 +88,27 @@ object ReadTimeRecorder {
             }
             sourceBook[source] = bookName
             startBookSession(bookName)
+        }
+    }
+
+    /**
+     * 落盘当前所有活跃会话已累计的时长, 但保留会话本身继续计时.
+     *
+     * 用于长会话场景 (TTS / 音频) 的章节切换等"自然事件"节点, 兜底降低进程被杀
+     * (OOM、强停) 时的丢失.
+     *
+     * 5s 防抖: 连点 next/prev 时只在第一次真正落盘, 避免一连串零碎写入.
+     * [end] 路径自带即时 flush, 不受此影响.
+     */
+    fun flushAll() {
+        synchronized(lock) {
+            val now = System.currentTimeMillis()
+            if (now - lastFlushAllAt < FLUSH_ALL_DEBOUNCE_MS) return
+            lastFlushAllAt = now
+            for ((bookName, session) in bookSessions) {
+                flushSession(bookName, session.startTime)
+                session.startTime = now
+            }
         }
     }
 

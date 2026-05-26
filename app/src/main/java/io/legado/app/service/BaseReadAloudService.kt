@@ -113,6 +113,18 @@ abstract class BaseReadAloudService : BaseService() {
     private var registeredPhoneStateListener = false
     private var upNotificationJob: Coroutine<*>? = null
     private var cover: Bitmap = BookCover.notificationDefaultCover
+
+    /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
+    private data class NotificationSnapshot(
+        val pause: Boolean,
+        val sleepMin: Int,
+        val bookName: String?,
+        val chapterTitle: String?,
+        val coverId: Int
+    )
+
+    private var lastNotificationSnapshot: NotificationSnapshot? = null
+
     var pageChanged = false
     private var toLast = false
     var paragraphStartPos = 0
@@ -402,6 +414,16 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     private fun upReadAloudNotification() {
+        val snapshot = NotificationSnapshot(
+            pause = pause,
+            sleepMin = sleepTimer?.minutes ?: 0,
+            bookName = ReadBook.book?.name,
+            chapterTitle = ReadBook.curTextChapter?.title,
+            coverId = System.identityHashCode(cover)
+        )
+        if (snapshot == lastNotificationSnapshot) return
+        lastNotificationSnapshot = snapshot
+        upNotificationJob?.cancel()
         upNotificationJob = execute {
             try {
                 val notification = createNotification()
@@ -493,12 +515,14 @@ abstract class BaseReadAloudService : BaseService() {
 
     open fun prevChapter() {
         toLast = false
+        ReadTimeRecorder.flushAll()
         resumeReadAloudInternal()
         ReadBook.moveToPrevChapter(true, toLast = false)
     }
 
     open fun nextChapter() {
         AppLog.putDebug("${ReadBook.curTextChapter?.chapter?.title} 朗读结束跳转下一章并朗读")
+        ReadTimeRecorder.flushAll()
         resumeReadAloudInternal()
         if (!ReadBook.moveToNextChapter(true)) {
             stopSelf()

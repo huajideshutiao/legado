@@ -19,6 +19,8 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 
 /**
@@ -145,7 +147,7 @@ object AudioPlay {
         postEvent(EventBus.PLAY_MODE_CHANGED, playMode)
     }
 
-    fun upData(book: Book) {
+    suspend fun upData(book: Book) {
         if (durChapterIndex != book.durChapterIndex || this.book?.bookUrl != book.bookUrl) {
             resetData(book)
             return
@@ -155,7 +157,7 @@ object AudioPlay {
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
-    fun resetData(book: Book) {
+    suspend fun resetData(book: Book) {
         stop()
         status = Status.STOP
         AudioPlay.book = book
@@ -163,7 +165,9 @@ object AudioPlay {
         if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl) {
             chapterList = null
         }
-        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        chapterSize = chapterList?.size ?: withContext(Dispatchers.IO) {
+            appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        }
         simulatedChapterSize =
             if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
         bookSource = book.getBookSource()
@@ -175,12 +179,11 @@ object AudioPlay {
         postEvent(EventBus.AUDIO_BUFFER_PROGRESS, 0)
     }
 
-    fun upDurChapter() {
+    suspend fun upDurChapter() {
         val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(
-            book.bookUrl,
-            durChapterIndex
-        )
+        durChapter = chapterList?.get(durChapterIndex) ?: withContext(Dispatchers.IO) {
+            appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+        }
         durAudioSize = durChapter?.end?.toInt() ?: 0
         durLrcData = null
         postEvent(EventBus.AUDIO_LRC, emptyList<Pair<Int, String>>())
@@ -192,6 +195,7 @@ object AudioPlay {
 
     fun skipTo(index: Int) {
         if (index !in 0..<simulatedChapterSize) return
+        ReadTimeRecorder.flushAll()
         stopPlay()
         durChapterIndex = index
         durChapterPos = 0
@@ -202,6 +206,7 @@ object AudioPlay {
 
     fun prev() {
         if (durChapterIndex <= 0) return
+        ReadTimeRecorder.flushAll()
         stopPlay()
         durChapterIndex -= 1
         durChapterPos = 0
@@ -211,7 +216,6 @@ object AudioPlay {
     }
 
     fun next() {
-        stopPlay()
         val newIndex = when (playMode) {
             PlayMode.LIST_END_STOP ->
                 if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return
@@ -219,6 +223,8 @@ object AudioPlay {
             PlayMode.RANDOM -> (0 until simulatedChapterSize).random()
             PlayMode.LIST_LOOP -> (durChapterIndex + 1) % simulatedChapterSize
         }
+        ReadTimeRecorder.flushAll()
+        stopPlay()
         durChapterIndex = newIndex
         durChapterPos = 0
         durPlayUrl = ""

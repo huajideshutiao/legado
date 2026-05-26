@@ -151,7 +151,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             duration = EXPAND_DURATION_MS
             addUpdateListener {
                 flexbox.layoutParams.height = it.animatedValue as Int
-                flexbox.requestLayout()
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -213,7 +212,6 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 duration = EXPAND_DURATION_MS
                 addUpdateListener {
                     flexbox.layoutParams.height = it.animatedValue as Int
-                    flexbox.requestLayout()
                 }
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {

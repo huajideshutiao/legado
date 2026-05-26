@@ -15,7 +15,9 @@ import android.widget.SeekBar
 import androidx.activity.viewModels
 import androidx.core.graphics.drawable.toBitmapOrNull
 import androidx.core.view.isGone
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomViewTarget
 import com.bumptech.glide.request.transition.Transition
@@ -45,6 +47,7 @@ import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
@@ -78,8 +81,6 @@ class AudioPlayActivity :
     private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
-
-    private var needCheckPosition = true
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -291,22 +292,17 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_PROGRESS) {
             if (!adjustProgress) binding.playerProgress.progress = it
-            if (needCheckPosition) {
-                AudioPlay.durLrcData?.let { lrc ->
-                    needCheckPosition = false
-                    var position = 0
-                    for (i in lrc.indices) {
-                        if (lrc[i].first <= it + 60) {
-                            position = i
-                        } else break
-                    }
-                    binding.ivLrc.updateProgress(position)
-                }
-            }
             binding.tvDurTime.text = it.toDurationTime()
         }
-        observeEventSticky<Int>(EventBus.AUDIO_LRCPROGRESS) {
-            binding.ivLrc.updateProgress(it)
+        // AUDIO_LRCPROGRESS 单独走 STARTED 级订阅: Activity 不可见时取消订阅,
+        // Service 端通过 subscriptionCount 感知到无人收看后挂起 lrc 推进协程,
+        // 避免后台空转(详见 AudioPlayService.upPlayProgressForLrc 注释)。
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).collect {
+                    if (it is Int) binding.ivLrc.updateProgress(it)
+                }
+            }
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
