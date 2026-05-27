@@ -123,7 +123,7 @@ class AudioPlayService : BaseService(), Player.Listener {
     }
     private val noisyReceiver = BecomingNoisyReceiver { pause() }
     private val exoPlayer: ExoPlayer by lazy {
-        ExoPlayerHelper.createHttpExoPlayer(this)
+        ExoPlayerHelper.createHttpExoPlayer(this, audioOnly = true)
     }
     private var mediaSessionCompat: MediaSessionCompat? = null
     private var position = AudioPlay.book?.durChapterPos ?: 0
@@ -136,16 +136,22 @@ class AudioPlayService : BaseService(), Player.Listener {
 
     private val loadingChapters = arrayListOf<Int>()
 
+    /** 上次发出的歌词 position;切章 / seek 时由调用方置回 -1 */
+    private var lastLrcPosition = -1
+
+    /** 上次成功加载封面的 URL,用于避免同 URL 重复触发 Glide + 通知 rebuild */
+    private var lastCoverUrl: String? = null
+
     /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
     private data class NotificationSnapshot(
         val pause: Boolean,
         val sleepMin: Int,
         val bookName: String?,
         val chapterTitle: String?,
-        val coverId: Int
     )
 
     private var lastNotificationSnapshot: NotificationSnapshot? = null
+    private var lastNotificationCover: Bitmap? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -319,6 +325,7 @@ class AudioPlayService : BaseService(), Player.Listener {
         upMediaSessionPlaybackState(
             if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
         )
+        lastLrcPosition = -1
         upPlayProgressForLrc()
     }
 
@@ -402,9 +409,6 @@ class AudioPlayService : BaseService(), Player.Listener {
                 AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
-                if (upPlayProgressForLrcJob?.isActive != true && durLrcData?.isNotEmpty() == true) {
-                    upPlayProgressForLrc()
-                }
                 delay(1000)
             }
         }
@@ -427,13 +431,31 @@ class AudioPlayService : BaseService(), Player.Listener {
         if (lrc.isEmpty() || lrc.last().first == -1) return
         val subCount = FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount
 
+        // 注意: 此协程绑定主线程(lifecycleScope 默认 Main),因为 ExoPlayer 默认绑定主 looper,
+        // 从其它线程访问 currentPosition 会抛 IllegalStateException。
+        // 内层循环需要保证每条路径都至少经过一个挂起点(withTimeoutOrNull / return),否则当
+        // currentPosition 停滞时,逐行 ++position 会变成无挂起的紧密循环,配合 SharedFlow.tryEmit
+        // 内部 synchronized 累积出 ANR。
         upPlayProgressForLrcJob = lifecycleScope.launch {
             while (isActive) {
                 subCount.first { it > 0 }
                 val curLrc = durLrcData ?: break
-                var position = curLrc.indexOfLast { it.first <= exoPlayer.currentPosition + 60 }
-                    .coerceAtLeast(0)
-                postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                val curMs = exoPlayer.currentPosition + 60
+                // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上,否则从 0 起重新单向扫
+                var position = lastLrcPosition.takeIf {
+                    it in 0 until curLrc.size && curLrc[it].first <= curMs
+                } ?: 0
+                while (position + 1 < curLrc.size && curLrc[position + 1].first <= curMs) {
+                    position++
+                }
+                if (position != lastLrcPosition) {
+                    lastLrcPosition = position
+                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                }
+                // 已停在末行: 直接结束协程。线性播放不会再前进,需要重启的事件
+                // (seek/换章/换速/新 lrc 到货) 都已在对应入口显式调用 upPlayProgressForLrc。
+                // 不退出会导致外层 subCount.first { it > 0 } 在已订阅时同步返回,变成无挂起紧密循环。
+                if (position >= curLrc.size - 1) return@launch
 
                 while (isActive && position < curLrc.size - 1) {
                     val remain = ((curLrc[position + 1].first - exoPlayer.currentPosition - 60)
@@ -444,8 +466,21 @@ class AudioPlayService : BaseService(), Player.Listener {
                             true
                         } == true
                         if (dropped) break
+                        position++
+                        lastLrcPosition = position
+                        postEvent(EventBus.AUDIO_LRCPROGRESS, position)
+                        continue
                     }
-                    position++
+                    // 时间戳已过期: 可能是 seek 跳跃,也可能是 currentPosition 停滞。
+                    // 单向向前扫到真实位置;若仍未前进,直接退出协程,由 upPlayProgress 的 1s 心跳
+                    // 在 player 真正推进后重启,避免无挂起点的忙等。
+                    val before = position
+                    val nowMs = exoPlayer.currentPosition + 60
+                    while (position + 1 < curLrc.size && curLrc[position + 1].first <= nowMs) {
+                        position++
+                    }
+                    if (position == before) return@launch
+                    lastLrcPosition = position
                     postEvent(EventBus.AUDIO_LRCPROGRESS, position)
                 }
             }
@@ -569,10 +604,10 @@ class AudioPlayService : BaseService(), Player.Listener {
             sleepMin = sleepTimer?.minutes ?: 0,
             bookName = AudioPlay.book?.name,
             chapterTitle = AudioPlay.durChapter?.title,
-            coverId = System.identityHashCode(cover)
         )
-        if (snapshot == lastNotificationSnapshot) return
+        if (snapshot == lastNotificationSnapshot && lastNotificationCover === cover) return
         lastNotificationSnapshot = snapshot
+        lastNotificationCover = cover
         upNotificationJob?.cancel()
         upNotificationJob = execute {
             try {
@@ -598,16 +633,20 @@ class AudioPlayService : BaseService(), Player.Listener {
     }
 
     /**
-     * 加载封面图片(使用 Glide 缓存)
+     * 加载封面图片(使用 Glide 缓存)。同一 URL 短路掉,避免封面/通知重复刷新。
      */
     private fun loadCover(url: String?) {
         val finalUrl = url?.takeIf { it.isNotBlank() } ?: AudioPlay.book?.getDisplayCover()
         if (finalUrl.isNullOrBlank()) {
+            if (lastCoverUrl == null && cover === BookCover.notificationDefaultCover) return
+            lastCoverUrl = null
             cover = BookCover.notificationDefaultCover
             upMediaMetadata()
             upAudioPlayNotification()
             return
         }
+        if (finalUrl == lastCoverUrl) return
+        lastCoverUrl = finalUrl
         BookCover.loadNotificationCover(this, finalUrl, lifecycleScope) {
             cover = it
             upMediaMetadata()
@@ -673,6 +712,8 @@ class AudioPlayService : BaseService(), Player.Listener {
             postEvent(EventBus.AUDIO_LOADING, true)
             AudioPlay.durCoverUrl = null
             AudioPlay.durLrcData = null
+            lastLrcPosition = -1
+            lastCoverUrl = null
             loadCoverUrl(bookSource, book, chapter)
             loadLrcData(bookSource, book, chapter)
             execute {
@@ -741,7 +782,10 @@ class AudioPlayService : BaseService(), Player.Listener {
         }.onSuccess {
             if (it.isEmpty()) return@onSuccess
             AudioPlay.durLrcData = it
+            lastLrcPosition = -1
             postEvent(EventBus.AUDIO_LRC, it)
+            // 歌词到货后显式启动推进协程 (STATE_READY 可能早于歌词加载完成)
+            upPlayProgressForLrc()
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }

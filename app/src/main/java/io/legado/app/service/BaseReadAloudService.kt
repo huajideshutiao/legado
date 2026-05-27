@@ -120,10 +120,10 @@ abstract class BaseReadAloudService : BaseService() {
         val sleepMin: Int,
         val bookName: String?,
         val chapterTitle: String?,
-        val coverId: Int
     )
 
     private var lastNotificationSnapshot: NotificationSnapshot? = null
+    private var lastNotificationCover: Bitmap? = null
 
     var pageChanged = false
     private var toLast = false
@@ -419,10 +419,10 @@ abstract class BaseReadAloudService : BaseService() {
             sleepMin = sleepTimer?.minutes ?: 0,
             bookName = ReadBook.book?.name,
             chapterTitle = ReadBook.curTextChapter?.title,
-            coverId = System.identityHashCode(cover)
         )
-        if (snapshot == lastNotificationSnapshot) return
+        if (snapshot == lastNotificationSnapshot && lastNotificationCover === cover) return
         lastNotificationSnapshot = snapshot
+        lastNotificationCover = cover
         upNotificationJob?.cancel()
         upNotificationJob = execute {
             try {

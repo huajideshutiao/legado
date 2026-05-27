@@ -3,9 +3,11 @@ package io.legado.app.help.exoplayer
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.core.net.toUri
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.FileDataSource
@@ -17,6 +19,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -54,8 +57,17 @@ object ExoPlayerHelper {
         return builder.build()
     }
 
-    fun createHttpExoPlayer(context: Context): ExoPlayer {
-        return ExoPlayer.Builder(context).setLoadControl(
+    /**
+     * @param audioOnly 纯音频场景(AudioPlayService)传 true,开启 DSP audio offload,
+     *                  绕开 c2.android.mp3.decoder 软解;视频场景必须为 false,
+     *                  否则会触发 A/V 同步问题。
+     */
+    fun createHttpExoPlayer(context: Context, audioOnly: Boolean = false): ExoPlayer {
+        // 视频走硬件 MediaCodec 默认已开,加 fallback 让冷门 codec / 怪文件硬解失败时降级到软解
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+
+        val builder = ExoPlayer.Builder(context, renderersFactory).setLoadControl(
             DefaultLoadControl.Builder().setBufferDurationsMs(
                 DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                 DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
@@ -70,7 +82,36 @@ object ExoPlayerHelper {
             ).setDataSourceFactory(resolvingDataSource)
                 .setLiveTargetOffsetMs(5000)
                 .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(2))
-        ).build()
+        )
+
+        if (audioOnly) {
+            // offload 依赖 AudioAttributes;焦点交给 AudioFocusController,这里传 false
+            builder.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                false
+            )
+        }
+
+        val player = builder.build()
+
+        if (audioOnly) {
+            // DSP offload 消除 PipelineWatcher pipelineFull;变速场景要求硬件支持,
+            // 否则自动回退到 MediaCodec 软解(行为不变)
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setAudioOffloadPreferences(
+                    AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                        .setIsSpeedChangeSupportRequired(true)
+                        .build()
+                )
+                .build()
+        }
+
+        return player
     }
 
 
