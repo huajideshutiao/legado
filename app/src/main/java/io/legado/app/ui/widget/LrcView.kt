@@ -204,6 +204,23 @@ class LrcView @JvmOverloads constructor(
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_SCROLL) {
+            val scrollAmount = event.getAxisValue(MotionEvent.AXIS_VSCROLL) * lineMargin * 3
+            if (scrollAmount != 0f) {
+                scroller.forceFinished(true)
+                autoScroll = false
+                removeCallbacks(autoResetRunnable)
+                scrollYOffset = (scrollYOffset - scrollAmount).coerceIn(0f, maxScrollY())
+                lastScrollTime = System.currentTimeMillis()
+                postDelayed(autoResetRunnable, 5000)
+                invalidate()
+            }
+            return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (lrcData.isEmpty()) return
         val centerY = height / 2f
