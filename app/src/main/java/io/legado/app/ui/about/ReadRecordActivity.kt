@@ -89,7 +89,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     /** 进行中的列表刷新任务，键入搜索/翻月份时取消上一次，避免堆积 */
     private var initDataJob: Job? = null
-    private var heatmapJob: Job? = null
 
     /** 搜索框节流任务，连续输入 300ms 内只触发一次列表刷新 */
     private var searchDebounceJob: Job? = null
@@ -99,13 +98,15 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private var summaryWeek = 0L
     private var summaryMonth = 0L
     private var summaryAll = 0L
+    private var summaryBookCount = 0
+    private var summaryAvgRead = 0L
 
     companion object {
         private const val SEARCH_DEBOUNCE_MS = 300L
     }
 
     @SuppressLint("SimpleDateFormat")
-    private val minuteFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     override val binding by viewBinding(ActivityReadRecordBinding::inflate)
 
@@ -275,6 +276,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         header.tvWeekValue.text = formatDuring(summaryWeek)
         header.tvMonthValue.text = formatDuring(summaryMonth)
         header.tvAllValue.text = formatDuring(summaryAll)
+        header.tvBookCountValue.text = summaryBookCount.toString()
+        header.tvAvgReadValue.text = formatDuring(summaryAvgRead)
     }
 
     private fun refreshHeatmap() {
@@ -284,26 +287,19 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         updateNextMonthEnabled()
         val year = heatmapYear
         val month = heatmapMonth
-        heatmapJob?.cancel()
-        heatmapJob = lifecycleScope.launch {
-            val (start, end) = monthRange(year, month)
-            val stats = withContext(IO) {
-                appDb.readRecordDao.getRangeStats(start, end)
-            }
-            val data = HashMap<Int, Long>(stats.size)
-            for (s in stats) {
-                val day = s.day % 100
-                data[day] = (data[day] ?: 0L) + s.readTime
-            }
-            // 防止月份切换过快出现错位
-            if (year == heatmapYear && month == heatmapMonth) {
-                val selectedDayOfMonth =
-                    if (filterDay != 0 && filterDay / 10000 == year && (filterDay / 100) % 100 == month) {
-                        filterDay % 100
-                    } else 0
-                headerBinding?.heatMap?.setMonth(year, month, data, selectedDayOfMonth)
+        val (start, end) = monthRange(year, month)
+        val data = HashMap<Int, Long>()
+        allRecords?.forEach { r ->
+            if (r.day in start..end) {
+                val d = r.day % 100
+                data[d] = (data[d] ?: 0L) + (r.endSec - r.startSec)
             }
         }
+        val selectedDayOfMonth =
+            if (filterDay != 0 && filterDay / 10000 == year && (filterDay / 100) % 100 == month) {
+                filterDay % 100
+            } else 0
+        header.heatMap.setMonth(year, month, data, selectedDayOfMonth)
     }
 
     private fun initData(searchKey: String? = lastSearchKey) {
@@ -311,7 +307,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val day = filterDay
         val key = searchKey?.trim().orEmpty()
         val now = System.currentTimeMillis()
-        val todayKey = ReadRecord.dayKey(now)
+        val todayKey = ReadRecord.dayKey(now / 1000)
         val (weekStart, weekEnd) = weekRange(now)
         val (monthStart, monthEnd) = monthRange(now)
         val currentSortMode = sortMode
@@ -340,8 +336,11 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 var sumWeek = 0L
                 var sumMonth = 0L
                 var sumAll = 0L
+                val allBookNames = HashSet<String>()
                 for (r in records) {
-                    val rt = r.readTime
+                    val rt = r.endSec - r.startSec
+                    allBookNames.add(r.bookName)
+                    val lastRead = r.endSec
                     val d = r.day
                     // summary 不受搜索词/筛选影响，先算
                     sumAll += rt
@@ -351,13 +350,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     val name = r.bookName
                     if (!keyEmpty && !name.contains(key, ignoreCase = true)) continue
                     if (perDayMode) {
-                        perDayItems!!.add(ReadRecordShow(name, rt, r.lastRead))
+                        perDayItems!!.add(ReadRecordShow(name, rt, lastRead))
                         totalByBook!![name] = (totalByBook[name] ?: 0L) + rt
                     } else {
                         readTimeByBook!![name] = (readTimeByBook[name] ?: 0L) + rt
                         val prevLast = lastReadByBook!![name]
-                        if (prevLast == null || r.lastRead > prevLast) {
-                            lastReadByBook[name] = r.lastRead
+                        if (prevLast == null || lastRead > prevLast) {
+                            lastReadByBook[name] = lastRead
                         }
                         if (d == dayForToday) {
                             todayPerBook!![name] = (todayPerBook[name] ?: 0L) + rt
@@ -404,12 +403,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 }
                 val bookList = if (names.isEmpty()) emptyList()
                 else appDb.bookDao.findByName(*names)
+                val bookCount = allBookNames.size
+                val avgRead = if (bookCount > 0) sumAll / bookCount else 0L
                 InitResult(
                     sortedItems,
                     bookList.associateBy { it.name },
                     todayPerBook ?: emptyMap(),
                     totalByBook ?: emptyMap(),
-                    sumToday, sumWeek, sumMonth, sumAll
+                    sumToday, sumWeek, sumMonth, sumAll, bookCount, avgRead
                 )
             }
             // 取消后会抛 CancellationException，不会跑到这里覆盖更新的状态
@@ -420,6 +421,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             summaryWeek = result.sumWeek
             summaryMonth = result.sumMonth
             summaryAll = result.sumAll
+            summaryBookCount = result.bookCount
+            summaryAvgRead = result.avgRead
             renderSummary()
             adapter.setItems(result.items)
         }
@@ -434,6 +437,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val sumWeek: Long,
         val sumMonth: Long,
         val sumAll: Long,
+        val bookCount: Int,
+        val avgRead: Long,
     )
 
     private fun weekRange(now: Long): Pair<Int, Int> {
@@ -441,9 +446,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         cal.timeInMillis = now
         cal.firstDayOfWeek = Calendar.MONDAY
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        val start = ReadRecord.dayKey(cal.timeInMillis)
+        val start = ReadRecord.dayKey(cal.timeInMillis / 1000)
         cal.add(Calendar.DAY_OF_MONTH, 6)
-        val end = ReadRecord.dayKey(cal.timeInMillis)
+        val end = ReadRecord.dayKey(cal.timeInMillis / 1000)
         return start to end
     }
 
@@ -560,8 +565,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 formatDuring(totalTime)
             )
             tvLast.text = when {
-                item.lastRead > 0 -> minuteFormat.format(item.lastRead)
-                book != null && book.durChapterTime > 0 -> minuteFormat.format(book.durChapterTime)
+                item.lastRead > 0 -> dateFormat.format(item.lastRead * 1000L)
+                book != null && book.durChapterTime > 0 -> dateFormat.format(book.durChapterTime / 1000L * 1000L)
                 else -> ""
             }
             tvLastUpdateTime.text = ""
@@ -622,23 +627,17 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
      * 把毫秒数格式化为「X小时Y分钟」形式，不再按天换算。
      * 小于 1 分钟显示秒。
      */
-    fun formatDuring(mss: Long): String {
-        if (mss <= 0L) return "0 分钟"
-        val totalSeconds = mss / 1000
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
+    fun formatDuring(seconds: Long): String {
+        if (seconds <= 0L) return "0 分钟"
+        val hours = seconds / 3600
+        val minutes = (seconds % 3600) / 60
+        val secs = seconds % 60
         return when {
             hours > 0 && minutes > 0 -> "$hours 小时 $minutes 分钟"
             hours > 0 -> "$hours 小时"
             minutes > 0 -> "$minutes 分钟"
-            else -> "$seconds 秒"
+            else -> "$secs 秒"
         }
-    }
-
-    private fun formatDayKey(millis: Long): String {
-        if (millis <= 0L) return ""
-        return formatDayKey(ReadRecord.dayKey(millis))
     }
 
     private fun formatDayKey(dayKey: Int): String {

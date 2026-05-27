@@ -1,28 +1,24 @@
 package io.legado.app.data.entities
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import java.util.Calendar
 
 /**
- * 阅读记录：每本书按日期分行，主键 (bookName, day)，day 形如 20260525。
- * 「累计时长」「最后阅读日」均由 DAO 聚合查询导出，不再单独存字段。
- * lastRead 为当日最后一次阅读的毫秒时间戳，用于排序与精确显示，老数据可能为 0。
+ * 阅读记录：每次阅读会话一行，主键 (bookName, day, startSec)，day 形如 20260525。
+ * 时长由 endSec - startSec 计算，秒级精度。
  */
-@Entity(tableName = "readRecord", primaryKeys = ["bookName", "day"])
+@Entity(tableName = "readRecord", primaryKeys = ["bookName", "day", "startSec"])
 data class ReadRecord(
     var bookName: String = "",
     var day: Int = 0,
-    @ColumnInfo(defaultValue = "0")
-    var readTime: Long = 0L,
-    @ColumnInfo(defaultValue = "0")
-    var lastRead: Long = 0L
+    var startSec: Long = 0L,
+    var endSec: Long = 0L
 ) {
     companion object {
-        /** 把毫秒时间戳转成本地日期 yyyyMMdd 整数键 */
-        fun dayKey(timeMillis: Long = System.currentTimeMillis()): Int {
+        /** 把秒时间戳转成本地日期 yyyyMMdd 整数键 */
+        fun dayKey(timeSec: Long = System.currentTimeMillis() / 1000): Int {
             val cal = Calendar.getInstance()
-            cal.timeInMillis = timeMillis
+            cal.timeInMillis = timeSec * 1000L
             val y = cal.get(Calendar.YEAR)
             val m = cal.get(Calendar.MONTH) + 1
             val d = cal.get(Calendar.DAY_OF_MONTH)

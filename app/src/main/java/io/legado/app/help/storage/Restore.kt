@@ -296,13 +296,17 @@ object Restore {
     }
 
     /**
-     * 兼容旧备份 ([deviceId, bookName, readTime累计, lastRead毫秒]) 和新格式
-     * ([bookName, day, readTime, lastRead?])。
-     * 通过 day 字段是否存在判断格式：旧格式 day 缺失 → 解析为 0。
+     * 兼容三种备份格式：
+     * 1. 最旧格式：day==0，readTime 毫秒累计
+     * 2. v82 格式：有 day，readTime 毫秒，lastRead 毫秒
+     * 3. 新格式：有 startSec/endSec（秒）
      */
     private data class ReadRecordBackup(
         val bookName: String = "",
         val day: Int = 0,
+        val startSec: Long = 0,
+        val endSec: Long = 0,
+        // 旧字段，仅用于兼容旧备份
         val readTime: Long = 0,
         val lastRead: Long = 0
     )
@@ -310,30 +314,57 @@ object Restore {
     private fun restoreReadRecord(path: String) {
         val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
         if (backups.isEmpty()) return
-        val isLegacy = backups.all { it.day == 0 }
         val dao = appDb.readRecordDao
-        if (isLegacy) {
-            // 旧格式：按 bookName 聚合，统一归到 dayKey(maxLastRead) 那一天
-            val now = System.currentTimeMillis()
-            backups.groupBy { it.bookName }.forEach { (bookName, rows) ->
-                if (bookName.isEmpty()) return@forEach
-                val total = rows.sumOf { it.readTime }
-                if (total <= 0) return@forEach
-                val ms = rows.maxOfOrNull { it.lastRead }?.takeIf { it > 0 } ?: now
-                val day = ReadRecord.dayKey(ms)
-                val existing = dao.getDayReadTime(bookName, day) ?: 0L
-                if (total > existing) {
-                    dao.insert(ReadRecord(bookName, day, total, ms))
-                }
+        val nowSec = System.currentTimeMillis() / 1000
+        backups.forEach { b ->
+            if (b.bookName.isEmpty()) return@forEach
+            if (b.startSec > 0 && b.endSec > b.startSec) {
+                // 新格式：直接插入
+                dao.insertSession(ReadRecord(b.bookName, b.day, b.startSec, b.endSec))
+            } else if (b.readTime > 0) {
+                // 旧格式：用迁移算法还原为时间段
+                val endSec0 = if (b.lastRead > 0) b.lastRead / 1000 else nowSec
+                val day0 = if (b.day != 0) b.day else ReadRecord.dayKey(endSec0)
+                restoreOldRecord(dao, b.bookName, day0, b.readTime / 1000, endSec0, nowSec)
             }
-        } else {
-            backups.forEach { b ->
-                if (b.bookName.isEmpty() || b.day == 0 || b.readTime <= 0) return@forEach
-                val existing = dao.getDayReadTime(b.bookName, b.day) ?: 0L
-                if (b.readTime > existing) {
-                    dao.insert(ReadRecord(b.bookName, b.day, b.readTime, b.lastRead))
-                }
-            }
+        }
+    }
+
+    private fun restoreOldRecord(
+        dao: io.legado.app.data.dao.ReadRecordDao,
+        bookName: String, day: Int, remainingSecs: Long, endSec: Long, nowSec: Long
+    ) {
+        var remaining = remainingSecs
+        var curDay = day
+        var curEndSec = endSec
+        val cal = java.util.Calendar.getInstance()
+
+        fun midnightSec(d: Int): Long {
+            cal.clear(); cal.set(d / 10000, (d / 100) % 100 - 1, d % 100)
+            return cal.timeInMillis / 1000
+        }
+
+        fun prevDay(d: Int): Int {
+            cal.clear(); cal.set(d / 10000, (d / 100) % 100 - 1, d % 100)
+            cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
+            return cal.get(java.util.Calendar.YEAR) * 10000 + (cal.get(java.util.Calendar.MONTH) + 1) * 100 + cal.get(
+                java.util.Calendar.DAY_OF_MONTH
+            )
+        }
+
+        val maxBack = minOf(16L * 3600, (curEndSec - midnightSec(curDay)).coerceAtLeast(0))
+        val seg0 = minOf(remaining, maxBack)
+        if (seg0 > 0) {
+            dao.insertSession(ReadRecord(bookName, curDay, curEndSec - seg0, curEndSec))
+            remaining -= seg0
+        }
+        curDay = prevDay(curDay)
+        while (remaining > 0) {
+            val winEnd = midnightSec(curDay) + 20L * 3600
+            val seg = minOf(remaining, 16L * 3600)
+            dao.insertSession(ReadRecord(bookName, curDay, winEnd - seg, winEnd))
+            remaining -= seg
+            curDay = prevDay(curDay)
         }
     }
 

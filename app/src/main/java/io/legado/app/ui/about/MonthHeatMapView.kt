@@ -79,8 +79,8 @@ class MonthHeatMapView @JvmOverloads constructor(
     /** 6 档色阶对应的 alpha 值 (0..255)。索引 0 = 完全没读，5 = 满 12 小时及以上 */
     private val levelAlphas = intArrayOf(24, 64, 112, 160, 208, 255)
 
-    /** 单日满色阶对应的毫秒上限：12 小时 */
-    private val maxReadMillis = 12L * 60L * 60L * 1000L
+    /** 单日满色阶对应的秒上限：12 小时 */
+    private val maxReadSecs = 12L * 60L * 60L
 
     var onDayClick: ((day: Int, readTime: Long, selected: Boolean) -> Unit)? = null
 
@@ -244,21 +244,21 @@ class MonthHeatMapView @JvmOverloads constructor(
         canvas.drawText(text, cx, cy, selectedInfoPaint)
     }
 
-    private fun formatDuration(ms: Long): String {
-        if (ms <= 0L) return "0 分钟"
-        val hours = ms / 3_600_000L
-        val minutes = (ms % 3_600_000L) / 60_000L
+    private fun formatDuration(secs: Long): String {
+        if (secs <= 0L) return "0 分钟"
+        val hours = secs / 3600L
+        val minutes = (secs % 3600L) / 60L
         return buildString {
-            if (hours > 0) append("${hours} 小时")
+            if (hours > 0) append("$hours 小时")
             if (hours > 0 && minutes > 0) append(" ")
-            if (minutes > 0) append("${minutes} 分钟")
+            if (minutes > 0) append("$minutes 分钟")
         }
     }
 
     private fun levelFor(value: Long): Int {
         if (value <= 0L) return 0
         // 固定 12 小时上限，按 1/5 分段：2.4h / 4.8h / 7.2h / 9.6h / 12h+
-        val ratio = (value.toFloat() / maxReadMillis).coerceAtMost(1f)
+        val ratio = (value.toFloat() / maxReadSecs).coerceAtMost(1f)
         return when {
             ratio <= 0.2f -> 1
             ratio <= 0.4f -> 2

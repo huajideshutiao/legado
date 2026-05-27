@@ -132,11 +132,18 @@ object ReadTimeRecorder {
 
     private fun flushSession(bookName: String, startTime: Long) {
         if (!AppConfig.enableReadRecord) return
-        val now = System.currentTimeMillis()
-        val delta = now - startTime
-        if (delta <= 0) return
+        val startSec = startTime / 1000
+        val endSec = System.currentTimeMillis() / 1000
+        if (endSec - startSec < 5) return
         Coroutine.async {
-            appDb.readRecordDao.addReadTime(bookName, ReadRecord.dayKey(now), now, delta)
+            appDb.readRecordDao.insertSession(
+                ReadRecord(
+                    bookName,
+                    ReadRecord.dayKey(),
+                    startSec,
+                    endSec
+                )
+            )
         }
     }
 }

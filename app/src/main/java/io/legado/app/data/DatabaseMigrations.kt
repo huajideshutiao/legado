@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
+import java.util.Calendar
 
 object DatabaseMigrations {
 
@@ -20,7 +21,8 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_76_77, migration_79_80, migration_80_81, migration_81_82
+            migration_76_77, migration_79_80, migration_80_81, migration_81_82,
+            migration_82_83
         )
     }
 
@@ -554,6 +556,84 @@ object DatabaseMigrations {
         }
     }
 
+    private val migration_82_83 = object : Migration(82, 83) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            data class OldRow(
+                val bookName: String,
+                val day: Int,
+                val readTimeMs: Long,
+                val lastReadMs: Long
+            )
+
+            val rows = mutableListOf<OldRow>()
+            db.query("select bookName, day, readTime, lastRead from readRecord").use { c ->
+                while (c.moveToNext()) {
+                    rows.add(OldRow(c.getString(0), c.getInt(1), c.getLong(2), c.getLong(3)))
+                }
+            }
+
+            db.execSQL("DROP TABLE readRecord")
+            db.execSQL(
+                """CREATE TABLE readRecord (
+                    bookName TEXT NOT NULL,
+                    day INTEGER NOT NULL,
+                    startSec INTEGER NOT NULL,
+                    endSec INTEGER NOT NULL,
+                    PRIMARY KEY(bookName, day, startSec)
+                )""".trimIndent()
+            )
+
+            val nowSec = System.currentTimeMillis() / 1000
+            for (row in rows) {
+                if (row.bookName.isEmpty() || row.readTimeMs <= 0) continue
+                var remaining = row.readTimeMs / 1000
+                val endSec0 = if (row.lastReadMs > 0) row.lastReadMs / 1000 else nowSec
+                var curDay = row.day
+                var curEndSec = endSec0
+
+                val dayStartSec = dayToMidnightSec(curDay)
+                val maxBack = minOf(16L * 3600, (curEndSec - dayStartSec).coerceAtLeast(0))
+                val seg0 = minOf(remaining, maxBack)
+                if (seg0 > 0) {
+                    db.execSQL(
+                        "INSERT OR IGNORE INTO readRecord VALUES(?,?,?,?)",
+                        arrayOf<Any>(row.bookName, curDay, curEndSec - seg0, curEndSec)
+                    )
+                    remaining -= seg0
+                }
+
+                curDay = prevDay(curDay)
+                while (remaining > 0) {
+                    val winEnd = dayToMidnightSec(curDay) + 20L * 3600
+                    val seg = minOf(remaining, 16L * 3600)
+                    db.execSQL(
+                        "INSERT OR IGNORE INTO readRecord VALUES(?,?,?,?)",
+                        arrayOf<Any>(row.bookName, curDay, winEnd - seg, winEnd)
+                    )
+                    remaining -= seg
+                    curDay = prevDay(curDay)
+                }
+            }
+        }
+
+        private fun dayToMidnightSec(day: Int): Long {
+            val cal = Calendar.getInstance()
+            cal.clear()
+            cal.set(day / 10000, (day / 100) % 100 - 1, day % 100)
+            return cal.timeInMillis / 1000
+        }
+
+        private fun prevDay(day: Int): Int {
+            val cal = Calendar.getInstance()
+            cal.clear()
+            cal.set(day / 10000, (day / 100) % 100 - 1, day % 100)
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+            return cal.get(Calendar.YEAR) * 10000 + (cal.get(Calendar.MONTH) + 1) * 100 + cal.get(
+                Calendar.DAY_OF_MONTH
+            )
+        }
+    }
+
     private val migration_81_82 = object : Migration(81, 82) {
         override fun migrate(db: SupportSQLiteDatabase) {
             // 旧 readRecord: (deviceId, bookName, readTime累计, lastRead毫秒)
@@ -593,7 +673,7 @@ object DatabaseMigrations {
             for (row in rows) {
                 if (row.bookName.isEmpty() || row.readTime <= 0) continue
                 val ms = if (row.lastRead > 0) row.lastRead else now
-                val day = io.legado.app.data.entities.ReadRecord.dayKey(ms)
+                val day = io.legado.app.data.entities.ReadRecord.dayKey(ms / 1000)
                 db.execSQL(
                     "INSERT OR REPLACE INTO readRecord(bookName, day, readTime, lastRead) VALUES(?, ?, ?, ?)",
                     arrayOf<Any>(row.bookName, day, row.readTime, ms)
