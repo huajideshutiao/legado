@@ -56,7 +56,10 @@ object MediaPlaybackNotification {
         }
         builder.setStyle(
             androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(*compactActionIndices)
+                .setShowActionsInCompactView(
+                    *if (compactActionIndices.size > 3) compactActionIndices.sliceArray(0..2)
+                    else compactActionIndices
+                )
                 .setMediaSession(sessionToken)
         )
         return builder

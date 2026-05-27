@@ -579,12 +579,6 @@ class AudioPlayService : BaseService(), Player.Listener {
             cover = cover,
             contentIntent = activityPendingIntent<AudioPlayActivity>("activity"),
             actions = listOf(
-                playPause,
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
-                    getString(R.string.stop),
-                    servicePendingIntent<AudioPlayService>(IntentAction.stop)
-                ),
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_time_add_24dp,
                     getString(R.string.set_timer),
@@ -595,13 +589,19 @@ class AudioPlayService : BaseService(), Player.Listener {
                     getString(R.string.pref_media_button_per_next),
                     servicePendingIntent<AudioPlayService>(IntentAction.prev)
                 ),
+                playPause,
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_next,
                     getString(R.string.pref_media_button_per_next_summary),
                     servicePendingIntent<AudioPlayService>(IntentAction.next)
                 ),
+                MediaPlaybackNotification.Action(
+                    R.drawable.ic_stop_black_24dp,
+                    getString(R.string.stop),
+                    servicePendingIntent<AudioPlayService>(IntentAction.stop)
+                ),
             ),
-            compactActionIndices = intArrayOf(0, 1, 2, 3, 4),
+            compactActionIndices = intArrayOf(1, 2, 3),
             sessionToken = mediaSessionCompat?.sessionToken,
             subText = getString(R.string.audio),
         )

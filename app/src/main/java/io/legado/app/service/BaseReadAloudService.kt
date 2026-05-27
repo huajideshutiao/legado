@@ -469,28 +469,28 @@ abstract class BaseReadAloudService : BaseService() {
             contentIntent = activityPendingIntent<ReadBookActivity>("activity"),
             actions = listOf(
                 MediaPlaybackNotification.Action(
+                    R.drawable.ic_time_add_24dp,
+                    getString(R.string.set_timer),
+                    aloudServicePendingIntent(IntentAction.addTimer)
+                ),
+                MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_previous,
                     getString(R.string.previous_chapter),
                     aloudServicePendingIntent(IntentAction.prev)
                 ),
                 playPause,
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
-                    getString(R.string.stop),
-                    aloudServicePendingIntent(IntentAction.stop)
-                ),
-                MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_next,
                     getString(R.string.next_chapter),
                     aloudServicePendingIntent(IntentAction.next)
                 ),
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_time_add_24dp,
-                    getString(R.string.set_timer),
-                    aloudServicePendingIntent(IntentAction.addTimer)
+                    R.drawable.ic_stop_black_24dp,
+                    getString(R.string.stop),
+                    aloudServicePendingIntent(IntentAction.stop)
                 ),
             ),
-            compactActionIndices = intArrayOf(1, 2, 4),
+            compactActionIndices = intArrayOf(1, 2, 3),
             sessionToken = sessionToken,
             subText = getString(R.string.read_aloud),
             category = NotificationCompat.CATEGORY_TRANSPORT,
