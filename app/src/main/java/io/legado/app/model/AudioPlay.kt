@@ -187,6 +187,7 @@ object AudioPlay {
         durAudioSize = durChapter?.end?.toInt() ?: 0
         durLrcData = null
         postEvent(EventBus.AUDIO_LRC, emptyList<Pair<Int, String>>())
+        postEvent(EventBus.AUDIO_LRCPROGRESS, -1)
         val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)

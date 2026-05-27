@@ -113,15 +113,22 @@ class LrcView @JvmOverloads constructor(
         prepareLayouts()
         currentIndex = -1
         lastIndex = -1
-        if (autoScroll) {
-            scrollYOffset = lrcData.firstOrNull()?.let { it.height / 2f } ?: 0f
-        }
+        autoScroll = true
+        scroller.forceFinished(true)
+        scrollYOffset = lrcData.firstOrNull()?.let { it.height / 2f } ?: 0f
         invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         prepareLayouts()
+        if (autoScroll && lrcData.isNotEmpty()) {
+            val index = currentIndex.coerceAtLeast(0)
+            if (index in lrcData.indices) {
+                scroller.forceFinished(true)
+                scrollYOffset = lrcData[index].offset + lrcData[index].height / 2f
+            }
+        }
     }
 
     private fun prepareLayouts() {
@@ -155,7 +162,13 @@ class LrcView @JvmOverloads constructor(
             colorProgress = 0f
             autoScroll = true
             removeCallbacks(autoResetRunnable)
-            scrollToIndex(currentIndex)
+            if (lastIndex == -1) {
+                scroller.forceFinished(true)
+                scrollYOffset = lrcData[currentIndex].offset + lrcData[currentIndex].height / 2f
+                invalidate()
+            } else {
+                scrollToIndex(currentIndex)
+            }
         }
     }
 
