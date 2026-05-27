@@ -100,9 +100,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * ================= 展开逻辑 =================
      */
     private fun handleExpand(
-        binding: ItemFindBookBinding,
-        item: BookSourcePart,
-        isUpdate: Boolean
+        binding: ItemFindBookBinding, item: BookSourcePart, isUpdate: Boolean
     ) {
         val bookSource = item.getBookSource() ?: return
 
@@ -120,7 +118,9 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             if (!AppConfig.isEInkMode && isUpdate) {
                 executeExpandAnimation(binding)
             } else {
-                binding.flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                binding.flexbox.layoutParams = binding.flexbox.layoutParams.apply {
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                }
                 binding.flexbox.visible()
             }
         }.onFinally {
@@ -150,7 +150,9 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             interpolator = FastOutSlowInInterpolator()
             duration = EXPAND_DURATION_MS
             addUpdateListener {
-                flexbox.layoutParams.height = it.animatedValue as Int
+                flexbox.layoutParams = flexbox.layoutParams.apply {
+                    height = it.animatedValue as Int
+                }
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -211,7 +213,9 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 interpolator = FastOutSlowInInterpolator()
                 duration = EXPAND_DURATION_MS
                 addUpdateListener {
-                    flexbox.layoutParams.height = it.animatedValue as Int
+                    flexbox.layoutParams = flexbox.layoutParams.apply {
+                        height = it.animatedValue as Int
+                    }
                 }
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
@@ -228,9 +232,10 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         } else {
             recyclerFlexbox(flexbox)
             flexbox.gone()
-            flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            flexbox.layoutParams = flexbox.layoutParams.apply {
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+            }
         }
-
         binding.ivStatus.setImageResource(R.drawable.ic_arrow_right)
     }
 
