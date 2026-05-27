@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package io.legado.app.service
 
 import android.annotation.SuppressLint
@@ -105,6 +107,9 @@ class AudioPlayService : BaseService(), Player.Listener {
 
         private const val APP_ACTION_STOP = "Stop"
         private const val APP_ACTION_TIMER = "Timer"
+
+        /** 歌词同步补偿偏移量 (毫秒) */
+        private const val LRC_OFFSET_MS = 60
     }
 
     private val playbackLock by lazy {
@@ -218,6 +223,9 @@ class AudioPlayService : BaseService(), Player.Listener {
      * 已经有 [AudioPlay.durPlayUrl] 时启动播放,做好状态/资源同步。
      */
     private fun triggerPlay(playNew: Boolean) {
+        if (url == AudioPlay.durPlayUrl && !playNew && exoPlayer.playbackState != Player.STATE_IDLE) {
+            return
+        }
         exoPlayer.stop()
         upPlayProgressJob?.cancel()
         upPlayProgressForLrcJob?.cancel()
@@ -440,7 +448,7 @@ class AudioPlayService : BaseService(), Player.Listener {
             while (isActive) {
                 subCount.first { it > 0 }
                 val curLrc = durLrcData ?: break
-                val curMs = exoPlayer.currentPosition + 60
+                val curMs = exoPlayer.currentPosition + LRC_OFFSET_MS
                 // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上,否则从 0 起重新单向扫
                 var position = lastLrcPosition.takeIf {
                     it in 0 until curLrc.size && curLrc[it].first <= curMs
@@ -458,7 +466,8 @@ class AudioPlayService : BaseService(), Player.Listener {
                 if (position >= curLrc.size - 1) return@launch
 
                 while (isActive && position < curLrc.size - 1) {
-                    val remain = ((curLrc[position + 1].first - exoPlayer.currentPosition - 60)
+                    val remain =
+                        ((curLrc[position + 1].first - exoPlayer.currentPosition - LRC_OFFSET_MS)
                         / playSpeed).toLong()
                     if (remain > 0) {
                         val dropped = withTimeoutOrNull(remain) {
@@ -475,7 +484,7 @@ class AudioPlayService : BaseService(), Player.Listener {
                     // 单向向前扫到真实位置;若仍未前进,直接退出协程,由 upPlayProgress 的 1s 心跳
                     // 在 player 真正推进后重启,避免无挂起点的忙等。
                     val before = position
-                    val nowMs = exoPlayer.currentPosition + 60
+                    val nowMs = exoPlayer.currentPosition + LRC_OFFSET_MS
                     while (position + 1 < curLrc.size && curLrc[position + 1].first <= nowMs) {
                         position++
                     }
