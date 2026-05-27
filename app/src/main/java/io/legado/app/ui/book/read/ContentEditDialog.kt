@@ -35,19 +35,23 @@ import kotlinx.coroutines.withContext
  */
 class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
 
+    override val isFullHeight: Boolean = true
+
     val binding by viewBinding(DialogContentEditBinding::bind)
     val viewModel by viewModels<ContentEditViewModel>()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.title = ReadBook.curTextChapter?.title
+        val chapter = ReadBook.curTextChapter?.chapter
+        binding.toolBar.title = chapter?.title
         initMenu()
         binding.toolBar.setOnClickListener {
             lifecycleScope.launch {
                 val book = ReadBook.book ?: return@launch
-                val chapter = withContext(IO) {
-                    appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+                val durChapterIndex = chapter?.index ?: ReadBook.durChapterIndex
+                val chapter1 = withContext(IO) {
+                    appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
                 } ?: return@launch
-                editTitle(chapter)
+                editTitle(chapter1)
             }
         }
         viewModel.loadStateLiveData.observe(viewLifecycleOwner) {
@@ -57,11 +61,20 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
                 binding.rlLoading.gone()
             }
         }
-        viewModel.initContent {
+        viewModel.initContent(chapter) {
             binding.contentView.setText(it)
             binding.contentView.post {
                 binding.contentView.apply {
-                    val lineIndex = layout.getLineForOffset(ReadBook.durChapterPos)
+                    val lineIndex = try {
+                        layout.getLineForOffset(
+                            ReadBook.durChapterPos.coerceIn(
+                                0,
+                                text?.length ?: 0
+                            )
+                        )
+                    } catch (e: Exception) {
+                        0
+                    }
                     val lineHeight = layout.getLineTop(lineIndex)
                     scrollTo(0, lineHeight)
                 }
@@ -78,7 +91,7 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
                     save()
                     dismiss()
                 }
-                R.id.menu_reset -> viewModel.initContent(true) { content ->
+                R.id.menu_reset -> viewModel.initContent(reset = true) { content ->
                     binding.contentView.setText(content)
                     ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
                 }
@@ -117,35 +130,45 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
         val content = binding.contentView.text?.toString() ?: return
         Coroutine.async {
             val book = ReadBook.book ?: return@async
+            val durChapterIndex = viewModel.chapter?.index ?: ReadBook.durChapterIndex
             val chapter = appDb.bookChapterDao
-                .getChapter(book.bookUrl, ReadBook.durChapterIndex)
+                .getChapter(book.bookUrl, durChapterIndex)
                 ?: return@async
             BookHelp.saveText(book, chapter, content)
-            ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
+            ReadBook.loadContent(durChapterIndex, resetPageOffset = false)
         }
     }
 
     class ContentEditViewModel(application: Application) : BaseViewModel(application) {
         val loadStateLiveData = MutableLiveData<Boolean>()
         var content: String? = null
+        var chapter: BookChapter? = null
 
-        fun initContent(reset: Boolean = false, success: (String) -> Unit) {
+        fun initContent(
+            chapter: BookChapter? = null,
+            reset: Boolean = false,
+            success: (String) -> Unit
+        ) {
+            this.chapter = chapter ?: this.chapter
             execute {
                 val book = ReadBook.book ?: return@execute null
-                val chapter = appDb.bookChapterDao
-                    .getChapter(book.bookUrl, ReadBook.durChapterIndex)
+                val durChapterIndex =
+                    this@ContentEditViewModel.chapter?.index ?: ReadBook.durChapterIndex
+                val chapter1 = this@ContentEditViewModel.chapter ?: appDb.bookChapterDao
+                    .getChapter(book.bookUrl, durChapterIndex)
                     ?: return@execute null
+                this@ContentEditViewModel.chapter = chapter1
                 if (reset) {
                     content = null
-                    BookHelp.delContent(book, chapter)
+                    BookHelp.delContent(book, chapter1)
                     if (!book.isLocal) ReadBook.bookSource?.let { bookSource ->
-                        WebBook.getContentAwait(bookSource, book, chapter)
+                        WebBook.getContentAwait(bookSource, book, chapter1)
                     }
                 }
                 return@execute content ?: let {
                     val contentProcessor = ContentProcessor.get(book.name, book.origin)
-                    val content = BookHelp.getContent(book, chapter) ?: return@let null
-                    contentProcessor.getContent(book, chapter, content, includeTitle = false)
+                    val content = BookHelp.getContent(book, chapter1) ?: return@let null
+                    contentProcessor.getContent(book, chapter1, content, includeTitle = false)
                         .toString()
                 }
             }.onStart {
