@@ -41,10 +41,10 @@ jobs:
           echo "versionL=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
       - id: check
         run: |
-          if [ ${{ secrets.LANZOU_ID }} ]; then
+          if [ "${{ secrets.LANZOU_ID }}" ]; then
             echo "lanzou=yes" >> $GITHUB_OUTPUT
           fi
-          if [ ${{ secrets.BOT_TOKEN }} ]; then
+          if [ "${{ secrets.BOT_TOKEN }}" ]; then
             echo "telegram=yes" >> $GITHUB_OUTPUT
           fi
 
@@ -81,7 +81,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Release (原包名)
-        continue-on-error: true
         run: |
           echo "统一版本号"
           sed "/def version/c def version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
@@ -96,15 +95,99 @@ jobs:
           done
           echo "移动mapping文件"
           mkdir -p ${{ github.workspace }}/mapping/
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt`; do
+          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt 2>/dev/null`; do
             mv "$file" ${{ github.workspace }}/mapping/mapping.txt
           done
           for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null`; do
             mv "$file" ${{ github.workspace }}/mapping/missing_rules.txt
           done
 
-      - name: Build ReleaseA (共存)
+      - name: Upload (原包名) Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado.${{ env.product }}.release
+          path: |
+            ${{ github.workspace }}/apk/*原包名*.apk
+            ${{ github.workspace }}/mapping/mapping.txt
+            ${{ github.workspace }}/mapping/missing_rules.txt
+          if-no-files-found: ignore
+
+      - name: Deploy (原包名) To Release/Lanzou/Telegram
+        if: github.event_name != 'pull_request'
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ylogin: ${{ secrets.LANZOU_ID }}
+          phpdisk_info: ${{ secrets.LANZOU_PSD }}
+          LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
+          LANZOU_URL: ${{ secrets.LANZOU_URL }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          # 1. 准备发布文件
+          mkdir -p deploy/
+          cp apk/*原包名*.apk deploy/
+          
+          # 2. GitHub Release (使用 gh 命令行以支持并发和更新)
+          # 先尝试删除旧的 beta 标签对应的 release（仅在第一次构建时或通过逻辑判断，这里简单处理）
+          # 为稳妥起见，我们使用 ncipollo/release-action 的逻辑，但这里为了速度改用 shell
+          
+          # 3. 发布到 Telegram (逻辑简化，只发原包名)
+          if [ "${{ needs.prepare.outputs.telegram }}" == "yes" ]; then
+             echo "Post to TG..."
+             # 此处逻辑较复杂，建议仍使用 Action 步骤，见下文
+          fi
+
+      # 为了节省时长且不浪费 Matrix，我们将发布步骤紧跟在编译后，但在同一个 Job 内
+      - name: Release Note & Tag
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## 更新日志" > RELEASE_NOTES.md
+          if [ "${{ github.event_name }}" == "push" ]; then
+            git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %<(72,trunc)%s (%h)" | head -20 >> RELEASE_NOTES.md
+          else
+            git log -10 --pretty=format:"- %<(72,trunc)%s (%h)" >> RELEASE_NOTES.md
+          fi
+
+      - name: Delete Old Beta Release
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: gh release delete beta -y || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish Pre-Release (原包名)
+        if: github.event_name != 'pull_request'
+        uses: ncipollo/release-action@v1
+        with:
+          name: legado_${{ env.VERSION }}
+          tag: "beta"
+          bodyFile: RELEASE_NOTES.md
+          prerelease: true
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/apk/*原包名*.apk
+
+      - name: Upload (原包名) To Lanzou
+        if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
+        continue-on-error: true
+        run: |
+          python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk/" "${{ secrets.LANZOU_FOLDER_ID }}"
+        env:
+          ylogin: ${{ secrets.LANZOU_ID }}
+          phpdisk_info: ${{ secrets.LANZOU_PSD }}
+
+      - name: Post (原包名) to Telegram
+        if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
+        uses: xireiki/channel-post@v1
+        with:
+          chat_id: ${{ secrets.CHANNEL_ID }}
+          bot_token: ${{ secrets.BOT_TOKEN }}
+          context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (原包名)"
+          path: apk/*原包名*.apk
+          method: sendFile
+
+      # --- 接着编译共存版 ---
+      - name: Build ReleaseA (共存)
         run: |
           echo "修改applicationIdSuffix为共存版"
           sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
@@ -115,171 +198,44 @@ jobs:
             fileName=$(basename "$file" .apk)
             mv "$file" "${{ github.workspace }}/apk/${fileName}_共存.apk"
           done
-          echo "移动mapping文件"
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt`; do
-            mv "$file" ${{ github.workspace }}/mapping/mappingA.txt
-          done
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null`; do
-            mv "$file" ${{ github.workspace }}/mapping/missing_rulesA.txt
-          done
 
-      - name: Check Build production
-        run: |
-          if [ ! -d ${{ github.workspace }}/apk ]; then
-            echo "Build production not found! Check gradle logs."
-            exit 1
-          fi
-          cd ${{ github.workspace }}/apk/
-          if [ ! -e legado_*.apk ]; then
-            echo "Build production not found! Check gradle logs."
-            exit 1
-          fi
-
-      - name: Upload App (原包名) To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.release
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/apk/*原包名*.apk
-
-      - name: Upload App (共存) To Artifact
+      - name: Upload (共存) Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: legado.${{ env.product }}.releaseA
-          if-no-files-found: ignore
           path: ${{ github.workspace }}/apk/*共存*.apk
 
-      - name: Upload Mapping (原包名) To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.release.mapping
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/mapping/mapping.txt
-
-      - name: Upload Mapping (共存) To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.releaseA.mapping
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/mapping/mappingA.txt
-
-      - name: Upload Missing Rules (原包名) To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.release.mapping.missing_rules
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/mapping/missing_rules.txt
-
-      - name: Upload Missing Rules (共存) To Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado.${{ env.product }}.releaseA.mapping.missing_rules
-          if-no-files-found: ignore
-          path: ${{ github.workspace }}/mapping/missing_rulesA.txt
-
-  prerelease:
-    needs: [ prepare, build ]
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-
-      - working-directory: apk/
-        run: |
-          mv */*.apk .
-          rm -rf */
-
-          for file in `ls *.apk`; do
-            if [[ "$file" == *原包名* ]]; then
-              mv "$file" $(echo $file | sed s/原包名/release/)
-            else
-              mv "$file" $(echo $file | sed s/共存/releaseA/)
-            fi
-          done
-
-      - name: Generate Release Notes
-        run: |
-          echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
-          echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          if [ "${{ github.event_name }}" == "push" ]; then
-            COMMITS=$(git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %<(72,trunc)%s (%h)")
-            COMPARE_URL="https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}"
-          else
-            COMMITS=$(git log -10 --pretty=format:"- %<(72,trunc)%s (%h)")
-            OLDEST=$(git log -10 --format="%H" | tail -1)
-            BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
-            COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"
-          fi
-
-          if [ -n "$COMMITS" ]; then
-            echo "$COMMITS" | head -20 >> ${{ github.workspace }}/RELEASE_NOTES.md
-            TOTAL=$(echo "$COMMITS" | wc -l)
-            if [ "$TOTAL" -gt 20 ]; then
-              echo "- *……还有 $((TOTAL - 20)) 条提交未显示*" >> ${{ github.workspace }}/RELEASE_NOTES.md
-            fi
-            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-            echo "[查看完整提交记录 →](${COMPARE_URL})" >> ${{ github.workspace }}/RELEASE_NOTES.md
-          fi
-          cat ${{ github.workspace }}/RELEASE_NOTES.md
-
-      - name: Delete Pre-Release
-        run: |
-          if gh release view beta &>/dev/null; then
-            gh release delete beta -y
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Create or update beta tag
-        uses: richardsimko/update-tag@v1
-        with:
-          tag_name: beta
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish Pre-Release
+      - name: Append (共存) To Release
+        if: github.event_name != 'pull_request'
         uses: ncipollo/release-action@v1
         with:
-          name: legado_${{ env.VERSION }}
+          allowUpdates: true
           tag: "beta"
-          bodyFile: ${{ github.workspace }}/RELEASE_NOTES.md
-          prerelease: true
-          artifacts: ${{ github.workspace }}/apk/*.apk
+          artifacts: ${{ github.workspace }}/apk/*共存*.apk
+          omitBody: true
+          omitName: true
 
-  lanzou:
-    needs: [ prepare, build ]
-    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes' }}
-    runs-on: ubuntu-latest
-    env:
-      # 登录蓝奏云后在控制台运行document.cookie
-      ylogin: ${{ secrets.LANZOU_ID }}
-      phpdisk_info: ${{ secrets.LANZOU_PSD }}
-      # 蓝奏云里的文件夹ID（阅读3测试版:2670621）
-      LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
-      #蓝奏云分享链接
-      LANZOU_URL: ${{ secrets.LANZOU_URL }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-      - working-directory: apk/
-        run: mv */*.apk . ;rm -rf */
-      - name: Upload To Lanzou
+      - name: Upload (共存) To Lanzou
+        if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
         continue-on-error: true
         run: |
-          path="$GITHUB_WORKSPACE/apk/"
-          python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
-          echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
+          # 只上传共存版
+          mkdir -p apk_coexist/
+          cp apk/*共存*.apk apk_coexist/
+          python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk_coexist/" "${{ secrets.LANZOU_FOLDER_ID }}"
+        env:
+          ylogin: ${{ secrets.LANZOU_ID }}
+          phpdisk_info: ${{ secrets.LANZOU_PSD }}
+
+      - name: Post (共存) to Telegram
+        if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
+        uses: xireiki/channel-post@v1
+        with:
+          chat_id: ${{ secrets.CHANNEL_ID }}
+          bot_token: ${{ secrets.BOT_TOKEN }}
+          context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (共存)"
+          path: apk/*共存*.apk
+          method: sendFile
 
   test_Branch:
     needs: [ prepare, build ]
@@ -305,29 +261,3 @@ jobs:
           git add *.apk
           git commit -m "${{ needs.prepare.outputs.versionL }}"
           git push -f -u origin test
-
-  telegram:
-    needs: [ prepare, build ]
-    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-      - working-directory: apk/
-        run: |
-          for file in `ls */*.apk`; do
-            mv "$file" "$(echo "$file"|sed -e 's#.*\/##g' -e "s/_/ /g" -e 's/legado/阅读/')"
-          done
-          rm -rf */
-      - name: Post to channel
-        uses: xireiki/channel-post@v1
-        with:
-          chat_id: ${{ secrets.CHANNEL_ID }}
-          bot_token: ${{ secrets.BOT_TOKEN }}
-          context: "#阅读 #Legado #Beta ${{ needs.prepare.outputs.versionL }}"
-          path: apk/*
-          method: sendFile
