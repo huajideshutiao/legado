@@ -33,6 +33,7 @@ import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
@@ -51,6 +52,7 @@ import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 class App : Application() {
 
@@ -92,11 +94,13 @@ class App : Application() {
             BookCover.toString()
         }
         Coroutine.async {
-            appDb.cacheDao.clearDeadline(System.currentTimeMillis())
-            BookHelp.clearInvalidCache()
-            Backup.clearCache()
-            ReadBookConfig.clearBgAndCache()
-            ThemeConfig.clearBg()
+            if (LocalConfig.lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
+                appDb.cacheDao.clearDeadline(System.currentTimeMillis())
+                BookHelp.clearInvalidCache()
+                Backup.clearCache()
+                ReadBookConfig.clearBgAndCache()
+                ThemeConfig.clearBg()
+            }
         }
         Coroutine.async {
             //调整排序序号

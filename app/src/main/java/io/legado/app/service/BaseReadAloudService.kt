@@ -181,7 +181,7 @@ abstract class BaseReadAloudService : BaseService() {
         playbackLock.release()
         isRun = false
         pause = true
-        ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
+        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_ALOUD)
         audioFocus.abandon()
         noisyReceiver.unregister(this)
         sleepTimer?.cancel()

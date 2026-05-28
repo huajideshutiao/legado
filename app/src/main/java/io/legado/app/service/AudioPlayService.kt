@@ -244,7 +244,7 @@ class AudioPlayService : BaseService(), Player.Listener {
         noisyReceiver.unregister(this)
         sleepTimer?.cancel()
         sleepTimer = null
-        ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
+        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
         AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
         AudioPlay.saveRead()
         exoPlayer.release()

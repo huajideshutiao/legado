@@ -446,6 +446,9 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations) {
+            ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.MANGA)
+        }
         CbzFile.clear()
         super.onDestroy()
     }

@@ -8,6 +8,12 @@ import io.legado.app.model.ReadTimeRecorder.end
 import io.legado.app.model.ReadTimeRecorder.flushAll
 import io.legado.app.model.ReadTimeRecorder.setBook
 import io.legado.app.model.ReadTimeRecorder.start
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 阅读时长记录器: 以"开始 / 结束"为唯一触发点统一管理读时长落盘.
@@ -38,10 +44,12 @@ object ReadTimeRecorder {
     /** source -> bookName. 空字符串表示已 start 但书名待补 (pending) */
     private val sourceBook = HashMap<String, String>()
     private val bookSessions = HashMap<String, BookSession>()
+    private val endJobs = ConcurrentHashMap<String, Job>()
     private val lock = Any()
 
     /** [flushAll] 的最小间隔, 防止短时间内连点 next/prev 触发多次零碎落盘 */
     private const val FLUSH_ALL_DEBOUNCE_MS = 5000L
+    private const val SESSION_END_DELAY_MS = 300000L
     private var lastFlushAllAt = 0L
 
     /**
@@ -50,6 +58,7 @@ object ReadTimeRecorder {
      */
     fun start(source: String, bookName: String) {
         synchronized(lock) {
+            endJobs.remove(source)?.cancel()
             val oldBook = sourceBook[source]
             if (oldBook == bookName) return
             if (!oldBook.isNullOrEmpty()) {
@@ -65,6 +74,28 @@ object ReadTimeRecorder {
     /** 标记 source 结束活跃. pending 状态也会一并清理. */
     fun end(source: String) {
         synchronized(lock) {
+            val book = sourceBook[source] ?: return
+            endJobs.remove(source)?.cancel()
+            @Suppress("OptInUsageInspection")
+            endJobs[source] = GlobalScope.launch(Dispatchers.Main) {
+                delay(SESSION_END_DELAY_MS)
+                synchronized(lock) {
+                    if (sourceBook[source] == book) {
+                        sourceBook.remove(source)
+                        if (book.isNotEmpty()) endBookSession(book)
+                    }
+                    endJobs.remove(source)
+                }
+            }
+        }
+    }
+
+    /**
+     * 立即结束 source 活跃, 不进入延迟等待. (用于 onDestroy 等场景)
+     */
+    fun endImmediately(source: String) {
+        synchronized(lock) {
+            endJobs.remove(source)?.cancel()
             val book = sourceBook.remove(source) ?: return
             if (book.isNotEmpty()) endBookSession(book)
         }
@@ -81,6 +112,7 @@ object ReadTimeRecorder {
     fun setBook(source: String, bookName: String) {
         if (bookName.isEmpty()) return
         synchronized(lock) {
+            endJobs.remove(source)?.cancel()
             val oldBook = sourceBook[source] ?: return
             if (oldBook == bookName) return
             if (oldBook.isNotEmpty()) {

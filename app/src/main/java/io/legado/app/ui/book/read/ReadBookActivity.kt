@@ -48,7 +48,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -1208,6 +1207,9 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onDestroy() {
         super.onDestroy()
+        if (!isChangingConfigurations) {
+            ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_BOOK)
+        }
         tts?.clearTts()
         textActionMenu.dismiss()
         popupAction.dismiss()

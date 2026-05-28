@@ -622,6 +622,9 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations) {
+            ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.VIDEO)
+        }
         player?.release()
         super.onDestroy()
     }

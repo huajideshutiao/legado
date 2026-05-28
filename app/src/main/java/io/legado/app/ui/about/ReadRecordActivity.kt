@@ -288,12 +288,16 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val year = heatmapYear
         val month = heatmapMonth
         val (start, end) = monthRange(year, month)
-        val data = HashMap<Int, Long>()
+        val daySeconds = LongArray(32)
         allRecords?.forEach { r ->
             if (r.day in start..end) {
                 val d = r.day % 100
-                data[d] = (data[d] ?: 0L) + (r.endSec - r.startSec)
+                daySeconds[d] += r.endSec - r.startSec
             }
+        }
+        val data = HashMap<Int, Long>(31)
+        for (d in 1..31) {
+            if (daySeconds[d] > 0) data[d] = daySeconds[d]
         }
         val selectedDayOfMonth =
             if (filterDay != 0 && filterDay / 10000 == year && (filterDay / 100) % 100 == month) {
@@ -327,8 +331,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 val readTimeByBook = if (perDayMode) null else HashMap<String, Long>(expected)
                 val lastReadByBook = if (perDayMode) null else HashMap<String, Long>(expected)
                 val todayPerBook = if (perDayMode) null else HashMap<String, Long>(expected)
-                val perDayItems = if (perDayMode) ArrayList<ReadRecordShow>(expected) else null
-                // perDayMode 下行只代表某天，仍需每本书的总时长展示「当日/总」
+                val perDayMap =
+                    if (perDayMode) HashMap<Long, ReadRecordShow>(expected) else null
+                // perDayMode 下每行代表某本书某天，仍需每本书的总时长展示「当日/总」
                 val totalByBook = if (perDayMode) HashMap<String, Long>(expected) else null
                 val dayBookNames = if (day != 0) HashSet<String>() else null
                 val keyEmpty = key.isEmpty()
@@ -336,10 +341,11 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 var sumWeek = 0L
                 var sumMonth = 0L
                 var sumAll = 0L
-                val allBookNames = HashSet<String>()
+                var bookCount = 0
+                val seenBooks = HashSet<String>()
                 for (r in records) {
                     val rt = r.endSec - r.startSec
-                    allBookNames.add(r.bookName)
+                    if (seenBooks.add(r.bookName)) bookCount++
                     val lastRead = r.endSec
                     val d = r.day
                     // summary 不受搜索词/筛选影响，先算
@@ -350,7 +356,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     val name = r.bookName
                     if (!keyEmpty && !name.contains(key, ignoreCase = true)) continue
                     if (perDayMode) {
-                        perDayItems!!.add(ReadRecordShow(name, rt, lastRead))
+                        val mapKey = name.hashCode().toLong().shl(32) or d.toLong()
+                        val existing = perDayMap!![mapKey]
+                        if (existing == null) {
+                            perDayMap[mapKey] = ReadRecordShow(name, rt, lastRead)
+                        } else {
+                            existing.readTime += rt
+                            if (lastRead > existing.lastRead) existing.lastRead = lastRead
+                        }
                         totalByBook!![name] = (totalByBook[name] ?: 0L) + rt
                     } else {
                         readTimeByBook!![name] = (readTimeByBook[name] ?: 0L) + rt
@@ -367,7 +380,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     }
                 }
                 val items: ArrayList<ReadRecordShow> = if (perDayMode) {
-                    perDayItems!!
+                    ArrayList(perDayMap!!.values)
                 } else {
                     val out = ArrayList<ReadRecordShow>(readTimeByBook!!.size)
                     if (dayBookNames != null) {
@@ -394,16 +407,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                         sortWith { o1, o2 -> o1.bookName.cnCompare(o2.bookName) }
                     }
                 }
-                // perDayMode 下同一本书会出现多次，查书需要去重
-                val names = if (perDayMode) {
-                    sortedItems.mapTo(LinkedHashSet(sortedItems.size)) { it.bookName }
-                        .toTypedArray()
-                } else {
-                    Array(sortedItems.size) { sortedItems[it].bookName }
-                }
+                val names = sortedItems.mapTo(LinkedHashSet(sortedItems.size)) { it.bookName }
+                    .toTypedArray()
                 val bookList = if (names.isEmpty()) emptyList()
                 else appDb.bookDao.findByName(*names)
-                val bookCount = allBookNames.size
                 val avgRead = if (bookCount > 0) sumAll / bookCount else 0L
                 InitResult(
                     sortedItems,
@@ -478,6 +485,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             color = this@ReadRecordActivity.secondaryTextColor
             textSize = 12f.spToPx()
         }
+        private val baselineOffset = -(textPaint.descent() + textPaint.ascent()) / 2f
 
         override fun getItemOffsets(
             outRect: Rect,
@@ -498,7 +506,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             if (childCount == 0) return
             // 循环不变量在外面算好：父视图宽度、文本基线偏移、headerCount
             val width = parent.width.toFloat()
-            val baselineOffset = -(textPaint.descent() + textPaint.ascent()) / 2f
             val headerCount = adapter.getHeaderCount()
             for (i in 0 until childCount) {
                 val child = parent.getChildAt(i)
