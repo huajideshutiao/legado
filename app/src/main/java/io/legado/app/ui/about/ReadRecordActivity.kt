@@ -237,8 +237,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private fun updateNextMonthEnabled() {
         val header = headerBinding ?: return
         val atCurrent = isAtCurrentMonth()
+        header.ivNextMonth.isEnabled = !atCurrent
         header.ivNextMonth.alpha = if (atCurrent) 0.3f else 1f
-        header.ivNextMonth.isClickable = !atCurrent
     }
 
     private fun initSearchView() {
@@ -353,7 +353,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 val lastReadByBook = if (perDayMode) null else HashMap<String, Long>(expected)
                 val todayPerBook = if (perDayMode) null else HashMap<String, Long>(expected)
                 val perDayMap =
-                    if (perDayMode) HashMap<Long, ReadRecordShow>(expected) else null
+                    if (perDayMode) HashMap<String, ReadRecordShow>(expected) else null
                 // perDayMode 下每行代表某本书某天，仍需每本书的总时长展示「当日/总」
                 val totalByBook = if (perDayMode) HashMap<String, Long>(expected) else null
                 val dayBookNames = if (day != 0) HashSet<String>() else null
@@ -377,10 +377,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     val name = r.bookName
                     if (!keyEmpty && !name.contains(key, ignoreCase = true)) continue
                     if (perDayMode) {
-                        val mapKey = name.hashCode().toLong().shl(32) or d.toLong()
+                        val mapKey = "$name|$d"
                         val existing = perDayMap!![mapKey]
                         if (existing == null) {
-                            perDayMap[mapKey] = ReadRecordShow(name, rt, lastRead)
+                            perDayMap[mapKey] = ReadRecordShow(name, rt, lastRead, d)
                         } else {
                             existing.readTime += rt
                             if (lastRead > existing.lastRead) existing.lastRead = lastRead
@@ -535,12 +535,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 val dataIdx = pos - headerCount
                 if (dataIdx < 0) continue
                 val item = adapter.getItem(dataIdx) ?: continue
-                val itemDayKey = ReadRecord.dayKey(item.lastRead)
+                val itemDayKey = item.day
                 val isStart = if (dataIdx == 0) {
                     true
                 } else {
                     val prev = adapter.getItem(dataIdx - 1)
-                    prev == null || ReadRecord.dayKey(prev.lastRead) != itemDayKey
+                    prev == null || prev.day != itemDayKey
                 }
                 if (!isStart) continue
                 val bottom = child.top.toFloat()
@@ -560,7 +560,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             val item = adapter.getItem(dataIdx) ?: return false
             if (dataIdx == 0) return true
             val prev = adapter.getItem(dataIdx - 1) ?: return true
-            return ReadRecord.dayKey(prev.lastRead) != ReadRecord.dayKey(item.lastRead)
+            return prev.day != item.day
         }
     }
 

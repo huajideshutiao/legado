@@ -11,7 +11,6 @@ import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -137,6 +136,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
             curBook.durChapterTitle = chapter.title
             position = 0L
             currentResolutionIndex = 0
+            saveRead(0L)
             initChapter(chapter)
         }
     }
@@ -146,10 +146,8 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun saveRead(position: Long) {
         Coroutine.async {
             curBook!!.apply {
-                lastCheckCount = 0
-                durChapterTime = System.currentTimeMillis()
                 durChapterPos = position.toInt()
-                update()
+                saveRead()
             }
         }
     }

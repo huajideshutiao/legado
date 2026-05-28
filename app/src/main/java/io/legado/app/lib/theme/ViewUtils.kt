@@ -1,11 +1,11 @@
 package io.legado.app.lib.theme
 
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.TransitionDrawable
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.annotation.ColorInt
+import androidx.core.graphics.drawable.toDrawable
 import io.legado.app.utils.DrawableUtils
 
 /**
@@ -31,8 +31,8 @@ object ViewUtils {
     fun setBackgroundColorTransition(view: View, @ColorInt newColor: Int): TransitionDrawable {
         val oldColor = view.background
 
-        val start = oldColor ?: ColorDrawable(view.solidColor)
-        val end = ColorDrawable(newColor)
+        val start = oldColor ?: view.solidColor.toDrawable()
+        val end = newColor.toDrawable()
 
         val transition = DrawableUtils.createTransitionDrawable(start, end)
 

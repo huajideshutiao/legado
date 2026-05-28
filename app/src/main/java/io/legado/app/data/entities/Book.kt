@@ -20,6 +20,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.splitNotBlank
@@ -349,6 +350,13 @@ data class Book(
         } else {
             appDb.bookDao.insert(this)
         }
+    }
+
+    fun saveRead() {
+        lastCheckCount = 0
+        durChapterTime = System.currentTimeMillis()
+        appDb.bookDao.update(this)
+        ReadTimeRecorder.flushAll()
     }
 
     fun delete() {

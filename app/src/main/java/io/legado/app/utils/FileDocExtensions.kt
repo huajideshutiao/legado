@@ -96,7 +96,7 @@ data class FileDoc(
                         if (it.moveToFirst()) {
                             val lUriColum = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
                             val lUri = it.getString(lUriColum)
-                            DocumentFile.fromSingleUri(appCtx, Uri.parse(lUri))!!
+                            DocumentFile.fromSingleUri(appCtx, lUri.toUri())!!
                         } else {
                             DocumentFile.fromSingleUri(appCtx, uri)!!
                         }

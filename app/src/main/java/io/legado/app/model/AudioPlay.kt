@@ -14,7 +14,6 @@ import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
@@ -113,7 +112,6 @@ object AudioPlay {
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
-        saveRead()
         sendAction(IntentAction.adjustProgress) { putExtra("position", position) }
     }
 
@@ -236,8 +234,6 @@ object AudioPlay {
     fun saveRead() {
         val book = book ?: return
         Coroutine.async {
-            book.lastCheckCount = 0
-            book.durChapterTime = System.currentTimeMillis()
             val chapterChanged = book.durChapterIndex != durChapterIndex
             book.durChapterIndex = durChapterIndex
             book.durChapterPos = durChapterPos
@@ -249,7 +245,7 @@ object AudioPlay {
                     )
                 }
             }
-            book.update()
+            book.saveRead()
         }
     }
 
@@ -267,7 +263,6 @@ object AudioPlay {
 
     fun playPositionChanged(position: Int) {
         durChapterPos = position
-        saveRead()
     }
 
 }

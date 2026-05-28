@@ -302,8 +302,6 @@ class ReadMangaViewModel(application: Application) :
         execute {
             kotlin.runCatching {
                 val book = curBook ?: return@execute
-                book.lastCheckCount = 0
-                book.durChapterTime = System.currentTimeMillis()
                 book.durChapterIndex = durChapterIndex
                 book.durChapterPos =
                     durChapterPos * (if (curMangaChapter?.imageCount == durChapterPos + 1) -1 else 1)
@@ -313,7 +311,7 @@ class ReadMangaViewModel(application: Application) :
                         book.getUseReplaceRule()
                     )
                 }
-                appDb.bookDao.update(book)
+                book.saveRead()
             }.onFailure {
                 AppLog.put("保存漫画阅读进度信息出错\n$it", it)
             }

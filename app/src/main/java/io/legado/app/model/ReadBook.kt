@@ -862,8 +862,6 @@ object ReadBook : CoroutineScope by MainScope() {
         executor.execute {
             kotlin.runCatching {
                 val book = book ?: return@execute
-                book.lastCheckCount = 0
-                book.durChapterTime = System.currentTimeMillis()
                 book.durChapterIndex = durChapterIndex
                 book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
                 appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
@@ -872,7 +870,7 @@ object ReadBook : CoroutineScope by MainScope() {
                         book.getUseReplaceRule()
                     )
                 }
-                appDb.bookDao.update(book)
+                book.saveRead()
             }.onFailure {
                 AppLog.put("保存书籍阅读进度信息出错\n$it", it)
             }

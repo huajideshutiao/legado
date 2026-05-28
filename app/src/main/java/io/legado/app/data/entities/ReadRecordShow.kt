@@ -6,5 +6,6 @@ package io.legado.app.data.entities
 data class ReadRecordShow(
     var bookName: String,
     var readTime: Long,  // 秒
-    var lastRead: Long   // 秒
+    var lastRead: Long,  // 秒
+    var day: Int = 0     // yyyyMMdd，perDayMode 下与 perDayMap 分组 key 一致
 )

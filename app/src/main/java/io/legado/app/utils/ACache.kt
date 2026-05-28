@@ -2,11 +2,12 @@
 package io.legado.app.utils
 
 import android.graphics.Bitmap
+import android.graphics.Bitmap.createBitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.PixelFormat
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import androidx.core.graphics.drawable.toDrawable
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
@@ -613,7 +614,7 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
             else
                 Bitmap.Config.RGB_565
             // 建立对应 bitmap
-            val bitmap = Bitmap.createBitmap(w, h, config)
+            val bitmap = createBitmap(w, h, config)
             // 建立对应 bitmap 的画布
             val canvas = Canvas(bitmap)
             drawable.setBounds(0, 0, w, h)
@@ -626,9 +627,7 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
          * Bitmap → Drawable
          */
         fun bitmap2Drawable(bm: Bitmap?): Drawable? {
-            return if (bm == null) {
-                null
-            } else BitmapDrawable(appCtx.resources, bm)
+            return bm?.toDrawable(appCtx.resources)
         }
     }
 
