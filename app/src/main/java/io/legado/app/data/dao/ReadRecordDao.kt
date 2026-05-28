@@ -20,4 +20,7 @@ interface ReadRecordDao {
 
     @Query("delete from readRecord where bookName = :bookName")
     fun deleteByName(bookName: String)
+
+    @Query("delete from readRecord where day = :day")
+    fun deleteByDay(day: Int)
 }

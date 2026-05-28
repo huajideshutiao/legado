@@ -37,7 +37,6 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getInt
 import io.legado.app.utils.putInt
 import io.legado.app.utils.spToPx
 import io.legado.app.utils.startActivityForBook
@@ -55,7 +54,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private val adapter by lazy { RecordAdapter(this) }
     private var sortMode
-        get() = LocalConfig.getInt("readRecordSort")
+        get() = LocalConfig.getInt("readRecordSort", 2)
         set(value) {
             LocalConfig.putInt("readRecordSort", value)
         }
@@ -181,6 +180,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         binding.recyclerView.adapter = adapter
         binding.recyclerView.addItemDecoration(DaySectionDecoration())
         binding.recyclerView.applyNavigationBarPadding()
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING && searchView.hasFocus()) {
+                    searchView.clearFocus()
+                }
+            }
+        })
 
         adapter.addHeaderView { parent ->
             ViewReadRecordHeaderBinding.inflate(layoutInflater, parent, false).also {
@@ -206,6 +212,21 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             val dayKey = heatmapYear * 10000 + heatmapMonth * 100 + day
             filterDay = if (selected) dayKey else 0
             initData()
+        }
+        header.heatMap.onDayLongClick = { day, _ ->
+            val dayKey = heatmapYear * 10000 + heatmapMonth * 100 + day
+            alert(R.string.delete) {
+                setMessage(getString(R.string.sure_del_any, formatDayKey(dayKey)))
+                yesButton {
+                    lifecycleScope.launch {
+                        withContext(IO) { appDb.readRecordDao.deleteByDay(dayKey) }
+                        allRecords = allRecords?.filterNot { it.day == dayKey }
+                        refreshHeatmap()
+                        initData()
+                    }
+                }
+                noButton()
+            }
         }
     }
 
@@ -628,6 +649,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             }
         }
 
+    }
+
+    override fun finish() {
+        if (searchView.hasFocus()) {
+            searchView.clearFocus()
+            return
+        }
+        super.finish()
     }
 
     /**

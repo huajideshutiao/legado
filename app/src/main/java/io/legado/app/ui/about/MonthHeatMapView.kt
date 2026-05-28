@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import androidx.core.graphics.ColorUtils
@@ -83,6 +84,52 @@ class MonthHeatMapView @JvmOverloads constructor(
     private val maxReadSecs = 12L * 60L * 60L
 
     var onDayClick: ((day: Int, readTime: Long, selected: Boolean) -> Unit)? = null
+    var onDayLongClick: ((day: Int, readTime: Long) -> Unit)? = null
+
+    private val gestureDetector =
+        GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapUp(event: MotionEvent): Boolean {
+                val avail = width - paddingLeft - paddingRight
+                val cellSize = avail / 7f
+                if (cellSize <= 0f) return false
+                val x = event.x - paddingLeft
+                val y = event.y - paddingTop - headerHeight
+                if (x < 0 || y < 0) return false
+                val col = (x / cellSize).toInt()
+                val row = (y / cellSize).toInt()
+                if (col !in 0..6) return false
+                val first = firstColumnIndex()
+                val days = daysInMonth()
+                val d = row * 7 + col - first + 1
+                if (d in 1..days) {
+                    performClick()
+                    val newSelected = if (selectedDay == d) 0 else d
+                    selectedDay = newSelected
+                    invalidate()
+                    onDayClick?.invoke(d, data[d] ?: 0L, newSelected != 0)
+                    return true
+                }
+                return false
+            }
+
+            override fun onLongPress(event: MotionEvent) {
+                val avail = width - paddingLeft - paddingRight
+                val cellSize = avail / 7f
+                if (cellSize <= 0f) return
+                val x = event.x - paddingLeft
+                val y = event.y - paddingTop - headerHeight
+                if (x < 0 || y < 0) return
+                val col = (x / cellSize).toInt()
+                val row = (y / cellSize).toInt()
+                if (col !in 0..6) return
+                val first = firstColumnIndex()
+                val days = daysInMonth()
+                val d = row * 7 + col - first + 1
+                if (d in 1..days) {
+                    onDayLongClick?.invoke(d, data[d] ?: 0L)
+                }
+            }
+        })
 
     init {
         val cal = Calendar.getInstance()
@@ -270,29 +317,7 @@ class MonthHeatMapView @JvmOverloads constructor(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP) {
-            val avail = width - paddingLeft - paddingRight
-            val cellSize = avail / 7f
-            if (cellSize <= 0f) return false
-            val x = event.x - paddingLeft
-            val y = event.y - paddingTop - headerHeight
-            if (x < 0 || y < 0) return false
-            val col = (x / cellSize).toInt()
-            val row = (y / cellSize).toInt()
-            if (col !in 0..6) return false
-            val first = firstColumnIndex()
-            val days = daysInMonth()
-            val d = row * 7 + col - first + 1
-            if (d in 1..days) {
-                performClick()
-                val newSelected = if (selectedDay == d) 0 else d
-                selectedDay = newSelected
-                invalidate()
-                onDayClick?.invoke(d, data[d] ?: 0L, newSelected != 0)
-                return true
-            }
-        }
-        return super.onTouchEvent(event)
+        return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
 }
