@@ -206,8 +206,7 @@ class BookInfoActivity :
             isChecked = book?.getSplitLongChapter() ?: true
             isVisible = book?.isLocalTxt ?: false
         }
-        menu.findItem(R.id.menu_login)?.isVisible =
-            viewModel.curBookSource?.hasLogin() == true
+        menu.findItem(R.id.menu_login)?.isVisible = viewModel.curBookSource?.hasLogin() == true
         menu.findItem(R.id.menu_set_source_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_set_book_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag
@@ -385,9 +384,7 @@ class BookInfoActivity :
     }
 
     private fun upKinds(book: Book) = binding.run {
-        val hasWordCount = !book.wordCount.isNullOrBlank()
-        tvWordCount.isVisible = hasWordCount || book.isLocal
-        if (hasWordCount) tvWordCount.text = book.wordCount
+        book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
 
         lifecycleScope.launch {
             val wordCounts = arrayListOf<String>()
@@ -406,11 +403,10 @@ class BookInfoActivity :
                 }
                 if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
             }
+            tvWordCount.isVisible = wordCounts.isNotEmpty() || book.isLocal
             if (wordCounts.isNotEmpty()) {
-                tvWordCount.isVisible = true
                 tvWordCount.text = wordCounts.joinToString(",")
             }
-            book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
         }
     }
 
@@ -470,7 +466,7 @@ class BookInfoActivity :
                     search(fullKind)
                 }
                 root.onLongClick {
-                    fillSearchBox(fullKind)
+                    search(text, false)
                 }
             }
             flexboxLayout.addView(root)
@@ -585,9 +581,16 @@ class BookInfoActivity :
                 }.show()
             }
         }
+        tvAuthor.onLongClick {
+            search(tvAuthor.text.toString(), false)
+        }
         tvName.onClick {
-            viewModel.getBook(false)
-                ?.let { startActivity<SearchActivity> { putExtra("key", it.name) } }
+            viewModel.getBook(false)?.let {
+                startActivity<SearchActivity> {
+                    putExtra("key", it.name)
+                    putExtra("submit", false)
+                }
+            }
         }
         refreshLayout.setOnRefreshListener {
             refreshLayout.isRefreshing = false
@@ -595,7 +598,7 @@ class BookInfoActivity :
         }
     }
 
-    private fun search(author: String) {
+    private fun search(author: String, submit: Boolean = true) {
         val tmp = author.split("::", limit = 2)
         if (tmp.size > 1) {
             IntentData.source = viewModel.curBookSource
@@ -605,6 +608,7 @@ class BookInfoActivity :
             }
         } else startActivity<SearchActivity> {
             putExtra("key", tmp[0])
+            putExtra("submit", submit)
             viewModel.curBookSource?.let {
                 it.searchUrl?.let { _ ->
                     putExtra(
@@ -615,29 +619,6 @@ class BookInfoActivity :
         }
     }
 
-    /**
-     * 长按标签仅填充搜索框不触发搜索, 利用搜索页本地过滤
-     */
-    private fun fillSearchBox(fullKind: String) {
-        val tmp = fullKind.split("::", limit = 2)
-        if (tmp.size > 1) {
-            IntentData.source = viewModel.curBookSource
-            startActivity<ExploreShowActivity> {
-                putExtra("exploreName", tmp[0])
-                putExtra("exploreUrl", tmp[1])
-            }
-            return
-        }
-        startActivity<SearchActivity> {
-            putExtra("key", tmp[0])
-            putExtra("submit", false)
-            viewModel.curBookSource?.let {
-                it.searchUrl?.let { _ ->
-                    putExtra("searchScope", SearchScope(it).toString())
-                }
-            }
-        }
-    }
 
     @SuppressLint("InflateParams")
     private fun deleteBook() {
