@@ -86,18 +86,6 @@ val BaseBook.archiveName: String
         return origin.substringAfter("::").substringAfterLast("/")
     }
 
-fun BaseBook.contains(word: String?): Boolean {
-    if (word.isNullOrEmpty()) {
-        return true
-    }
-    return name.contains(word)
-            || author.contains(word)
-            || originName.contains(word)
-            || origin.contains(word)
-            || kind?.contains(word) == true
-            || intro?.contains(word) == true
-}
-
 private val localUriCache by lazy {
     ConcurrentHashMap<String, Uri>()
 }

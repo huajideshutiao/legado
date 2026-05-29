@@ -18,7 +18,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.contains
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.config.AppConfig
@@ -119,10 +118,10 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         }
 
         searchBooks.removeAll {
-            (if (AppConfig.changeSourceCheckAuthor)it.author != author
-            else false)||!it.contains(screenKey)
+            (if (AppConfig.changeSourceCheckAuthor) it.author != author
+            else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
         }
-            trySend(arrayOf(searchBooks))
+        trySend(arrayOf(searchBooks))
 
 
         if (searchBooks.isEmpty()) {
@@ -172,10 +171,10 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun refresh(): Boolean {
 
         searchBooks.removeAll {
-            (if (AppConfig.changeSourceCheckAuthor)it.author != author
-            else false)||!it.contains(screenKey)
+            (if (AppConfig.changeSourceCheckAuthor) it.author != author
+            else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
         }
-            searchCallback?.upAdapter()
+        searchCallback?.upAdapter()
 
         return searchBooks.isEmpty()
     }
@@ -400,11 +399,11 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun screen(key: String?) {
         screenKey = key?.trim() ?: ""
         execute {
-                searchBooks.removeAll {
-                    (if (AppConfig.changeSourceCheckAuthor)it.author != author
-                    else false)||!it.contains(key)
-                }
-                searchCallback?.upAdapter()
+            searchBooks.removeAll {
+                (if (AppConfig.changeSourceCheckAuthor) it.author != author
+                else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
+            }
+            searchCallback?.upAdapter()
         }
     }
 

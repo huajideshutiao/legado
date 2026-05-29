@@ -105,8 +105,8 @@ interface BookDao {
         SELECT * FROM books 
         WHERE name LIKE '%' || :key || '%' COLLATE NOCASE
         OR author LIKE '%' || :key || '%' COLLATE NOCASE
-        OR kind LIKE '%' || :key || '%' COLLATE NOCASE
         OR originName LIKE '%' || :key || '%' COLLATE NOCASE
+        OR kind LIKE '%' || :key || '%' COLLATE NOCASE
         OR intro LIKE '%' || :key || '%' COLLATE NOCASE
         ORDER BY durChapterTime DESC
         """

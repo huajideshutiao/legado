@@ -31,7 +31,7 @@ import io.legado.app.databinding.ActivityArrangeBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.contains
+import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.tryParesExportFileName
@@ -108,6 +108,7 @@ class BookshelfManageActivity :
     private val addToGroupRequestCode = 34
     private val adapter by lazy { BookAdapter(this, this) }
     private val itemTouchCallback by lazy { ItemTouchCallback(adapter) }
+    private val incrementalFilter = BookFilter.IncrementalFilter<Book>()
     private var booksFlowJob: Job? = null
     private var menu: Menu? = null
     private val searchView: SearchView by lazy {
@@ -361,16 +362,8 @@ class BookshelfManageActivity :
 
     private fun upBookData() {
         books?.let { books ->
-            val searchKey = searchView.query
-            if (searchKey.isNullOrEmpty()) {
-                adapter.setItems(books)
-            } else {
-                books.filter {
-                    it.contains(searchKey.toString())
-                }.let {
-                    adapter.setItems(it)
-                }
-            }
+            val searchKey = searchView.query?.toString()
+            adapter.setItems(incrementalFilter.filter(books, searchKey))
         }
     }
 

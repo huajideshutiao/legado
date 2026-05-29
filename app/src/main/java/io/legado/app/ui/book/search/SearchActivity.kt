@@ -25,6 +25,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookFilter
+import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
@@ -70,6 +72,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import kotlin.math.abs
@@ -348,18 +351,24 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         }
         lifecycleScope.launch {
-            combine(
+            val keysFlow = combine(
                 inputHelpVisibleFlow,
                 bookshelfSearchKeyFlow.debounce(300)
-            ) { visible, key -> if (visible) key else "" }
+            ) { visible, key ->
+                if (visible) BookFilter.splitQuery(key)
+                else emptyList()
+            }.distinctUntilChanged()
+
+            val dbFlow = keysFlow
+                .map { it.firstOrNull() ?: "" }
                 .distinctUntilChanged()
-                .flatMapLatest { key ->
-                    if (key.isBlank()) {
-                        flowOf(emptyList())
-                    } else {
-                        appDb.bookDao.searchShelfBooks(key)
-                    }
+                .flatMapLatest { firstKey ->
+                    if (firstKey.isBlank()) flowOf(emptyList())
+                    else appDb.bookDao.searchShelfBooks(firstKey)
                 }
+
+            combine(dbFlow, keysFlow) { list, keys -> list to keys }
+                .incrementalFilter(skipFirst = true)
                 .flowOn(IO).conflate().collect { books ->
                     val found = books.isNotEmpty()
                     binding.tvBookShow.isVisible = found
