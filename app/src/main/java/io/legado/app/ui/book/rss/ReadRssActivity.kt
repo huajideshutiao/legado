@@ -1,27 +1,17 @@
 package io.legado.app.ui.book.rss
 
 import android.annotation.SuppressLint
-import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
-import android.net.http.SslError
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
-import android.webkit.SslErrorHandler
-import android.webkit.URLUtil
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
@@ -31,56 +21,47 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ActivityRssReadBinding
+import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.http.CookieManager
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.model.Download
-import io.legado.app.ui.association.FileAssociationDialog
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
+import io.legado.app.ui.browser.BaseWebViewClient
+import io.legado.app.ui.browser.CommonWebChromeClient
+import io.legado.app.ui.browser.WebViewUtil
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.ACache
 import io.legado.app.utils.EscapeUtils
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
 import io.legado.app.utils.isTrue
-import io.legado.app.utils.keepScreenOn
-import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.share
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import splitties.views.bottomPadding
-import java.net.URLDecoder
 
 /**
  * rss阅读界面
  */
-class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>() {
+class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>() {
 
-    override val binding by viewBinding(ActivityRssReadBinding::inflate)
+    override val binding by viewBinding(ActivityWebViewBinding::inflate)
     override val viewModel by viewModels<ReadRssViewModel>()
 
     private var starMenuItem: MenuItem? = null
     private var ttsMenuItem: MenuItem? = null
-    private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
+    private lateinit var chromeClient: CommonWebChromeClient
     private val selectImageDir = registerHandleFile {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -103,7 +84,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         initLiveData()
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) {
-                customWebViewCallback?.onCustomViewHidden()
+                chromeClient.customViewCallback?.onCustomViewHidden()
                 return@addCallback
             } else if (binding.webView.canGoBack()
                 && binding.webView.copyBackForwardList().size > 1
@@ -219,48 +200,20 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun initWebView() {
+        chromeClient = CommonWebChromeClient(
+            this, binding.progressBar, binding.llView, binding.customWebView
+        )
         binding.progressBar.fontColor = accentColor
-        binding.webView.webChromeClient = CustomWebChromeClient()
+        binding.webView.webChromeClient = chromeClient
         binding.webView.webViewClient = CustomWebViewClient()
-        binding.webView.settings.apply {
-            javaScriptEnabled = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            domStorageEnabled = true
-            allowContentAccess = true
-            builtInZoomControls = true
-            displayZoomControls = false
-            setDarkeningAllowed(AppConfig.isNightTheme)
-        }
+        WebViewUtil.applyCommonSettings(binding.webView.settings)
         binding.webView.addJavascriptInterface(this, "thisActivity")
-        binding.webView.setOnLongClickListener {
-            val hitTestResult = binding.webView.hitTestResult
-            if (hitTestResult.type == WebView.HitTestResult.IMAGE_TYPE ||
-                hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-            ) {
-                hitTestResult.extra?.let { webPic ->
-                    selector(
-                        arrayListOf(
-                            SelectItem(getString(R.string.action_save), "save"),
-                            SelectItem(getString(R.string.select_folder), "selectFolder")
-                        )
-                    ) { _, charSequence, _ ->
-                        when (charSequence.value) {
-                            "save" -> saveImage(webPic)
-                            "selectFolder" -> selectSaveFolder(null)
-                        }
-                    }
-                    return@setOnLongClickListener true
-                }
-            }
-            return@setOnLongClickListener false
-        }
-        binding.webView.setDownloadListener { url, _, contentDisposition, _, _ ->
-            var fileName = URLUtil.guessFileName(url, contentDisposition, null)
-            fileName = URLDecoder.decode(fileName, "UTF-8")
-            binding.llView.longSnackbar(fileName, getString(R.string.action_download)) {
-                Download.start(this, url, fileName)
-            }
-        }
+        WebViewUtil.setupImageLongClick(
+            binding.webView, this,
+            onSave = { saveImage(it) },
+            onSelectFolder = { selectSaveFolder(null) }
+        )
+        WebViewUtil.setupDownloadListener(binding.webView, binding.llView, this)
 
     }
 
@@ -269,7 +222,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         if (path.isNullOrEmpty()) {
             selectSaveFolder(webPic)
         } else {
-            viewModel.saveImage(webPic, path.toUri())
+            viewModel.saveImage(webPic, Uri.parse(path))
         }
     }
 
@@ -346,68 +299,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         binding.webView.destroy()
     }
 
-    inner class CustomWebChromeClient : WebChromeClient() {
+    inner class CustomWebViewClient : BaseWebViewClient() {
 
-        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-            super.onProgressChanged(view, newProgress)
-            binding.progressBar.setDurProgress(newProgress)
-            binding.progressBar.gone(newProgress == 100)
-        }
-
-        override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            binding.llView.invisible()
-            binding.customWebView.addView(view)
-            customWebViewCallback = callback
-            keepScreenOn(true)
-            toggleSystemBar(false)
-        }
-
-        override fun onHideCustomView() {
-            binding.customWebView.removeAllViews()
-            binding.llView.visible()
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            keepScreenOn(false)
-            toggleSystemBar(true)
-        }
-    }
-
-    inner class CustomWebViewClient : WebViewClient() {
-
-        override fun shouldOverrideUrlLoading(
-            view: WebView,
-            request: WebResourceRequest
-        ): Boolean {
-            return shouldOverrideUrlLoading(request.url)
-        }
-
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
-        override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-            return shouldOverrideUrlLoading(url.toUri())
-        }
-
-        override fun onPageFinished(view: WebView, url: String) {
-            super.onPageFinished(view, url)
-            view.title?.let { title ->
-                if (title != url
-                    && title != view.url
-                    && title.isNotBlank()
-                    && url != "about:blank"
-                    && !url.contains(title)
-                ) {
-                    binding.titleBar.title = title
-                } else {
-                    binding.titleBar.title = intent.getStringExtra("title")
-                }
-            }
-            viewModel.curBookSource?.ruleContent?.webJs?.let {
-                if (it.isNotBlank()) {
-                    view.evaluateJavascript(it, null)
-                }
-            }
-        }
-
-        private fun shouldOverrideUrlLoading(url: Uri): Boolean {
+        override fun interceptUrl(url: Uri): Boolean {
             val source = viewModel.curBookSource
             val js = source?.ruleContent?.shouldOverrideUrlLoading
             if (!js.isNullOrBlank()) {
@@ -429,32 +323,29 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                     return true
                 }
             }
-            when (url.scheme) {
-                "http", "https", "jsbridge" -> {
-                    return false
-                }
-
-                "legado", "yuedu" -> {
-                    showDialogFragment(FileAssociationDialog(url))
-                    return true
-                }
-
-                else -> {
-                    binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
-                        openUrl(url)
-                    }
-                    return true
-                }
-            }
+            if (url.scheme == "jsbridge") return false
+            return WebViewUtil.shouldOverrideUrl(url, this@ReadRssActivity, binding.root)
         }
 
-        @SuppressLint("WebViewClientOnReceivedSslError")
-        override fun onReceivedSslError(
-            view: WebView?,
-            handler: SslErrorHandler?,
-            error: SslError?
-        ) {
-            handler?.proceed()
+        override fun onPageFinished(view: WebView, url: String) {
+            super.onPageFinished(view, url)
+            view.title?.let { title ->
+                if (title != url
+                    && title != view.url
+                    && title.isNotBlank()
+                    && url != "about:blank"
+                    && !url.contains(title)
+                ) {
+                    binding.titleBar.title = title
+                } else {
+                    binding.titleBar.title = intent.getStringExtra("title")
+                }
+            }
+            viewModel.curBookSource?.ruleContent?.webJs?.let {
+                if (it.isNotBlank()) {
+                    view.evaluateJavascript(it, null)
+                }
+            }
         }
 
     }

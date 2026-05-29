@@ -1,64 +1,42 @@
 package io.legado.app.ui.browser
 
 import android.annotation.SuppressLint
-import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
-import android.net.http.SslError
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.webkit.CookieManager
-import android.webkit.SslErrorHandler
-import android.webkit.URLUtil
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.core.net.toUri
 import androidx.core.view.size
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.ActivityWebViewBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.SourceVerificationHelp
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.model.Download
-import io.legado.app.ui.association.FileAssociationDialog
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
-import io.legado.app.utils.keepScreenOn
-import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setDarkeningAllowed
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.snackbar
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
-import java.net.URLDecoder
 import io.legado.app.help.http.CookieManager as AppCookieManager
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
     override val binding by viewBinding(ActivityWebViewBinding::inflate)
     override val viewModel by viewModels<WebViewModel>()
-    private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
+    private lateinit var chromeClient: CommonWebChromeClient
     private var webPic: String? = null
     private var isCloudflareChallenge = false
     private var isFullScreen = false
@@ -88,7 +66,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) {
-                customWebViewCallback?.onCustomViewHidden()
+                chromeClient.customViewCallback?.onCustomViewHidden()
                 return@addCallback
             } else if (binding.webView.canGoBack()
                 && binding.webView.copyBackForwardList().size > 1
@@ -180,53 +158,33 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView(url: String, headerMap: HashMap<String, String>) {
+        chromeClient = CommonWebChromeClient(
+            this, binding.progressBar, binding.llView, binding.customWebView
+        ) {
+            if (viewModel.sourceVerificationEnable) {
+                viewModel.saveVerificationResult(binding.webView) { finish() }
+            } else {
+                finish()
+            }
+        }
         binding.progressBar.fontColor = accentColor
-        binding.webView.webChromeClient = CustomWebChromeClient()
+        binding.webView.webChromeClient = chromeClient
         binding.webView.webViewClient = CustomWebViewClient()
+        WebViewUtil.applyCommonSettings(binding.webView.settings)
         binding.webView.settings.apply {
-            setDarkeningAllowed(AppConfig.isNightTheme)
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            domStorageEnabled = true
-            allowContentAccess = true
             useWideViewPort = true
             loadWithOverviewMode = true
-            javaScriptEnabled = true
-            builtInZoomControls = true
-            displayZoomControls = false
             headerMap[AppConst.UA_NAME]?.let {
                 userAgentString = it
             }
         }
         AppCookieManager.applyToWebView(url)
-        binding.webView.setOnLongClickListener {
-            val hitTestResult = binding.webView.hitTestResult
-            if (hitTestResult.type == WebView.HitTestResult.IMAGE_TYPE ||
-                hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-            ) {
-                hitTestResult.extra?.let { webPic ->
-                    selector(
-                        arrayListOf(
-                            SelectItem(getString(R.string.action_save), "save"),
-                            SelectItem(getString(R.string.select_folder), "selectFolder")
-                        )
-                    ) { _, charSequence, _ ->
-                        when (charSequence.value) {
-                            "save" -> saveImage(webPic)
-                            "selectFolder" -> saveImage.launch {}
-                        }
-                    }
-                    return@setOnLongClickListener true
-                }
-            }
-            return@setOnLongClickListener false
-        }
-        binding.webView.setDownloadListener { downloadUrl, _, contentDisposition, _, _ ->
-            var fileName = URLUtil.guessFileName(downloadUrl, contentDisposition, null)
-            fileName = URLDecoder.decode(fileName, "UTF-8")
-            binding.llView.longSnackbar(fileName, getString(R.string.action_download)) {
-                Download.start(this, downloadUrl, fileName)
-            }
-        }
+        WebViewUtil.setupImageLongClick(
+            binding.webView, this,
+            onSave = { saveImage(it) },
+            onSelectFolder = { saveImage.launch {} }
+        )
+        WebViewUtil.setupDownloadListener(binding.webView, binding.llView, this)
     }
 
     private fun saveImage(webPic: String) {
@@ -249,60 +207,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         binding.webView.destroy()
     }
 
-    inner class CustomWebChromeClient : WebChromeClient() {
-
-        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-            super.onProgressChanged(view, newProgress)
-            binding.progressBar.setDurProgress(newProgress)
-            binding.progressBar.gone(newProgress == 100)
-        }
-
-        override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            binding.llView.invisible()
-            binding.customWebView.addView(view)
-            customWebViewCallback = callback
-            keepScreenOn(true)
-            toggleSystemBar(false)
-        }
-
-        override fun onHideCustomView() {
-            binding.customWebView.removeAllViews()
-            binding.llView.visible()
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            keepScreenOn(false)
-            toggleSystemBar(true)
-        }
-
-        override fun onCloseWindow(window: WebView?) {
-            if (viewModel.sourceVerificationEnable) {
-                viewModel.saveVerificationResult(binding.webView) {
-                    finish()
-                }
-            } else {
-                    finish()
-            }
-        }
-
-    }
-
-    inner class CustomWebViewClient : WebViewClient() {
-        override fun shouldOverrideUrlLoading(
-            view: WebView?,
-            request: WebResourceRequest?
-        ): Boolean {
-            request?.let {
-                return shouldOverrideUrlLoading(it.url)
-            }
-            return true
-        }
-
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
-        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-            url?.let {
-                return shouldOverrideUrlLoading(it.toUri())
-            }
-            return true
+    inner class CustomWebViewClient : BaseWebViewClient() {
+        override fun interceptUrl(url: Uri): Boolean {
+            return WebViewUtil.shouldOverrideUrl(url, this@WebViewActivity, binding.root)
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -341,35 +248,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     }
                 }
             }
-        }
-
-        private fun shouldOverrideUrlLoading(url: Uri): Boolean {
-            when (url.scheme) {
-                "http", "https" -> {
-                    return false
-                }
-
-                "legado", "yuedu" -> {
-                    showDialogFragment(FileAssociationDialog(url))
-                    return true
-                }
-
-                else -> {
-                    binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
-                        openUrl(url)
-                    }
-                    return true
-                }
-            }
-        }
-
-        @SuppressLint("WebViewClientOnReceivedSslError")
-        override fun onReceivedSslError(
-            view: WebView?,
-            handler: SslErrorHandler?,
-            error: SslError?
-        ) {
-            handler?.proceed()
         }
 
     }
