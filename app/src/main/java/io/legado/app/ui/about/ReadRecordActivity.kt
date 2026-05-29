@@ -452,6 +452,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             summaryBookCount = result.bookCount
             summaryAvgRead = result.avgRead
             renderSummary()
+            refreshHeatmap()
             adapter.setItems(result.items)
         }
     }
