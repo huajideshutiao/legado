@@ -83,8 +83,11 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private var searchCallback: SourceCallback? = null
     private val chapterNumRegex = "^\\[(\\d+)]".toRegex()
     private val comparatorBase by lazy {
-        compareByDescending<SearchBook> { getBookScore(it) }
-            .thenByDescending { SourceConfig.getSourceScore(it.origin) }
+        compareByDescending<SearchBook> { getBookScore(it) }.thenByDescending {
+            SourceConfig.getSourceScore(
+                it.origin
+            )
+        }
     }
     private val defaultComparator by lazy {
         comparatorBase.thenBy { it.originOrder }
@@ -92,8 +95,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private val wordCountComparator by lazy {
         comparatorBase.thenByDescending { it.chapterWordCount > 1000 }
             .thenByDescending { getChapterNum(it.chapterWordCountText) }
-            .thenByDescending { it.chapterWordCount }
-            .thenBy { it.originOrder }
+            .thenByDescending { it.chapterWordCount }.thenBy { it.originOrder }
     }
     private var task: Job? = null
     val bookMap = ConcurrentHashMap<String, Book>()
@@ -119,7 +121,9 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
 
         searchBooks.removeAll {
             (if (AppConfig.changeSourceCheckAuthor) it.author != author
-            else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
+            else false) || !it.name.contains(
+                screenKey, ignoreCase = true
+            ) || !it.author.contains(screenKey, ignoreCase = true)
         }
         trySend(arrayOf(searchBooks))
 
@@ -164,15 +168,17 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     }
 
     private fun initSearchPool() {
-        searchPool = Executors
-            .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
+        searchPool = Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD))
+            .asCoroutineDispatcher()
     }
 
     fun refresh(): Boolean {
 
         searchBooks.removeAll {
             (if (AppConfig.changeSourceCheckAuthor) it.author != author
-            else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
+            else false) || !it.name.contains(
+                screenKey, ignoreCase = true
+            ) || !it.author.contains(screenKey, ignoreCase = true)
         }
         searchCallback?.upAdapter()
 
@@ -185,7 +191,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     fun startSearch() {
         execute {
             stopSearch()
-            if (searchBooks.isNotEmpty())searchBooks.clear()
+            if (searchBooks.isNotEmpty()) searchBooks.clear()
             searchCallback?.upAdapter()
             bookSources.clear()
             tocMap.clear()
@@ -260,8 +266,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         val loadToc = AppConfig.changeSourceLoadToc
         val loadWordCount = AppConfig.changeSourceLoadWordCount
         val resultBooks = WebBook.getBookListAwait(
-            source, name,
-            filter = { fName, fAuthor ->
+            source, name, filter = { fName, fAuthor ->
                 fName == name && (!checkAuthor || fAuthor.contains(author))
             })
         resultBooks.forEach { searchBook ->
@@ -310,9 +315,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     }
 
     private suspend fun loadBookWordCount(
-        source: BookSource,
-        book: Book,
-        chapters: List<BookChapter>
+        source: BookSource, book: Book, chapters: List<BookChapter>
     ) = coroutineScope {
         val chapterIndex = if (fromReadBookActivity) {
             BookHelp.getDurChapter(oldBook!!, chapters)
@@ -380,7 +383,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                 }
             }.onStart {
                 searchStateData.postValue(true)
-            }.mapParallelSafe(threadCount,bookSources.size) {
+            }.mapParallelSafe(threadCount, bookSources.size) {
                 val source = appDb.bookSourceDao.getBookSource(it.origin)!!
                 withTimeout(timeLimit) {
                     loadBookInfo(source, it.toBook())
@@ -401,7 +404,9 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         execute {
             searchBooks.removeAll {
                 (if (AppConfig.changeSourceCheckAuthor) it.author != author
-                else false) || !it.name.contains(screenKey) || !it.author.contains(screenKey)
+                else false) || !it.name.contains(
+                    screenKey, ignoreCase = true
+                ) || !it.author.contains(screenKey, ignoreCase = true)
             }
             searchCallback?.upAdapter()
         }
@@ -498,8 +503,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     }
 
     fun autoChangeSource(
-        bookType: Int?,
-        onSuccess: (book: Book, toc: List<BookChapter>, source: BookSource) -> Unit
+        bookType: Int?, onSuccess: (book: Book, toc: List<BookChapter>, source: BookSource) -> Unit
     ) {
         execute {
             searchBooks.forEach {

@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.dpToPx
@@ -66,6 +67,7 @@ class MonthHeatMapView @JvmOverloads constructor(
     }
 
     private val tmpRect = RectF()
+    private val tmpHsl = FloatArray(3)
 
     private var year: Int = 0
     private var month: Int = 0 // 1..12
@@ -77,11 +79,25 @@ class MonthHeatMapView @JvmOverloads constructor(
     private val todayMonth: Int
     private val todayDay: Int
 
-    /** 6 档色阶对应的 alpha 值 (0..255)。索引 0 = 完全没读，5 = 满 12 小时及以上 */
-    private val levelAlphas = intArrayOf(24, 64, 112, 160, 208, 255)
-
     /** 单日满色阶对应的秒上限：12 小时 */
     private val maxReadSecs = 12L * 60L * 60L
+
+    private fun getColorForLevel(level: Int, accent: Int): Int {
+        ColorUtils.colorToHSL(accent, tmpHsl)
+        // context.isDarkTheme 在此项目中返回 true 表示背景为亮色
+        val isBackgroundDark = !context.isDarkTheme
+        val l = if (isBackgroundDark) {
+            // 深色背景：0 (最深) -> 5 (最亮)。下限从 0.2 提升到 0.3
+            0.3f + level * 0.08f // 0.3 -> 0.7
+        } else {
+            // 浅色背景：0 (最浅) -> 5 (最深)。下限从 0.3 提升到 0.42
+            0.92f - level * 0.1f // 0.92 -> 0.42
+        }
+        // 添加透明度，色阶越低越透明，增加层次感
+        val alpha = if (level == 0) 35 else 80 + level * 35 // 0:35, 1:115 ... 5:255
+        tmpHsl[2] = l.coerceIn(0f, 1f)
+        return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(tmpHsl), alpha)
+    }
 
     var onDayClick: ((day: Int, readTime: Long, selected: Boolean) -> Unit)? = null
     var onDayLongClick: ((day: Int, readTime: Long) -> Unit)? = null
@@ -207,8 +223,8 @@ class MonthHeatMapView @JvmOverloads constructor(
         val first = firstColumnIndex()
         val days = daysInMonth()
         val accent = context.accentColor
-        dayTextPaint.color = context.primaryTextColor
         selectedInfoPaint.color = context.primaryTextColor
+        dayTextPaint.color = context.primaryTextColor
 
         for (d in 1..days) {
             val idx = first + d - 1
@@ -222,7 +238,8 @@ class MonthHeatMapView @JvmOverloads constructor(
 
             val value = data[d] ?: 0L
             val level = levelFor(value)
-            cellPaint.color = ColorUtils.setAlphaComponent(accent, levelAlphas[level])
+            val bgColor = getColorForLevel(level, accent)
+            cellPaint.color = bgColor
             canvas.drawRoundRect(tmpRect, cellRadius, cellRadius, cellPaint)
 
             // 日期数字
@@ -254,7 +271,7 @@ class MonthHeatMapView @JvmOverloads constructor(
 
     private fun drawLegend(canvas: Canvas, accent: Int, top: Float) {
         // 居中绘制：[少] ▢▢▢▢▢ [多]
-        val cellCount = levelAlphas.size
+        val cellCount = 6
         val cellsTotal = legendCellSize * cellCount + legendCellGap * (cellCount - 1)
         val lessText = "少"
         val moreText = "多"
@@ -272,7 +289,7 @@ class MonthHeatMapView @JvmOverloads constructor(
         val cellTop = centerY - legendCellSize / 2f
         val cellBottom = centerY + legendCellSize / 2f
         for (i in 0 until cellCount) {
-            cellPaint.color = ColorUtils.setAlphaComponent(accent, levelAlphas[i])
+            cellPaint.color = getColorForLevel(i, accent)
             tmpRect.set(cellX, cellTop, cellX + legendCellSize, cellBottom)
             canvas.drawRoundRect(tmpRect, cellRadius / 2f, cellRadius / 2f, cellPaint)
             cellX += legendCellSize + legendCellGap
