@@ -390,7 +390,11 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
                 .requestFocus()
         } else {
-            searchView.setQuery(key, true)
+            val submit = intent.getBooleanExtra("submit", true)
+            searchView.setQuery(key, submit)
+            if (submit) {
+                searchView.post { visibleInputHelp(false) }
+            }
         }
     }
 

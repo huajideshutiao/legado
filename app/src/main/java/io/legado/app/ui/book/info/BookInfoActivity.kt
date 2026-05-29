@@ -469,6 +469,9 @@ class BookInfoActivity :
                 root.onClick {
                     search(fullKind)
                 }
+                root.onLongClick {
+                    fillSearchBox(fullKind)
+                }
             }
             flexboxLayout.addView(root)
         }
@@ -607,6 +610,30 @@ class BookInfoActivity :
                     putExtra(
                         "searchScope", SearchScope(it).toString()
                     )
+                }
+            }
+        }
+    }
+
+    /**
+     * 长按标签仅填充搜索框不触发搜索, 利用搜索页本地过滤
+     */
+    private fun fillSearchBox(fullKind: String) {
+        val tmp = fullKind.split("::", limit = 2)
+        if (tmp.size > 1) {
+            IntentData.source = viewModel.curBookSource
+            startActivity<ExploreShowActivity> {
+                putExtra("exploreName", tmp[0])
+                putExtra("exploreUrl", tmp[1])
+            }
+            return
+        }
+        startActivity<SearchActivity> {
+            putExtra("key", tmp[0])
+            putExtra("submit", false)
+            viewModel.curBookSource?.let {
+                it.searchUrl?.let { _ ->
+                    putExtra("searchScope", SearchScope(it).toString())
                 }
             }
         }
