@@ -97,6 +97,22 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE name = :name and origin = :origin")
     fun getBookByOrigin(name: String, origin: String): Book?
 
+    @Query("SELECT name, author, bookUrl FROM books")
+    fun flowShelfBookKeys(): Flow<List<ShelfBookKey>>
+
+    @Query(
+        """
+        SELECT * FROM books 
+        WHERE name LIKE '%' || :key || '%' COLLATE NOCASE
+        OR author LIKE '%' || :key || '%' COLLATE NOCASE
+        OR kind LIKE '%' || :key || '%' COLLATE NOCASE
+        OR originName LIKE '%' || :key || '%' COLLATE NOCASE
+        OR intro LIKE '%' || :key || '%' COLLATE NOCASE
+        ORDER BY durChapterTime DESC
+        """
+    )
+    fun searchShelfBooks(key: String): Flow<List<Book>>
+
     @get:Query("SELECT * FROM books where type & ${BookType.local} = 0")
     val webBooks: List<Book>
 
@@ -166,5 +182,11 @@ interface BookDao {
 
 data class BookFolder(
     val name: String,
+    val bookUrl: String
+)
+
+data class ShelfBookKey(
+    val name: String,
+    val author: String,
     val bookUrl: String
 )

@@ -56,6 +56,8 @@ import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -63,11 +65,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import kotlin.math.abs
 
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
     HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, SearchAdapter.CallBack {
 
@@ -343,29 +350,25 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         lifecycleScope.launch {
             combine(
                 inputHelpVisibleFlow,
-                bookshelfSearchKeyFlow,
-                appDb.bookDao.flowAll()
-            ) { visible, key, all ->
-                if (!visible || key.isBlank()) {
-                    emptyList()
-                } else {
-                    all.asReversed().filter {
-                        it.name.contains(key, true)
-                            || it.author.contains(key, true)
-                            || it.kind?.contains(key, true) == true
-                            || it.originName.contains(key, true)
-                            || it.intro?.contains(key, true) == true
+                bookshelfSearchKeyFlow.debounce(300)
+            ) { visible, key -> if (visible) key else "" }
+                .distinctUntilChanged()
+                .flatMapLatest { key ->
+                    if (key.isBlank()) {
+                        flowOf(emptyList())
+                    } else {
+                        appDb.bookDao.searchShelfBooks(key)
                     }
                 }
-            }.flowOn(IO).conflate().collect { books ->
-                val found = books.isNotEmpty()
-                binding.tvBookShow.isVisible = found
-                binding.rvBookshelfSearch.isVisible = found
-                // 书架结果与历史词互斥：有结果时整块隐藏历史区，省得 FlexboxLayoutManager 白排版
-                binding.llHistoryBar.isVisible = !found
-                binding.rvHistoryKey.isVisible = !found
-                if (found) bookAdapter.setItems(books)
-            }
+                .flowOn(IO).conflate().collect { books ->
+                    val found = books.isNotEmpty()
+                    binding.tvBookShow.isVisible = found
+                    binding.rvBookshelfSearch.isVisible = found
+                    // 书架结果与历史词互斥
+                    binding.llHistoryBar.isVisible = !found
+                    binding.rvHistoryKey.isVisible = !found
+                    if (found) bookAdapter.setItems(books)
+                }
         }
     }
 
@@ -441,10 +444,10 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 更新搜索历史
      */
     private fun upHistory(key: String? = null) {
+        bookshelfSearchKeyFlow.value = key.orEmpty()
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
             delay(300)
-            bookshelfSearchKeyFlow.value = key.orEmpty()
             (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
             else appDb.searchKeywordDao.flowSearch(key)).catch {
                 AppLog.put(
