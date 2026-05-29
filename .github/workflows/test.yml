@@ -37,7 +37,7 @@ jobs:
     steps:
       - id: set-ver
         run: |
-          echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H)" >> $GITHUB_OUTPUT
+          echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
           echo "versionL=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
       - id: check
         run: |
@@ -91,7 +91,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/apk/
           for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
             fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_原包名.apk"
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_release_原包名.apk"
           done
           echo "移动mapping文件"
           mkdir -p ${{ github.workspace }}/mapping/
@@ -196,7 +196,7 @@ jobs:
           echo "修改APK文件名"
           for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
             fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_共存.apk"
+            mv "$file" "${{ github.workspace }}/apk/${fileName}_releaseA_共存.apk"
           done
 
       - name: Upload (共存) Artifacts
@@ -214,6 +214,7 @@ jobs:
           artifacts: ${{ github.workspace }}/apk/*共存*.apk
           omitBody: true
           omitName: true
+          prerelease: true
 
       - name: Upload (共存) To Lanzou
         if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
