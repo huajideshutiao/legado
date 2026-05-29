@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package io.legado.app.help
 
 import android.content.Context
