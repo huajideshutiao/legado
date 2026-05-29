@@ -8,6 +8,7 @@ import android.widget.RelativeLayout
 import androidx.annotation.ColorInt
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.view.contains
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 
@@ -156,9 +157,13 @@ class FastScrollRecyclerView : RecyclerView {
         var parent = parent
         while (parent != null) {
             when (parent) {
-                is ConstraintLayout, is CoordinatorLayout, is FrameLayout, is RelativeLayout -> break
-                else -> parent = parent.parent
+                is ConstraintLayout, is RelativeLayout -> {
+                    if (parent.contains(this)) break
+                }
+
+                is CoordinatorLayout, is FrameLayout -> break
             }
+            parent = parent.parent
         }
         if (parent is ViewGroup && parent.indexOfChild(mFastScroller) == -1) {
             parent.addView(mFastScroller)

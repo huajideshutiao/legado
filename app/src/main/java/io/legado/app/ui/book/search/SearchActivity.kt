@@ -372,7 +372,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 .flowOn(IO).conflate().collect { books ->
                     val found = books.isNotEmpty()
                     binding.tvBookShow.isVisible = found
-                    binding.rvBookshelfSearch.isVisible = found
+                    binding.flBookshelfSearch.isVisible = found
                     // 书架结果与历史词互斥
                     binding.llHistoryBar.isVisible = !found
                     binding.rvHistoryKey.isVisible = !found

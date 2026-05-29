@@ -58,12 +58,20 @@
             android:text="@string/bookshelf"
             android:visibility="gone" />
 
-        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
-            android:id="@+id/rv_bookshelf_search"
+        <FrameLayout
+            android:id="@+id/fl_bookshelf_search"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            tools:listitem="@layout/item_search" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone">
+
+            <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
+                android:id="@+id/rv_bookshelf_search"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                tools:listitem="@layout/item_search" />
+
+        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/ll_history_bar"
@@ -92,7 +100,8 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_history_key"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
     </LinearLayout>
 
