@@ -78,9 +78,12 @@
     </string-array>
 
     <string-array name="rule_type">
-        <item>書源</item>
-        <item>訂閲源</item>
-        <item>替換規則</item>
+        <item>@string/book_source</item>
+        <item>@string/rss_source</item>
+        <item>@string/replace_rule</item>
+        <item>@string/txt_toc_rule</item>
+        <item>@string/dict_rule</item>
+        <item>@string/tts</item>
     </string-array>
 
 </resources>

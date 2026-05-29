@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string-array name="book_type">
-		<item>Texto</item>
-		<item>Áudio</item>
-		<item>Image</item>
-		<item>File</item>
-		<item>Video</item>
-		<item>RSS</item>
+		<item>@string/text</item>
+		<item>@string/audio</item>
+		<item>Imagem</item>
+		<item>Arquivo</item>
+		<item>Vídeo</item>
+		<item>@string/rss_source</item>
 	</string-array>
 
 	<string-array name="group_style">
@@ -112,9 +112,12 @@
 	</string-array>
 
 	<string-array name="rule_type">
-		<item>FonteLivro</item>
-		<item>FonteRSS</item>
-		<item>SubstituirRegra</item>
+        <item>@string/book_source</item>
+        <item>@string/rss_source</item>
+        <item>@string/replace_rule</item>
+        <item>@string/txt_toc_rule</item>
+        <item>@string/dict_rule</item>
+        <item>@string/tts</item>
 	</string-array>
 
 </resources>

@@ -97,9 +97,12 @@
     </string-array>
 
     <string-array name="rule_type">
-        <item>书源</item>
-        <item>订阅源</item>
-        <item>替换规则</item>
+        <item>@string/book_source</item>
+        <item>@string/rss_source</item>
+        <item>@string/replace_rule</item>
+        <item>@string/txt_toc_rule</item>
+        <item>@string/dict_rule</item>
+        <item>@string/tts</item>
     </string-array>
 
     <string-array name="tip_color">

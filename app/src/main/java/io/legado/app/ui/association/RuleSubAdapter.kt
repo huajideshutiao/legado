@@ -51,10 +51,11 @@ class RuleSubAdapter(context: Context, private val callBack: CallBack) :
 
     private fun typeName(type: Int): String {
         return when (type) {
-            1 -> context.getString(R.string.replace_rule)
-            2 -> context.getString(R.string.txt_toc_rule)
-            3 -> context.getString(R.string.dict_rule)
-            4 -> context.getString(R.string.tts)
+            1 -> context.getString(R.string.rss_source)
+            2 -> context.getString(R.string.replace_rule)
+            3 -> context.getString(R.string.txt_toc_rule)
+            4 -> context.getString(R.string.dict_rule)
+            5 -> context.getString(R.string.tts)
             else -> context.getString(R.string.book_source)
         }
     }

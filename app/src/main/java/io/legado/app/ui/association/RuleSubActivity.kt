@@ -88,11 +88,11 @@ class RuleSubActivity : VMBaseActivity<ActivityRuleSubBinding, RuleSubViewModel>
             return
         }
         when (ruleSub.type) {
-            0 -> showDialogFragment(ImportBookSourceDialog(ruleSub.url))
-            1 -> showDialogFragment(ImportReplaceRuleDialog(ruleSub.url))
-            2 -> showDialogFragment(ImportTxtTocRuleDialog(ruleSub.url))
-            3 -> showDialogFragment(ImportDictRuleDialog(ruleSub.url))
-            4 -> showDialogFragment(ImportHttpTtsDialog(ruleSub.url))
+            0, 1 -> showDialogFragment(ImportBookSourceDialog(ruleSub.url))
+            2 -> showDialogFragment(ImportReplaceRuleDialog(ruleSub.url))
+            3 -> showDialogFragment(ImportTxtTocRuleDialog(ruleSub.url))
+            4 -> showDialogFragment(ImportDictRuleDialog(ruleSub.url))
+            5 -> showDialogFragment(ImportHttpTtsDialog(ruleSub.url))
             else -> toastOnUi(R.string.error)
         }
     }
@@ -126,7 +126,7 @@ class RuleSubActivity : VMBaseActivity<ActivityRuleSubBinding, RuleSubViewModel>
         val title = if (ruleSub.name.isEmpty()) R.string.add else R.string.edit
         alert(titleResource = title) {
             val alertBinding = DialogRuleSubEditBinding.inflate(layoutInflater).apply {
-                spType.setSelection(ruleSub.type.coerceIn(0, 4))
+                spType.setSelection(ruleSub.type.coerceIn(0, 5))
                 etName.setText(ruleSub.name)
                 etUrl.setText(ruleSub.url)
             }
