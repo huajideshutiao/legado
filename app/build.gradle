@@ -68,12 +68,18 @@ android {
         buildConfig = true
         viewBinding = true
     }
+    androidResources {
+        localeFilters += ["en", "zh", "zh-rHK", "zh-rTW"]
+    }
     buildTypes {
         release {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig signingConfigs.myConfig
             } else {
                 signingConfig signingConfigs.debug
+            }
+            vcsInfo {
+                include = false
             }
             applicationIdSuffix '.release'
             if (getApplicationIdSuffix() == '.releaseA') {
@@ -155,10 +161,18 @@ android {
     }
     packaging {
         resources.excludes.add('META-INF/*')
+        resources.excludes.add('META-INF/androidx/**')
+        resources.excludes.add('META-INF/jsoup/**')
+        resources.excludes.add('META-INF/native-image/**')
+        resources.excludes.add('google/protobuf/**')
         resources.excludes.add('kotlin/**')
         resources.excludes.add('META-INF/versions/**')
         resources.excludes.add('tc/*')
         jniLibs.excludes.add('lib/*/libcronet*.so')
+    }
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     sourceSets {
