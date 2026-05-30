@@ -8,7 +8,6 @@ import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.EpubFile
 import io.legado.app.model.fileBook.MobiFile
 import io.legado.app.model.fileBook.PdfFile
-import io.legado.app.model.fileBook.UmdFile
 import io.legado.app.utils.LogUtils
 import java.lang.ref.WeakReference
 
@@ -41,7 +40,6 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
             EpubFile.clear()
             MobiFile.clear()
             PdfFile.clear()
-            UmdFile.clear()
         }
     }
 

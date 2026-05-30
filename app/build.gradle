@@ -235,7 +235,6 @@ dependencies {
 
     implementation(libs.jsoup)
     implementation(libs.json.path)
-    implementation(project(path: ':modules:book'))
     implementation(project(path: ':modules:rhino'))
 
     implementation(libs.okhttp)

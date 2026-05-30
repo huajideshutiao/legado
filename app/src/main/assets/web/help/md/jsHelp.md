@@ -465,3 +465,69 @@ cache.deleteMemory(key: String)
 java.openUrl(url:String)
 // 指定mimeType，可以跳转指定类型应用，例如（video/*）
 java.openUrl(url:String,mimeType:String)
+```
+
+## 启动 JS Activity
+
+> 启动一个空白 Activity，把控制权交给 JS。`action` 在 Activity `onCreate` 中被调用，参数 `jsThis`
+> 是 [JsActivity](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/ui/association/JsActivity.kt)
+> 实例，可用于显示 UI、注册回调、申请脚本授权等。
+>
+> 必须在非主线程（书源/规则解析线程）调用，调用线程会阻塞直到 Activity 结束（`finish()`
+> 或用户返回）。脚本里抛出的异常会传回调用线程重新抛出。
+
+```js
+// action: 必填，function(jsThis) { ... }
+// isTransparent: 可选，默认 true —— 是否使用透明主题（JsActivity1 透明 / JsActivity2 不透明）
+java.startJsActivity(action: Function)
+java.startJsActivity(action: Function, isTransparent: Boolean)
+```
+
+`jsThis` 上常用的方法：
+
+| 方法                           | 说明                                                                                                                                        |
+|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `runWithAuth(fn, args?)`     | 在已授权的 Rhino Context 中调用 JS 函数；用于 Java 回调里执行脚本，避免“未授权途径”异常                                                                                 |
+| `getAuthRunnable(fn, args?)` | 返回一个 Java `Runnable`，内部走 `runWithAuth`；可直接交给 `Thread`/`Handler.post` 等                                                                    |
+| `launch(fn)`                 | 在 IO 协程中以授权方式运行 `fn`                                                                                                                      |
+| `setBackEvent(target, fn)`   | 注册返回键回调，按下返回键时以授权方式调用 `fn`；返回 `OnBackPressedCallback`（用 `.remove()` 解绑）。`OnBackPressedCallback` 是抽象类，Rhino 在 Android 上无法直接 `new`，所以由这层壳实现 |
+| `dialog`                     | 懒加载的 `BottomSheetDialog`，可 `addView` 自定义内容并 `show()`                                                                                      |
+| `dialogView`                 | `dialog` 内部的 `LinearLayout`，向其 `addView` 即可                                                                                               |
+| `finish()`                   | 关闭 Activity，调用线程随之解除阻塞                                                                                                                    |
+
+示例 1 —— 弹底部面板，用户点关闭后返回：
+
+```js
+java.startJsActivity(function (jsThis) {
+    var btn = new android.widget.Button(jsThis);
+    btn.setText("关闭");
+    btn.setOnClickListener(new android.view.View.OnClickListener({
+        onClick: function () { jsThis.finish(); }
+    }));
+    jsThis.dialogView.addView(btn);
+    jsThis.dialog.show();
+});
+```
+
+示例 2 —— 拦截返回键：
+
+```js
+java.startJsActivity(function (jsThis) {
+    jsThis.setBackEvent(jsThis, function () {
+        java.log("back pressed");
+        jsThis.finish();
+    });
+    jsThis.dialog.show();
+});
+```
+
+示例 3 —— 在新线程中跑 JS（必须用 `getAuthRunnable` 重新拉起授权）：
+
+```js
+java.startJsActivity(function (jsThis) {
+    new java.lang.Thread(jsThis.getAuthRunnable(function () {
+        java.log("hi from worker thread");
+    })).start();
+    jsThis.finish();
+});
+```

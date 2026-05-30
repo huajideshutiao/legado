@@ -54,7 +54,7 @@ import java.util.regex.Pattern
 
 /**
  * 书籍文件导入 目录正文解析
- * 支持在线文件(txt epub umd 压缩文件 本地文件
+ * 支持在线文件(txt epub 压缩文件 本地文件
  */
 object FileBook : BaseFileBook {
 
@@ -74,7 +74,6 @@ object FileBook : BaseFileBook {
             )) -> MobiFile
 
             isEpub -> EpubFile
-            isLocal && originName.endsWith(".umd") -> UmdFile
             isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && isImage) -> CbzFile
 
             else -> TextFile

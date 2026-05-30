@@ -22,6 +22,18 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.epublib.domain.Author
+import io.legado.app.lib.epublib.domain.Date
+import io.legado.app.lib.epublib.domain.EpubBook
+import io.legado.app.lib.epublib.domain.FileResourceProvider
+import io.legado.app.lib.epublib.domain.LazyResource
+import io.legado.app.lib.epublib.domain.LazyResourceProvider
+import io.legado.app.lib.epublib.domain.Metadata
+import io.legado.app.lib.epublib.domain.Resource
+import io.legado.app.lib.epublib.domain.TOCReference
+import io.legado.app.lib.epublib.epub.EpubWriter
+import io.legado.app.lib.epublib.epub.EpubWriterProcessor
+import io.legado.app.lib.epublib.util.ResourceUtil
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.cache.CacheActivity
@@ -51,18 +63,6 @@ import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import me.ag2s.epublib.domain.Author
-import me.ag2s.epublib.domain.Date
-import me.ag2s.epublib.domain.EpubBook
-import me.ag2s.epublib.domain.FileResourceProvider
-import me.ag2s.epublib.domain.LazyResource
-import me.ag2s.epublib.domain.LazyResourceProvider
-import me.ag2s.epublib.domain.Metadata
-import me.ag2s.epublib.domain.Resource
-import me.ag2s.epublib.domain.TOCReference
-import me.ag2s.epublib.epub.EpubWriter
-import me.ag2s.epublib.epub.EpubWriterProcessor
-import me.ag2s.epublib.util.ResourceUtil
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.nio.charset.Charset
@@ -502,8 +502,8 @@ class ExportBookService : BaseService() {
                 .load(book.getDisplayCover())
                 .submit()
                 .get()
-            val provider = LazyResourceProvider { _ ->
-                file.inputStream()
+            val provider = object : LazyResourceProvider {
+                override fun getResourceStream(href: String?) = file.inputStream()
             }
             epubBook.coverImage = LazyResource(provider, "Images/cover.jpg")
         }.onFailure {
@@ -570,10 +570,13 @@ class ExportBookService : BaseService() {
             epubBook.resources.addAll(resources)
             if (chapter.isVolume) {
                 parentSection = epubBook.addSection(title, chapterResource)
-            } else if (parentSection == null) {
-                epubBook.addSection(title, chapterResource)
             } else {
-                epubBook.addSection(parentSection, title, chapterResource)
+                val parent = parentSection
+                if (parent == null) {
+                    epubBook.addSection(title, chapterResource)
+                } else {
+                    epubBook.addSection(parent, title, chapterResource)
+                }
             }
         }
     }
@@ -617,7 +620,7 @@ class ExportBookService : BaseService() {
 
     private fun setEpubMetadata(book: Book, epubBook: EpubBook) {
         val metadata = Metadata()
-        metadata.titles.add(book.name)//书籍的名称
+        metadata.titles?.add(book.name)//书籍的名称
         metadata.authors.add(Author(book.getRealAuthor()))//书籍的作者
         metadata.language = "zh"//数据的语言
         metadata.dates.add(Date())//数据的创建日期
