@@ -33,7 +33,6 @@ import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContinuationPending
-import org.mozilla.javascript.JavaScriptException
 import org.mozilla.javascript.RhinoException
 import org.mozilla.javascript.Script
 import org.mozilla.javascript.Scriptable
@@ -58,40 +57,33 @@ internal class RhinoCompiledScript(
     override fun eval(scope: Scriptable, coroutineContext: CoroutineContext?): Any? {
         val cx = Context.enter() as RhinoContext
         val previousCoroutineContext = cx.coroutineContext
+        val previousDangerousApi = cx.dangerousApi
+        val previousAllowScriptRun = cx.allowScriptRun
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
         if (scope is ScriptBindings) cx.dangerousApi = scope.dangerousApi
-
         cx.allowScriptRun = true
         cx.recursiveCount++
-        val result: Any?
         try {
             cx.checkRecursive()
-            val ret = script.exec(cx, scope)
-            result = engine.unwrapReturnValue(ret)
+            return engine.unwrapReturnValue(script.exec(cx, scope))
         } catch (re: RhinoException) {
-            val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-            val msg: String = if (re is JavaScriptException) {
-                re.value.toString()
-            } else {
-                re.toString()
-            }
-            val se = ScriptException(msg, re.sourceName(), line)
-            se.initCause(re)
-            throw se
+            throw re.toScriptException()
         } finally {
             cx.coroutineContext = previousCoroutineContext
-            cx.dangerousApi = false
-            cx.allowScriptRun = false
+            cx.dangerousApi = previousDangerousApi
+            cx.allowScriptRun = previousAllowScriptRun
             cx.recursiveCount--
             Context.exit()
         }
-        return result
     }
 
     override suspend fun evalSuspend(scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
+        val previousDangerousApi = cx.dangerousApi
+        val previousAllowScriptRun = cx.allowScriptRun
+        if (scope is ScriptBindings) cx.dangerousApi = scope.dangerousApi
         var ret: Any?
         withContext(RhinoContext.threadLocalContext.asContextElement(cx)) {
             cx.allowScriptRun = true
@@ -107,33 +99,24 @@ internal class RhinoCompiledScript(
                             @Suppress("UNCHECKED_CAST")
                             val suspendFunction = pending.applicationState as suspend () -> Any?
                             val functionResult = suspendFunction()
-                            val continuation = pending.continuation
-                            ret = cx.resumeContinuation(continuation, scope, functionResult)
+                            ret = cx.resumeContinuation(pending.continuation, scope, functionResult)
                             break
-                        } catch (e: ContinuationPending) {
-                            pending = e
+                        } catch (e2: ContinuationPending) {
+                            pending = e2
                         }
                     }
                 }
             } catch (re: RhinoException) {
-                val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-                val msg: String = if (re is JavaScriptException) {
-                    re.value.toString()
-                } else {
-                    re.toString()
-                }
-                val se = ScriptException(msg, re.sourceName(), line)
-                se.initCause(re)
-                throw se
-            } catch (var14: IOException) {
-                throw ScriptException(var14)
+                throw re.toScriptException()
+            } catch (e: IOException) {
+                throw ScriptException(e)
             } finally {
-                cx.allowScriptRun = false
+                cx.dangerousApi = previousDangerousApi
+                cx.allowScriptRun = previousAllowScriptRun
                 cx.recursiveCount--
                 Context.exit()
             }
         }
         return engine.unwrapReturnValue(ret)
     }
-
 }

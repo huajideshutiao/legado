@@ -33,37 +33,26 @@ import org.mozilla.javascript.ImporterTopLevel
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.Synchronizer
 import org.mozilla.javascript.Wrapper
-import java.security.AccessControlContext
 
 /**
- * This class serves as top level scope for Rhino. This class adds
- * 3 top level functions (bindings, scope, sync) and two constructors
- * (JSAdapter, JavaAdapter).
+ * Top level scope for Rhino. Adds the `bindings`, `scope`, and `sync`
+ * helper functions to the global object.
  *
  * @author A. Sundararajan
  * @since 1.6
  */
 class RhinoTopLevel(cx: Context, val scriptEngine: RhinoScriptEngine) :
-    ImporterTopLevel(cx, System.getSecurityManager() != null) {
-
-    val accessContext: AccessControlContext?
-        get() = scriptEngine.accessContext
+    ImporterTopLevel(cx) {
 
     companion object {
 
         @JvmStatic
-        fun bindings(
-            thisObj: Scriptable?,
-            args: Array<Any?>
-        ): Any {
+        fun bindings(thisObj: Scriptable?, args: Array<Any?>): Any {
             if (args.size == 1) {
                 var arg = args[0]
-                if (arg is Wrapper) {
-                    arg = arg.unwrap()
-                }
+                if (arg is Wrapper) arg = arg.unwrap()
                 if (arg is ExternalScriptable) {
-                    val ctx = arg.context
-                    val bind = ctx.getBindings(100)
+                    val bind = arg.context.getBindings(ScriptContext.ENGINE_SCOPE)
                     return Context.javaToJS(bind, getTopLevelScope(thisObj))
                 }
             }
@@ -74,12 +63,10 @@ class RhinoTopLevel(cx: Context, val scriptEngine: RhinoScriptEngine) :
         fun scope(thisObj: Scriptable?, args: Array<Any?>): Any {
             if (args.size == 1) {
                 var arg = args[0]
-                if (arg is Wrapper) {
-                    arg = arg.unwrap()
-                }
+                if (arg is Wrapper) arg = arg.unwrap()
                 if (arg is Bindings) {
                     val ctx: ScriptContext = SimpleScriptContext()
-                    ctx.setBindings(arg as Bindings?, 100)
+                    ctx.setBindings(arg, ScriptContext.ENGINE_SCOPE)
                     val res: Scriptable = ExternalScriptable(ctx)
                     res.prototype = getObjectPrototype(thisObj)
                     res.parentScope = getTopLevelScope(thisObj)
