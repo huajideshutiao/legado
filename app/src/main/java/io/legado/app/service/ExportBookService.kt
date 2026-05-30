@@ -36,7 +36,7 @@ import io.legado.app.lib.epublib.epub.EpubWriterProcessor
 import io.legado.app.lib.epublib.util.ResourceUtil
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.ui.book.cache.CacheActivity
+import io.legado.app.ui.book.manage.BookshelfManageActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
@@ -144,7 +144,7 @@ class ExportBookService : BaseService() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
-            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+            .setContentIntent(activityPendingIntent<BookshelfManageActivity>("bookshelfManageActivity"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentText(notificationContentText)
             .setDeleteIntent(servicePendingIntent<ExportBookService>(IntentAction.stop))

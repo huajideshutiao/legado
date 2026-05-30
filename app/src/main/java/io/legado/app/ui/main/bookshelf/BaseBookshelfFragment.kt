@@ -18,7 +18,6 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.import.local.ImportBookActivity
 import io.legado.app.ui.book.import.remote.RemoteBookActivity
@@ -84,10 +83,6 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             R.id.menu_add_local -> startActivity<ImportBookActivity>()
             R.id.menu_add_url -> showAddBookByUrlAlert()
             R.id.menu_bookshelf_manage -> startActivity<BookshelfManageActivity> {
-                putExtra("groupId", groupId)
-            }
-
-            R.id.menu_download -> startActivity<CacheActivity> {
                 putExtra("groupId", groupId)
             }
 
