@@ -64,7 +64,6 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         searchView.applyTint(primaryTextColor)
-        searchView.isSubmitButtonEnabled = true
         searchView.queryHint = getString(R.string.search_book_source)
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {

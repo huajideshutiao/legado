@@ -149,7 +149,6 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
 
     private fun initSearchView() {
         searchView.applyTint(primaryTextColor)
-        searchView.isSubmitButtonEnabled = true
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
                 return false

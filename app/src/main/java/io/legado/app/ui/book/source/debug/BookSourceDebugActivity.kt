@@ -63,7 +63,6 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
 
     private fun initSearchView() {
         searchView.onActionViewExpanded()
-        searchView.isSubmitButtonEnabled = true
         searchView.queryHint = getString(R.string.search_book_key)
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {

@@ -106,7 +106,6 @@ class SearchContentActivity :
 
     private fun initSearchView(requestFocus: Boolean) {
         searchView.applyTint(primaryTextColor)
-        searchView.isSubmitButtonEnabled = true
         searchView.queryHint = getString(R.string.search)
         if (requestFocus) searchView.isIconified = false
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
