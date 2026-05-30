@@ -360,11 +360,16 @@ class FastScroller : LinearLayout {
 
     private fun getScrollProportion(recyclerView: RecyclerView?): Float {
         recyclerView ?: return 0f
-        val verticalScrollOffset = recyclerView.computeVerticalScrollOffset()
-        val verticalScrollRange = recyclerView.computeVerticalScrollRange()
-        val rangeDiff = (verticalScrollRange - mViewHeight).toFloat()
-        val proportion = verticalScrollOffset.toFloat() / if (rangeDiff > 0) rangeDiff else 1f
-        return mViewHeight * proportion
+        val offset = recyclerView.computeVerticalScrollOffset()
+        val range = recyclerView.computeVerticalScrollRange()
+        val extent = recyclerView.computeVerticalScrollExtent()
+        val maxOffset = (range - extent).toFloat()
+        if (maxOffset <= 0f) return 0f
+        val proportion = (offset / maxOffset).coerceIn(0f, 1f)
+        val handleH = mHandleView.height
+        // 让 handle 在 [0, mViewHeight - handleH] 内线性铺满，
+        // 并补偿 setViewPositions 内部的 -handleH/2 偏移
+        return (mViewHeight - handleH) * proportion + handleH / 2f
     }
 
     private fun getValueInRange(min: Int, max: Int, value: Int): Int {
