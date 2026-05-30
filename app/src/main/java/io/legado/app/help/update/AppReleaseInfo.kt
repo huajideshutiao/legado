@@ -39,12 +39,7 @@ data class GithubRelease(
 ) {
     fun gitReleaseToAppReleaseInfo(): List<AppReleaseInfo> {
         assets ?: throw NoStackTraceException("获取新版本出错")
-        // 如果是 beta 标签，版本号从标题提取（如 legado_3.24.030512），否则使用 tagName
-        val releaseVersion = if (tagName == "beta") {
-            name?.substringAfterLast("_") ?: ""
-        } else {
-            tagName ?: ""
-        }
+        val releaseVersion = if (tagName == "beta") name.orEmpty() else tagName.orEmpty()
         return assets
             .filter { it.isValid }
             .map { it.assetToAppReleaseInfo(body, releaseVersion, tagName == "beta") }
@@ -78,13 +73,8 @@ data class Asset(
         val timestamp: Long = instant.toEpochMilli()
 
         val appVariant = when {
-            // 严格遵循 test.yml 的重命名规则
-            isBetaTag && (name.contains("releaseA", true) || name.contains(
-                "共存",
-                true
-            )) -> AppVariant.BETA_RELEASEA
-
-            isBetaTag && name.contains("release", true) -> AppVariant.BETA_RELEASE
+            name.contains("共存") -> AppVariant.BETA_RELEASEA
+            isBetaTag -> AppVariant.BETA_RELEASE
             else -> AppVariant.OFFICIAL
         }
 

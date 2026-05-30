@@ -67,10 +67,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
           mkdir -p ${{ github.workspace }}/apk/
-          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
-            fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_原包名.apk"
-          done
+          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
 
       - name: Build ReleaseA (共存)
         continue-on-error: true
@@ -79,10 +76,7 @@ jobs:
           sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle -i
           echo "开始app共存构建"
           ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
-          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
-            fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_共存.apk"
-          done
+          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
 
       - name: Generate Release Notes
         run: |
@@ -109,17 +103,17 @@ jobs:
       - name: Upload App To Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legado_app
+          name: app
           path: ${{ github.workspace }}/apk/*.apk
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          name: legado_app_${{ env.VERSION }}
+          name: ${{ env.VERSION }}
           tag_name: ${{ env.VERSION }}
           body_path: ${{ github.workspace }}/RELEASE_NOTES.md
           draft: false
           prerelease: false
-          files: ${{ github.workspace }}/apk/legado_*.apk
+          files: ${{ github.workspace }}/apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

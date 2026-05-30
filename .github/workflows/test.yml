@@ -87,12 +87,9 @@ jobs:
           echo "开始${{ env.product }}原包名构建"
           chmod +x gradlew
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
-          echo "修改APK文件名"
+          echo "收集APK"
           mkdir -p ${{ github.workspace }}/apk/
-          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
-            fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_release_原包名.apk"
-          done
+          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
           echo "移动mapping文件"
           mkdir -p ${{ github.workspace }}/mapping/
           for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt 2>/dev/null`; do
@@ -105,7 +102,7 @@ jobs:
       - name: Upload (原包名) Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: legado.${{ env.product }}.release
+          name: ${{ env.product }}.原包名
           path: |
             ${{ github.workspace }}/apk/*原包名*.apk
             ${{ github.workspace }}/mapping/mapping.txt
@@ -160,7 +157,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: ncipollo/release-action@v1
         with:
-          name: legado_${{ env.VERSION }}
+          name: ${{ env.VERSION }}
           tag: "beta"
           bodyFile: RELEASE_NOTES.md
           prerelease: true
@@ -193,16 +190,13 @@ jobs:
           sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
           echo "开始${{ env.product }}共存构建"
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
-          echo "修改APK文件名"
-          for file in `find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk"`; do
-            fileName=$(basename "$file" .apk)
-            mv "$file" "${{ github.workspace }}/apk/${fileName}_releaseA_共存.apk"
-          done
+          echo "收集共存版APK"
+          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
 
       - name: Upload (共存) Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: legado.${{ env.product }}.releaseA
+          name: ${{ env.product }}.共存
           path: ${{ github.workspace }}/apk/*共存*.apk
 
       - name: Append (共存) To Release
