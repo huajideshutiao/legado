@@ -94,8 +94,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
-    private var menu: Menu? = null
-    private var groups: List<String>? = null
     private var booksFlowJob: Job? = null
     private val bookshelfSearchKeyFlow = MutableStateFlow("")
     private val inputHelpVisibleFlow = MutableStateFlow(true)
@@ -117,7 +115,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_search, menu)
-        this.menu = menu
         precisionSearchMenuItem = menu.findItem(R.id.menu_precision_search)
         precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
         return super.onCompatCreateOptionsMenu(menu)
@@ -127,36 +124,24 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         menu.transaction {
             menu.removeGroup(R.id.menu_group_1)
             menu.removeGroup(R.id.menu_group_2)
-            var hasChecked = false
             val searchScopeNames = viewModel.searchScope.displayNames
             if (viewModel.searchScope.isSource()) {
                 menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, searchScopeNames.first()).apply {
                     isChecked = true
-                    hasChecked = true
                 }
-            }
-            val allSourceMenu =
-                menu.add(R.id.menu_group_2, R.id.menu_1, Menu.NONE, getString(R.string.all_source))
-                    .apply {
-                        if (searchScopeNames.isEmpty()) {
-                            isChecked = true
-                            hasChecked = true
-                        }
-                    }
-            groups?.forEach {
-                if (searchScopeNames.contains(it)) {
+            } else {
+                searchScopeNames.forEach {
                     menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, it).apply {
                         isChecked = true
-                        hasChecked = true
                     }
-                } else {
-                    menu.add(R.id.menu_group_2, Menu.NONE, Menu.NONE, it)
                 }
             }
-            if (!hasChecked) {
-                viewModel.searchScope.update("")
-                allSourceMenu.isChecked = true
-            }
+            menu.add(R.id.menu_group_2, R.id.menu_1, Menu.NONE, getString(R.string.all_source))
+                .apply {
+                    if (searchScopeNames.isEmpty()) {
+                        isChecked = true
+                    }
+                }
             menu.setGroupCheckable(R.id.menu_group_1, true, false)
             menu.setGroupCheckable(R.id.menu_group_2, true, true)
         }
@@ -185,9 +170,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 if (item.groupId == R.id.menu_group_1) {
                     viewModel.searchScope.remove(item.title.toString())
                     checkSearch()
-                } else if (item.groupId == R.id.menu_group_2) {
-                    viewModel.searchScope.update(item.title.toString())
-                    checkSearch()
                 }
             }
         }
@@ -196,7 +178,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initSearchView() {
         searchView.applyTint(primaryTextColor)
-        searchView.isSubmitButtonEnabled = true
         searchView.queryHint = getString(R.string.search_book_key)
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String): Boolean {
@@ -334,11 +315,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         viewModel.searchOptionsLiveData.observe(this) {
             initFilterView()
-        }
-        lifecycleScope.launch {
-            appDb.bookSourceDao.flowEnabledGroups().collect {
-                groups = it
-            }
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
