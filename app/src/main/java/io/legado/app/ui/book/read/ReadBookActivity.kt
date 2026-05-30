@@ -281,13 +281,26 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             finish()
         }
-        viewModel.initData(intent)
+        viewModel.initData(intent) { applyBookmarkPosition(intent) }
         justInitData = true
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        viewModel.initData(intent)
+        setIntent(intent)
+        viewModel.initData(intent) { applyBookmarkPosition(intent) }
+    }
+
+    private fun applyBookmarkPosition(intent: Intent) {
+        val targetIndex = intent.getIntExtra("chapterIndex", -1)
+        if (targetIndex < 0) return
+        val targetPos = intent.getIntExtra("chapterPos", 0)
+        intent.removeExtra("chapterIndex")
+        intent.removeExtra("chapterPos")
+        if (ReadBook.durChapterIndex != targetIndex || ReadBook.durChapterPos != targetPos) {
+            ReadBook.saveCurrentBookProgress()
+            viewModel.openChapter(targetIndex, targetPos)
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

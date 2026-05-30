@@ -12,7 +12,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
@@ -29,7 +28,6 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
     private val binding by viewBinding(DialogDirectLinkUploadConfigBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.inflateMenu(R.menu.direct_link_upload_config)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)
