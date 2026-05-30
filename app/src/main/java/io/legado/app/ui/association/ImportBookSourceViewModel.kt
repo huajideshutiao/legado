@@ -16,6 +16,7 @@ import io.legado.app.data.entities.OldRssSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
@@ -87,7 +88,10 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                     selectSource.add(source)
                 }
             }
-            SourceHelp.insertBookSource(*selectSource.toTypedArray())
+            appDb.bookSourceDao.insert(*selectSource.toTypedArray())
+            Coroutine.async {
+                SourceHelp.adjustSortNumber()
+            }
             ContentProcessor.upReplaceRules()
         }.onFinally {
             finally.invoke()

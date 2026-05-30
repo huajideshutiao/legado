@@ -27,8 +27,6 @@ import io.legado.app.utils.list
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.sendMail
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
@@ -51,15 +49,13 @@ class AboutFragment : PreferenceFragmentCompat() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             "contributors" -> openUrl(R.string.contributors_url)
-            "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
-            "check_update" -> {
-                AppUpdate.check(lifecycleScope, requireActivity() as AppCompatActivity)
-            }
-            "mail" -> requireContext().sendMail(getString(R.string.email))
+            "check_update" -> AppUpdate.check(
+                lifecycleScope,
+                requireActivity() as AppCompatActivity
+            )
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
             "privacyPolicy" -> showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
-            "gzGzh" -> requireContext().sendToClip(getString(R.string.legado_gzh))
             "crashLog" -> showDialogFragment<CrashLogsDialog>()
             "saveLog" -> saveLog()
             "createHeapDump" -> createHeapDump()

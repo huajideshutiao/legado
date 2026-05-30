@@ -7,27 +7,10 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.AppCacheManager
 import io.legado.app.help.config.SourceConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
-import io.legado.app.utils.EncoderUtils
-import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.splitNotBlank
-import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 object SourceHelp {
-
-    private val list18Plus by lazy {
-        try {
-            return@lazy String(appCtx.assets.open("18PlusList.txt").readBytes())
-                .splitNotBlank("\n").map {
-                    EncoderUtils.base64Decode(it)
-                }.toHashSet()
-        } catch (_: Exception) {
-            return@lazy emptySet()
-        }
-    }
 
     fun getSource(key: String?): BaseSource? {
         key ?: return null
@@ -95,36 +78,6 @@ object SourceHelp {
             SourceType.book, SourceType.rss -> appDb.bookSourceDao.enable(key, enable)
             SourceType.tts -> Unit
         }
-    }
-
-    fun insertBookSource(vararg bookSources: BookSource) {
-        val bookSourcesGroup = bookSources.groupBy {
-            is18Plus(it.bookSourceUrl)
-        }
-        bookSourcesGroup[true]?.forEach {
-            appCtx.toastOnUi("${it.bookSourceName}是18+网址,禁止导入.")
-        }
-        bookSourcesGroup[false]?.let {
-            appDb.bookSourceDao.insert(*it.toTypedArray())
-        }
-        Coroutine.async {
-            adjustSortNumber()
-        }
-    }
-
-    private fun is18Plus(url: String?): Boolean {
-        if (list18Plus.isEmpty()) {
-            return false
-        }
-        url ?: return false
-        val baseUrl = NetworkUtils.getBaseUrl(url) ?: return false
-        kotlin.runCatching {
-            val host = baseUrl.split("//", ".").let {
-                if (it.size > 2) "${it[it.lastIndex - 1]}.${it.last()}" else return false
-            }
-            return list18Plus.contains(host)
-        }
-        return false
     }
 
     /**

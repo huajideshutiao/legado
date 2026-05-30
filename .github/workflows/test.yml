@@ -64,10 +64,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 17
-      - name: Clear 18PlusList.txt
-        run: |
-          echo "清空18PlusList.txt"
-          echo "">$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt
       - name: Release Apk Sign
         run: |
           echo "给apk增加签名"

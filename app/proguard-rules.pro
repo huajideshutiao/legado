@@ -1,5 +1,4 @@
 # Add project specific ProGuard rules here.
-# 见 build.gradle 中 proguardFiles 配置（包含 proguard-android-optimize.txt 与 cronet-proguard-rules.pro）
 
 ############################
 # 全局配置

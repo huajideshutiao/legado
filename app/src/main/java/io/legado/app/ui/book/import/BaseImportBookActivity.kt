@@ -65,7 +65,9 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
             return@sc
         }
         //测试读写??
-        val storageHelp = String(assets.open("storageHelp.md").readBytes())
+        val storageHelp =
+            "* 由于安卓的存储访问限制，阅读需要设置**公共目录下的子目录**来实现书籍拷贝、下载，例如Documents/Books、Download/Books\n" +
+                "* 如不设置，将无法正常使用本地书籍、webDav书籍的相关功能"
         val hint = getString(R.string.select_book_folder)
         alert(hint, storageHelp) {
             okButton {
