@@ -78,10 +78,11 @@
 -dontwarn cn.hutool.**
 
 ############################
-# OkHttp / Okio（库自带 consumer rules 已覆盖大部分；仅保留必要兜底）
+# OkHttp / Okio
 ############################
+-keep class okhttp3.*{*;}
+-keepclassmembers class okhttp3.** {    *** protocol(...);}
 -dontwarn okhttp3.internal.**
--dontwarn okio.**
 
 ############################
 # JsonPath
