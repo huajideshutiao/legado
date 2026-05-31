@@ -6,10 +6,12 @@ import android.util.Size
 import androidx.collection.LruCache
 import io.legado.app.R
 import io.legado.app.constant.AppLog.putDebug
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.BitmapUtils
@@ -112,7 +114,8 @@ object ImageProvider {
     }
 
     /**
-     *缓存网络图片和epub图片
+     *缓存网络图片和远程epub图片
+     *本地epub图片直接从ZIP读取，不缓存到磁盘
      */
     suspend fun cacheImage(
         book: Book,
@@ -122,15 +125,19 @@ object ImageProvider {
         return withContext(IO) {
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
-                val inputStream = FileBook.getImage(book, src)
-                    ?: let {
-                        BookHelp.saveImage(bookSource, book, src)
-                        null
-                    }
-                inputStream?.use { input ->
-                    val newFile = FileUtils.createFileIfNotExist(vFile.absolutePath)
-                    FileOutputStream(newFile).use { output ->
-                        input.copyTo(output)
+                // 本地EPUB不缓存，只有远程EPUB或网络书源才缓存
+                val isLocalEpub = book.isEpub && !book.origin.startsWith(BookType.webDavTag)
+                if (!isLocalEpub) {
+                    val inputStream = FileBook.getImage(book, src)
+                        ?: let {
+                            BookHelp.saveImage(bookSource, book, src)
+                            null
+                        }
+                    inputStream?.use { input ->
+                        val newFile = FileUtils.createFileIfNotExist(vFile.absolutePath)
+                        FileOutputStream(newFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
             }
@@ -146,9 +153,25 @@ object ImageProvider {
         src: String,
         bookSource: BookSource?
     ): Size {
+        val isLocalEpub = book.isEpub && !book.origin.startsWith(BookType.webDavTag)
+
+        if (isLocalEpub) {
+            // 本地EPUB直接从ZIP读取，不缓存到磁盘
+            FileBook.getImage(book, src)?.use { input ->
+                val op = BitmapFactory.Options()
+                op.inJustDecodeBounds = true
+                BitmapFactory.decodeStream(input, null, op)
+                if (op.outWidth > 0 && op.outHeight > 0) {
+                    return Size(op.outWidth, op.outHeight)
+                }
+            }
+            putDebug("ImageProvider: $src Unsupported image type or not found")
+            return Size(errorBitmap.width, errorBitmap.height)
+        }
+
+        // 远程EPUB或网络书源：缓存到磁盘后读取
         val file = cacheImage(book, src, bookSource)
         val op = BitmapFactory.Options()
-        // inJustDecodeBounds如果设置为true,仅仅返回图片实际的宽和高,宽和高是赋值给opts.outWidth,opts.outHeight;
         op.inJustDecodeBounds = true
         BitmapFactory.decodeFile(file.absolutePath, op)
         if (op.outWidth < 1 && op.outHeight < 1) {
@@ -156,7 +179,6 @@ object ImageProvider {
             val size = SvgUtils.getSize(file.absolutePath)
             if (size != null) return size
             putDebug("ImageProvider: $src Unsupported image type")
-            //file.delete() 重复下载
             return Size(errorBitmap.width, errorBitmap.height)
         }
         return Size(op.outWidth, op.outHeight)
@@ -176,12 +198,35 @@ object ImageProvider {
             book.setUseReplaceRule(false)
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
+
+        val isLocalEpub = book.isEpub && !book.origin.startsWith(BookType.webDavTag)
+
+        if (isLocalEpub) {
+            // 本地EPUB直接从ZIP读取并解码，只缓存到内存LruCache
+            val cacheKey = "${book.bookUrl}#$src"
+            val cacheBitmap = getNotRecycled(cacheKey)
+            if (cacheBitmap != null) return cacheBitmap
+
+            return kotlin.runCatching {
+                FileBook.getImage(book, src)?.use { input ->
+                    val bytes = input.readBytes()
+                    val bitmap = BitmapUtils.decodeBitmap(bytes, width, height ?: width)
+                        ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                    put(cacheKey, bitmap)
+                    bitmap
+                } ?: errorBitmap
+            }.onFailure {
+                put(cacheKey, errorBitmap)
+            }.getOrDefault(errorBitmap)
+        }
+
+        // 远程EPUB或网络书源：使用磁盘缓存
         val vFile = BookHelp.getImage(book, src)
         if (!vFile.exists()) return errorBitmap
-        //epub文件提供图片链接是相对链接，同时阅读多个epub文件，缓存命中错误
-        //bitmapLruCache的key同一改成缓存文件的路径
+
         val cacheBitmap = getNotRecycled(vFile.absolutePath)
         if (cacheBitmap != null) return cacheBitmap
+
         return kotlin.runCatching {
             val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
                 ?: SvgUtils.createBitmap(vFile.absolutePath, width, height)

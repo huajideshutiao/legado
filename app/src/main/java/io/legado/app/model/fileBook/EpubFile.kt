@@ -5,14 +5,21 @@ import android.graphics.BitmapFactory
 import android.os.ParcelFileDescriptor
 import android.text.TextUtils
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.lib.epublib.domain.EpubBook
+import io.legado.app.lib.epublib.domain.MediaType
 import io.legado.app.lib.epublib.domain.Resource
 import io.legado.app.lib.epublib.domain.TOCReference
 import io.legado.app.lib.epublib.epub.EpubReader
+import io.legado.app.lib.epublib.epub.ResourcesLoader
 import io.legado.app.lib.epublib.util.zip.AndroidZipFile
+import io.legado.app.lib.epublib.util.zip.ZipFileWrapper
+import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.encodeURI
@@ -78,6 +85,9 @@ class EpubFile(var book: Book) {
     private var fileDescriptor: ParcelFileDescriptor? = null
 
     @Volatile
+    private var remoteZipWrapper: RemoteZipWrapper? = null
+
+    @Volatile
     private var epubBook: EpubBook? = null
         get() = field ?: synchronized(this) {
             field ?: readEpub().also { field = it }
@@ -94,21 +104,60 @@ class EpubFile(var book: Book) {
     }
 
     /**
-     * 重写epub文件解析代码，直接读出压缩包文件生成Resources给epublib，这样的好处是可以逐一修改某些文件的格式错误
+     * 重写epub文件解析代码，直接读出压缩包文件生成Resources给epublib
+     * 对于远程EPUB文件，使用RemoteZipWrapper实现动态加载（不全量下载）
      */
     private fun readEpub(): EpubBook? {
         return runCatching {
-            //ContentScheme拷贝到私有文件夹采用懒加载防止OOM
-            //val zipFile = BookHelp.getEpubFile(book)
-            BookHelp.getBookPFD(book)?.let {
-                fileDescriptor = it
-                val zipFile = AndroidZipFile(it, book.originName)
-                EpubReader().readEpubLazy(zipFile, "utf-8")
+            if (book.bookUrl.startsWith(BookType.webDavTag) || book.bookUrl.startsWith("http")) {
+                readEpubRemote()
+            } else {
+                BookHelp.getBookPFD(book)?.let {
+                    fileDescriptor = it
+                    val zipFile = AndroidZipFile(it, book.originName)
+                    EpubReader().readEpubLazy(zipFile, "utf-8")
+                }
             }
         }.onFailure {
             AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
             it.printOnDebug()
         }.getOrNull()
+    }
+
+    /**
+     * 使用RemoteZipWrapper动态加载远程EPUB
+     * 类似CBZ的处理方式：仅下载中央目录元数据，文件内容按需获取
+     */
+    private fun readEpubRemote(): EpubBook? {
+        val url = book.getRemoteUrl() ?: book.bookUrl
+        val webDav = runCatching {
+            WebDav.fromPath(url)
+        }.getOrElse {
+            AppWebDav.authorization?.let { auth ->
+                WebDav(url, auth)
+            } ?: return null
+        }
+
+        var size = 0L
+        var eocd = 0L
+        var central = 0L
+        var entryCount = 0
+        // 从variable中恢复缓存的元数据（如果存在）
+        book.variable?.takeIf { it.startsWith("epub:") }?.substring(5)?.split(",")
+            ?.let { p ->
+                eocd = p.getOrNull(0)?.toLongOrNull() ?: 0L
+                central = p.getOrNull(1)?.toLongOrNull() ?: 0L
+                size = p.getOrNull(2)?.toLongOrNull() ?: 0L
+                entryCount = p.getOrNull(3)?.toIntOrNull() ?: 0
+            }
+
+        val wrapper = RemoteZipWrapper(webDav, book.originName, size, eocd, central, entryCount)
+        remoteZipWrapper = wrapper
+        val zipFileWrapper = ZipFileWrapper(wrapper)
+        val lazyLoadedTypes: MutableList<MediaType?> =
+            io.legado.app.lib.epublib.domain.MediaTypes.mediaTypes.toMutableList()
+        val resources = ResourcesLoader.loadResources(zipFileWrapper, "utf-8", lazyLoadedTypes)
+        return EpubReader().readEpub(resources)
     }
 
     private fun getContent(chapter: BookChapter): String? {
@@ -151,9 +200,6 @@ class EpubFile(var book: Book) {
         //title标签中的内容不需要显示在正文中，去除
         elements.select("title").remove()
         elements.select("[style*=display:none]").remove()
-        elements.select("img[src=\"cover.jpg\"]").forEachIndexed { i, it ->
-            if (i > 0) it.remove()
-        }
         elements.select("img").forEach {
             if (it.attributesSize() <= 1) {
                 return@forEach
@@ -171,16 +217,6 @@ class EpubFile(var book: Book) {
     }
 
     private fun getBody(res: Resource, startFragmentId: String?, endFragmentId: String?): Element {
-        /**
-         * <image width="1038" height="670" xlink:href="..."/>
-         * ...titlepage.xhtml
-         * 大多数epub文件的封面页都会带有cover，可以一定程度上解决封面读取问题
-         */
-        if (res.getHref().contains("titlepage.xhtml") || res.getHref().contains("cover")
-        ) {
-            return Jsoup.parseBodyFragment("<img src=\"cover.jpg\" />")
-        }
-
         // Jsoup可能会修复不规范的xhtml文件 解析处理后再获取
         var bodyElement = Jsoup.parse(String(res.data ?: ByteArray(0), mCharset)).body()
         bodyElement.children().run {
@@ -231,18 +267,48 @@ class EpubFile(var book: Book) {
             it.attr("src", it.attr("xlink:href"))
         }
         bodyElement.select("img").forEach {
-            val src = it.attr("src").trim().encodeURI()
-            val href = res.getHref().encodeURI()
-            val resolvedHref = URLDecoder.decode(URI(href).resolve(src).toString(), "UTF-8")
-            it.attr("src", resolvedHref)
+            val src = it.attr("src").trim()
+            if (src.startsWith("data:", ignoreCase = true)) {
+                it.attr("src", src)
+            } else {
+                val encodedSrc = src.encodeURI()
+                val href = res.getHref().encodeURI()
+                val resolvedHref =
+                    URLDecoder.decode(URI(href).resolve(encodedSrc).toString(), "UTF-8")
+                it.attr("src", resolvedHref)
+            }
         }
         return bodyElement
     }
 
     private fun getImage(href: String): InputStream? {
-        if (href == "cover.jpg") return epubBook?.coverImage?.inputStream
-        val abHref = URLDecoder.decode(href, "UTF-8")
-        return epubBook?.resources?.getByHref(abHref)?.inputStream
+        val decodedHref = URLDecoder.decode(href, "UTF-8")
+
+        // 精确匹配原始href
+        epubBook?.resources?.getByHref(href)?.inputStream?.let {
+            return it
+        }
+
+        // 尝试解码后的href
+        if (decodedHref != href) {
+            epubBook?.resources?.getByHref(decodedHref)?.inputStream?.let {
+                return it
+            }
+        }
+
+        // 兜底：按文件名模糊匹配，处理路径前缀不匹配的情况
+        val fileName = decodedHref.substringAfterLast("/")
+        if (fileName.isNotEmpty()) {
+            epubBook?.resources?.all?.find { resource ->
+                val resourceHref = resource.getHref()
+                resourceHref.equals(fileName, ignoreCase = true)
+                    || resourceHref.endsWith("/$fileName", ignoreCase = true)
+            }?.inputStream?.let {
+                return it
+            }
+        }
+
+        return null
     }
 
     private fun upBookCover(fastCheck: Boolean = false) {
@@ -275,6 +341,10 @@ class EpubFile(var book: Book) {
             book.intro = "书籍导入异常"
         } else {
             upBookCover()
+            // 保存远程EPUB的元数据，供后续动态加载使用（类似CBZ的variable存储）
+            remoteZipWrapper?.apply {
+                book.variable = "epub:$eocdOffset,$centralOffset,$fileSize,$entryCount"
+            }
             val metadata = epubBook!!.metadata
             book.name = metadata.firstTitle ?: ""
             if (book.name.isEmpty()) {
@@ -426,6 +496,7 @@ class EpubFile(var book: Book) {
 
     protected fun finalize() {
         fileDescriptor?.close()
+        remoteZipWrapper?.close()
     }
 
 }

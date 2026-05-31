@@ -229,8 +229,29 @@ object FileBook : BaseFileBook {
                 })
         }
 
+        // 远程EPUB处理：大于30MB不下载，使用动态加载
+        suspend fun importAsEpub(): Book {
+            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) {
+                saveBookFile(origin, name).toString()
+            } else origin
+            return importBook(
+                Book(
+                    bookUrl = bookUrl,
+                    name = name.substringBeforeLast("."),
+                    author = "",
+                    originName = name,
+                    latestChapterTime = lastModify,
+                    order = appDb.bookDao.minOrder - 1,
+                    origin = origin,
+                    type = BookType.text or BookType.local
+                ).apply {
+                    variable = "epub:${0L},${0L},${size},0"
+                })
+        }
+
         return when {
             name.endsWith(".cbz", true) -> importAsImage()
+            name.endsWith(".epub", true) -> importAsEpub()
             name.endsWith(".zip", true) -> {
                 val remoteZip = RemoteZipWrapper(webDav, name, size)
                 val entries = remoteZip.entries().toList()

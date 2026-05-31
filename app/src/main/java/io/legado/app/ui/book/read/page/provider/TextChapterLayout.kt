@@ -117,19 +117,17 @@ class TextChapterLayout(
 
             if (!isSingle && allImages.isNotEmpty()) {
                 val bookSource = book.getBookSource()
-                if (bookSource != null) {
-                    for (src in allImages) {
-                        ensureActive()
-                        if (!BookHelp.isImageExist(book, src)) {
-                            BookHelp.saveImage(bookSource, book, src, bookChapter)
-                        }
+                for (src in allImages) {
+                    ensureActive()
+                    if (!BookHelp.isImageExist(book, src)) {
+                        BookHelp.saveImage(bookSource, book, src, bookChapter)
                     }
                 }
             }
 
             if (isSingle && allImages.isNotEmpty()) {
                 launch {
-                    val bookSource = book.getBookSource() ?: return@launch
+                    val bookSource = book.getBookSource()
                     val downloaded =
                         allImages.filter { BookHelp.isImageExist(book, it) }.toMutableSet()
 
@@ -442,11 +440,9 @@ class TextChapterLayout(
     private suspend fun setTypeImage(book: Book, img: Img, textHeight: Float, imageStyle: String?) {
         val styleUpper = imageStyle?.uppercase()
         val isSingle = styleUpper == Book.imgStyleSingle
-        val isCached = BookHelp.isImageExist(book, img.src)
 
-        // 核心重构：统一尺寸计算逻辑
-        val rawSize = if (isCached) ImageProvider.getImageSize(book, img.src, ReadBook.bookSource)
-        else android.util.Size(ImageProvider.errorBitmap.width, ImageProvider.errorBitmap.height)
+        // 始终调用getImageSize触发缓存下载，内部已有isImageExist快速路径
+        val rawSize = ImageProvider.getImageSize(book, img.src, ReadBook.bookSource)
 
         if (rawSize.width <= 0 || rawSize.height <= 0) return
 

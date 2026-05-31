@@ -306,7 +306,7 @@ class Resources : Serializable {
                 "." + StringUtil.substringAfterLast(dataUriMediaTypeString, '/')
             )
             val dataUriData = Base64.decode(match.groupValues[2], Base64.DEFAULT)
-            return Resource(dataUriData, dataUriMediaType)
+            return Resource(null, dataUriData, href, dataUriMediaType)
         } else {
             return resourceMap[href]
         }
