@@ -346,7 +346,9 @@ object CacheBook {
                 context,
                 start = CoroutineStart.LAZY,
             ) {
-                getContentAwait(bookSource, book, chapter)
+                val content = getContentAwait(bookSource, book, chapter)
+                BookHelp.saveImages(bookSource, book, chapter, content, 2)
+                content
             }.onSuccess { content ->
                 onSuccess(chapter)
                 downloadFinish(chapter, content)
