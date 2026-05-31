@@ -175,19 +175,53 @@ class CbzFile(var book: Book) {
     }
 
     private fun parseComicInfo(zf: ZipFileWrapper) {
-        zf.getEntry("ComicInfo.xml")?.let { entry ->
-            runCatching {
-                zf.getInputStream(entry)?.use { input ->
-                    val doc = Jsoup.parse(input, "UTF-8", "", Parser.xmlParser())
-                    doc.selectFirst("Title")?.text()?.takeUnless { it.isBlank() }
-                        ?.let { book.name = it }
-                    doc.selectFirst("Writer")?.text()?.takeUnless { it.isBlank() }
-                        ?.let { book.author = it }
-                    doc.selectFirst("Summary")?.text()?.takeUnless { it.isBlank() }
-                        ?.let { book.intro = it }
-                }
+        val entry = zf.getEntry("ComicInfo.xml") ?: return
+        runCatching {
+            zf.getInputStream(entry)?.use { input ->
+                val doc = Jsoup.parse(input, "UTF-8", "", Parser.xmlParser())
+
+                fun field(tag: String) =
+                    doc.selectFirst(tag)?.text()?.trim()?.takeUnless { it.isBlank() }
+
+                val title = field("Title")
+                val series = field("Series")
+                val volume = field("Volume")
+                val number = field("Number")
+                (title ?: buildString {
+                    series?.let(::append)
+                    volume?.let { append(" Vol.").append(it) }
+                    number?.let { append(" #").append(it) }
+                }.takeIf { it.isNotBlank() })?.let { book.name = it }
+
+                (field("Writer")
+                    ?: field("Penciller")
+                    ?: field("Inker")
+                    ?: field("CoverArtist"))
+                    ?.split(",")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                    ?.joinToString("\n")
+                    ?.takeUnless { it.isBlank() }
+                    ?.let { book.author = it }
+
+                field("Summary")?.let { book.intro = it }
+
+                val date = listOfNotNull(field("Year"), field("Month"), field("Day"))
+                    .joinToString("-").takeIf { it.isNotBlank() }
+                val kinds = listOfNotNull(
+                    field("Genre"),
+                    field("Tags"),
+                    field("Characters"),
+                    field("Teams"),
+                    field("Publisher"),
+                    field("LanguageISO"),
+                    date,
+                ).flatMap { it.split(",", "，", ";").map(String::trim) }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                if (kinds.isNotEmpty()) book.kind = kinds.joinToString(",")
             }
-        }
+        }.onFailure { AppLog.put("解析ComicInfo.xml失败\n${it.localizedMessage}", it) }
     }
 
     private fun getChapterList(): ArrayList<BookChapter> {
