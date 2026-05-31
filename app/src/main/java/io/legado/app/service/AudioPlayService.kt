@@ -793,6 +793,7 @@ class AudioPlayService : BaseService(), Player.Listener {
             AudioPlay.durLrcData = it
             lastLrcPosition = -1
             postEvent(EventBus.AUDIO_LRC, it)
+            postEvent(EventBus.AUDIO_LRCPROGRESS, 0)
             // 歌词到货后显式启动推进协程 (STATE_READY 可能早于歌词加载完成)
             upPlayProgressForLrc()
         }.onError {

@@ -64,7 +64,6 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import splitties.views.onLongClick
 import java.util.Locale
 
 /**
@@ -159,7 +158,6 @@ class AudioPlayActivity :
         }
 
         binding.fabPlayStop.setOnClickListener { playButton() }
-        binding.fabPlayStop.onLongClick { viewModel.stop() }
         binding.ivSkipNext.setOnClickListener { viewModel.next() }
         binding.ivSkipPrevious.setOnClickListener { viewModel.prev() }
         binding.playerProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
