@@ -1,8 +1,8 @@
 package io.legado.app.ui.welcome
 
 import android.content.Intent
-import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.postDelayed
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.PreferKey
@@ -52,7 +52,6 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         kotlin.runCatching {
             binding.tvLegado.visible(AppConfig.welcomeShowText)
             binding.ivBook.visible(AppConfig.welcomeShowIcon)
-            binding.tvGzh.visible(AppConfig.welcomeShowIcon)
             val path = when (ThemeConfig.getTheme()) {
                 Theme.Dark -> getPrefString(PreferKey.welcomeImageDark)
                 else -> getPrefString(PreferKey.welcomeImage)
@@ -60,7 +59,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
             val size = windowManager.windowSize
             // 只传入宽度，保持图片原始宽高比
             BitmapUtils.decodeBitmap(path, size.widthPixels).let {
-                window.decorView.background = BitmapDrawable(resources, it)
+                it?.let { it1 -> window.decorView.background = it1.toDrawable(resources) }
                 return
             }
         }

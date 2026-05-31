@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="pk_bookshelf_px" translatable="false">bookshelf_px</string>
-    <string name="legado_gzh" translatable="false">开源阅读</string>
     <string name="email" translatable="false">gekunfei@live.com</string>
 
     <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>

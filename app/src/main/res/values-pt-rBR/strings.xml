@@ -701,11 +701,7 @@
     <string name="contact">Contato</string>
     <string name="license">Licença</string>
     <string name="other">Outros</string>
-    <string name="official_account">开源阅读</string>
-    <string name="follow_official_account">Siga a conta oficial de WeChat</string>
-    <string name="wechat">WeChat</string>
     <string name="thanks">Apoio ao meu trabalho é bem-vindo</string>
-    <string name="about_official_account">Conta oficial[开源阅读]</string>
     <string name="source_auto_changing">Alteração de fonte</string>
     <string name="click_to_apply">Toque para participar</string>
     <string name="middle">Médio</string>
@@ -745,7 +741,6 @@
     <string name="starting_download">Iniciando o download</string>
     <string name="already_in_download">Este livro já está na lista de download</string>
     <string name="click_to_open">Clique para abrir</string>
-    <string name="follow_public_account_summary">Siga [开源阅读] para ajudar, clicando nos anúncios</string>
     <string name="weChat_appreciation_code">Código de gorjeta no WeChat</string>
     <string name="alipay">AliPay</string>
     <string name="alipay_red_envelope_search_code">Envelope vermelho de AliPay, código de busca</string>
@@ -776,7 +771,6 @@
     <string name="language">Idioma</string>
     <string name="import_rss_source">Importar fonte de RSS</string>
     <string name="donate_summary">Sua doação tornará este App ainda melhor</string>
-    <string name="about_summary">Conta oficial de Wechat [开源阅读软件]</string>
     <string name="read_record">Histórico de leitura</string>
     <string name="del_read_record">Excluir histórico de leitura</string>
     <string name="read_record_summary">Leia o resumo do histórico</string>

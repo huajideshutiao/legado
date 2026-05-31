@@ -698,11 +698,7 @@
     <string name="contact">Liên hệ</string>
     <string name="license">Giấy phép</string>
     <string name="other">Khác</string>
-    <string name="official_account">阅读</string>
-    <string name="follow_official_account">Theo dõi tài khoản WeChat chính thức</string>
-    <string name="wechat">WeChat</string>
     <string name="thanks">Sự ủng hộ của bạn là động lực để tôi cập nhật</string>
-    <string name="about_official_account">Tài khoản chính thức [开源阅读]</string>
     <string name="source_auto_changing">Đang đổi nguồn</string>
     <string name="click_to_apply">Chạm để tham gia</string>
     <string name="middle">Giữa</string>
@@ -742,7 +738,6 @@
     <string name="starting_download">Bắt đầu tải xuống</string>
     <string name="already_in_download">Sách này đã có trong danh sách tải xuống</string>
     <string name="click_to_open">Nhấn để mở</string>
-    <string name="follow_public_account_summary">Theo dõi [开源阅读] để ủng hộ tôi bằng cách nhấp vào quảng cáo</string>
     <string name="weChat_appreciation_code">Mã boa WeChat</string>
     <string name="alipay">AliPay</string>
     <string name="alipay_red_envelope_search_code">Mã tìm kiếm bao lì xì AliPay</string>
@@ -773,7 +768,6 @@
     <string name="language">Ngôn ngữ</string>
     <string name="import_rss_source">Nhập nguồn RSS</string>
     <string name="donate_summary">Sự ủng hộ của bạn làm cho ứng dụng này tốt hơn</string>
-    <string name="about_summary">Tài khoản chính thức Wechat [开源阅读软件]</string>
     <string name="read_record">Lịch sử đọc</string>
     <string name="del_read_record">Xóa lịch sử đọc</string>
     <string name="read_record_summary">Tóm tắt lịch sử đọc</string>

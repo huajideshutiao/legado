@@ -7,7 +7,7 @@
     <string name="tip_perm_request_storage">Legado needs storage access to find and read books. please go "App Settings" to allow "Storage permission".</string>
 
     <!--Other-->
-    <string name="menu_backup">Home</string>
+    <string name="menu_backup">Backup</string>
     <string name="menu_restore">Restore</string>
     <string name="menu_import_old">Import Legado data</string>
     <string name="webdav_cache_backup">Offline cache book backup</string>
@@ -709,11 +709,7 @@
     <string name="contact">Contact</string>
     <string name="license">License</string>
     <string name="other">Other</string>
-    <string name="official_account">开源阅读</string>
-    <string name="follow_official_account">Follow WeChat Official Accounts</string>
-    <string name="wechat">WeChat</string>
     <string name="thanks">Supporting me will be appreciated</string>
-    <string name="about_official_account">Official Accounts[开源阅读]</string>
     <string name="source_auto_changing">Changing source</string>
     <string name="click_to_apply">Tap to join</string>
     <string name="middle">Middle</string>
@@ -753,7 +749,6 @@
     <string name="starting_download">Starting download</string>
     <string name="already_in_download">This book is already in Download list</string>
     <string name="click_to_open">Click to open</string>
-    <string name="follow_public_account_summary">Follow [开源阅读] to support me by clicking on ads</string>
     <string name="weChat_appreciation_code">WeChat Tipping Code</string>
     <string name="alipay">AliPay</string>
     <string name="alipay_red_envelope_search_code">AliPay red envelope search code</string>
@@ -784,7 +779,6 @@
     <string name="language">Language</string>
     <string name="import_rss_source">Import rss source</string>
     <string name="donate_summary">Your donation makes this app better</string>
-    <string name="about_summary">Wechat official account [开源阅读软件]</string>
     <string name="read_record">Read record</string>
     <string name="del_read_record">Delete Read record</string>
     <string name="read_record_summary">Read record summary</string>

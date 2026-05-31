@@ -707,11 +707,7 @@
     <string name="contact">联系我们</string>
     <string name="license">开源许可</string>
     <string name="other">其它</string>
-    <string name="official_account">开源阅读</string>
-    <string name="follow_official_account">关注公众号</string>
-    <string name="wechat">微信</string>
     <string name="thanks">您的支持是我更新的动力</string>
-    <string name="about_official_account">公众号【开源阅读】</string>
     <string name="source_auto_changing">正在自动换源</string>
     <string name="click_to_apply">点击加入</string>
     <string name="middle">中</string>
@@ -751,7 +747,6 @@
     <string name="starting_download">正在启动下载</string>
     <string name="already_in_download">该书已在下载列表</string>
     <string name="click_to_open">点击打开</string>
-    <string name="follow_public_account_summary">关注【开源阅读】点击广告支持我</string>
     <string name="weChat_appreciation_code">微信赞赏码</string>
     <string name="alipay">支付宝</string>
     <string name="alipay_red_envelope_search_code">支付宝红包搜索码</string>
@@ -782,7 +777,6 @@
     <string name="language">语言</string>
     <string name="import_rss_source">导入订阅源</string>
     <string name="donate_summary">您的支持是我更新的动力</string>
-    <string name="about_summary">公众号【开源阅读软件】</string>
     <string name="read_record">阅读记录</string>
     <string name="del_read_record">删除阅读记录</string>
     <string name="read_record_summary">阅读时间记录</string>
