@@ -1,6 +1,5 @@
 package io.legado.app.lib.epublib.epub
 
-import io.legado.app.lib.epublib.util.StringUtil
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -26,11 +25,8 @@ internal object DOMUtil {
         element: Element, namespace: String?,
         attribute: String?
     ): String? {
-        var result = element.getAttributeNS(namespace, attribute)
-        if (StringUtil.isEmpty(result)) {
-            result = element.getAttribute(attribute)
-        }
-        return result
+        return element.getAttributeNS(namespace, attribute)
+            .ifEmpty { element.getAttribute(attribute) }
     }
 
     /**
@@ -77,8 +73,7 @@ internal object DOMUtil {
             val metaElement = metaTags.item(i) as Element
             if (findAttributeValue
                     .equals(metaElement.getAttribute(findAttributeName), ignoreCase = true)
-                && StringUtil
-                    .isNotBlank(metaElement.getAttribute(resultAttributeName))
+                && !metaElement.getAttribute(resultAttributeName).isNullOrBlank()
             ) {
                 return metaElement.getAttribute(resultAttributeName)
             }

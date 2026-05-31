@@ -1,7 +1,5 @@
 package io.legado.app.lib.epublib.domain
 
-import io.legado.app.lib.epublib.util.StringUtil
-
 /**
  * Manages mediatypes that are used by epubs
  * 
@@ -100,9 +98,10 @@ object MediaTypes {
      * @return the MediaType based on the file extension.
      */
     fun determineMediaType(filename: String?): MediaType? {
+        if (filename == null) return null
         for (mediaType in mediaTypesByName.values) {
             for (extension in mediaType.extensions ?: emptyList()) {
-                if (StringUtil.endsWithIgnoreCase(filename, extension)) {
+                if (extension != null && filename.endsWith(extension, ignoreCase = true)) {
                     return mediaType
                 }
             }

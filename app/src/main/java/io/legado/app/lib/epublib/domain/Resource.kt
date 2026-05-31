@@ -1,7 +1,6 @@
 package io.legado.app.lib.epublib.domain
 
 import io.legado.app.lib.epublib.Constants
-import io.legado.app.lib.epublib.util.IOUtil
 import io.legado.app.lib.epublib.util.StringUtil
 import io.legado.app.lib.epublib.util.commons.io.XmlStreamReader
 import java.io.ByteArrayInputStream
@@ -123,7 +122,7 @@ open class Resource : Serializable {
      * @see MediaTypes.determineMediaType
      */
     constructor(`in`: Reader?, href: String?) : this(
-        null, IOUtil.toByteArray(`in`!!, Constants.CHARACTER_ENCODING), href!!,
+        null, `in`!!.readText().toByteArray(charset(Constants.CHARACTER_ENCODING)), href!!,
         MediaTypes.determineMediaType(href),
         Constants.CHARACTER_ENCODING
     )
@@ -131,13 +130,13 @@ open class Resource : Serializable {
     /**
      * Creates a resource with the data from the given InputStream at the specified href.
      * The MediaType will be determined based on the href extension.
-     * 
+     *
      * @param in   The Resource's contents
      * @param href The location of the resource within the epub. Example: "cover.jpg".
      * @see MediaTypes.determineMediaType
      */
     constructor(`in`: InputStream?, href: String?) : this(
-        null, IOUtil.toByteArray(`in`), href,
+        null, `in`?.readBytes(), href,
         MediaTypes.determineMediaType(href)
     )
 

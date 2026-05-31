@@ -1,6 +1,5 @@
 package io.legado.app.lib.epublib.domain
 
-import io.legado.app.lib.epublib.util.StringUtil
 import java.io.Serializable
 import javax.xml.namespace.QName
 
@@ -70,7 +69,7 @@ class Metadata : Serializable {
                 return ""
             }
             for (title in titles) {
-                if (StringUtil.isNotBlank(title)) {
+                if (!title.isNullOrBlank()) {
                     return title
                 }
             }

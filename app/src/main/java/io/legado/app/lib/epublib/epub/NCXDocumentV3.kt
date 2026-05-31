@@ -140,8 +140,8 @@ object NCXDocumentV3 {
         //章节的名称
         val label = readNavLabel(navpointElement)
         //Log.d(TAG, "label:" + label);
-        var tocResourceRoot: String = StringUtil
-            .substringBeforeLast(book.spine.tocResource!!.getHref(), '/') ?: ""
+        var tocResourceRoot: String = book.spine.tocResource!!.getHref()
+            ?.substringBeforeLast('/') ?: ""
         if (tocResourceRoot.length == book.spine.tocResource!!.getHref()
                 .length
         ) {
@@ -152,10 +152,10 @@ object NCXDocumentV3 {
 
         val reference: String? = StringUtil
             .collapsePathDots(tocResourceRoot + readNavReference(navpointElement))
-        val href: String? = StringUtil
-            .substringBefore(reference, Constants.FRAGMENT_SEPARATOR_CHAR)
-        val fragmentId: String? = StringUtil
-            .substringAfter(reference, Constants.FRAGMENT_SEPARATOR_CHAR)
+        val href: String? = reference
+            ?.substringBefore(Constants.FRAGMENT_SEPARATOR_CHAR)
+        val fragmentId: String? = reference
+            ?.substringAfter(Constants.FRAGMENT_SEPARATOR_CHAR, "")
         val resource: Resource? = book.resources.getByHref(href ?: "")
         if (resource == null) {
             Log.e(TAG, "Resource with href " + href + " in NCX document not found")
@@ -215,7 +215,7 @@ object NCXDocumentV3 {
         var labelElement: Element? =
             checkNotNull(DOMUtil.getFirstElementByTagNameNS(navpointElement, "", "a"))
         label = labelElement!!.getTextContent()
-        if (StringUtil.isNotBlank(label)) {
+        if (!label.isNullOrBlank()) {
             return label
         } else {
             labelElement = DOMUtil.getFirstElementByTagNameNS(navpointElement, "", "span")
@@ -391,7 +391,7 @@ object NCXDocumentV3 {
         writeLiStart(serializer)
         val title: String? = tocReference.title
         val href: String? = tocReference.completeHref
-        if (StringUtil.isNotBlank(href)) {
+        if (!href.isNullOrBlank()) {
             writeLabel(title, href, serializer)
         } else {
             writeLabel(title, serializer)

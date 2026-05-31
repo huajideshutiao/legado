@@ -4,7 +4,6 @@ import android.util.Log
 import io.legado.app.lib.epublib.domain.EpubBook
 import io.legado.app.lib.epublib.domain.MediaTypes
 import io.legado.app.lib.epublib.domain.Resource
-import io.legado.app.lib.epublib.util.IOUtil
 import org.xmlpull.v1.XmlSerializer
 import java.io.IOException
 import java.io.InputStream
@@ -110,7 +109,7 @@ class EpubWriter(@set:Suppress("unused") @get:Suppress("unused") var bookProcess
             resultStream.putNextEntry(ZipEntry("OEBPS/" + resource.getHref()))
             val inputStream: InputStream = resource.inputStream!!
 
-            IOUtil.copy(inputStream, resultStream)
+            inputStream.copyTo(resultStream)
             inputStream.close()
         } catch (e: Exception) {
             Log.e(TAG, e.message, e)

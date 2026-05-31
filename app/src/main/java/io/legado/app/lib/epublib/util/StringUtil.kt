@@ -29,24 +29,6 @@ object StringUtil {
         }
     }
 
-    fun isNotBlank(text: String?): Boolean = !text.isNullOrBlank()
-
-    fun isBlank(text: String?): Boolean = text.isNullOrBlank()
-
-    fun isEmpty(text: String?): Boolean = text.isNullOrEmpty()
-
-    fun endsWithIgnoreCase(source: String?, suffix: String?): Boolean {
-        if (suffix.isNullOrEmpty()) return true
-        if (source.isNullOrEmpty()) return false
-        return source.endsWith(suffix, ignoreCase = true)
-    }
-
-    fun startsWithIgnoreCase(source: String?, prefix: String?): Boolean {
-        if (prefix.isNullOrEmpty()) return true
-        if (source.isNullOrEmpty()) return false
-        return source.startsWith(prefix, ignoreCase = true)
-    }
-
     @JvmOverloads
     fun defaultIfNull(text: String?, defaultValue: String = ""): String = text ?: defaultValue
 
@@ -70,30 +52,6 @@ object StringUtil {
         var result = 31
         for (value in values) result = result xor value.toString().hashCode()
         return result
-    }
-
-    fun substringBefore(text: String?, separator: Char): String? {
-        if (text.isNullOrEmpty()) return text
-        val sepPos = text.indexOf(separator)
-        return if (sepPos < 0) text else text.substring(0, sepPos)
-    }
-
-    fun substringBeforeLast(text: String?, separator: Char): String? {
-        if (text.isNullOrEmpty()) return text
-        val cPos = text.lastIndexOf(separator)
-        return if (cPos < 0) text else text.substring(0, cPos)
-    }
-
-    fun substringAfterLast(text: String?, separator: Char): String? {
-        if (text.isNullOrEmpty()) return text
-        val cPos = text.lastIndexOf(separator)
-        return if (cPos < 0) "" else text.substring(cPos + 1)
-    }
-
-    fun substringAfter(text: String?, c: Char): String? {
-        if (text.isNullOrEmpty()) return text
-        val cPos = text.indexOf(c)
-        return if (cPos < 0) "" else text.substring(cPos + 1)
     }
 
     fun formatHtml(text: String): String = buildString {

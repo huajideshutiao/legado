@@ -1,6 +1,5 @@
 package io.legado.app.lib.epublib.domain
 
-import io.legado.app.lib.epublib.util.StringUtil
 import java.io.Serializable
 
 class GuideReference : TitledResourceReference, Serializable {
@@ -14,7 +13,7 @@ class GuideReference : TitledResourceReference, Serializable {
         resource: Resource?, type: String, title: String?,
         fragmentId: String? = null
     ) : super(resource, title, fragmentId) {
-        this.type = if (StringUtil.isNotBlank(type)) type.lowercase() else null
+        this.type = if (!type.isNullOrBlank()) type.lowercase() else null
     }
 
     companion object {

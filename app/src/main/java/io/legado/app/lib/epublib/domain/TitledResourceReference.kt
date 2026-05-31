@@ -1,7 +1,6 @@
 package io.legado.app.lib.epublib.domain
 
 import io.legado.app.lib.epublib.Constants
-import io.legado.app.lib.epublib.util.StringUtil
 import java.io.Serializable
 
 open class TitledResourceReference @JvmOverloads constructor(
@@ -35,7 +34,7 @@ open class TitledResourceReference @JvmOverloads constructor(
          * otherwise it returns the resource href + '#' + the fragmentId.
          */
         get() {
-            if (StringUtil.isBlank(fragmentId)) {
+            if (fragmentId.isNullOrBlank()) {
                 return resource?.getHref()
             } else {
                 return (resource?.getHref() + Constants.FRAGMENT_SEPARATOR_CHAR

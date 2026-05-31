@@ -8,7 +8,6 @@ import io.legado.app.lib.epublib.domain.GuideReference
 import io.legado.app.lib.epublib.domain.MediaTypes
 import io.legado.app.lib.epublib.domain.Resource
 import io.legado.app.lib.epublib.domain.Spine
-import io.legado.app.lib.epublib.util.StringUtil
 import org.xmlpull.v1.XmlSerializer
 import java.io.IOException
 import java.util.Collections
@@ -209,14 +208,14 @@ object PackageDocumentWriter : PackageDocumentBase() {
         ) {
             return
         }
-        if (StringUtil.isBlank(resource.id)) {
+        if (resource.id.isNullOrBlank()) {
             Log.e(
                 TAG, ("resource id must not be empty (href: " + resource.getHref()
                     + ", mediatype:" + resource.mediaType + ")")
             )
             return
         }
-        if (StringUtil.isBlank(resource.getHref())) {
+        if (resource.getHref().isNullOrBlank()) {
             Log.e(
                 TAG, ("resource href must not be empty (id: " + resource.id
                     + ", mediatype:" + resource.mediaType + ")")
@@ -338,7 +337,7 @@ object PackageDocumentWriter : PackageDocumentBase() {
             EpubWriter.Companion.EMPTY_NAMESPACE_PREFIX, OPFAttributes.Companion.href,
             reference.completeHref
         )
-        if (StringUtil.isNotBlank(reference.title)) {
+        if (!reference.title.isNullOrBlank()) {
             serializer
                 .attribute(
                     EpubWriter.Companion.EMPTY_NAMESPACE_PREFIX, OPFAttributes.Companion.title,

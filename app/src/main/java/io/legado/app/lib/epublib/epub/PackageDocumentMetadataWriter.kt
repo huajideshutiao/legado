@@ -3,7 +3,6 @@ package io.legado.app.lib.epublib.epub
 import io.legado.app.lib.epublib.Constants
 import io.legado.app.lib.epublib.domain.EpubBook
 import io.legado.app.lib.epublib.domain.Identifier
-import io.legado.app.lib.epublib.util.StringUtil
 import org.xmlpull.v1.XmlSerializer
 
 object PackageDocumentMetadataWriter : PackageDocumentBase() {
@@ -123,7 +122,7 @@ object PackageDocumentMetadataWriter : PackageDocumentBase() {
         }
 
         // write language
-        if (StringUtil.isNotBlank(book.metadata.language)) {
+        if (!book.metadata.language.isNullOrBlank()) {
             serializer.startTag(PackageDocumentBase.Companion.NAMESPACE_DUBLIN_CORE, "language")
             serializer.text(book.metadata.language)
             serializer.endTag(PackageDocumentBase.Companion.NAMESPACE_DUBLIN_CORE, "language")
@@ -198,7 +197,7 @@ object PackageDocumentMetadataWriter : PackageDocumentBase() {
         values: kotlin.collections.MutableList<kotlin.String?>, serializer: XmlSerializer
     ) {
         for (value in values) {
-            if (StringUtil.isBlank(value)) {
+            if (value.isNullOrBlank()) {
                 continue
             }
             serializer.startTag(PackageDocumentBase.Companion.NAMESPACE_DUBLIN_CORE, tagName)

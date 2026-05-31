@@ -4,6 +4,7 @@ import android.os.ParcelFileDescriptor
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import io.legado.app.utils.asIOException
 import java.io.EOFException
 import java.io.IOException
 
@@ -22,7 +23,7 @@ object PfdHelper {
         try {
             Os.lseek(pfd.getFileDescriptor(), pos, OsConstants.SEEK_SET)
         } catch (e: ErrnoException) {
-            throw ThrowableUtils.rethrowAsIOException(e)
+            throw e.asIOException()
         }
     }
 
@@ -31,7 +32,7 @@ object PfdHelper {
         try {
             return Os.lseek(pfd.getFileDescriptor(), 0, OsConstants.SEEK_CUR)
         } catch (e: ErrnoException) {
-            throw ThrowableUtils.rethrowAsIOException(e)
+            throw e.asIOException()
         }
     }
 
@@ -40,7 +41,7 @@ object PfdHelper {
         try {
             return Os.fstat(pfd.getFileDescriptor()).st_size //android.system.Os.lseek(pfd.getFileDescriptor(), 0, OsConstants.SEEK_END);
         } catch (e: ErrnoException) {
-            throw ThrowableUtils.rethrowAsIOException(e)
+            throw e.asIOException()
         }
     }
 
@@ -49,7 +50,7 @@ object PfdHelper {
         try {
             return Os.read(pfd.getFileDescriptor(), b, off, len)
         } catch (e: ErrnoException) {
-            throw ThrowableUtils.rethrowAsIOException(e)
+            throw e.asIOException()
         }
     }
 

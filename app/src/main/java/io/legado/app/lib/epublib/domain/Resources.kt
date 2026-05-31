@@ -2,7 +2,6 @@ package io.legado.app.lib.epublib.domain
 
 import android.util.Base64
 import io.legado.app.lib.epublib.Constants
-import io.legado.app.lib.epublib.util.StringUtil
 import java.io.Serializable
 
 /**
@@ -52,15 +51,15 @@ class Resources : Serializable {
         var resourceId = resource.id
 
         // first try and create a unique id based on the resource's href
-        if (StringUtil.isBlank(resource.id)) {
-            resourceId = StringUtil.substringBeforeLast(resource.getHref(), '.')
-            resourceId = StringUtil.substringAfterLast(resourceId, '/')
+        if (resource.id.isNullOrBlank()) {
+            resourceId = resource.getHref()?.substringBeforeLast('.') ?: ""
+            resourceId = resourceId.substringAfterLast('/')
         }
 
         resourceId = makeValidId(resourceId ?: "", resource)
 
         // check if the id is unique. if not: create one from scratch
-        if (StringUtil.isBlank(resourceId) || containsId(resourceId)) {
+        if (resourceId.isNullOrBlank() || containsId(resourceId)) {
             resourceId = createUniqueResourceId(resource)
         }
         resource.id = resourceId
@@ -68,13 +67,13 @@ class Resources : Serializable {
 
     /**
      * Check if the id is a valid identifier. if not: prepend with valid identifier
-     * 
+     *
      * @param resource resource
      * @return a valid id
      */
     private fun makeValidId(resourceId: String, resource: Resource): String {
         var resourceId = resourceId
-        if (StringUtil.isNotBlank(resourceId) && !Character.isJavaIdentifierStart(resourceId[0])) {
+        if (!resourceId.isNullOrBlank() && !Character.isJavaIdentifierStart(resourceId[0])) {
             resourceId = getResourceItemPrefix(resource) + resourceId
         }
         return resourceId
@@ -118,7 +117,7 @@ class Resources : Serializable {
      * @return Whether the map of resources already contains a resource with the given id.
      */
     fun containsId(id: String?): Boolean {
-        if (StringUtil.isBlank(id)) {
+        if (id.isNullOrBlank()) {
             return false
         }
         return resourcesById.containsKey(id)
@@ -126,19 +125,19 @@ class Resources : Serializable {
 
     /**
      * Gets the resource with the given id.
-     * 
+     *
      * @param id id
      * @return null if not found
      */
     fun getById(id: String?): Resource? {
-        if (StringUtil.isBlank(id)) {
+        if (id.isNullOrBlank()) {
             return null
         }
         return resourcesById[id]
     }
 
     fun getByProperties(properties: String): Resource? {
-        if (StringUtil.isBlank(properties)) {
+        if (properties.isNullOrBlank()) {
             return null
         }
         for (resource in resourceMap.values) {
@@ -151,7 +150,7 @@ class Resources : Serializable {
 
     /**
      * Remove the resource with the given href.
-     * 
+     *
      * @param href href
      * @return the removed resource, null if not found
      */
@@ -160,12 +159,12 @@ class Resources : Serializable {
     }
 
     private fun fixResourceHref(resource: Resource) {
-        if (StringUtil.isNotBlank(resource.getHref())
+        if (!resource.getHref().isNullOrBlank()
             && !resourceMap.containsKey(resource.getHref())
         ) {
             return
         }
-        if (StringUtil.isBlank(resource.getHref())) {
+        if (resource.getHref().isNullOrBlank()) {
             requireNotNull(resource.mediaType) { "Resource must have either a MediaType or a href" }
             var i = 1
             var href = createHref(resource.mediaType!!, i)
@@ -208,11 +207,11 @@ class Resources : Serializable {
      * @return Whether there exists a resource with the given href
      */
     fun notContainsByHref(href: String?): Boolean {
-        if (StringUtil.isBlank(href)) {
+        if (href.isNullOrBlank()) {
             return true
         } else {
             return !resourceMap.containsKey(
-                StringUtil.substringBefore(href, Constants.FRAGMENT_SEPARATOR_CHAR)
+                href.substringBefore(Constants.FRAGMENT_SEPARATOR_CHAR)
             )
         }
     }
@@ -289,12 +288,12 @@ class Resources : Serializable {
      */
     fun getByHref(href: String): Resource? {
         var href = href
-        if (StringUtil.isBlank(href)) {
+        if (href.isNullOrBlank()) {
             return null
         }
-        href = StringUtil.substringBefore(href, Constants.FRAGMENT_SEPARATOR_CHAR) ?: href
+        href = href.substringBefore(Constants.FRAGMENT_SEPARATOR_CHAR)
 
-        if (!StringUtil.startsWithIgnoreCase(href, "data")) {
+        if (!href.startsWith("data", ignoreCase = true)) {
             return resourceMap[href]
         }
 
@@ -303,7 +302,7 @@ class Resources : Serializable {
             val dataUriMediaTypeString = match.groupValues[1]
             val dataUriMediaType = MediaType(
                 dataUriMediaTypeString,
-                "." + StringUtil.substringAfterLast(dataUriMediaTypeString, '/')
+                "." + dataUriMediaTypeString.substringAfterLast('/')
             )
             val dataUriData = Base64.decode(match.groupValues[2], Base64.DEFAULT)
             return Resource(null, dataUriData, href, dataUriMediaType)

@@ -82,7 +82,7 @@ object ResourceUtil {
             return null
         }
         val mediaType: MediaType? = MediaTypes.determineMediaType(file.getName())
-        val data = IOUtil.toByteArray(FileInputStream(file))
+        val data = FileInputStream(file).readBytes()
         return Resource(data, mediaType)
     }
 

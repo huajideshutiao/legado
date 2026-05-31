@@ -8,7 +8,6 @@ import io.legado.app.lib.epublib.domain.MediaTypes
 import io.legado.app.lib.epublib.domain.Resource
 import io.legado.app.lib.epublib.domain.Resources
 import io.legado.app.lib.epublib.util.ResourceUtil
-import io.legado.app.lib.epublib.util.StringUtil
 import io.legado.app.lib.epublib.util.zip.AndroidZipFile
 import io.legado.app.lib.epublib.util.zip.ZipFileWrapper
 import org.w3c.dom.Document
@@ -193,7 +192,7 @@ class EpubReader {
         } catch (e: Exception) {
             Log.e(TAG, e.message, e)
         }
-        if (StringUtil.isBlank(result)) {
+        if (result.isNullOrBlank()) {
             result = defaultResult
         }
         return result

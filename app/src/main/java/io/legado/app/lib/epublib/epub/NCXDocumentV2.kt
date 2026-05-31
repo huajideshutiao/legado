@@ -98,8 +98,8 @@ object NCXDocumentV2 {
     fun readTOCReference(navpointElement: Element, book: EpubBook): TOCReference {
         val label = readNavLabel(navpointElement)
         //Log.d(TAG,"label:"+label);
-        var tocResourceRoot: String = StringUtil
-            .substringBeforeLast(book.spine.tocResource!!.getHref(), '/') ?: ""
+        var tocResourceRoot: String = book.spine.tocResource!!.getHref()
+            ?.substringBeforeLast('/') ?: ""
         if (tocResourceRoot.length == book.spine.tocResource!!.getHref()
                 .length
         ) {
@@ -109,10 +109,10 @@ object NCXDocumentV2 {
         }
         val reference: String? = StringUtil
             .collapsePathDots(tocResourceRoot + readNavReference(navpointElement))
-        val href: String? = StringUtil
-            .substringBefore(reference, Constants.FRAGMENT_SEPARATOR_CHAR)
-        val fragmentId: String? = StringUtil
-            .substringAfter(reference, Constants.FRAGMENT_SEPARATOR_CHAR)
+        val href: String? = reference
+            ?.substringBefore(Constants.FRAGMENT_SEPARATOR_CHAR)
+        val fragmentId: String? = reference
+            ?.substringAfter(Constants.FRAGMENT_SEPARATOR_CHAR, "")
         val resource: Resource? = book.resources.getByHref(href ?: "")
         if (resource == null) {
             Log.e(TAG, "Resource with href " + href + " in NCX document not found")

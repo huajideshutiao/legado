@@ -5,7 +5,6 @@ import io.legado.app.lib.epublib.domain.Author
 import io.legado.app.lib.epublib.domain.Date
 import io.legado.app.lib.epublib.domain.Identifier
 import io.legado.app.lib.epublib.domain.Metadata
-import io.legado.app.lib.epublib.util.StringUtil
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import javax.xml.namespace.QName
@@ -192,7 +191,7 @@ internal object PackageDocumentMetadataReader : PackageDocumentBase() {
 
     private fun createAuthor(authorElement: Element): Author? {
         val authorString: String = DOMUtil.getTextChildrenContent(authorElement) ?: return null
-        if (StringUtil.isBlank(authorString)) {
+        if (authorString.isNullOrBlank()) {
             return null
         }
         val spacePos = authorString.lastIndexOf(' ')
@@ -238,7 +237,7 @@ internal object PackageDocumentMetadataReader : PackageDocumentBase() {
                 DCAttributes.Companion.scheme
             )
             val identifierValue = DOMUtil.getTextChildrenContent(identifierElement)
-            if (StringUtil.isBlank(identifierValue)) {
+            if (identifierValue.isNullOrBlank()) {
                 continue
             }
             val identifier: Identifier = Identifier(schemeName ?: "", identifierValue ?: "")

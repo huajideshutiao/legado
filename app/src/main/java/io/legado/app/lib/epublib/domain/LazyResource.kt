@@ -1,7 +1,6 @@
 package io.legado.app.lib.epublib.domain
 
 import android.util.Log
-import io.legado.app.lib.epublib.util.IOUtil
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -103,7 +102,7 @@ class LazyResource : Resource {
             if (super.data == null) {
                 Log.d(TAG, "Initializing lazy resource: ${this.getHref()}")
                 resourceProvider!!.getResourceStream(this.originalHref).use { stream ->
-                    super.data = IOUtil.toByteArray(stream, this.cachedSize.toInt())
+                    super.data = stream?.readBytes()
                         ?: throw IOException("Could not load the contents of resource: ${this.getHref()}")
                 }
             }

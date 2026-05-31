@@ -1,6 +1,5 @@
 package io.legado.app.lib.epublib.domain
 
-import io.legado.app.lib.epublib.util.StringUtil
 import java.io.Serializable
 
 /**
@@ -69,7 +68,7 @@ class Spine : Serializable {
      * @return the first resource that has the given resourceId.
      */
     fun findFirstResourceById(resourceId: String): Int {
-        if (StringUtil.isBlank(resourceId)) {
+        if (resourceId.isNullOrBlank()) {
             return -1
         }
 
@@ -135,7 +134,7 @@ class Spine : Serializable {
      */
     fun getResourceIndex(resourceHref: String): Int {
         var result = -1
-        if (StringUtil.isBlank(resourceHref)) {
+        if (resourceHref.isNullOrBlank()) {
             return result
         }
         for (i in spineReferences!!.indices) {

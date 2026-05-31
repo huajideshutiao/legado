@@ -56,7 +56,7 @@ class Identifier
     }
 
     override fun toString(): String {
-        if (StringUtil.isBlank(scheme)) {
+        if (scheme.isNullOrBlank()) {
             return "" + value
         }
         return "" + scheme + ":" + value

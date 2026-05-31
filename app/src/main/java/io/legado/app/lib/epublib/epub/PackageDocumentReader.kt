@@ -12,7 +12,6 @@ import io.legado.app.lib.epublib.domain.Resources
 import io.legado.app.lib.epublib.domain.Spine
 import io.legado.app.lib.epublib.domain.SpineReference
 import io.legado.app.lib.epublib.util.ResourceUtil
-import io.legado.app.lib.epublib.util.StringUtil
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.xml.sax.SAXException
@@ -265,12 +264,11 @@ object PackageDocumentReader : PackageDocumentBase() {
                 PackageDocumentBase.Companion.NAMESPACE_OPF,
                 OPFAttributes.Companion.href
             )
-            if (StringUtil.isBlank(resourceHref)) {
+            if (resourceHref.isNullOrBlank()) {
                 continue
             }
             val resource: Resource? = resources.getByHref(
-                StringUtil
-                    .substringBefore(resourceHref, Constants.FRAGMENT_SEPARATOR_CHAR) ?: ""
+                resourceHref.substringBefore(Constants.FRAGMENT_SEPARATOR_CHAR)
             )
             if (resource == null) {
                 Log.e(
@@ -284,7 +282,7 @@ object PackageDocumentReader : PackageDocumentBase() {
                 PackageDocumentBase.Companion.NAMESPACE_OPF,
                 OPFAttributes.Companion.type
             )
-            if (StringUtil.isBlank(type)) {
+            if (type.isNullOrBlank()) {
                 Log.e(
                     TAG, ("Guide is referencing resource with href " + resourceHref
                         + " which is missing the 'type' attribute")
@@ -301,8 +299,7 @@ object PackageDocumentReader : PackageDocumentBase() {
             }
             val reference: GuideReference = GuideReference(
                 resource, type ?: "", title,
-                StringUtil
-                    .substringAfter(resourceHref, Constants.FRAGMENT_SEPARATOR_CHAR)
+                resourceHref.substringAfter(Constants.FRAGMENT_SEPARATOR_CHAR, "")
             )
             guide.addReference(reference)
         }
@@ -330,7 +327,7 @@ object PackageDocumentReader : PackageDocumentBase() {
         }
         val result: Resources = Resources()
         for (resource in resourcesByHref.all) {
-            if (StringUtil.isNotBlank(resource.getHref())
+            if (!resource.getHref().isNullOrBlank()
                 && resource.getHref().length > lastSlashPos
             ) {
                 resource.setHref(resource.getHref().substring(lastSlashPos + 1))
@@ -389,7 +386,7 @@ object PackageDocumentReader : PackageDocumentBase() {
                 PackageDocumentBase.Companion.NAMESPACE_OPF,
                 OPFAttributes.Companion.idref
             )
-            if (StringUtil.isBlank(itemref)) {
+            if (itemref.isNullOrBlank()) {
                 Log.e(TAG, "itemref with missing or empty idref") // XXX
                 continue
             }
@@ -466,7 +463,7 @@ object PackageDocumentReader : PackageDocumentBase() {
             return tocResource
         }
 
-        if (StringUtil.isNotBlank(tocResourceId)) {
+        if (!tocResourceId.isNullOrBlank()) {
             tocResource = resources.getByIdOrHref(tocResourceId ?: "")
         }
 
@@ -523,13 +520,13 @@ object PackageDocumentReader : PackageDocumentBase() {
             OPFAttributes.Companion.content
         )
 
-        if (StringUtil.isNotBlank(coverResourceId)) {
+        if (!coverResourceId.isNullOrBlank()) {
             val coverHref = DOMUtil.getFindAttributeValue(
                 packageDocument, PackageDocumentBase.Companion.NAMESPACE_OPF,
                 OPFTags.Companion.item, OPFAttributes.Companion.id, coverResourceId ?: "",
                 OPFAttributes.Companion.href
             )
-            if (StringUtil.isNotBlank(coverHref)) {
+            if (!coverHref.isNullOrBlank()) {
                 result.add(resolvePath(packagePath, coverHref))
             } else {
                 val resolved = resolvePath(packagePath, coverResourceId)
@@ -547,7 +544,7 @@ object PackageDocumentReader : PackageDocumentBase() {
             OPFValues.Companion.reference_cover,
             OPFAttributes.Companion.href
         )
-        if (StringUtil.isNotBlank(coverHref)) {
+        if (!coverHref.isNullOrBlank()) {
             result.add(resolvePath(packagePath, coverHref))
         }
         return result

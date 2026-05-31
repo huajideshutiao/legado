@@ -143,12 +143,16 @@ abstract class ProxyInputStream
 
     /**
      * Invokes the delegate's `close()` method.
-     * 
+     *
      * @throws IOException if an I/O error occurs
      */
     @Throws(IOException::class)
     override fun close() {
-        IOUtil.close(`in`, { e: IOException? -> if (e != null) this.handleIOException(e) })
+        try {
+            `in`?.close()
+        } catch (e: IOException) {
+            handleIOException(e)
+        }
     }
 
     /**
