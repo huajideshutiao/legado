@@ -1008,7 +1008,6 @@
     <string name="add_remote_book">RemoteBook</string>
     <string name="bitmap_cache_size_summary">Current cache max size %1$s MB</string>
     <string name="bitmap_cache_size">bitmap cache size</string>
-    <string name="export_pics_file">Export Picture Files</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
@@ -1050,7 +1049,6 @@
     <string name="cover_decode_js">Decode Cover Js(coverDecodeJs)</string>
     <string name="net_no_group">网络未分组</string>
     <string name="local_no_group">本地未分组</string>
-    <string name="parallel_export_book">多线程导出</string>
     <string name="progress_bar_behavior">进度条行为</string>
     <string name="source_edit_text_max_line">源编辑框最大行数</string>
     <string name="source_edit_max_line_summary">%s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>

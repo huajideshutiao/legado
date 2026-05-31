@@ -276,7 +276,7 @@
     <string name="load_over_time">加載超時</string>
     <string name="join_group">關注: %s</string>
     <string name="copy_complete">拷貝咗</string>
-    <string name="bookshelf_management">書架管理</string>
+    <string name="bookshelf_management">書籍管理</string>
     <string name="clear_bookshelf_s">這將會刪除所有書籍，請謹慎操作。</string>
     <string name="search_book_source">搜索書源</string>
     <string name="search_rss_source">搜索訂閲源</string>
@@ -870,6 +870,7 @@
     <string name="style">樣式</string>
     <string name="group_style">分組樣式</string>
     <string name="export_file_name">導出文件名</string>
+    <string name="export_config">導出文件設置</string>
     <string name="reset">重置</string>
     <string name="null_url">url為空</string>
     <string name="dict">字典</string>
@@ -1005,7 +1006,6 @@
     <string name="add_remote_book">远程书籍</string>
     <string name="bitmap_cache_size_summary">当前最大缓存 %1$s MB</string>
     <string name="bitmap_cache_size">图片绘制缓存</string>
-    <string name="export_pics_file">TXT导出图片</string>
     <!-- string end -->
     <string name="error_decode_bitmap">图片解码失败</string>
     <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>
@@ -1047,7 +1047,6 @@
     <string name="cover_decode_js">封面解密（coverDecodeJs）</string>
     <string name="net_no_group">网络未分组</string>
     <string name="local_no_group">本地未分组</string>
-    <string name="parallel_export_book">多线程导出</string>
     <string name="progress_bar_behavior">进度条行为</string>
     <string name="source_edit_text_max_line">源编辑框最大行数</string>
     <string name="source_edit_max_line_summary">%s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>

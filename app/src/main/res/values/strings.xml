@@ -287,7 +287,7 @@
     <string name="load_over_time">Loading timeout</string>
     <string name="join_group">Follow:%s</string>
     <string name="copy_complete">Copied successfully</string>
-    <string name="bookshelf_management">Bookshelf management</string>
+    <string name="bookshelf_management">Book management</string>
     <string name="clear_bookshelf_s">It will delete all books. Be careful,please.</string>
     <string name="search_book_source">Search book sources</string>
     <string name="search_rss_source">Search RSS sources</string>
@@ -896,6 +896,7 @@
     <string name="style">Style</string>
     <string name="group_style">Group style</string>
     <string name="export_file_name">Export file name</string>
+    <string name="export_config">Export file config</string>
     <string name="reset">Reset</string>
     <string name="null_url">Null url</string>
     <string name="dict">dict</string>
@@ -1035,7 +1036,6 @@
     <string name="add_remote_book">RemoteBook</string>
     <string name="bitmap_cache_size_summary">Current cache max size %1$s MB</string>
     <string name="bitmap_cache_size">bitmap cache size</string>
-    <string name="export_pics_file">Export Picture Files</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
@@ -1076,7 +1076,6 @@
     <string name="cover_decode_js">Decode Cover Js(coverDecodeJs)</string>
     <string name="net_no_group">Network ungrouped</string>
     <string name="local_no_group">Local ungrouped</string>
-    <string name="parallel_export_book">Multithreaded export</string>
     <string name="progress_bar_behavior">Progress bar behavior</string>
     <string name="source_edit_text_max_line">Maximum number of rows in the source edit box</string>
     <string name="source_edit_max_line_summary">%s,Setting the number of rows less than the maximum number of rows that can be displayed on the screen makes it easier to slide to other fields for editing.</string>

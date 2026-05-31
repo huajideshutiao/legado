@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/export_file_name"
+            app:helperText="Variable: name, author">
+
+            <io.legado.app.lib.theme.view.ThemeEditText
+                android:id="@+id/et_file_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/export_type"
+            android:textColor="@color/primaryText"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/rg_export_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_type_txt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="txt" />
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_type_epub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:gravity="center"
+                android:text="epub" />
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_type_cbz"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:clickable="false"
+                android:enabled="false"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="cbz" />
+
+        </RadioGroup>
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="@string/export_charset">
+
+            <io.legado.app.ui.widget.text.AutoCompleteTextView
+                android:id="@+id/et_charset"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+
+        <io.legado.app.lib.theme.view.ThemeCheckBox
+            android:id="@+id/cb_no_chapter_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/export_no_chapter_name" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

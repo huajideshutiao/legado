@@ -295,9 +295,10 @@ fun BaseBook.isSameNameAuthor(other: Any?): Boolean {
 }
 
 fun Book.getExportFileName(suffix: String): String {
+    val default = "$name 作者：${getRealAuthor()}.$suffix"
     val jsStr = AppConfig.bookExportFileName
     if (jsStr.isNullOrBlank()) {
-        return "$name 作者：${getRealAuthor()}.$suffix"
+        return default.normalizeFileName()
     }
     val bindings = buildScriptBindings { bindings ->
         bindings["epubIndex"] = ""// 兼容老版本,修复可能存在的错误
@@ -308,7 +309,7 @@ fun Book.getExportFileName(suffix: String): String {
         RhinoScriptEngine.eval(jsStr, bindings).toString() + "." + suffix
     }.onFailure {
         AppLog.put("导出书名规则错误,使用默认规则\n${it.localizedMessage}", it)
-    }.getOrDefault("$name 作者：${getRealAuthor()}.$suffix")
+    }.getOrDefault(default).normalizeFileName()
 }
 
 /**

@@ -28,11 +28,12 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityArrangeBookBinding
-import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.databinding.DialogExportConfigBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.getExportFileName
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
@@ -44,7 +45,6 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CacheBook
@@ -135,7 +135,6 @@ class BookshelfManageActivity :
     }
 
     private val exportBookPathKey = "exportBookPath"
-    private val exportTypes = arrayListOf("txt", "epub")
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.groupId = intent.getLongExtra("groupId", -1)
@@ -241,14 +240,7 @@ class BookshelfManageActivity :
         menu.findItem(R.id.menu_enable_replace)?.isChecked = AppConfig.exportUseReplace
         // 菜单打开时读取状态[enableCustomExport]
         menu.findItem(R.id.menu_enable_custom_export)?.isChecked = AppConfig.enableCustomExport
-        menu.findItem(R.id.menu_export_no_chapter_name)?.isChecked = AppConfig.exportNoChapterName
         menu.findItem(R.id.menu_export_web_dav)?.isChecked = AppConfig.exportToWebDav
-        menu.findItem(R.id.menu_export_pics_file)?.isChecked = AppConfig.exportPictureFile
-        menu.findItem(R.id.menu_parallel_export)?.isChecked = AppConfig.parallelExportBook
-        menu.findItem(R.id.menu_export_type)?.title =
-            "${getString(R.string.export_type)}(${getTypeName()})"
-        menu.findItem(R.id.menu_export_charset)?.title =
-            "${getString(R.string.export_charset)}(${AppConfig.exportCharset})"
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -421,14 +413,9 @@ class BookshelfManageActivity :
             R.id.menu_enable_replace -> AppConfig.exportUseReplace = !item.isChecked
             // 更改菜单状态[enableCustomExport]
             R.id.menu_enable_custom_export -> AppConfig.enableCustomExport = !item.isChecked
-            R.id.menu_export_no_chapter_name -> AppConfig.exportNoChapterName = !item.isChecked
             R.id.menu_export_web_dav -> AppConfig.exportToWebDav = !item.isChecked
-            R.id.menu_export_pics_file -> AppConfig.exportPictureFile = !item.isChecked
-            R.id.menu_parallel_export -> AppConfig.parallelExportBook = !item.isChecked
             R.id.menu_export_folder -> selectExportFolder()
-            R.id.menu_export_file_name -> alertExportFileName()
-            R.id.menu_export_type -> showExportTypeConfig()
-            R.id.menu_export_charset -> showCharsetConfig()
+            R.id.menu_export_config -> showExportConfig()
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
 
             else -> if (item.groupId == R.id.menu_group) {
@@ -712,63 +699,44 @@ class BookshelfManageActivity :
     }
 
     private fun startExport(path: String) {
-        val exportType = when (AppConfig.exportType) {
+        val defaultType = when (AppConfig.exportType) {
             1 -> "epub"
             else -> "txt"
         }
-            if (adapter.selection.isNotEmpty()) {
-                adapter.selection.forEach { book ->
-                    startService<ExportBookService> {
-                        action = IntentAction.start
-                        putExtra("bookUrl", book.bookUrl)
-                        putExtra("exportType", exportType)
-                        putExtra("exportPath", path)
-                    }
+        if (adapter.selection.isNotEmpty()) {
+            adapter.selection.forEach { book ->
+                val exportType = if (book.isImage) "cbz" else defaultType
+                startService<ExportBookService> {
+                    action = IntentAction.start
+                    putExtra("bookUrl", book.bookUrl)
+                    putExtra("exportType", exportType)
+                    putExtra("exportPath", path)
                 }
-            } else {
-                toastOnUi(R.string.no_book)
             }
+        } else {
+            toastOnUi(R.string.no_book)
+        }
     }
 
-    @SuppressLint("SetTextI18n")
-    private fun alertExportFileName() {
-        alert(R.string.export_file_name) {
-            val message = "Variable: name, author."
-            setMessage(message)
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "file name js"
-                editView.setText(AppConfig.bookExportFileName)
+    private fun showExportConfig() {
+        alert(R.string.export_config) {
+            val alertBinding = DialogExportConfigBinding.inflate(layoutInflater).apply {
+                etFileName.setText(AppConfig.bookExportFileName)
+                when (AppConfig.exportType) {
+                    1 -> rbTypeEpub.isChecked = true
+                    else -> rbTypeTxt.isChecked = true
+                }
+                etCharset.setFilterValues(charsets)
+                etCharset.setText(AppConfig.exportCharset)
+                cbNoChapterName.isChecked = AppConfig.exportNoChapterName
             }
             customView { alertBinding.root }
             okButton {
-                AppConfig.bookExportFileName = alertBinding.editView.text?.toString()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun getTypeName(): String {
-        return exportTypes.getOrElse(AppConfig.exportType) {
-            exportTypes[0]
-        }
-    }
-
-    private fun showExportTypeConfig() {
-        selector(R.string.export_type, exportTypes) { _, i ->
-            AppConfig.exportType = i
-        }
-    }
-
-    private fun showCharsetConfig() {
-        alert(R.string.set_charset) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "charset name"
-                editView.setFilterValues(charsets)
-                editView.setText(AppConfig.exportCharset)
-            }
-            customView { alertBinding.root }
-            okButton {
-                AppConfig.exportCharset = alertBinding.editView.text?.toString() ?: "UTF-8"
+                AppConfig.bookExportFileName = alertBinding.etFileName.text?.toString()
+                AppConfig.exportType = if (alertBinding.rbTypeEpub.isChecked) 1 else 0
+                AppConfig.exportCharset =
+                    alertBinding.etCharset.text?.toString()?.takeIf { it.isNotBlank() } ?: "UTF-8"
+                AppConfig.exportNoChapterName = alertBinding.cbNoChapterName.isChecked
             }
             cancelButton()
         }
