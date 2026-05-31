@@ -95,6 +95,19 @@ class CacheBookService : BaseService() {
         CacheBook.close()
         super.onDestroy()
         postEvent(EventBus.UP_DOWNLOAD, "")
+        upCacheBookFinishNotification()
+    }
+
+    private fun upCacheBookFinishNotification() {
+        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
+            .setSmallIcon(R.drawable.ic_download)
+            .setContentTitle(getString(R.string.offline_cache))
+            .setContentText("缓存完成")
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(NotificationId.CacheBookService, notification)
     }
 
     private fun addDownloadData(bookUrl: String?, start: Int, end: Int) {

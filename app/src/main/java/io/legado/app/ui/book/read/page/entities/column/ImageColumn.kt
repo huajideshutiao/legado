@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.RectF
 import androidx.annotation.Keep
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isEpub
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.ContentTextView
@@ -67,7 +69,9 @@ data class ImageColumn(
      * 后台/异步布局刷新：下载完成后调用，确保坐标与真图匹配
      */
     suspend fun refreshLayout(book: Book, isSingle: Boolean): Boolean {
-        if (!io.legado.app.help.book.BookHelp.isImageExist(book, src)) return false
+        // 对于本地 EPUB，图片在 ZIP 内部，不需要检查磁盘缓存
+        val isLocalEpub = book.isEpub && !book.origin.startsWith(BookType.webDavTag)
+        if (!isLocalEpub && !io.legado.app.help.book.BookHelp.isImageExist(book, src)) return false
 
         val size = ImageProvider.getImageSize(book, src, ReadBook.bookSource)
         if (size.width <= 0 || size.height <= 0) return false

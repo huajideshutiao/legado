@@ -16,6 +16,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppConst
 import io.legado.app.databinding.DialogPhotoViewBinding
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isEpub
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
@@ -100,6 +101,22 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .into(binding.photoView)
             return
+        }
+
+        // 对于 EPUB 内的图片，尝试直接从 EPUB 读取
+        ReadBook.book?.let { book ->
+            if (book.isEpub) {
+                execute {
+                    io.legado.app.model.fileBook.FileBook.getImage(book, src)?.use { input ->
+                        android.graphics.BitmapFactory.decodeStream(input)
+                    }
+                }.onSuccess { bitmap ->
+                    bitmap?.let { binding.photoView.setImageBitmap(it) }
+                }.onError {
+                    context?.toastOnUi("加载图片失败: ${it.localizedMessage}")
+                }
+                return
+            }
         }
 
         val normalRequest = ImageLoader.load(requireContext(), src)

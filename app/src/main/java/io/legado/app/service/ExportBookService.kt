@@ -155,7 +155,7 @@ class ExportBookService : BaseService() {
             .setContentText(notificationContentText)
             .setDeleteIntent(servicePendingIntent<ExportBookService>(IntentAction.stop))
             .setGroup(groupKey)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(!finish)
         if (!finish) {
             notification.setOngoing(true)
             notification.addAction(
@@ -163,6 +163,9 @@ class ExportBookService : BaseService() {
                 getString(R.string.cancel),
                 servicePendingIntent<ExportBookService>(IntentAction.stop)
             )
+        } else {
+            notification.setOngoing(false)
+            notification.setAutoCancel(true)
         }
         notificationManager.notify(NotificationId.ExportBook, notification.build())
     }
