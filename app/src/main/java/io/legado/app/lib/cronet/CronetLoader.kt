@@ -42,13 +42,25 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     }
 
     /**
+     * 判断系统是否支持 HttpEngine (Android 14+ / API 34+ / Backported API 30+)
+     */
+    fun isHttpEngineAvailable(): Boolean {
+        return try {
+            Class.forName("android.net.http.HttpEngine")
+            true
+        } catch (_: Throwable) {
+            hasExternalProvider()
+        }
+    }
+
+    /**
      * 判断Cronet是否安装完成
      */
     override fun install(): Boolean {
         synchronized(this) {
             if (cacheInstall) return true
-            // GMS Provider 可用，或本地 SO 已下载，就允许拦截器尝试初始化
-            return hasGmsProvider() || isSoDownloaded()
+            // 只要系统有潜力支持，或者本地 SO 已下载，就允许拦截器尝试初始化
+            return isHttpEngineAvailable() || hasExternalProvider() || isSoDownloaded()
         }
     }
 
@@ -56,10 +68,10 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
         return soFile.exists()
     }
 
-    fun hasGmsProvider(): Boolean {
+    fun hasExternalProvider(): Boolean {
         return try {
             CronetProvider.getAllProviders(appCtx).any {
-                it.isEnabled && it.name == GMS_PROVIDER_NAME
+                it.isEnabled && it.name != CronetProvider.PROVIDER_NAME_FALLBACK && it.name != CronetProvider.PROVIDER_NAME_APP_PACKAGED
             }
         } catch (_: Throwable) {
             false
@@ -67,9 +79,9 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     }
 
     override fun preDownload(onComplete: ((Boolean) -> Unit)?) {
-        // GMS Cronet Provider 可用时跳过 SO 下载
-        if (hasGmsProvider()) {
-            LogUtils.d(javaClass.simpleName, "GMS Cronet 可用，跳过下载 SO")
+        // 优化逻辑：如果系统级 Provider 可用，则跳过下载
+        if (isHttpEngineAvailable() || hasExternalProvider()) {
+            LogUtils.d(javaClass.simpleName, "系统支持 Cronet，跳过下载 SO")
             onComplete?.invoke(true)
             return
         }

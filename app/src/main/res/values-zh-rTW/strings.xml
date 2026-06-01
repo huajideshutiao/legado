@@ -887,8 +887,6 @@
     <string name="check_source_show_debug_message_summary">書源校驗時顯示網路請求步驟和時間</string>
     <string name="need_login">需登入</string>
     <string name="pref_cronet_summary">使用Cronet網路元件</string>
-    <string name="pref_cronet_cf_doh_title">使用 Cloudflare DoH</string>
-    <string name="pref_cronet_cf_doh_summary">Cronet 啟用時透過 Cloudflare DoH 解析網域</string>
     <string name="upload_url">上傳URL</string>
     <string name="download_url_rule">下载URL规则(downloadUrls)</string>
     <string name="sort_by_respondTime">反應時間排序</string>

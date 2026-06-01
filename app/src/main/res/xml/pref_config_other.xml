@@ -58,13 +58,6 @@
         android:summary="@string/pref_cronet_summary"
         android:title="Cronet" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:dependency="Cronet"
-        android:key="cronetCfDoh"
-        android:summary="@string/pref_cronet_cf_doh_summary"
-        android:title="@string/pref_cronet_cf_doh_title" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="bitmapCacheSize"
         android:summary="@string/bitmap_cache_size_summary"

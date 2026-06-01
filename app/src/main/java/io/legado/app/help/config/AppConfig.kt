@@ -25,7 +25,6 @@ import splitties.init.appCtx
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
-    var isCronetCfDoh = appCtx.getPrefBoolean(PreferKey.cronetCfDoh)
     var userAgent: String = getPrefUserAgent()
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
     var clickActionTL = appCtx.getPrefInt(PreferKey.clickActionTL, 2)
@@ -104,14 +103,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                             appCtx.toastOnUi(R.string.cronet_download_failed)
                         }
                     }
-                }
-            }
-
-            PreferKey.cronetCfDoh -> {
-                isCronetCfDoh = appCtx.getPrefBoolean(PreferKey.cronetCfDoh)
-                io.legado.app.lib.cronet.resetCronetEngine()
-                if (isCronet) {
-                    io.legado.app.help.http.recreateOkHttpClient()
                 }
             }
 
