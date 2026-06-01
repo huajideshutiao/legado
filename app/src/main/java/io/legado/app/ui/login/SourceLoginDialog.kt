@@ -90,6 +90,9 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         it.root.id = index + 1000
                         it.checkBox.text = rowUi.name
                         it.checkBox.isChecked = loginInfo?.get(rowUi.name) == "true"
+                        it.checkBox.onClick {
+                            handleButtonClick(source, rowUi, loginUi)
+                        }
                     }
 
                     else -> ItemFilletTextBinding.inflate(
@@ -150,7 +153,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 context?.openUrl(rowUi.action!!)
             } else if (rowUi.action != null) {
                 val buttonFunctionJS = rowUi.action!!
-                val loginJS = source.getLoginJs() ?: return@launch
+                val loginJS = source.getLoginJs() ?: ""
                 kotlin.runCatching {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {

@@ -78,7 +78,7 @@
 -dontwarn cn.hutool.**
 
 ############################
-# OkHttp / Okio
+# OkHttp（保留给 js 调用）
 ############################
 -keep class okhttp3.*{*;}
 -keepclassmembers class okhttp3.** {    *** protocol(...);}

@@ -30,19 +30,17 @@ data class BookGroup(
         const val IdRoot = -100L
         const val IdAll = -1L
         const val IdLocal = -2L
-        const val IdAudio = -3L
-        const val IdNetNone = -4L
-        const val IdLocalNone = -5L
+
+        /** 未分组（合并了原网络未分组 -4 与本地未分组 -5，沿用 -4） */
+        const val IdUngrouped = -4L
         const val IdError = -11L
     }
 
     fun getManageName(context: Context): String {
         return when (groupId) {
             IdAll -> "$groupName(${context.getString(R.string.all)})"
-            IdAudio -> "$groupName(${context.getString(R.string.audio)})"
             IdLocal -> "$groupName(${context.getString(R.string.local)})"
-            IdNetNone -> "$groupName(${context.getString(R.string.net_no_group)})"
-            IdLocalNone -> "$groupName(${context.getString(R.string.local_no_group)})"
+            IdUngrouped -> "$groupName(${context.getString(R.string.no_group)})"
             IdError -> "$groupName(${context.getString(R.string.update_book_fail)})"
             else -> groupName
         }

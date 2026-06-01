@@ -23,9 +23,7 @@ interface BookDao {
             BookGroup.IdRoot -> flowRoot()
             BookGroup.IdAll -> flowAll()
             BookGroup.IdLocal -> flowLocal()
-            BookGroup.IdAudio -> flowAudio()
-            BookGroup.IdNetNone -> flowNetNoGroup()
-            BookGroup.IdLocalNone -> flowLocalNoGroup()
+            BookGroup.IdUngrouped -> flowNoGroup()
             BookGroup.IdError -> flowUpdateError()
             else -> flowByUserGroup(groupId)
         }.map { list ->
@@ -38,7 +36,7 @@ interface BookDao {
         select * from books where type & ${BookType.text} > 0
         and type & ${BookType.local} = 0
         and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
-        and (select show from book_groups where groupId = ${BookGroup.IdNetNone}) != 1
+        and (select show from book_groups where groupId = ${BookGroup.IdUngrouped}) != 1
         """
     )
     fun flowRoot(): Flow<List<Book>>
@@ -46,27 +44,16 @@ interface BookDao {
     @Query("SELECT * FROM books")
     fun flowAll(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE type & ${BookType.audio} > 0")
-    fun flowAudio(): Flow<List<Book>>
-
     @Query("SELECT * FROM books WHERE type & ${BookType.local} > 0")
     fun flowLocal(): Flow<List<Book>>
 
     @Query(
         """
-        select * from books where type & ${BookType.audio} = 0 and type & ${BookType.local} = 0
-        and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        select * from books
+        where ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
         """
     )
-    fun flowNetNoGroup(): Flow<List<Book>>
-
-    @Query(
-        """
-        select * from books where type & ${BookType.local} > 0
-        and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
-        """
-    )
-    fun flowLocalNoGroup(): Flow<List<Book>>
+    fun flowNoGroup(): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE (`group` & :group) > 0")
     fun flowByUserGroup(group: Long): Flow<List<Book>>

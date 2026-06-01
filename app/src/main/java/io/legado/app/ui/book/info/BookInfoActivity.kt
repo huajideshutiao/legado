@@ -518,7 +518,7 @@ class BookInfoActivity :
     private fun upGroup(groupId: Long) {
         viewModel.loadGroup(groupId) {
             binding.tvGroup.text = it.takeIf { !it.isNullOrEmpty() }
-                ?: getString(if (viewModel.curBook?.isLocal == true) R.string.local_no_group else R.string.no_group)
+                ?: getString(R.string.no_group)
         }
     }
 
@@ -588,7 +588,6 @@ class BookInfoActivity :
             viewModel.getBook(false)?.let {
                 startActivity<SearchActivity> {
                     putExtra("key", it.name)
-                    putExtra("submit", false)
                 }
             }
         }

@@ -50,7 +50,15 @@ import java.util.Locale
 
 val appDb by lazy {
     Room.databaseBuilder(appCtx, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-        .fallbackToDestructiveMigrationFrom(false, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+        // 包名已由 io.legado.app 改为 shutiao.reader（DB v80 时），新包名最低从 v80 起，
+        // 之前所有版本的旧库都属于不同应用，无法原地升级，统一走破坏性重建。
+        .fallbackToDestructiveMigrationFrom(
+            false,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+            41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+            61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79
+        )
         .addMigrations(*DatabaseMigrations.migrations)
         .allowMainThreadQueries()
         .addCallback(AppDatabase.dbCallback)
@@ -58,7 +66,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 83,
+    version = 84,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchKeyword::class, Cookie::class,
@@ -67,41 +75,7 @@ val appDb by lazy {
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
     views = [BookSourcePart::class],
     autoMigrations = [
-        AutoMigration(from = 43, to = 44),
-        AutoMigration(from = 44, to = 45),
-        AutoMigration(from = 45, to = 46),
-        AutoMigration(from = 46, to = 47),
-        AutoMigration(from = 47, to = 48),
-        AutoMigration(from = 48, to = 49),
-        AutoMigration(from = 49, to = 50),
-        AutoMigration(from = 50, to = 51),
-        AutoMigration(from = 51, to = 52),
-        AutoMigration(from = 52, to = 53),
-        AutoMigration(from = 53, to = 54),
-        AutoMigration(from = 54, to = 55, spec = DatabaseMigrations.Migration_54_55::class),
-        AutoMigration(from = 55, to = 56),
-        AutoMigration(from = 56, to = 57),
-        AutoMigration(from = 57, to = 58),
-        AutoMigration(from = 58, to = 59),
-        AutoMigration(from = 59, to = 60),
-        AutoMigration(from = 60, to = 61),
-        AutoMigration(from = 61, to = 62),
-        AutoMigration(from = 62, to = 63),
-        AutoMigration(from = 63, to = 64),
-        AutoMigration(from = 64, to = 65, spec = DatabaseMigrations.Migration_64_65::class),
-        AutoMigration(from = 65, to = 66),
-        AutoMigration(from = 66, to = 67),
-        AutoMigration(from = 67, to = 68),
-        AutoMigration(from = 68, to = 69),
-        AutoMigration(from = 69, to = 70),
-        AutoMigration(from = 70, to = 71),
-        AutoMigration(from = 71, to = 72),
-        AutoMigration(from = 72, to = 73),
-        AutoMigration(from = 73, to = 74),
-        AutoMigration(from = 74, to = 75),
-        AutoMigration(from = 75, to = 76, spec = DatabaseMigrations.Migration_75_76::class),
-        AutoMigration(from = 77, to = 78),
-        AutoMigration(from = 78, to = 79),
+        AutoMigration(from = 83, to = 84),
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -155,48 +129,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
 
             override fun onOpen(db: SupportSQLiteDatabase) {
+                // 预置分组：groupId, 名称, 排序, 可刷新(1/0), 显示(1/0)
+                val presetGroups = arrayOf(
+                    arrayOf<Any>(BookGroup.IdAll, "全部", -10, 1, 1),
+                    arrayOf<Any>(BookGroup.IdLocal, "本地", -9, 0, 1),
+                    arrayOf<Any>(BookGroup.IdUngrouped, "未分组", -7, 1, 1),
+                    arrayOf<Any>(BookGroup.IdError, "更新失败", -1, 1, 1),
+                )
                 @Language("sql")
-                val insertBookGroupAllSql = """
-                    insert into book_groups(groupId, groupName, 'order', show) 
-                    select ${BookGroup.IdAll}, '全部', -10, 1
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdAll})
-                """.trimIndent()
-                db.execSQL(insertBookGroupAllSql)
-                @Language("sql")
-                val insertBookGroupLocalSql = """
-                    insert into book_groups(groupId, groupName, 'order', enableRefresh, show) 
-                    select ${BookGroup.IdLocal}, '本地', -9, 0, 1
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdLocal})
-                """.trimIndent()
-                db.execSQL(insertBookGroupLocalSql)
-                @Language("sql")
-                val insertBookGroupMusicSql = """
-                    insert into book_groups(groupId, groupName, 'order', show) 
-                    select ${BookGroup.IdAudio}, '音频', -8, 1
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdAudio})
-                """.trimIndent()
-                db.execSQL(insertBookGroupMusicSql)
-                @Language("sql")
-                val insertBookGroupNetNoneGroupSql = """
-                    insert into book_groups(groupId, groupName, 'order', show) 
-                    select ${BookGroup.IdNetNone}, '网络未分组', -7, 1
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdNetNone})
-                """.trimIndent()
-                db.execSQL(insertBookGroupNetNoneGroupSql)
-                @Language("sql")
-                val insertBookGroupLocalNoneGroupSql = """
-                    insert into book_groups(groupId, groupName, 'order', show) 
-                    select ${BookGroup.IdLocalNone}, '本地未分组', -6, 0
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdLocalNone})
-                """.trimIndent()
-                db.execSQL(insertBookGroupLocalNoneGroupSql)
-                @Language("sql")
-                val insertBookGroupErrorSql = """
-                    insert into book_groups(groupId, groupName, 'order', show) 
-                    select ${BookGroup.IdError}, '更新失败', -1, 1
-                    where not exists (select * from book_groups where groupId = ${BookGroup.IdError})
-                """.trimIndent()
-                db.execSQL(insertBookGroupErrorSql)
+                val insertGroupSql =
+                    "insert into book_groups(groupId, groupName, `order`, enableRefresh, show) " +
+                        "select ?, ?, ?, ?, ? " +
+                        "where not exists (select 1 from book_groups where groupId = ?)"
+                presetGroups.forEach { g ->
+                    db.execSQL(insertGroupSql, arrayOf(g[0], g[1], g[2], g[3], g[4], g[0]))
+                }
+                // 移除已废弃的分组：音频(-3)、本地未分组(-5)；网络未分组(-4)统一重命名为未分组
+                db.execSQL("delete from book_groups where groupId in (-3, -5)")
+                db.execSQL(
+                    "update book_groups set groupName = '未分组' " +
+                        "where groupId = ${BookGroup.IdUngrouped} and groupName = '网络未分组'"
+                )
                 @Language("sql")
                 val upBookSourceLoginUiSql =
                     "update book_sources set loginUi = null where loginUi = 'null'"

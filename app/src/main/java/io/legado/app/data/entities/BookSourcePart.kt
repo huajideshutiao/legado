@@ -8,9 +8,9 @@ import io.legado.app.utils.splitNotBlank
 
 
 @DatabaseView(
-    """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore, 
-    (loginUrl is not null and trim(loginUrl) <> '') hasLoginUrl, lastUpdateTime, respondTime, weight, 
-    (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl 
+    """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore,
+    (ifnull(trim(loginUrl), '') <> '' or ifnull(trim(loginUi), '') <> '') hasLoginUrl, lastUpdateTime, respondTime, weight,
+    (ifnull(trim(exploreUrl), '') <> '') hasExploreUrl
     from book_sources""",
     viewName = "book_sources_part"
 )
