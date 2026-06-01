@@ -26,6 +26,8 @@ jobs:
     needs: prepare
     if: ${{ needs.prepare.outputs.sign }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
@@ -106,14 +108,19 @@ jobs:
           name: app
           path: ${{ github.workspace }}/apk/*.apk
 
+      - name: Delete Old Release
+        continue-on-error: true
+        run: gh release delete "${{ env.VERSION }}" -y --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
           name: ${{ env.VERSION }}
-          tag_name: ${{ env.VERSION }}
-          body_path: ${{ github.workspace }}/RELEASE_NOTES.md
+          tag: ${{ env.VERSION }}
+          bodyFile: ${{ github.workspace }}/RELEASE_NOTES.md
+          artifacts: ${{ github.workspace }}/apk/*.apk
+          allowUpdates: true
           draft: false
           prerelease: false
-          files: ${{ github.workspace }}/apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

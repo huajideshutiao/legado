@@ -28,7 +28,7 @@ jobs:
 
   prepare:
     runs-on: ubuntu-latest
-    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') }}
+    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
       versionL: ${{ steps.set-ver.outputs.versionL }}
@@ -105,33 +105,6 @@ jobs:
             ${{ github.workspace }}/mapping/missing_rules.txt
           if-no-files-found: ignore
 
-      - name: Deploy (原包名) To Release/Lanzou/Telegram
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ylogin: ${{ secrets.LANZOU_ID }}
-          phpdisk_info: ${{ secrets.LANZOU_PSD }}
-          LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
-          LANZOU_URL: ${{ secrets.LANZOU_URL }}
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: |
-          # 1. 准备发布文件
-          mkdir -p deploy/
-          cp apk/*原包名*.apk deploy/
-          
-          # 2. GitHub Release (使用 gh 命令行以支持并发和更新)
-          # 先尝试删除旧的 beta 标签对应的 release（仅在第一次构建时或通过逻辑判断，这里简单处理）
-          # 为稳妥起见，我们使用 ncipollo/release-action 的逻辑，但这里为了速度改用 shell
-          
-          # 3. 发布到 Telegram (逻辑简化，只发原包名)
-          if [ "${{ needs.prepare.outputs.telegram }}" == "yes" ]; then
-             echo "Post to TG..."
-             # 此处逻辑较复杂，建议仍使用 Action 步骤，见下文
-          fi
-
-      # 为了节省时长且不浪费 Matrix，我们将发布步骤紧跟在编译后，但在同一个 Job 内
       - name: Release Note & Tag
         if: github.event_name != 'pull_request'
         run: |
