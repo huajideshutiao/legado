@@ -88,6 +88,7 @@ object PreferKey {
     const val syncBookProgress = "syncBookProgress"
     const val syncBookProgressPlus = "syncBookProgressPlus"
     const val cronet = "Cronet"
+    const val cronetCfDoh = "cronetCfDoh"
     const val bitmapCacheSize = "bitmapCacheSize"
     const val preDownloadNum = "preDownloadNum"
     const val mangaPreDownloadNum = "mangaPreDownloadNum"

@@ -3,6 +3,7 @@
 package io.legado.app.lib.cronet
 
 import androidx.annotation.Keep
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.okHttpClient
@@ -16,10 +17,13 @@ import org.chromium.net.CronetProvider
 import org.chromium.net.ExperimentalCronetEngine
 import org.chromium.net.UploadDataProvider
 import org.chromium.net.UrlRequest
+import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
+
+internal const val GMS_PROVIDER_NAME = "Google-Play-Services-Cronet-Provider"
 
 private var cronetEngineCache: ExperimentalCronetEngine? = null
 private var cronetEngineInitialized = false
@@ -39,6 +43,13 @@ val cronetEngine: ExperimentalCronetEngine?
         }
     }
 
+fun resetCronetEngine() {
+    synchronized(appCtx) {
+        cronetEngineCache = null
+        cronetEngineInitialized = false
+    }
+}
+
 private fun createCronetEngine(): ExperimentalCronetEngine? {
     runCatching {
         val x509UtilClass = Class.forName("org.chromium.net.impl.X509Util")
@@ -54,21 +65,17 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
 
     val providers = CronetProvider.getAllProviders(appCtx)
 
-    // 1. 优先尝试系统原生 HttpEngine (Android 14+) 或其他外部 Provider (GMS 等)
-    providers.find {
-        it.name != CronetProvider.PROVIDER_NAME_APP_PACKAGED &&
-            it.name != CronetProvider.PROVIDER_NAME_FALLBACK &&
-            it.isEnabled
-    }?.let { provider ->
+    // 1. 优先使用 GMS Cronet Provider（功能完整），忽略系统 HttpEngine
+    providers.find { it.name == GMS_PROVIDER_NAME && it.isEnabled }?.let { provider ->
         try {
             val builder = provider.createBuilder() as ExperimentalCronetEngine.Builder
             builder.applyConfig()
             // 外部引擎严禁调用 setLibraryLoader
             val engine = builder.build()
-            LogUtils.d("Cronet", "Using External Provider: ${provider.name}")
+            LogUtils.d("Cronet", "Using GMS Provider: ${provider.name}")
             return engine
         } catch (e: Throwable) {
-            LogUtils.d("Cronet", "External Provider ${provider.name} init failed: ${e.message}")
+            LogUtils.d("Cronet", "GMS Provider init failed: ${e.message}")
         }
     }
 
@@ -88,7 +95,7 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
         }
     }
 
-    // 3. 既无系统支持也无 SO，触发预下载
+    // 3. 既无 GMS 也无 SO，触发预下载
     CronetLoader.preDownload(null)
     return null
 }
@@ -100,26 +107,71 @@ private fun ExperimentalCronetEngine.Builder.applyConfig() {
     enableHttp2(true)
     enablePublicKeyPinningBypassForLocalTrustAnchors(true)
     enableBrotli(true)
-    setExperimentalOptions(options)
+    setExperimentalOptions(buildExperimentalOptions())
 }
 
-val options by lazy {
+private fun buildExperimentalOptions(): String {
     val options = JSONObject()
 
-    //设置域名映射规则
-    //MAP hostname ip,MAP hostname ip
-//    val host = JSONObject()
-//    host.put("host_resolver_rules","")
-//    options.put("HostResolverRules", host)
+    // 1. 强制激活内置 DNS 栈 (DoH 和 ECH 的前提)
+    // 覆盖了顶层、AsyncDNS 内部以及 DnsConfig 内部，确保在各种版本的 Cronet 中强制启用
+    options.put("enable_built_in_dns", true)
+    val asyncDns = JSONObject()
+    asyncDns.put("enable", true)
+    asyncDns.put("enable_built_in_dns", true)
+    options.put("AsyncDNS", asyncDns)
+    options.put("DnsConfig", JSONObject().put("enable_built_in_dns", true))
 
-    //启用DnsHttpsSvcb更容易迁移到http3
-    val dnsSvcb = JSONObject()
-    dnsSvcb.put("enable", true)
-    dnsSvcb.put("enable_insecure", true)
-    dnsSvcb.put("use_alpn", true)
-    options.put("UseDnsHttpsSvcb", dnsSvcb)
-    options.put("AsyncDNS", JSONObject("{'enable':true}"))
-    options.toString()
+    // 2. 启用 HTTPS 记录支持 (SVCB/HTTPS)，这是获取 ECHConfig 的唯一途径
+    val svcb = JSONObject().put("enable", true)
+    options.put("UseDnsHttpsSvcb", svcb)
+    options.put("HTTPSRR", svcb) // 兼容旧版本
+    asyncDns.put("UseDnsHttpsSvcb", true)
+
+    // 3. 显式开启 ECH (Encrypted Client Hello)
+    options.put("EncryptedClientHello", JSONObject().put("enable", true))
+    options.put("ECH", JSONObject().put("enable", true)) // 备用 Key
+
+    // 4. QUIC 配置 (完全同步 Shaft，用于绕过 SNI 干扰)
+    val quic = JSONObject()
+    quic.put("force_quic_on_all_ips", true)
+    quic.put("race_cert_verification", true)
+    quic.put("connection_options", "PACE,IW10,CHLO,BBR2")
+    quic.put("enable_ech", true) // 增加 QUIC 层的 ECH 支持（如果存在）
+    options.put("quic", quic)
+
+    if (AppConfig.isCronetCfDoh) {
+        // 5. DoH 配置 (SECURE 模式强制走加密，不回退)
+        val dohOverrides = JSONObject()
+        val servers = JSONArray()
+
+        // 模板 1: 域名形式 (配合下面的 HostResolverRules 引导)
+        servers.put(
+            JSONObject()
+                .put("server_template", "https://cloudflare-dns.com/dns-query")
+                .put("use_post", false)
+        )
+        // 模板 2: IP 直接访问 (双重保险)
+        servers.put(
+            JSONObject()
+                .put("server_template", "https://1.1.1.1/dns-query")
+                .put("use_post", false)
+        )
+        dohOverrides.put("dns_over_https_servers", servers)
+        dohOverrides.put("secure_dns_mode", "SECURE")
+        options.put("DnsConfigOverrides", dohOverrides)
+
+        // 6. 域名映射规则 (抄自 Shaft，解决解析 DoH 服务器域名本身的“循环依赖”问题)
+        // 将 DoH 域名直接指向通畅的 CF 节点，确保 DoH 握手时不依赖外部 DNS
+        val hostRules = JSONObject()
+        hostRules.put(
+            "host_resolver_rules",
+            "MAP cloudflare-dns.com 104.18.42.239, MAP cloudflare-dns.com 172.64.145.17, MAP cloudflare-dns.com 1.1.1.1, MAP cloudflare-dns.com 1.0.0.1"
+        )
+        options.put("HostResolverRules", hostRules)
+    }
+
+    return options.toString()
 }
 
 fun buildRequest(request: Request, callback: UrlRequest.Callback): UrlRequest? {

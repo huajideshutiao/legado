@@ -908,6 +908,8 @@
     <string name="pref_cronet_summary">use Cronet access network</string>
     <string name="cronet_enabled">Cronet enabled</string>
     <string name="cronet_download_failed">Cronet download failed</string>
+    <string name="pref_cronet_cf_doh_title">Use Cloudflare DoH</string>
+    <string name="pref_cronet_cf_doh_summary">When Cronet is on, resolve DNS via Cloudflare DoH</string>
     <string name="upload_url">upload url</string>
     <string name="download_url_rule">downloadUrlRule(downloadUrls)</string>
     <string name="export_success">export success</string>

@@ -905,6 +905,8 @@
     <string name="pref_cronet_summary">使用 Cronet 网络组件</string>
     <string name="cronet_enabled">Cronet 已启用</string>
     <string name="cronet_download_failed">Cronet 下载失败</string>
+    <string name="pref_cronet_cf_doh_title">使用 Cloudflare DoH</string>
+    <string name="pref_cronet_cf_doh_summary">Cronet 启用时通过 Cloudflare DoH 解析域名</string>
     <string name="upload_url">上传 URL</string>
     <string name="download_url_rule">下载URL规则(downloadUrls)</string>
     <string name="sort_by_respondTime">响应时间排序</string>
