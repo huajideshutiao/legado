@@ -115,24 +115,6 @@ jobs:
             git log -10 --pretty=format:"- %<(72,trunc)%s (%h)" >> RELEASE_NOTES.md
           fi
 
-      - name: Delete Old Beta Release
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        run: gh release delete beta -y || true
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Publish Pre-Release (原包名)
-        if: github.event_name != 'pull_request'
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: "beta"
-          bodyFile: RELEASE_NOTES.md
-          prerelease: true
-          allowUpdates: true
-          artifacts: ${{ github.workspace }}/apk/*原包名*.apk
-
       - name: Upload (原包名) To Lanzou
         if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
         continue-on-error: true
@@ -168,16 +150,24 @@ jobs:
           name: ${{ env.product }}.共存
           path: ${{ github.workspace }}/apk/*共存*.apk
 
-      - name: Append (共存) To Release
+      # 两个变体都构建完成后再一次性发布，避免「更新已有资产」路径触发 already_exists
+      - name: Delete Old Beta Release
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: gh release delete beta -y --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish Pre-Release (原包名 + 共存)
         if: github.event_name != 'pull_request'
         uses: ncipollo/release-action@v1
         with:
-          allowUpdates: true
+          name: ${{ env.VERSION }}
           tag: "beta"
-          artifacts: ${{ github.workspace }}/apk/*共存*.apk
-          omitBody: true
-          omitName: true
+          bodyFile: RELEASE_NOTES.md
           prerelease: true
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/apk/*.apk
 
       - name: Upload (共存) To Lanzou
         if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'

@@ -3,6 +3,8 @@ package io.legado.app.ui.login
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import com.script.rhino.runScriptWithContext
@@ -13,8 +15,9 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
-import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemFilletTextBinding
+import io.legado.app.databinding.ItemLoginSelectBinding
+import io.legado.app.databinding.ItemLoginToggleBinding
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
@@ -80,7 +83,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         it.editText.setAutofillHints("password")
                     }
 
-                    RowUi.Type.checkbox -> ItemCheckBoxBinding.inflate(
+                    RowUi.Type.select -> ItemLoginSelectBinding.inflate(
                         layoutInflater,
                         binding.root,
                         false
@@ -88,9 +91,47 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox.addView(it.root)
                         rowUi.style().apply(it.root)
                         it.root.id = index + 1000
-                        it.checkBox.text = rowUi.name
-                        it.checkBox.isChecked = loginInfo?.get(rowUi.name) == "true"
-                        it.checkBox.onClick {
+                        it.textView.text = rowUi.name
+                        val chars = rowUi.chars ?: emptyList()
+                        val adapter = ArrayAdapter(
+                            requireContext(),
+                            android.R.layout.simple_spinner_item,
+                            chars
+                        ).apply {
+                            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                        }
+                        it.spinner.adapter = adapter
+                        var selectedPosition =
+                            chars.indexOf(loginInfo?.get(rowUi.name)).coerceAtLeast(0)
+                        it.spinner.setSelection(selectedPosition)
+                        it.spinner.onItemSelectedListener =
+                            object : AdapterView.OnItemSelectedListener {
+                                override fun onItemSelected(
+                                    parent: AdapterView<*>?,
+                                    view: View?,
+                                    position: Int,
+                                    id: Long
+                                ) {
+                                    if (position == selectedPosition) return
+                                    selectedPosition = position
+                                    handleButtonClick(source, rowUi, loginUi)
+                                }
+
+                                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                            }
+                    }
+
+                    RowUi.Type.toggle -> ItemLoginToggleBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        binding.flexbox.addView(it.root)
+                        rowUi.style().apply(it.root)
+                        it.root.id = index + 1000
+                        it.swt.text = rowUi.name
+                        it.swt.isChecked = loginInfo?.get(rowUi.name) == "true"
+                        it.swt.setOnUserCheckedChangeListener {
                             handleButtonClick(source, rowUi, loginUi)
                         }
                     }
@@ -180,10 +221,16 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         loginData[rowUi.name] = it.toString()
                     }
                 }
-                RowUi.Type.checkbox -> {
+                RowUi.Type.select -> {
+                    val rowView = binding.root.findViewById<View>(index + 1000)
+                    (ItemLoginSelectBinding.bind(rowView).spinner.selectedItem as? String)
+                        ?.let { loginData[rowUi.name] = it }
+                }
+
+                RowUi.Type.toggle -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
                     loginData[rowUi.name] =
-                        ItemCheckBoxBinding.bind(rowView).checkBox.isChecked.toString()
+                        ItemLoginToggleBinding.bind(rowView).swt.isChecked.toString()
                 }
 
                 else -> {}
