@@ -65,8 +65,8 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="5dp"
-            android:paddingBottom="5dp"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp"
             android:text="@string/reset"
             android:textColor="@color/primaryText" />
 
@@ -83,8 +83,8 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="5dp"
-            android:paddingBottom="5dp"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp"
             android:text="@string/ok"
             android:textColor="@color/primaryText" />
 

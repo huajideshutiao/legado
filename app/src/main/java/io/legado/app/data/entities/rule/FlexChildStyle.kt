@@ -7,7 +7,7 @@ data class FlexChildStyle(
     val layout_flexGrow: Float = 0F,
     val layout_flexShrink: Float = 1F,
     val layout_alignSelf: String = "auto",
-    val layout_flexBasisPercent: Float = 0.3F,
+    val layout_flexBasisPercent: Float = 0.332F,
     val layout_wrapBefore: Boolean = false
 ) {
 
@@ -34,7 +34,7 @@ data class FlexChildStyle(
 
     companion object {
         val defaultStyle = FlexChildStyle()
-        val defaultStyle2 = FlexChildStyle(layout_flexGrow = 1F, layout_flexBasisPercent = 0.4F)
+        val defaultStyle2 = FlexChildStyle(layout_flexGrow = 1F, layout_flexBasisPercent = 0.5F)
     }
 
 }

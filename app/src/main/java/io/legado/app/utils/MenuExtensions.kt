@@ -5,6 +5,7 @@ import android.content.Context
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ImageButton
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
@@ -63,19 +64,21 @@ fun Menu.applyOpenTint(context: Context) {
 }
 
 fun Menu.iconItemOnLongClick(id: Int, function: (view: View) -> Unit) {
+    val context = (this as? MenuBuilder)?.context ?: return
     findItem(id)?.let { item ->
-        item.setActionView(R.layout.view_action_button)
-        item.actionView?.run {
+        val actionView = ImageButton(context, null, android.R.attr.actionButtonStyle).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
             contentDescription = item.title
-            findViewById<ImageButton>(R.id.item).setImageDrawable(item.icon)
+            setImageDrawable(item.icon)
             setOnLongClickListener {
                 function.invoke(this)
                 true
             }
             setOnClickListener {
-                performIdentifierAction(id, 0)
+                this@iconItemOnLongClick.performIdentifierAction(id, 0)
             }
         }
+        item.setActionView(actionView)
     }
 }
 
