@@ -1,7 +1,9 @@
 package io.legado.app.ui.book.manga.recyclerview
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.drawable.Animatable2
 import android.graphics.drawable.AnimatedImageDrawable
@@ -80,6 +82,12 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
         shouldTurnOnGifEnd: () -> Boolean = { false },
         onTurnPage: () -> Unit = {},
     ) {
+        //Activity 销毁时（如关闭阅读界面）仍可能因布局/滚动触发 onBindViewHolder，
+        //此时 Glide.with(activity) 会抛 "destroyed activity" 异常，直接跳过加载
+        val activity = context.findActivity()
+        if (activity != null && activity.isDestroyed) {
+            return
+        }
         mGifAutoNextEnabled = gifAutoNextEnabled
         mShouldTurnOnGifEnd = shouldTurnOnGifEnd
         mOnTurnPage = onTurnPage
@@ -169,6 +177,15 @@ open class MangaVH<VB : ViewBinding>(val binding: VB, private val context: Conte
                 }
             })
             .into(mImage)
+    }
+
+    private fun Context.findActivity(): Activity? {
+        var ctx: Context? = this
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
     }
 
     /** 是否为可控制循环的动图（Glide 的 GifDrawable 或平台 AnimatedImageDrawable） */
