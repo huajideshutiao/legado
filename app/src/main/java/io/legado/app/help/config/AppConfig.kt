@@ -717,6 +717,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.enableMangaGray, value)
         }
 
+    //GIF播放完成后自动翻到下一张（仅横向翻页模式）
+    var enableMangaGifAutoNext
+        get() = appCtx.getPrefBoolean(PreferKey.enableMangaGifAutoNext, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.enableMangaGifAutoNext, value)
+        }
+
     var welcomeImage
         get() = appCtx.getPrefString(PreferKey.welcomeImage)
         set(value) {

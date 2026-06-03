@@ -51,6 +51,7 @@ import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.recyclerview.MangaAdapter
 import io.legado.app.ui.book.manga.recyclerview.MangaLayoutManager
+import io.legado.app.ui.book.manga.recyclerview.MangaVH
 import io.legado.app.ui.book.manga.recyclerview.ScrollTimer
 import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.MangaMenu
@@ -238,6 +239,9 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             setMangaImageColorFilter(mangaColorFilter)
             enableMangaEInk(AppConfig.enableMangaEInk, AppConfig.mangaEInkThreshold)
             enableGray(AppConfig.enableMangaGray)
+            gifAutoNext = AppConfig.enableMangaHorizontalScroll && AppConfig.enableMangaGifAutoNext
+            isCenterPage = { pos -> pos == binding.recyclerView.findCenterViewPosition() }
+            onTurnPage = { scrollToNext() }
             book = viewModel.curBook
             bookSource = viewModel.curBookSource
         }
@@ -604,6 +608,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 item.isChecked = !item.isChecked
                 AppConfig.enableMangaHorizontalScroll = item.isChecked
                 mMenu?.findItem(R.id.menu_disable_horizontal_page_snap)?.isVisible = item.isChecked
+                mMenu?.findItem(R.id.menu_manga_gif_auto_next)?.isVisible = item.isChecked
+                mAdapter.gifAutoNext = item.isChecked && AppConfig.enableMangaGifAutoNext
                 setHorizontalScroll(item.isChecked)
                 mAdapter.notifyDataSetChanged()
             }
@@ -669,6 +675,14 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 AppConfig.enableMangaEInk = false
                 mMenu?.findItem(R.id.menu_epaper_manga_setting)?.isVisible = false
                 mAdapter.enableGray(item.isChecked)
+            }
+
+            R.id.menu_manga_gif_auto_next -> {
+                item.isChecked = !item.isChecked
+                AppConfig.enableMangaGifAutoNext = item.isChecked
+                mAdapter.gifAutoNext =
+                    AppConfig.enableMangaHorizontalScroll && item.isChecked
+                applyGifAutoNextToAttached()
             }
         }
         return super.onCompatOptionsItemSelected(item)
@@ -758,6 +772,10 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         }
         menu.findItem(R.id.menu_disable_manga_page_anim).isChecked = AppConfig.disableMangaPageAnim
         menu.findItem(R.id.menu_gray_manga).isChecked = AppConfig.enableMangaGray
+        menu.findItem(R.id.menu_manga_gif_auto_next).run {
+            isVisible = AppConfig.enableMangaHorizontalScroll
+            isChecked = AppConfig.enableMangaGifAutoNext
+        }
     }
 
     private fun setDisableMangaScale(disable: Boolean) {
@@ -778,6 +796,20 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     private fun scrollToPrev() {
         scrollPageTo(-1)
+    }
+
+    /**
+     * 设置变化时，对当前已加载（已附着）的页面立即应用最新的 GIF 播放策略。
+     * 新加载的页面会在 onResourceReady 时自动按最新设置装填，无需在此处理。
+     */
+    private fun applyGifAutoNextToAttached() {
+        val rv = binding.recyclerView
+        for (i in 0 until rv.childCount) {
+            val holder = rv.getChildViewHolder(rv.getChildAt(i))
+            if (holder is MangaVH<*>) {
+                holder.applyGifAutoNext()
+            }
+        }
     }
 
     private fun scrollPageTo(direction: Int) {

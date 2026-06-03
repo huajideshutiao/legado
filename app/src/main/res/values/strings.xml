@@ -1237,6 +1237,7 @@
     <string name="manga_epaper_value">Threshold</string>
     <string name="disable_horizontal_page_snap">Disable horizontal page snap</string>
     <string name="enable_manga_gray">Enable grayscale images</string>
+    <string name="manga_gif_auto_next">Turn page after GIF finishes</string>
     <string name="play_mode">Play mode</string>
     <string name="sure_cache_book">Are you sure to start caching?</string>
     <string name="auto_check_new_backup_t">Auto check for new backup</string>

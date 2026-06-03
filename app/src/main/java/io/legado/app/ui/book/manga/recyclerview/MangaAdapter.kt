@@ -1,6 +1,8 @@
 package io.legado.app.ui.book.manga.recyclerview
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.util.SparseArray
@@ -50,6 +52,15 @@ class MangaAdapter(private val context: Context) :
     }
 
     var isHorizontal = false
+
+    //是否启用“GIF 播放完翻页”（横向翻页 + 设置开启）
+    var gifAutoNext = false
+
+    //判断某位置是否为当前居中页
+    var isCenterPage: (position: Int) -> Boolean = { false }
+
+    //触发翻到下一页
+    var onTurnPage: (() -> Unit)? = null
 
     private val mDiffCallback: DiffUtil.ItemCallback<Any> = object : DiffUtil.ItemCallback<Any>() {
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
@@ -113,7 +124,15 @@ class MangaAdapter(private val context: Context) :
                     val isLastImage = item.imageCount > 0 && item.index == item.imageCount - 1
                     val book = book ?: return@setOnClickListener
                     loadImageWithRetry(
-                        item.mImageUrl, book, bookSource, isHorizontal, isLastImage, mTransformation
+                        item.mImageUrl,
+                        book,
+                        bookSource,
+                        isHorizontal,
+                        isLastImage,
+                        mTransformation,
+                        { gifAutoNext },
+                        { gifAutoNext && isCenterPage(bindingAdapterPosition) },
+                        { onTurnPage?.invoke() }
                     )
                 }
             }
@@ -129,7 +148,10 @@ class MangaAdapter(private val context: Context) :
                 bookSource,
                 isHorizontal,
                 isLastImage,
-                mTransformation
+                mTransformation,
+                { gifAutoNext },
+                { gifAutoNext && isCenterPage(bindingAdapterPosition) },
+                { onTurnPage?.invoke() }
             )
         }
 
@@ -208,12 +230,26 @@ class MangaAdapter(private val context: Context) :
                 vh.itemView.updateLayoutParams<ViewGroup.LayoutParams> {
                     height = MATCH_PARENT
                 }
-                Glide.with(context).clear(vh.binding.image)
+                //Activity 销毁时（如关闭阅读界面）回收缓存视图，
+                //此时 Glide.with(activity) 会抛异常；销毁后 Glide 已自行清理，跳过即可
+                val activity = context.findActivity()
+                if (activity == null || !activity.isDestroyed) {
+                    Glide.with(context).clear(vh.binding.image)
+                }
                 if (vh.binding.image.tag is String) {
                     ProgressManager.removeListener(vh.binding.image.tag as String)
                 }
             }
         }
+    }
+
+    private fun Context.findActivity(): Activity? {
+        var ctx: Context? = this
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
     }
 
     override fun onBindViewHolder(vh: RecyclerView.ViewHolder, position: Int) {

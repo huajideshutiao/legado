@@ -1235,6 +1235,7 @@
     <string name="manga_epaper_value">阈值</string>
     <string name="disable_horizontal_page_snap">禁用水平翻页效果</string>
     <string name="enable_manga_gray">开启图片灰色</string>
+    <string name="manga_gif_auto_next">GIF播放完成后翻页</string>
     <string name="play_mode">播放模式</string>
     <string name="sure_cache_book">是否确认开始缓存？</string>
     <string name="auto_check_new_backup_t">自动检查新备份</string>

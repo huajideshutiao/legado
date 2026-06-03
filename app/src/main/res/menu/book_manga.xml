@@ -128,4 +128,12 @@
         android:title="@string/enable_manga_gray"
         app:showAsAction="never"/>
 
+    <item
+        android:id="@+id/menu_manga_gif_auto_next"
+        android:checkable="true"
+        android:checked="false"
+        android:title="@string/manga_gif_auto_next"
+        android:visible="false"
+        app:showAsAction="never" />
+
 </menu>
