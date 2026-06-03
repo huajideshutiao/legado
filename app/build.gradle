@@ -136,7 +136,7 @@ android {
             def abiName = abiShortMap.get(abi ?: "all")
             def suffix = ''
             if (variant.buildType.name == 'release') {
-                suffix = variant.buildType.applicationIdSuffix == '.releaseA' ? '_共存' : '_原包名'
+                suffix = variant.buildType.applicationIdSuffix == '.releaseA' ? '_releaseA' : ''
             }
             outputFileName = "${abiName}${suffix}.apk"
         }

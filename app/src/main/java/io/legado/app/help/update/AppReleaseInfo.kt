@@ -73,7 +73,7 @@ data class Asset(
         val timestamp: Long = instant.toEpochMilli()
 
         val appVariant = when {
-            name.contains("共存") -> AppVariant.BETA_RELEASEA
+            name.contains("releaseA", ignoreCase = true) -> AppVariant.BETA_RELEASEA
             isBetaTag -> AppVariant.BETA_RELEASE
             else -> AppVariant.OFFICIAL
         }

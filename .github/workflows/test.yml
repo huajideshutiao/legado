@@ -100,7 +100,7 @@ jobs:
         with:
           name: ${{ env.product }}.原包名
           path: |
-            ${{ github.workspace }}/apk/*原包名*.apk
+            ${{ github.workspace }}/apk/*.apk
             ${{ github.workspace }}/mapping/mapping.txt
             ${{ github.workspace }}/mapping/missing_rules.txt
           if-no-files-found: ignore
@@ -131,7 +131,7 @@ jobs:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
           context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (原包名)"
-          path: apk/*原包名*.apk
+          path: apk/*.apk
           method: sendFile
 
       # --- 接着编译共存版 ---
@@ -148,7 +148,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.product }}.共存
-          path: ${{ github.workspace }}/apk/*共存*.apk
+          path: ${{ github.workspace }}/apk/*releaseA*.apk
 
       # 两个变体都构建完成后再一次性发布，避免「更新已有资产」路径触发 already_exists
       - name: Delete Old Beta Release
@@ -175,7 +175,7 @@ jobs:
         run: |
           # 只上传共存版
           mkdir -p apk_coexist/
-          cp apk/*共存*.apk apk_coexist/
+          cp apk/*releaseA*.apk apk_coexist/
           python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk_coexist/" "${{ secrets.LANZOU_FOLDER_ID }}"
         env:
           ylogin: ${{ secrets.LANZOU_ID }}
@@ -188,7 +188,7 @@ jobs:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
           context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (共存)"
-          path: apk/*共存*.apk
+          path: apk/*releaseA*.apk
           method: sendFile
 
   test_Branch:
