@@ -56,11 +56,11 @@ class MangaAdapter(private val context: Context) :
     //是否启用“GIF 播放完翻页”（横向翻页 + 设置开启）
     var gifAutoNext = false
 
-    //判断某位置是否为当前居中页
-    var isCenterPage: (position: Int) -> Boolean = { false }
+    //判断某位置是否为当前“停稳的居中页”（滚动停止且居中）
+    var isArmTargetPage: (position: Int) -> Boolean = { false }
 
-    //触发翻到下一页
-    var onTurnPage: (() -> Unit)? = null
+    //触发翻到下一页，返回是否真的翻动了（受阻时返回 false）
+    var onTurnPage: (() -> Boolean)? = null
 
     private val mDiffCallback: DiffUtil.ItemCallback<Any> = object : DiffUtil.ItemCallback<Any>() {
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
@@ -131,8 +131,8 @@ class MangaAdapter(private val context: Context) :
                         isLastImage,
                         mTransformation,
                         { gifAutoNext },
-                        { gifAutoNext && isCenterPage(bindingAdapterPosition) },
-                        { onTurnPage?.invoke() }
+                        { gifAutoNext && isArmTargetPage(bindingAdapterPosition) },
+                        { onTurnPage?.invoke() ?: false }
                     )
                 }
             }
@@ -150,8 +150,8 @@ class MangaAdapter(private val context: Context) :
                 isLastImage,
                 mTransformation,
                 { gifAutoNext },
-                { gifAutoNext && isCenterPage(bindingAdapterPosition) },
-                { onTurnPage?.invoke() }
+                { gifAutoNext && isArmTargetPage(bindingAdapterPosition) },
+                { onTurnPage?.invoke() ?: false }
             )
         }
 

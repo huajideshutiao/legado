@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.integration.recyclerview.RecyclerViewPreloader
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
@@ -240,8 +241,13 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             enableMangaEInk(AppConfig.enableMangaEInk, AppConfig.mangaEInkThreshold)
             enableGray(AppConfig.enableMangaGray)
             gifAutoNext = AppConfig.enableMangaHorizontalScroll && AppConfig.enableMangaGifAutoNext
-            isCenterPage = { pos -> pos == binding.recyclerView.findCenterViewPosition() }
-            onTurnPage = { scrollToNext() }
+            //仅当滚动已停止(IDLE)且此页居中时，才认定为“停稳的当前页”，可作为播完翻页的目标。
+            //滑动途中/预布局阶段一律返回 false，避免相邻页被提前装填而提前播完。
+            isArmTargetPage = { pos ->
+                binding.recyclerView.scrollState == RecyclerView.SCROLL_STATE_IDLE &&
+                    pos == binding.recyclerView.findCenterViewPosition()
+            }
+            onTurnPage = { scrollPageTo(1, silent = true) }
             book = viewModel.curBook
             bookSource = viewModel.curBookSource
         }
@@ -283,6 +289,15 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                     }
                 }
             }
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                    //仅在滚动彻底停止后，才让停稳的居中页 GIF 从第一帧单次播放并准备翻页，
+                    //其余页恢复无限循环。这样可避免预布局/滑动途中误装填导致提前播完、停在末帧。
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        syncGifAutoNextForCurrentPage()
+                    }
+                }
+            })
         }
         binding.webtoonFrame.run {
             onAction {
@@ -322,6 +337,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                     binding.mangaMenu.upSeekBar(
                         viewModel.durChapterPos, viewModel.curMangaChapter!!.imageCount
                     )
+                    //初始定位用 scrollToPosition，不会触发 IDLE 回调，手动装填首个当前页的 GIF
+                    binding.recyclerView.post { syncGifAutoNextForCurrentPage() }
                 }
 
                 if (curFinish) {
@@ -612,6 +629,10 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 mAdapter.gifAutoNext = item.isChecked && AppConfig.enableMangaGifAutoNext
                 setHorizontalScroll(item.isChecked)
                 mAdapter.notifyDataSetChanged()
+                binding.recyclerView.post {
+                    if (mAdapter.gifAutoNext) syncGifAutoNextForCurrentPage()
+                    else resetAllGifAutoNext()
+                }
             }
 
             R.id.menu_manga_color_filter -> {
@@ -682,7 +703,11 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 AppConfig.enableMangaGifAutoNext = item.isChecked
                 mAdapter.gifAutoNext =
                     AppConfig.enableMangaHorizontalScroll && item.isChecked
-                applyGifAutoNextToAttached()
+                if (mAdapter.gifAutoNext) {
+                    syncGifAutoNextForCurrentPage()
+                } else {
+                    resetAllGifAutoNext()
+                }
             }
         }
         return super.onCompatOptionsItemSelected(item)
@@ -799,42 +824,62 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     /**
-     * 设置变化时，对当前已加载（已附着）的页面立即应用最新的 GIF 播放策略。
-     * 新加载的页面会在 onResourceReady 时自动按最新设置装填，无需在此处理。
+     * 滚动停稳后调用：让当前居中页的 GIF 从第一帧单次播放并准备翻页，
+     * 其余已附着页恢复无限循环。这是 GIF 自动翻页的唯一装填入口，
+     * 确保只有真正停稳的当前页才进入“播完翻页”状态。
      */
-    private fun applyGifAutoNextToAttached() {
+    private fun syncGifAutoNextForCurrentPage() {
         val rv = binding.recyclerView
+        if (!mAdapter.gifAutoNext) {
+            return
+        }
+        val center = rv.findCenterViewPosition()
         for (i in 0 until rv.childCount) {
             val holder = rv.getChildViewHolder(rv.getChildAt(i))
             if (holder is MangaVH<*>) {
-                holder.applyGifAutoNext()
+                if (holder.bindingAdapterPosition == center && center != RecyclerView.NO_POSITION) {
+                    holder.playGifForCurrentPage()
+                } else {
+                    holder.stopGifAutoNext()
+                }
             }
         }
     }
 
-    private fun scrollPageTo(direction: Int) {
-        if (!binding.recyclerView.canScroll(direction)) {
-            appCtx.toastOnUi(R.string.bottom_line)
-            return
-        }
-        var dx = 0
-        var dy = 0
-        if (AppConfig.enableMangaHorizontalScroll) {
-            dx = binding.recyclerView.run {
-                width - paddingStart - paddingEnd
-            }
-        } else {
-            dy = binding.recyclerView.run {
-                height - paddingTop - paddingBottom
+    /** 关闭 GIF 自动翻页时调用：让所有已附着页恢复无限循环。 */
+    private fun resetAllGifAutoNext() {
+        val rv = binding.recyclerView
+        for (i in 0 until rv.childCount) {
+            val holder = rv.getChildViewHolder(rv.getChildAt(i))
+            if (holder is MangaVH<*>) {
+                holder.stopGifAutoNext()
             }
         }
-        dx *= direction
-        dy *= direction
+    }
+
+    /**
+     * 翻页，返回是否真的翻动了。
+     * @param silent 受阻时是否静默（不弹“已到边界”提示）。GIF 自动翻页用 true，
+     *   以便调用方在受阻时让动图继续循环、下一轮再尝试；手动翻页用 false。
+     */
+    private fun scrollPageTo(direction: Int, silent: Boolean = false): Boolean {
+        val rv = binding.recyclerView
+        if (!rv.canScroll(direction)) {
+            if (!silent) appCtx.toastOnUi(R.string.bottom_line)
+            return false
+        }
+        val dx =
+            if (AppConfig.enableMangaHorizontalScroll) (rv.width - rv.paddingStart - rv.paddingEnd) * direction else 0
+        val dy =
+            if (AppConfig.enableMangaHorizontalScroll) 0 else (rv.height - rv.paddingTop - rv.paddingBottom) * direction
         if (AppConfig.disableMangaPageAnim) {
-            binding.recyclerView.scrollBy(dx, dy)
+            rv.scrollBy(dx, dy)
+            //无翻页动画时 scrollBy 不会触发 IDLE 状态回调，手动装填新当前页的 GIF
+            if (mAdapter.gifAutoNext) rv.post { syncGifAutoNextForCurrentPage() }
         } else {
-            binding.recyclerView.smoothScrollBy(dx, dy)
+            rv.smoothScrollBy(dx, dy)
         }
+        return true
     }
 
     private fun showNumberPickerDialog(
