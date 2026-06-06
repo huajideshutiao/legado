@@ -183,11 +183,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         val oldSize = adapter.getActualItemCount()
         if (books.isEmpty() && oldSize == 0) {
             loadMoreView.noMore(getString(R.string.empty))
-        } else if (oldSize >= books.size && viewModel.page > 1) {
-            loadMoreView.noMore()
         } else if (oldSize < books.size) {
             val newItems = books.subList(oldSize, books.size)
             adapter.addItems(newItems)
+        }
+        // 书源声称没下一页（或退化启发式判定到尽头）就停止上拉
+        if (!viewModel.hasNextPage) {
+            loadMoreView.noMore()
         }
     }
 

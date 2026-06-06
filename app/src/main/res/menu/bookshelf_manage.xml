@@ -26,6 +26,41 @@
     </item>
 
     <item
+        android:id="@+id/menu_filter_book_type"
+        android:title="@string/filter_book_type"
+        app:showAsAction="never">
+
+        <menu>
+
+            <group android:checkableBehavior="single">
+
+                <item
+                    android:id="@+id/menu_filter_type_all"
+                    android:title="@string/all" />
+
+                <item
+                    android:id="@+id/menu_filter_type_novel"
+                    android:title="@string/book_type_novel" />
+
+                <item
+                    android:id="@+id/menu_filter_type_comic"
+                    android:title="@string/book_type_comic" />
+
+                <item
+                    android:id="@+id/menu_filter_type_audio"
+                    android:title="@string/audio" />
+
+                <item
+                    android:id="@+id/menu_filter_type_video"
+                    android:title="@string/explore_style_video" />
+
+            </group>
+
+        </menu>
+
+    </item>
+
+    <item
         android:id="@+id/menu_export_all_use_book_source"
         android:title="@string/export_all_use_book_source" />
 

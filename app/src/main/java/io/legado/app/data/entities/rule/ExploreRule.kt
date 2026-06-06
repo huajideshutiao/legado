@@ -10,6 +10,8 @@ import kotlinx.parcelize.Parcelize
  */
 @Parcelize
 data class ExploreRule(
+    /**是否还有下一页（请求级 JS 规则，result 为整页响应 body）**/
+    override var hasMoreRule: String? = null,
     override var bookList: String? = null,
     override var name: String? = null,
     override var author: String? = null,

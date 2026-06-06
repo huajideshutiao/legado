@@ -6,15 +6,18 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import com.google.android.material.tabs.TabLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.BookInfoRule
 import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.data.entities.rule.ExploreRule
+import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.databinding.ActivityBookSourceEditBinding
@@ -37,7 +40,7 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
-import io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager
+import io.legado.app.ui.widget.recycler.NoChildScrollGridLayoutManager
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
@@ -69,8 +72,23 @@ class BookSourceEditActivity :
     private val infoEntities: ArrayList<EditEntity> = ArrayList()
     private val tocEntities: ArrayList<EditEntity> = ArrayList()
     private val contentEntities: ArrayList<EditEntity> = ArrayList()
-
-    //    private val reviewEntities: ArrayList<EditEntity> = ArrayList()
+    private val reviewEntities: ArrayList<EditEntity> = ArrayList()
+    private val bookSourceTypeSelections by lazy {
+        val labels = resources.getStringArray(R.array.book_type)
+        labels.mapIndexed { index, label -> label to index.toString() }
+    }
+    private val exploreStyleSelections by lazy {
+        val labels = resources.getStringArray(R.array.explore_style)
+        labels.mapIndexed { index, label -> label to index.toString() }
+    }
+    private val imageStyleSelections by lazy {
+        listOf(
+            getString(R.string.text_default) to null,
+            Book.imgStyleFull to Book.imgStyleFull,
+            Book.imgStyleText to Book.imgStyleText,
+            Book.imgStyleSingle to Book.imgStyleSingle
+        )
+    }
     private val selectDoc = registerHandleFile { result ->
         result.uri?.let { uri ->
             if (uri.isContentScheme()) {
@@ -166,8 +184,17 @@ class BookSourceEditActivity :
         binding.tabLayout.addTab(binding.tabLayout.newTab().apply {
             setText(R.string.source_tab_content)
         })
+        binding.tabLayout.addTab(binding.tabLayout.newTab().apply {
+            setText(R.string.source_tab_review)
+        })
         binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this)
+        val gridLayoutManager = NoChildScrollGridLayoutManager(this, 2)
+        gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int {
+                return adapter.editEntities.getOrNull(position)?.span ?: 2
+            }
+        }
+        binding.recyclerView.layoutManager = gridLayoutManager
         binding.keyboardTool.setInterface(binding.root, this)
         adapter.onSearchReplaceAction = { binding.keyboardTool.showFindReplace(it) }
         adapter.onCodeViewFocus = { codeView ->
@@ -175,6 +202,26 @@ class BookSourceEditActivity :
                 lastActiveCodeView?.clearSearch()
             }
             lastActiveCodeView = codeView
+        }
+        adapter.onCheckedChange = { entity, isChecked, btn ->
+            if (entity.key == "enableDangerousApi") {
+                val originalEnabled = viewModel.bookSource?.enableDangerousApi == true
+                if (isChecked != originalEnabled) {
+                    SharedJsScope.remove(viewModel.bookSource?.jsLib)
+                }
+                if (isChecked) {
+                    alert(R.string.enable_dangerous_api) {
+                        setMessage(R.string.enable_dangerous_api_confirm)
+                        positiveButton(R.string.ok)
+                        negativeButton(R.string.cancel) {
+                            btn.isChecked = false
+                        }
+                        onCancelled {
+                            btn.isChecked = false
+                        }
+                    }
+                }
+            }
         }
         binding.recyclerView.adapter = adapter
         binding.tabLayout.setSelectedTabIndicatorColor(accentColor)
@@ -222,7 +269,7 @@ class BookSourceEditActivity :
             3 -> infoEntities
             4 -> tocEntities
             5 -> contentEntities
-//            6 -> reviewEntities
+            6 -> reviewEntities
             else -> sourceEntities
         }
         binding.recyclerView.scrollToPosition(0)
@@ -230,42 +277,46 @@ class BookSourceEditActivity :
 
     private fun upSourceView(bookSource: BookSource?) {
         val bs = bookSource ?: BookSource()
-        bs.let {
-            binding.cbIsEnable.isChecked = it.enabled
-            binding.cbIsEnableExplore.isChecked = it.enabledExplore
-            binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
-            binding.cbIsEnableDangerousApi.isChecked = it.enableDangerousApi ?: false
-            binding.spType.setSelection(
-                when (it.bookSourceType) {
-                    BookSourceType.rss -> 5
-                    BookSourceType.video -> 4
-                    BookSourceType.file -> 3
-                    BookSourceType.image -> 2
-                    BookSourceType.audio -> 1
-                    else -> 0
-                }
-            )
-            binding.cbIsEnableDangerousApi.setOnCheckedChangeListener { btn, isChecked ->
-                if (isChecked != it.enableDangerousApi) {
-                    SharedJsScope.remove(it.jsLib)
-                }
-                if (isChecked) {
-                    alert(R.string.enable_dangerous_api) {
-                        setMessage(R.string.enable_dangerous_api_confirm)
-                        positiveButton(R.string.ok)
-                        negativeButton(R.string.cancel) {
-                            btn.isChecked = false
-                        }
-                        onCancelled {
-                            btn.isChecked = false
-                        }
-                    }
-                }
-            }
-        }
         // 基本信息
         sourceEntities.clear()
         sourceEntities.apply {
+            add(
+                EditEntity(
+                    "bookSourceType",
+                    bookSourceTypeToIndex(bs.bookSourceType).toString(),
+                    R.string.book_type,
+                    EditEntity.ViewType.spinner,
+                    bookSourceTypeSelections,
+                    span = 1
+                )
+            )
+            add(
+                EditEntity(
+                    "enabled",
+                    bs.enabled.toString(),
+                    R.string.is_enable,
+                    EditEntity.ViewType.checkBox,
+                    span = 1
+                )
+            )
+            add(
+                EditEntity(
+                    "enabledCookieJar",
+                    (bs.enabledCookieJar ?: false).toString(),
+                    R.string.auto_save_cookie,
+                    EditEntity.ViewType.checkBox,
+                    span = 1
+                )
+            )
+            add(
+                EditEntity(
+                    "enableDangerousApi",
+                    (bs.enableDangerousApi ?: false).toString(),
+                    R.string.enable_dangerous_api,
+                    EditEntity.ViewType.checkBox,
+                    span = 1
+                )
+            )
             add(EditEntity("bookSourceUrl", bs.bookSourceUrl, R.string.source_url))
             add(EditEntity("bookSourceName", bs.bookSourceName, R.string.source_name))
             add(EditEntity("bookSourceGroup", bs.bookSourceGroup, R.string.source_group))
@@ -295,11 +346,31 @@ class BookSourceEditActivity :
             add(EditEntity("intro", sr.intro, R.string.rule_book_intro))
             add(EditEntity("coverUrl", sr.coverUrl, R.string.rule_cover_url))
             add(EditEntity("bookUrl", sr.bookUrl, R.string.r_book_url))
+            add(EditEntity("hasMoreRule", sr.hasMoreRule, R.string.rule_has_more))
         }
         // 发现
         val er = bs.getExploreRule()
         exploreEntities.clear()
         exploreEntities.apply {
+            add(
+                EditEntity(
+                    "enabledExplore",
+                    bs.enabledExplore.toString(),
+                    R.string.discovery,
+                    EditEntity.ViewType.checkBox,
+                    span = 1
+                )
+            )
+            add(
+                EditEntity(
+                    "exploreStyle",
+                    bs.exploreStyle.coerceIn(0, 3).toString(),
+                    R.string.explore_style,
+                    EditEntity.ViewType.spinner,
+                    exploreStyleSelections,
+                    span = 1
+                )
+            )
             add(EditEntity("exploreUrl", bs.exploreUrl, R.string.r_find_url))
             add(EditEntity("bookList", er.bookList, R.string.r_book_list))
             add(EditEntity("name", er.name, R.string.r_book_name))
@@ -310,6 +381,7 @@ class BookSourceEditActivity :
             add(EditEntity("intro", er.intro, R.string.rule_book_intro))
             add(EditEntity("coverUrl", er.coverUrl, R.string.rule_cover_url))
             add(EditEntity("bookUrl", er.bookUrl, R.string.r_book_url))
+            add(EditEntity("hasMoreRule", er.hasMoreRule, R.string.rule_has_more))
         }
         // 详情页
         val ir = bs.getBookInfoRule()
@@ -359,11 +431,51 @@ class BookSourceEditActivity :
             add(EditEntity("webJs", cr.webJs, R.string.rule_web_js))
             add(EditEntity("sourceRegex", cr.sourceRegex, R.string.rule_source_regex))
             add(EditEntity("replaceRegex", cr.replaceRegex, R.string.rule_replace_regex))
-            add(EditEntity("imageStyle", cr.imageStyle, R.string.rule_image_style))
+            add(
+                EditEntity(
+                    "imageStyle",
+                    cr.imageStyle,
+                    R.string.rule_image_style,
+                    EditEntity.ViewType.spinner,
+                    imageStyleSelections
+                )
+            )
             add(EditEntity("imageDecode", cr.imageDecode, R.string.rule_image_decode))
             add(EditEntity("payAction", cr.payAction, R.string.rule_pay_action))
             add(EditEntity("lrcRule", cr.lrcRule, R.string.rule_lrc_rule))
             add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
+        }
+        // 段评
+        val rr = bs.getReviewRule()
+        reviewEntities.clear()
+        reviewEntities.apply {
+            add(
+                EditEntity(
+                    "enabledReview",
+                    bs.enabledReview.toString(),
+                    R.string.enable_review,
+                    EditEntity.ViewType.checkBox
+                )
+            )
+            add(EditEntity("reviewCountRule", rr.reviewCountRule, R.string.rule_review_count))
+            add(EditEntity("totalCountRule", rr.totalCountRule, R.string.rule_review_total_count))
+            add(EditEntity("reviewUrl", rr.reviewUrl, R.string.rule_review_url))
+            add(EditEntity("reviewList", rr.reviewList, R.string.rule_review_list))
+            add(EditEntity("hasMoreRule", rr.hasMoreRule, R.string.rule_has_more))
+            add(EditEntity("reviewIdRule", rr.reviewIdRule, R.string.rule_review_id))
+            add(EditEntity("avatarRule", rr.avatarRule, R.string.rule_avatar))
+            add(EditEntity("nameRule", rr.nameRule, R.string.rule_review_name))
+            add(EditEntity("contentRule", rr.contentRule, R.string.rule_review_content))
+            add(EditEntity("postTimeRule", rr.postTimeRule, R.string.rule_post_time))
+            add(EditEntity("extraRule", rr.extraRule, R.string.rule_review_extra))
+            add(EditEntity("imagesRule", rr.imagesRule, R.string.rule_review_images))
+            add(EditEntity("voteUpCountRule", rr.voteUpCountRule, R.string.rule_vote_up_count))
+            add(EditEntity("replyCountRule", rr.replyCountRule, R.string.rule_reply_count))
+            add(EditEntity("replyListUrl", rr.replyListUrl, R.string.rule_reply_list_url))
+            add(EditEntity("voteUpRule", rr.voteUpRule, R.string.rule_vote_up))
+            add(EditEntity("voteDownRule", rr.voteDownRule, R.string.rule_vote_down))
+            add(EditEntity("replyRule", rr.replyRule, R.string.rule_reply))
+            add(EditEntity("deleteRule", rr.deleteRule, R.string.rule_delete_review))
         }
         binding.tabLayout.selectTab(binding.tabLayout.getTabAt(0))
         setEditEntities(0)
@@ -371,40 +483,37 @@ class BookSourceEditActivity :
 
     private fun getSource(): BookSource {
         val source = viewModel.bookSource?.copy() ?: BookSource()
-        source.enabled = binding.cbIsEnable.isChecked
-        source.enabledExplore = binding.cbIsEnableExplore.isChecked
-        source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
-        source.enableDangerousApi = binding.cbIsEnableDangerousApi.isChecked
-        source.bookSourceType = when (binding.spType.selectedItemPosition) {
-            5 -> BookSourceType.rss
-            4 -> BookSourceType.video
-            3 -> BookSourceType.file
-            2 -> BookSourceType.image
-            1 -> BookSourceType.audio
-            else -> BookSourceType.default
-        }
         val searchRule = SearchRule()
         val exploreRule = ExploreRule()
         val bookInfoRule = BookInfoRule()
         val tocRule = TocRule()
         val contentRule = ContentRule()
-//        val reviewRule = ReviewRule()
+        val reviewRule = ReviewRule()
         sourceEntities.forEach {
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "bookSourceUrl" -> source.bookSourceUrl = it.value ?: ""
-                "bookSourceName" -> source.bookSourceName = it.value ?: ""
-                "bookSourceGroup" -> source.bookSourceGroup = it.value
-                "loginUrl" -> source.loginUrl = it.value
-                "loginUi" -> source.loginUi = it.value
-                "loginCheckJs" -> source.loginCheckJs = it.value
-                "coverDecodeJs" -> source.coverDecodeJs = it.value
-                "bookUrlPattern" -> source.bookUrlPattern = it.value
-                "header" -> source.header = it.value
-                "bookSourceComment" -> source.bookSourceComment = it.value
-                "concurrentRate" -> source.concurrentRate = it.value
-                "variableComment" -> source.variableComment = it.value
-                "jsLib" -> source.jsLib = it.value
+                "bookSourceType" -> source.bookSourceType =
+                    indexToBookSourceType(it.value?.toIntOrNull() ?: 0)
+                "enabled" -> source.enabled = it.value == "true"
+                "enabledCookieJar" -> source.enabledCookieJar = it.value == "true"
+                "enableDangerousApi" -> source.enableDangerousApi = it.value == "true"
+                else -> {
+                    it.value = it.value?.takeIf { s -> s.isNotBlank() }
+                    when (it.key) {
+                        "bookSourceUrl" -> source.bookSourceUrl = it.value ?: ""
+                        "bookSourceName" -> source.bookSourceName = it.value ?: ""
+                        "bookSourceGroup" -> source.bookSourceGroup = it.value
+                        "loginUrl" -> source.loginUrl = it.value
+                        "loginUi" -> source.loginUi = it.value
+                        "loginCheckJs" -> source.loginCheckJs = it.value
+                        "coverDecodeJs" -> source.coverDecodeJs = it.value
+                        "bookUrlPattern" -> source.bookUrlPattern = it.value
+                        "header" -> source.header = it.value
+                        "bookSourceComment" -> source.bookSourceComment = it.value
+                        "concurrentRate" -> source.concurrentRate = it.value
+                        "variableComment" -> source.variableComment = it.value
+                        "jsLib" -> source.jsLib = it.value
+                    }
+                }
             }
         }
         searchEntities.forEach {
@@ -421,9 +530,20 @@ class BookSourceEditActivity :
                 "lastChapter" -> searchRule.lastChapter = it.value
                 "coverUrl" -> searchRule.coverUrl = it.value
                 "bookUrl" -> searchRule.bookUrl = it.value
+                "hasMoreRule" -> searchRule.hasMoreRule = it.value
             }
         }
         exploreEntities.forEach {
+            when (it.key) {
+                "enabledExplore" -> {
+                    source.enabledExplore = it.value == "true"
+                    return@forEach
+                }
+                "exploreStyle" -> {
+                    source.exploreStyle = (it.value?.toIntOrNull() ?: 0).coerceIn(0, 3)
+                    return@forEach
+                }
+            }
             it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
                 "exploreUrl" -> source.exploreUrl = it.value
@@ -436,6 +556,7 @@ class BookSourceEditActivity :
                 "lastChapter" -> exploreRule.lastChapter = it.value
                 "coverUrl" -> exploreRule.coverUrl = it.value
                 "bookUrl" -> exploreRule.bookUrl = it.value
+                "hasMoreRule" -> exploreRule.hasMoreRule = it.value
             }
         }
         infoEntities.forEach {
@@ -486,11 +607,40 @@ class BookSourceEditActivity :
                 "musicCover" -> contentRule.musicCover = it.value
             }
         }
+        reviewEntities.forEach {
+            if (it.key == "enabledReview") {
+                source.enabledReview = it.value == "true"
+                return@forEach
+            }
+            it.value = it.value?.takeIf { s -> s.isNotBlank() }
+            when (it.key) {
+                "reviewUrl" -> reviewRule.reviewUrl = it.value
+                "reviewList" -> reviewRule.reviewList = it.value
+                "reviewCountRule" -> reviewRule.reviewCountRule = it.value
+                "totalCountRule" -> reviewRule.totalCountRule = it.value
+                "hasMoreRule" -> reviewRule.hasMoreRule = it.value
+                "reviewIdRule" -> reviewRule.reviewIdRule = it.value
+                "avatarRule" -> reviewRule.avatarRule = it.value
+                "nameRule" -> reviewRule.nameRule = it.value
+                "contentRule" -> reviewRule.contentRule = it.value
+                "postTimeRule" -> reviewRule.postTimeRule = it.value
+                "extraRule" -> reviewRule.extraRule = it.value
+                "imagesRule" -> reviewRule.imagesRule = it.value
+                "voteUpCountRule" -> reviewRule.voteUpCountRule = it.value
+                "replyCountRule" -> reviewRule.replyCountRule = it.value
+                "replyListUrl" -> reviewRule.replyListUrl = it.value
+                "voteUpRule" -> reviewRule.voteUpRule = it.value
+                "voteDownRule" -> reviewRule.voteDownRule = it.value
+                "replyRule" -> reviewRule.replyRule = it.value
+                "deleteRule" -> reviewRule.deleteRule = it.value
+            }
+        }
         source.ruleSearch = searchRule
         source.ruleExplore = exploreRule
         source.ruleBookInfo = bookInfoRule
         source.ruleToc = tocRule
         source.ruleContent = contentRule
+        source.ruleReview = reviewRule
         return source
     }
 
@@ -550,6 +700,24 @@ class BookSourceEditActivity :
                 mode = HandleFileContract.FILE
             }
         }
+    }
+
+    private fun bookSourceTypeToIndex(type: Int): Int = when (type) {
+        BookSourceType.rss -> 5
+        BookSourceType.video -> 4
+        BookSourceType.file -> 3
+        BookSourceType.image -> 2
+        BookSourceType.audio -> 1
+        else -> 0
+    }
+
+    private fun indexToBookSourceType(index: Int): Int = when (index) {
+        5 -> BookSourceType.rss
+        4 -> BookSourceType.video
+        3 -> BookSourceType.file
+        2 -> BookSourceType.image
+        1 -> BookSourceType.audio
+        else -> BookSourceType.default
     }
 
     override fun sendText(text: String) {

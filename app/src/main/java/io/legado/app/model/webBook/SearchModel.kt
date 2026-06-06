@@ -44,6 +44,9 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
 
+    /** 已声明没有下一页的源 url，翻页时直接跳过，避免多发空请求。 */
+    private val exhaustedSources = HashSet<String>()
+
     private fun initSearchPool(): ExecutorCoroutineDispatcher {
         return Executors
             .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
@@ -60,6 +63,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             }
             searchBooks.clear()
             bookSources = callBack.getSearchScope().getBookSources()
+            exhaustedSources.clear()
             if (bookSources.isEmpty()) {
                 callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
                 return
@@ -82,14 +86,16 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         searchJob = scope.launch(pool) {
             flow {
                 bookSources.forEach { source ->
-                    emit(source)
+                    if (source.bookSourceUrl !in exhaustedSources) {
+                        emit(source)
+                    }
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
             }.mapParallelSafe(threadCount, bookSources.size) { bookSource ->
                 withTimeout(timeLimit) {
-                    WebBook.getBookListAwait(
+                    val page = WebBook.getBookListAwait(
                         bookSource, searchKey, searchPage,
                         filter = { name, author ->
                             !precision || name.contains(searchKey) ||
@@ -101,14 +107,21 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                                 callBack.onSearchOptionsResolved(options)
                             }
                         } else null,
-                        selectedOptions = selectedOptions
+                        selectedOptions = selectedOptions,
                     )
+                    bookSource to page
                 }
-            }.onEach { items ->
+            }.onEach { (source, page) ->
+                val items = page.books
                 for (book in items) {
                     book.releaseHtmlData()
                 }
-                hasMore = hasMore || items.isNotEmpty()
+                // 该源这页声明没下一页了，下次翻页就不再请求它
+                if (!page.hasNextPage) {
+                    exhaustedSources.add(source.bookSourceUrl)
+                }
+                // 多书源聚合：任一家声称还有下一页，整体就还有
+                hasMore = hasMore || page.hasNextPage
                 mergeItems(items, precision)
                 currentCoroutineContext().ensureActive()
                 callBack.onSearchSuccess(searchBooks)

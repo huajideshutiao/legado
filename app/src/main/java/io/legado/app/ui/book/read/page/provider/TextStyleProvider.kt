@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read.page.provider
 
+import android.graphics.Paint
 import android.graphics.Paint.FontMetrics
 import android.graphics.Typeface
 import android.os.Build
@@ -78,9 +79,12 @@ object TextStyleProvider {
         getPaints(typeface).let {
             titlePaint = it.first
             contentPaint = it.second
-//            reviewPaint.color = contentPaint.color
-//            reviewPaint.textSize = contentPaint.textSize * 0.45f
-//            reviewPaint.textAlign = Paint.Align.CENTER
+            reviewPaint.color = contentPaint.color
+            // 段评气泡偏弱化，不抢正文，统一 60% 透明度
+            reviewPaint.alpha = 153
+            reviewPaint.textSize = contentPaint.textSize * 0.45f
+            reviewPaint.textAlign = Paint.Align.CENTER
+            reviewPaint.isAntiAlias = true
         }
         //间距
         lineSpacingExtra = ReadBookConfig.lineSpacingExtra / 10f

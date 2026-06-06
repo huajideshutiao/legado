@@ -33,8 +33,10 @@ import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.getExportFileName
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -109,6 +111,7 @@ class BookshelfManageActivity :
     private val adapter by lazy { BookAdapter(this, this) }
     private val itemTouchCallback by lazy { ItemTouchCallback(adapter) }
     private val incrementalFilter = BookFilter.IncrementalFilter<Book>()
+    private var bookshelfTypeFilter = 0
     private var booksFlowJob: Job? = null
     private var menu: Menu? = null
     private val searchView: SearchView by lazy {
@@ -354,13 +357,25 @@ class BookshelfManageActivity :
     private fun upBookData() {
         books?.let { books ->
             val searchKey = searchView.query?.toString()
-            adapter.setItems(incrementalFilter.filter(books, searchKey))
+            val typeFiltered = when (bookshelfTypeFilter) {
+                1 -> books.filter { !it.isImage && !it.isAudio && !it.isVideo }
+                2 -> books.filter { it.isImage }
+                3 -> books.filter { it.isAudio }
+                4 -> books.filter { it.isVideo }
+                else -> books
+            }
+            adapter.setItems(incrementalFilter.filter(typeFiltered, searchKey))
         }
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
+            R.id.menu_filter_type_all -> setBookTypeFilter(0)
+            R.id.menu_filter_type_novel -> setBookTypeFilter(1)
+            R.id.menu_filter_type_comic -> setBookTypeFilter(2)
+            R.id.menu_filter_type_audio -> setBookTypeFilter(3)
+            R.id.menu_filter_type_video -> setBookTypeFilter(4)
             R.id.menu_open_book_info_by_click_title -> {
                 AppConfig.openBookInfoByClickTitle = !item.isChecked
                 adapter.notifyItemRangeChanged(0, adapter.itemCount)
@@ -461,6 +476,21 @@ class BookshelfManageActivity :
                 subMenu.add(R.id.menu_group, bookGroup.order, Menu.NONE, bookGroup.groupName)
             }
         }
+        val checkedId = when (bookshelfTypeFilter) {
+            1 -> R.id.menu_filter_type_novel
+            2 -> R.id.menu_filter_type_comic
+            3 -> R.id.menu_filter_type_audio
+            4 -> R.id.menu_filter_type_video
+            else -> R.id.menu_filter_type_all
+        }
+        menu?.findItem(checkedId)?.isChecked = true
+    }
+
+    private fun setBookTypeFilter(filter: Int) {
+        if (bookshelfTypeFilter == filter) return
+        bookshelfTypeFilter = filter
+        upMenu()
+        upBookData()
     }
 
     private fun alertDelSelection() {

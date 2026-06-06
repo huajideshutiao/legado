@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
@@ -19,6 +18,7 @@ import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
+import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
@@ -27,6 +27,7 @@ import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.channels.Channel
@@ -44,7 +45,14 @@ class TextChapterLayout(
     private val textPages: ArrayList<TextPage>,
     private val book: Book,
     private val bookContent: BookContent,
+    private val reviewCountDeferred: Deferred<Map<Int, Int>?>? = null,
 ) {
+
+    // 排版开始时非阻塞 peek 段评数 map：已就绪→用上；未就绪→留 null，等排版结束再决定要不要重排。
+    // 暴露 internal 是为了让 ReadBook 在排版完成后判断「段评数是不是后到的」。
+    @Volatile
+    var reviewCountMap: Map<Int, Int>? = null
+        private set
 
     @Volatile
     private var listener: LayoutProgressListener? = textChapter
@@ -89,6 +97,10 @@ class TextChapterLayout(
     private var absStartX = paddingLeft
     private var floatArray = FloatArray(128)
 
+    // 当前 setTypeText 处理段落号；createColumn 把 reviewChar 转 ReviewColumn 时回填。
+    // 0 表示章节级（标题末），>=1 是正文段落号（与 TextLine.paragraphNum 对齐）。
+    private var currentParagraphIndex = 0
+
     private var isCompleted = false
     private val job: Coroutine<*>
 
@@ -110,6 +122,9 @@ class TextChapterLayout(
             start = CoroutineStart.LAZY,
             executeContext = IO
         ) {
+            // 非阻塞 peek：段评数 IO 已完成就当场用上；没完成就先按「没段评」排版，
+            // 后续 ReadBook 会在 deferred 完成时触发重排——保证「即开即用」
+            reviewCountMap = reviewCountDeferred?.takeIf { it.isCompleted }?.await()
             val parsedLines = ChapterContentParser.parse(bookContent)
             val imageStyle = book.getImageStyle()
             val isSingle = imageStyle.equals(Book.imgStyleSingle, true)
@@ -310,12 +325,16 @@ class TextChapterLayout(
         val imageStyle = book.getImageStyle()
         val isSingleStyle = imageStyle.equals(Book.imgStyleSingle, true)
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
+        // 当前书源启用段评 + 配了 reviewUrl 才追加 ▨ 占位符
+        val enableReview = book.getBookSource()?.let {
+            it.enabledReview && it.ruleReview?.reviewUrl?.isNotBlank() == true
+        } == true
 
         if (titleMode != 2 || bookChapter.isVolume || contents.isEmpty()) {
             displayTitle.splitNotBlank("\n").forEach { text ->
                 setTypeText(
                     book,
-                    if (AppConfig.enableReview) text + ChapterProvider.reviewChar else text,
+                    if (enableReview) text + ChapterProvider.reviewChar else text,
                     titlePaint,
                     titlePaintTextHeight,
                     titlePaintFontMetrics,
@@ -334,6 +353,7 @@ class TextChapterLayout(
         }
 
         var isSetTypedImage = false
+        var paragraphSeq = 0
         parsedLines.forEach { parsedLine ->
             currentCoroutineContext().ensureActive()
             val contentText = parsedLine.text
@@ -363,15 +383,26 @@ class TextChapterLayout(
                     rawLine
                 }
 
+                paragraphSeq++
+                val reviewIndex = paragraphSeq
+                // 仅给「有计数」的非空段落追加 ▨——计数 map 为空时整章一律不挂气泡，
+                // 避免给每段都预留占位破坏排版
+                val reviewCountForLine = reviewCountMap?.get(reviewIndex) ?: 0
+                val lineWithReview =
+                    if (enableReview && line.isNotEmpty() && reviewCountForLine > 0) {
+                    line + ChapterProvider.reviewChar
+                } else line
+
                 if (isTextImageStyle || imgList.isEmpty()) {
                     setTypeText(
                         book,
-                        line,
+                        lineWithReview,
                         contentPaint,
                         contentPaintTextHeight,
                         contentPaintFontMetrics,
                         imageStyle,
-                        imgList = imgList
+                        imgList = imgList,
+                        paragraphIndex = reviewIndex
                     )
                 } else {
                     if (isSingleStyle && isSetTypedImage) {
@@ -382,7 +413,7 @@ class TextChapterLayout(
                     val hasNonEmbeddedImage = line.contains(ChapterProvider.srcReplaceChar)
                     var isFirstSegment = true
                     val tmp = StringBuilder()
-                    line.forEach { char ->
+                    lineWithReview.forEach { char ->
                         currentCoroutineContext().ensureActive()
                         if (char == ChapterProvider.srcReplaceChar[0]) {
                             val img = imgList.pollFirst() ?: return@forEach
@@ -399,7 +430,8 @@ class TextChapterLayout(
                                         contentPaintFontMetrics,
                                         "TEXT",
                                         isFirstLine = isFirstSegment,
-                                        imgList = embeddedImages
+                                        imgList = embeddedImages,
+                                        paragraphIndex = reviewIndex
                                     )
                                     tmp.clear(); embeddedImages.clear(); isFirstSegment = false
                                 }
@@ -417,7 +449,8 @@ class TextChapterLayout(
                             contentPaintFontMetrics,
                             "TEXT",
                             isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
-                            imgList = embeddedImages
+                            imgList = embeddedImages,
+                            paragraphIndex = reviewIndex
                         )
                     }
                 }
@@ -527,8 +560,10 @@ class TextChapterLayout(
         isFirstLine: Boolean = true,
         emptyContent: Boolean = false,
         isVolumeTitle: Boolean = false,
-        imgList: LinkedList<Img>? = null
+        imgList: LinkedList<Img>? = null,
+        paragraphIndex: Int = 0
     ) {
+        currentParagraphIndex = paragraphIndex
         val widthsArray = allocateFloatArray(text.length)
         textPaint.getTextWidthsCompat(text, widthsArray)
         val splitResult = measureTextSplit(text, widthsArray)
@@ -844,6 +879,10 @@ class TextChapterLayout(
         xEnd: Float,
         imgList: LinkedList<Img>?
     ) = when {
+        char == ChapterProvider.reviewChar -> {
+            val cnt = reviewCountMap?.get(currentParagraphIndex) ?: 0
+            ReviewColumn(absStartX + xStart, absStartX + xEnd, currentParagraphIndex, cnt)
+        }
         imgList != null && char == ChapterProvider.srcReplaceChar -> {
             val img = imgList.removeFirst()
             // 严禁在此处同步下载图片，下载由 init 中的后台协程统一管理

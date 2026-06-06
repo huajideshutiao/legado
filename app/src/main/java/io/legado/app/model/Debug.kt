@@ -10,6 +10,9 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
@@ -18,6 +21,8 @@ import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import org.mozilla.javascript.NativeArray
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -163,7 +168,8 @@ object Debug {
         val explore = Coroutine.async(scope) {
             val debugUrl = parseExploreUrl(url)
             WebBook.getBookListAwait(bookSource, debugUrl, 1, isSearch = false)
-        }.onSuccess { exploreBooks ->
+        }.onSuccess { page ->
+            val exploreBooks = page.books
                 if (exploreBooks.isNotEmpty()) {
                     log(debugSource, "︽发现页解析完成")
                     log(debugSource, showTime = false)
@@ -207,7 +213,8 @@ object Debug {
         log(debugSource, "︾开始解析搜索页")
         val search = Coroutine.async(scope) {
             WebBook.getBookListAwait(bookSource, key, 1)
-        }.onSuccess { searchBooks ->
+        }.onSuccess { page ->
+            val searchBooks = page.books
                 if (searchBooks.isNotEmpty()) {
                     log(debugSource, "︽搜索页解析完成")
                     log(debugSource, showTime = false)
@@ -279,11 +286,158 @@ object Debug {
         val content = Coroutine.async(scope) {
             getContentAwait(bookSource, book, bookChapter, nextChapterUrl, false)
         }.onSuccess {
-            log(debugSource, "︽正文页解析完成", state = 1000)
+            log(debugSource, "︽正文页解析完成")
+            log(debugSource, showTime = false)
+            reviewDebug(scope, bookSource, book, bookChapter)
         }.onError {
             log(debugSource, it.stackTraceStr, state = -1)
         }
         tasks.add(content)
+    }
+
+    private fun reviewDebug(
+        scope: CoroutineScope,
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter
+    ) {
+        val rule = bookSource.ruleReview
+        if (rule == null || rule.reviewUrl.isNullOrBlank()) {
+            log(debugSource, "≡未配置段评规则,跳过")
+            log(debugSource, showTime = false)
+            lrcDebug(scope, bookSource, book, bookChapter)
+            return
+        }
+        log(debugSource, "︾开始解析段评")
+        val task = Coroutine.async(scope) {
+            // 优先用 countMap 里有评论的段落号去拉，否则退回章节级(0)
+            var paragraphIndex = 0
+            if (!rule.reviewCountRule.isNullOrBlank()) {
+                val countMap = WebBook.getReviewCountAwait(
+                    bookSource, book, bookChapter
+                ).getOrThrow()
+                log(
+                    debugSource, "≡段评数 map(取前 5): " +
+                        countMap.entries.take(5).joinToString { "${it.key}=${it.value}" }
+                )
+                countMap.entries.firstOrNull { it.value > 0 }?.key?.let {
+                    paragraphIndex = it
+                }
+            }
+            log(debugSource, "≡使用 paragraphIndex=$paragraphIndex 拉取段评")
+            paragraphIndex to WebBook.getReviewListAwait(
+                bookSource, book, bookChapter, paragraphIndex
+            ).getOrThrow()
+        }.onSuccess { (paragraphIndex, page) ->
+            log(debugSource, "︽段评解析完成")
+            log(debugSource, showTime = false)
+            val quoted = page.reviews.firstOrNull { it.replyCount > 0 && !it.id.isNullOrBlank() }
+            if (quoted != null && !rule.replyListUrl.isNullOrBlank()) {
+                reviewRepliesDebug(
+                    scope, bookSource, book, bookChapter, paragraphIndex, quoted.id!!
+                )
+            } else {
+                log(debugSource, "≡未找到带回复的段评或未配置 replyListUrl 规则,跳过回复解析")
+                log(debugSource, showTime = false)
+                lrcDebug(scope, bookSource, book, bookChapter)
+            }
+        }.onError {
+            log(debugSource, "段评解析出错:${it.localizedMessage}")
+            lrcDebug(scope, bookSource, book, bookChapter)
+        }
+        tasks.add(task)
+    }
+
+    private fun reviewRepliesDebug(
+        scope: CoroutineScope,
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter,
+        paragraphIndex: Int,
+        reviewId: String,
+    ) {
+        log(debugSource, "︾开始解析段评回复 reviewId=$reviewId")
+        val task = Coroutine.async(scope) {
+            WebBook.getReviewRepliesAwait(
+                bookSource, book, bookChapter, paragraphIndex, reviewId
+            ).getOrThrow()
+        }.onSuccess { page ->
+            log(debugSource, "≡回复条数:${page.reviews.size}")
+            log(debugSource, "︽段评回复解析完成")
+            log(debugSource, showTime = false)
+            lrcDebug(scope, bookSource, book, bookChapter)
+        }.onError {
+            log(debugSource, "段评回复解析出错:${it.localizedMessage}")
+            lrcDebug(scope, bookSource, book, bookChapter)
+        }
+        tasks.add(task)
+    }
+
+    private fun lrcDebug(
+        scope: CoroutineScope,
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter
+    ) {
+        val lrcRule = bookSource.getContentRule().lrcRule
+        if (lrcRule.isNullOrBlank()) {
+            musicCoverDebug(scope, bookSource, book, bookChapter)
+            return
+        }
+        log(debugSource, "︾开始解析歌词规则")
+        val task = Coroutine.async(scope) {
+            val rule = AnalyzeRule(book, bookSource)
+            rule.setCoroutineContext(currentCoroutineContext())
+            rule.setBaseUrl(bookChapter.url)
+            rule.setChapter(bookChapter)
+            rule.evalJS(lrcRule)
+        }.onSuccess { raw ->
+            when (raw) {
+                is NativeArray -> {
+                    log(debugSource, "≡歌词行数:${raw.length}")
+                    for (i in 0 until raw.length.toInt()) {
+                        log(debugSource, raw.get(i, raw)?.toString().orEmpty(), showTime = false)
+                    }
+                }
+
+                null -> log(debugSource, "≡歌词为空")
+                else -> log(debugSource, "≡歌词数据:$raw")
+            }
+            log(debugSource, "︽歌词解析完成")
+            log(debugSource, showTime = false)
+            musicCoverDebug(scope, bookSource, book, bookChapter)
+        }.onError {
+            log(debugSource, "歌词解析出错:${it.localizedMessage}")
+            musicCoverDebug(scope, bookSource, book, bookChapter)
+        }
+        tasks.add(task)
+    }
+
+    private fun musicCoverDebug(
+        scope: CoroutineScope,
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter
+    ) {
+        val musicCover = bookSource.getContentRule().musicCover
+        if (musicCover.isNullOrBlank()) {
+            log(debugSource, "≡调试流程完成", state = 1000)
+            return
+        }
+        log(debugSource, "︾开始解析音乐封面规则")
+        val task = Coroutine.async(scope) {
+            val rule = AnalyzeRule(book, bookSource)
+            rule.setCoroutineContext(currentCoroutineContext())
+            rule.setBaseUrl(bookChapter.url)
+            rule.setChapter(bookChapter)
+            rule.evalJS(musicCover).toString()
+        }.onSuccess { url ->
+            log(debugSource, "≡音乐封面 URL:$url")
+            log(debugSource, "︽音乐封面解析完成", state = 1000)
+        }.onError {
+            log(debugSource, "音乐封面解析出错:${it.localizedMessage}", state = -1)
+        }
+        tasks.add(task)
     }
 
     interface Callback {

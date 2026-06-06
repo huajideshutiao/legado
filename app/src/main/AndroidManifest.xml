@@ -135,7 +135,8 @@
         </activity> <!-- 书籍详情页 -->
         <activity
             android:name=".ui.book.info.BookInfoActivity"
-            android:launchMode="singleTop" /> <!-- 书籍信息编辑 -->
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustNothing" /> <!-- 书籍信息编辑 -->
         <activity
             android:name=".ui.book.info.edit.BookInfoEditActivity"
             android:launchMode="singleTask" /> <!-- 音频播放界面 -->

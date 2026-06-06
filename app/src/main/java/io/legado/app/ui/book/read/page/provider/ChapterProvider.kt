@@ -133,6 +133,7 @@ object ChapterProvider {
         displayTitle: String,
         bookContent: BookContent,
         chapterSize: Int,
+        reviewCountDeferred: kotlinx.coroutines.Deferred<Map<Int, Int>?>? = null,
     ): TextChapter {
 
         val textChapter = TextChapter(
@@ -144,7 +145,7 @@ object ChapterProvider {
             bookChapter.isPay,
             bookContent.effectiveReplaceRules
         ).apply {
-            createLayout(scope, book, bookContent)
+            createLayout(scope, book, bookContent, reviewCountDeferred)
         }
 
         return textChapter

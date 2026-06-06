@@ -46,6 +46,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val exploreOptions = mutableListOf<ExploreOption>()
     var page = 1
         private set
+
+    /** 最近一次拉取后，是否还有下一页。书源配了 hasMoreRule 走 JS，否则按"本页非空就当还有"。 */
+    var hasNextPage: Boolean = true
+        private set
     private var books = linkedSetOf<SearchBook>()
 
     init {
@@ -151,10 +155,11 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                         optionsReadyLiveData.postValue(Unit)
                     }
                 },
-                selectedOptions = selectedOptions
+                selectedOptions = selectedOptions,
             )
-        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { searchBooks ->
-            books.addAll(searchBooks)
+        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { pageResult ->
+            hasNextPage = pageResult.hasNextPage
+            books.addAll(pageResult.books)
             booksData.postValue(books.toList())
             page++
         }.onError {

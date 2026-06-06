@@ -2,6 +2,7 @@ package io.legado.app.model.webBook
 
 import io.legado.app.R
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
@@ -40,8 +41,8 @@ object BookList {
         isSearch: Boolean = true,
         isRedirect: Boolean = false,
         filter: ((name: String, author: String) -> Boolean)? = null,
-        shouldBreak: ((size: Int) -> Boolean)? = null
-    ): ArrayList<SearchBook> {
+        shouldBreak: ((size: Int) -> Boolean)? = null,
+    ): BookListPage {
         body ?: throw NoStackTraceException(
             appCtx.getString(
                 R.string.error_get_web_content,
@@ -75,7 +76,7 @@ object BookList {
                     searchBook.infoHtml = body
                     bookList.add(searchBook)
                 }
-                return bookList
+                return BookListPage(bookList, hasNextPage = false)
             }
         }
         val collections: List<Any>
@@ -138,7 +139,28 @@ object BookList {
             }
         }
         Debug.log(bookSource.bookSourceUrl, "◇书籍总数:${bookList.size}")
-        return bookList
+        val hasMoreRuleStr = bookListRule.hasMoreRule
+        val hasNextPage = if (hasMoreRuleStr.isNullOrBlank()) {
+            // 未配置：保守按"列表非空就当还有下一页"，与历史行为一致
+            bookList.isNotEmpty()
+        } else {
+            analyzeRule.setContent(body)
+            Debug.log(bookSource.bookSourceUrl, "┌判断是否有下一页")
+            val raw = runCatching { analyzeRule.evalJS(hasMoreRuleStr, body) }.getOrNull()
+            Debug.log(bookSource.bookSourceUrl, "└$raw")
+            parseBoolean(raw)
+        }
+        return BookListPage(bookList, hasNextPage)
+    }
+
+    private fun parseBoolean(raw: Any?): Boolean = when (raw) {
+        null -> false
+        is Boolean -> raw
+        is Number -> raw.toDouble() != 0.0
+        else -> {
+            val s = raw.toString().trim()
+            s.isNotEmpty() && !s.equals("false", true) && s != "0" && s != "null"
+        }
     }
 
     @Throws(Exception::class)

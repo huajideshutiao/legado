@@ -64,6 +64,8 @@ class AnalyzeRule(
     private var isJSON: Boolean = false
     private var isRegex: Boolean = false
 
+    private var variables: Map<String, Any>? = null
+
     private var analyzeByXPath: AnalyzeByXPath? = null
     private var analyzeByJSoup: AnalyzeByJSoup? = null
     private var analyzeByJSonPath: AnalyzeByJSonPath? = null
@@ -775,6 +777,7 @@ class AnalyzeRule(
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
+            variables?.forEach { (k, v) -> bindings[k] = v }
             bindings["java"] = this
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
@@ -901,6 +904,11 @@ class AnalyzeRule(
 
         fun AnalyzeRule.setChapter(chapter: BookChapter?): AnalyzeRule {
             this.chapter = chapter
+            return this
+        }
+
+        fun AnalyzeRule.setVariables(variables: Map<String, Any>?): AnalyzeRule {
+            this.variables = variables
             return this
         }
 

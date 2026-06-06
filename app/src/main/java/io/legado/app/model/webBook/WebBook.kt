@@ -4,15 +4,18 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.ReviewPage
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setVariables
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.GSON
@@ -35,7 +38,7 @@ object WebBook {
         isSearch: Boolean = true,
         onUrlResolved: ((AnalyzeUrl) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
-    ): ArrayList<SearchBook> {
+    ): BookListPage {
         var url = key
         if (isSearch) {
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
@@ -241,6 +244,166 @@ object WebBook {
     }
 
     /**
+     * 获取段评列表
+     * paragraphIndex: 0=章节级评论，>=1=正文第 N 段
+     * page: 段评分页号（书源用 {{page}} 引用）
+     * sort: 排序方式，0=最热，1=最新（书源用 {{sort}} 引用）
+     */
+    suspend fun getReviewListAwait(
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter?,
+        paragraphIndex: Int,
+        page: Int = 1,
+        sort: Int = 0,
+    ): Result<ReviewPage> = runCatching {
+        val reviewRule = bookSource.ruleReview
+            ?: throw NoStackTraceException("书源未配置段评规则")
+        val rawUrl = reviewRule.reviewUrl
+            ?: throw NoStackTraceException("reviewUrl 为空")
+        val variables = mapOf(
+            "paragraphIndex" to paragraphIndex,
+            "sort" to sort,
+        )
+        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
+        val analyzeUrl = AnalyzeUrl(
+            mUrl = rawUrl,
+            page = page,
+            baseUrl = baseUrl,
+            source = bookSource,
+            ruleData = book,
+            chapter = bookChapter,
+            coroutineContext = currentCoroutineContext(),
+            variables = variables
+        )
+        val res = checkLogin(analyzeUrl, bookSource)
+        checkRedirect(bookSource, res)
+        BookReview.analyzeReviewList(
+            bookSource = bookSource,
+            book = book,
+            bookChapter = bookChapter,
+            baseUrl = baseUrl,
+            redirectUrl = res.url,
+            body = res.body,
+            reviewRule = reviewRule,
+            variables = variables
+        )
+    }.onFailure {
+        currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * 获取某条段评的回复列表
+     * 用 reviewRule.replyListUrl 这个 JS 规则惰性求出回复列表 URL：
+     * 变量 paragraphIndex / reviewId，规则返回回复列表 URL 字符串。
+     * 复用 reviewList/avatarRule 等同一套解析规则。
+     */
+    suspend fun getReviewRepliesAwait(
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter?,
+        paragraphIndex: Int,
+        reviewId: String,
+        page: Int = 1,
+    ): Result<ReviewPage> = runCatching {
+        val reviewRule = bookSource.ruleReview
+            ?: throw NoStackTraceException("书源未配置段评规则")
+        val replyListUrlRule = reviewRule.replyListUrl
+            ?: throw NoStackTraceException("书源未配置回复列表URL规则")
+        val variables = mutableMapOf<String, Any>(
+            "paragraphIndex" to paragraphIndex,
+            "reviewId" to reviewId,
+        )
+        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
+        val urlAnalyzeRule = AnalyzeRule(book, bookSource)
+            .setChapter(bookChapter)
+            .setBaseUrl(baseUrl)
+            .setCoroutineContext(currentCoroutineContext())
+            .setVariables(variables)
+        urlAnalyzeRule.setContent("")
+        val replyListUrl = urlAnalyzeRule.evalJS(replyListUrlRule)
+            ?.toString()?.takeIf { it.isNotBlank() }
+            ?: throw NoStackTraceException("replyListUrl 规则返回空")
+        val analyzeUrl = AnalyzeUrl(
+            mUrl = replyListUrl,
+            page = page,
+            baseUrl = baseUrl,
+            source = bookSource,
+            ruleData = book,
+            chapter = bookChapter,
+            coroutineContext = currentCoroutineContext(),
+            variables = variables
+        )
+        val res = checkLogin(analyzeUrl, bookSource)
+        checkRedirect(bookSource, res)
+        BookReview.analyzeReviewList(
+            bookSource = bookSource,
+            book = book,
+            bookChapter = bookChapter,
+            baseUrl = baseUrl,
+            redirectUrl = res.url,
+            body = res.body,
+            reviewRule = reviewRule,
+            variables = variables
+        )
+    }.onFailure {
+        currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * 获取章节内每段段评数 map
+     */
+    suspend fun getReviewCountAwait(
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter,
+    ): Result<Map<Int, Int>> = runCatching {
+        val reviewRule = bookSource.ruleReview
+            ?: throw NoStackTraceException("书源未配置段评规则")
+        val countRule = reviewRule.reviewCountRule
+            ?: return@runCatching emptyMap<Int, Int>()
+        val analyzeRule = AnalyzeRule(book, bookSource)
+            .setChapter(bookChapter)
+            .setBaseUrl(bookChapter.getAbsoluteURL(book))
+            .setCoroutineContext(currentCoroutineContext())
+        analyzeRule.setContent("")
+        val res = analyzeRule.evalJS(countRule)
+        BookReview.analyzeReviewCount(bookSource, res)
+    }.onFailure {
+        currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * 执行一个段评动作规则（点赞/点踩/回复/删除）
+     * 规则是 JS：变量包含 paragraphIndex / reviewId（可空）/ selected（点赞点踩用，目标态）/ content（回复用）。
+     * 返回规则执行结果（书源可返回字符串作为错误提示，正常成功时通常无返回值）。
+     */
+    suspend fun evalReviewActionAwait(
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter?,
+        rule: String,
+        paragraphIndex: Int,
+        reviewId: String? = null,
+        contentText: String? = null,
+        selected: Boolean? = null,
+    ): Result<Any?> = runCatching {
+        val variables = mutableMapOf<String, Any>("paragraphIndex" to paragraphIndex)
+        reviewId?.let { variables["reviewId"] = it }
+        contentText?.let { variables["content"] = it }
+        selected?.let { variables["selected"] = it }
+        val analyzeRule = AnalyzeRule(book, bookSource)
+            .setChapter(bookChapter)
+            .setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)
+            .setCoroutineContext(currentCoroutineContext())
+            .setVariables(variables)
+        analyzeRule.setContent("")
+        analyzeRule.evalJS(rule)
+    }.onFailure {
+        currentCoroutineContext().ensureActive()
+    }
+
+    /**
      * 精准搜索
      */
     suspend fun preciseSearchAwait(
@@ -254,7 +417,7 @@ object WebBook {
                 bookSource, name,
                 filter = { fName, fAuthor -> fName == name && fAuthor == author },
                 shouldBreak = { it > 0 }
-            ).firstOrNull()?.let { searchBook ->
+            ).books.firstOrNull()?.let { searchBook ->
                 currentCoroutineContext().ensureActive()
                 return@runCatching searchBook.toBook()
             }

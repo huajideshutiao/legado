@@ -50,6 +50,9 @@ data class BookSource(
     // 启用发现
     @ColumnInfo(defaultValue = "1")
     var enabledExplore: Boolean = true,
+    // 启用段评
+    @ColumnInfo(defaultValue = "1")
+    var enabledReview: Boolean = true,
     // js库
     override var jsLib: String? = null,
     // 启用okhttp CookieJAr 自动保存每次请求的cookie
@@ -162,12 +165,12 @@ data class BookSource(
         return rule
     }
 
-//    fun getReviewRule(): ReviewRule {
-//        ruleReview?.let { return it }
-//        val rule = ReviewRule()
-//        ruleReview = rule
-//        return rule
-//    }
+    fun getReviewRule(): ReviewRule {
+        ruleReview?.let { return it }
+        val rule = ReviewRule()
+        ruleReview = rule
+        return rule
+    }
 
     fun getDisPlayNameGroup(): String {
         return if (bookSourceGroup.isNullOrBlank()) {
@@ -244,6 +247,7 @@ data class BookSource(
                 && customOrder == source.customOrder
                 && enabled == source.enabled
                 && enabledExplore == source.enabledExplore
+            && enabledReview == source.enabledReview
                 && enabledCookieJar == source.enabledCookieJar
                 && equal(variableComment, source.variableComment)
                 && equal(concurrentRate, source.concurrentRate)
@@ -262,6 +266,7 @@ data class BookSource(
                 && getBookInfoRule() == source.getBookInfoRule()
                 && getTocRule() == source.getTocRule()
                 && getContentRule() == source.getContentRule()
+            && getReviewRule() == source.getReviewRule()
     }
 
     private fun equal(a: String?, b: String?) = a == b || (a.isNullOrEmpty() && b.isNullOrEmpty())
@@ -309,10 +314,12 @@ data class BookSource(
             GSON.fromJsonObject<ContentRule>(json).getOrNull()
 
         @TypeConverter
-        fun stringToReviewRule(json: String?): ReviewRule? = null
+        fun stringToReviewRule(json: String?) =
+            GSON.fromJsonObject<ReviewRule>(json).getOrNull()
 
         @TypeConverter
-        fun reviewRuleToString(reviewRule: ReviewRule?): String = "null"
+        fun reviewRuleToString(reviewRule: ReviewRule?): String =
+            GSON.toJson(reviewRule)
 
     }
 }

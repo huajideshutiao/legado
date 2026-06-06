@@ -1030,6 +1030,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         }.start()
     }
 
+    override fun onReviewClick(chapterIndex: Int, paragraphIndex: Int) {
+        showDialogFragment(ReviewListDialog(chapterIndex, paragraphIndex))
+    }
+
     /**
      * 长按图片
      */

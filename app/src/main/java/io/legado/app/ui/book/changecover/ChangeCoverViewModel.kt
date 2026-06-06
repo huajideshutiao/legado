@@ -130,7 +130,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
         }
         val searchBook = WebBook.getBookListAwait(
             source, name,
-            shouldBreak = { it > 0 }).firstOrNull() ?: return
+            shouldBreak = { it > 0 }).books.firstOrNull() ?: return
         if (searchBook.name == name && searchBook.author == author
             && !searchBook.coverUrl.isNullOrEmpty()
         ) {

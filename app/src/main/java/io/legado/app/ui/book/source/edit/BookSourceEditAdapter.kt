@@ -6,9 +6,15 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.CompoundButton
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.databinding.ItemSourceEditCheckBinding
+import io.legado.app.databinding.ItemSourceEditSpinnerBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
@@ -22,6 +28,7 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
 
     var onSearchReplaceAction: ((String) -> Unit)? = null
     var onCodeViewFocus: ((CodeView) -> Unit)? = null
+    var onCheckedChange: ((EditEntity, Boolean, CompoundButton) -> Unit)? = null
 
     var editEntities: ArrayList<EditEntity> = ArrayList()
         @SuppressLint("NotifyDataSetChanged")
@@ -30,20 +37,36 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
             notifyDataSetChanged()
         }
 
+    override fun getItemViewType(position: Int): Int {
+        return editEntities[position].viewType
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
-        val binding = ItemSourceEditBinding
-            .inflate(LayoutInflater.from(parent.context), parent, false)
-        binding.editText.isLineNumberEnabled = true
-        binding.editText.addLegadoPattern()
-        binding.editText.addJsPattern()
-        binding.editText.addJsonPattern()
-        binding.editText.onSearchReplaceAction = onSearchReplaceAction
-        binding.editText.setOnFocusChangeListener { v, hasFocus ->
-            if (hasFocus) {
-                onCodeViewFocus?.invoke(v as CodeView)
+        val inflater = LayoutInflater.from(parent.context)
+        return when (viewType) {
+            EditEntity.ViewType.checkBox -> {
+                val binding = ItemSourceEditCheckBinding.inflate(inflater, parent, false)
+                CheckViewHolder(binding)
+            }
+            EditEntity.ViewType.spinner -> {
+                val binding = ItemSourceEditSpinnerBinding.inflate(inflater, parent, false)
+                SpinnerViewHolder(binding)
+            }
+            else -> {
+                val binding = ItemSourceEditBinding.inflate(inflater, parent, false)
+                binding.editText.isLineNumberEnabled = true
+                binding.editText.addLegadoPattern()
+                binding.editText.addJsPattern()
+                binding.editText.addJsonPattern()
+                binding.editText.onSearchReplaceAction = onSearchReplaceAction
+                binding.editText.setOnFocusChangeListener { v, hasFocus ->
+                    if (hasFocus) {
+                        onCodeViewFocus?.invoke(v as CodeView)
+                    }
+                }
+                TextViewHolder(binding)
             }
         }
-        return MyViewHolder(binding)
     }
 
     override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
@@ -54,10 +77,15 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         return editEntities.size
     }
 
-    inner class MyViewHolder(val binding: ItemSourceEditBinding) :
+    abstract inner class MyViewHolder(binding: ViewBinding) :
         RecyclerView.ViewHolder(binding.root) {
+        abstract fun bind(editEntity: EditEntity)
+    }
 
-        fun bind(editEntity: EditEntity) = binding.run {
+    inner class TextViewHolder(private val binding: ItemSourceEditBinding) :
+        MyViewHolder(binding) {
+
+        override fun bind(editEntity: EditEntity) = binding.run {
             (editText.getTag(R.id.tag3) as? Runnable)?.let {
                 it.run()
                 editText.removeCallbacks(it)
@@ -122,6 +150,58 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
             }
             editText.addTextChangedListener(textWatcher)
             editText.setTag(R.id.tag2, textWatcher)
+        }
+    }
+
+    inner class CheckViewHolder(private val binding: ItemSourceEditCheckBinding) :
+        MyViewHolder(binding) {
+
+        override fun bind(editEntity: EditEntity) = binding.run {
+            (checkBox.getTag(R.id.tag) as? CompoundButton.OnCheckedChangeListener)?.let {
+                checkBox.setOnCheckedChangeListener(null)
+            }
+            checkBox.text = editEntity.hint
+            checkBox.isChecked = editEntity.value == "true"
+            val listener = CompoundButton.OnCheckedChangeListener { btn, isChecked ->
+                editEntity.value = isChecked.toString()
+                onCheckedChange?.invoke(editEntity, isChecked, btn)
+            }
+            checkBox.setOnCheckedChangeListener(listener)
+            checkBox.setTag(R.id.tag, listener)
+        }
+    }
+
+    inner class SpinnerViewHolder(private val binding: ItemSourceEditSpinnerBinding) :
+        MyViewHolder(binding) {
+
+        override fun bind(editEntity: EditEntity) = binding.run {
+            val context = root.context
+            textView.text = editEntity.hint
+            val selections = editEntity.selections.orEmpty()
+            val labels = selections.map { it.first }
+            val arrayAdapter = ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_item,
+                labels
+            )
+            arrayAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinner.onItemSelectedListener = null
+            spinner.adapter = arrayAdapter
+            val currentIndex = selections.indexOfFirst { it.second == editEntity.value }
+                .let { if (it < 0) 0 else it }
+            spinner.setSelection(currentIndex)
+            spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    editEntity.value = selections.getOrNull(position)?.second
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
         }
     }
 

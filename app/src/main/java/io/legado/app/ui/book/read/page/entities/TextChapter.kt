@@ -265,7 +265,12 @@ data class TextChapter(
         }
     }
 
-    fun createLayout(scope: CoroutineScope, book: Book, bookContent: BookContent) {
+    fun createLayout(
+        scope: CoroutineScope,
+        book: Book,
+        bookContent: BookContent,
+        reviewCountDeferred: kotlinx.coroutines.Deferred<Map<Int, Int>?>? = null,
+    ) {
         if (layout != null) {
             throw IllegalStateException("已经排版过了")
         }
@@ -275,6 +280,7 @@ data class TextChapter(
             textPages,
             book,
             bookContent,
+            reviewCountDeferred,
         )
     }
 
@@ -307,6 +313,13 @@ data class TextChapter(
         layout?.cancel()
         listener = null
     }
+
+    /**
+     * 排版开始时段评数 map 是否已就绪并用上。
+     * false 代表排版按「无段评」走的，count 后到了需要触发整章重排。
+     */
+    val reviewCountApplied: Boolean
+        get() = layout?.reviewCountMap != null
 
     fun notifyPageChanged() {
         layout?.notifyPageChanged()

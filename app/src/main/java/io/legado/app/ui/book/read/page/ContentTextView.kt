@@ -230,7 +230,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     @Suppress("UNUSED_ANONYMOUS_PARAMETER")
     fun click(x: Float, y: Float): Boolean {
         var handled = false
-        touch(x, y) { _, _, _, _, column ->
+        touch(x, y) { _, _, textPage, _, column ->
             when (column) {
                 is ButtonColumn -> {
                     context.toastOnUi("Button Pressed!")
@@ -238,7 +238,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
 
                 is ReviewColumn -> {
-                    context.toastOnUi("Button Pressed!")
+                    callBack.onReviewClick(textPage.chapterIndex, column.paragraphIndex)
                     handled = true
                 }
 
@@ -713,6 +713,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         fun upSelectedEnd(x: Float, y: Float)
         fun onImageLongPress(x: Float, y: Float, src: String)
         fun onImageClick(src: String, onClick: String )
+        fun onReviewClick(chapterIndex: Int, paragraphIndex: Int)
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
     }

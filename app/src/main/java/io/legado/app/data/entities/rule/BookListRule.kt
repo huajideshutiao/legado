@@ -14,4 +14,7 @@ interface BookListRule {
     var bookUrl: String?
     var coverUrl: String?
     var wordCount: String?
+
+    /**是否还有下一页（请求级 JS 规则，result 为整页响应 body）**/
+    var hasMoreRule: String?
 }

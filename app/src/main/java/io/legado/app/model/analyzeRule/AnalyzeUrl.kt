@@ -87,7 +87,8 @@ class AnalyzeUrl(
     private var coroutineContext: CoroutineContext = EmptyCoroutineContext,
     headerMapF: Map<String, String>? = null,
     hasLoginHeader: Boolean = true,
-    private val selectedOptions: Map<String, String>? = null
+    private val selectedOptions: Map<String, String>? = null,
+    private val variables: Map<String, Any>? = null
 ) : JsExtensions {
 
     var ruleUrl = ""
@@ -367,8 +368,11 @@ class AnalyzeUrl(
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
+            variables?.forEach { (k, v) -> bindings[k] = v }
             bindings["java"] = this
-            bindings["baseUrl"] = url
+            // 响应阶段(loginCheckJs/请求头 JS)需要"当前请求 URL"，所以优先用 url；
+            // 但 {{...}} 模板求值发生在 analyzeUrl() 之前，此时 url 还是空，降级用构造器传入的 baseUrl
+            bindings["baseUrl"] = url.ifEmpty { baseUrl }
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
             bindings["page"] = page
@@ -376,6 +380,7 @@ class AnalyzeUrl(
             bindings["speakText"] = speakText
             bindings["speakSpeed"] = speakSpeed
             bindings["book"] = ruleData as? Book
+            bindings["chapter"] = chapter
             bindings["source"] = source
             bindings["result"] = result
             bindings.dangerousApi = source?.enableDangerousApi == true

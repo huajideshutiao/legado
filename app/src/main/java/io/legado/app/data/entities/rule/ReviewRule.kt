@@ -7,18 +7,26 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class ReviewRule(
-    var reviewUrl: String? = null,          // 段评URL
+    var reviewUrl: String? = null,          // 段评列表URL，支持{{paragraphIndex}}占位符，0表示章节级评论
+    var reviewList: String? = null,         // 段评列表节点选择器
+    var reviewCountRule: String? = null,    // 整章段评数规则，返回 {paragraphIndex: count}，0=章节级
+    var reviewIdRule: String? = null,       // 段评ID规则（每条 item 内解析）
     var avatarRule: String? = null,         // 段评发布者头像
+    var nameRule: String? = null,           // 段评发布者用户名
     var contentRule: String? = null,        // 段评内容
     var postTimeRule: String? = null,       // 段评发布时间
-    var reviewQuoteUrl: String? = null,     // 获取段评回复URL
+    var extraRule: String? = null,          // 段评附加信息（楼层/等级/地区等，单行小字）
+    var imagesRule: String? = null,         // 段评图片列表（多图URL列表）
+    var voteUpCountRule: String? = null,    // 点赞数
+    var replyCountRule: String? = null,     // 一级回复数
+    var totalCountRule: String? = null,     // 段评总数规则（请求级，result 为整页响应 body），用于列表头部"全部评论·N"
+    var replyListUrl: String? = null,       // 回复列表URL规则（JS），变量：paragraphIndex / reviewId，返回回复列表 URL，仅在用户查看回复时执行
+    var hasMoreRule: String? = null,        // 段评是否有下一页（请求级，result 为整页响应 body）
 
-    // 这些功能将在以上功能完成以后实现
-    var voteUpUrl: String? = null,          // 点赞URL
-    var voteDownUrl: String? = null,        // 点踩URL
-    var postReviewUrl: String? = null,      // 发送回复URL
-    var postQuoteUrl: String? = null,       // 发送回复段评URL
-    var deleteUrl: String? = null,          // 删除段评URL
+    var voteUpRule: String? = null,         // 点赞规则（JS），变量：paragraphIndex / reviewId / selected
+    var voteDownRule: String? = null,       // 点踩规则（JS），变量：paragraphIndex / reviewId / selected
+    var replyRule: String? = null,          // 回复评论规则（JS），变量：paragraphIndex / content / reviewId(顶层段评为空)
+    var deleteRule: String? = null,         // 删除规则（JS），变量：paragraphIndex / reviewId
 ) : Parcelable {
 
     companion object {
