@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.RectF
 import android.util.Size
 import com.caverock.androidsvg.SVG
+import java.io.ByteArrayInputStream
 import java.io.FileInputStream
 import java.io.InputStream
 import kotlin.math.max
@@ -28,6 +29,43 @@ object SvgUtils {
             val svg = SVG.getFromInputStream(inputStream)
             createBitmap(svg, width, height)
         }.getOrNull()
+    }
+
+    /**
+     * 在 width × height 矩形内等比拟合渲染 SVG，会按需放大或缩小
+     * 与 createBitmap 不同：createBitmap 只缩小，文档较小时按原尺寸渲染
+     */
+    fun renderInto(bytes: ByteArray, width: Int, height: Int): Bitmap? {
+        return kotlin.runCatching {
+            renderInto(SVG.getFromInputStream(ByteArrayInputStream(bytes)), width, height)
+        }.getOrNull()
+    }
+
+    fun renderInto(filePath: String, width: Int, height: Int): Bitmap? {
+        return kotlin.runCatching {
+            FileInputStream(filePath).use {
+                renderInto(SVG.getFromInputStream(it), width, height)
+            }
+        }.getOrNull()
+    }
+
+    private fun renderInto(svg: SVG, width: Int, height: Int): Bitmap {
+        val size = getSize(svg)
+        val srcW = size.width.coerceAtLeast(1).toFloat()
+        val srcH = size.height.coerceAtLeast(1).toFloat()
+        val ratio = minOf(width / srcW, height / srcH)
+        val bitmapWidth = (srcW * ratio).toInt().coerceAtLeast(1)
+        val bitmapHeight = (srcH * ratio).toInt().coerceAtLeast(1)
+
+        if (svg.documentViewBox == null && size.width > 0 && size.height > 0) {
+            svg.setDocumentViewBox(0f, 0f, svg.documentWidth, svg.documentHeight)
+        }
+        svg.setDocumentWidth("100%")
+        svg.setDocumentHeight("100%")
+
+        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        svg.renderToCanvas(Canvas(bitmap))
+        return bitmap
     }
 
     //获取svg图片大小

@@ -1,13 +1,14 @@
 package io.legado.app.ui.widget.dialog
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.signature.ObjectKey
@@ -20,14 +21,15 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
-import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
+import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import java.io.File
 
 /**
  * 显示图片
@@ -45,7 +47,6 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
     private val binding by viewBinding(DialogPhotoViewBinding::bind)
     private lateinit var src: String
-    private var localImageFile: File? = null
 
     private val requestOptions: RequestOptions by lazy {
         arguments?.getString("sourceOrigin")?.let {
@@ -64,12 +65,6 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         src = arguments?.getString("src") ?: return
-
-        // 预先查找本地图片文件
-        localImageFile = ReadBook.book?.let { book ->
-            BookHelp.getImage(book, src).takeIf { it.exists() }
-        }
-
         initEvent()
         loadPhoto()
     }
@@ -88,45 +83,64 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
     }
 
     private fun loadPhoto() {
-        ImageProvider.get(src)?.let {
-            binding.photoView.setImageBitmap(it)
-            return
-        }
+        val book = ReadBook.book
+        // 异步走本地路径：data URI / 章节缓存文件 / 本地 EPUB ZIP
+        // 解码尺寸取屏幕的 2 倍，给 PhotoView 放大留余量
+        val dm = resources.displayMetrics
+        val w = dm.widthPixels * 2
+        val h = dm.heightPixels * 2
+        val targetDensity = dm.densityDpi
 
-        localImageFile?.let { file ->
-            Glide.with(this).load(file)
-                .error(R.drawable.image_loading_error)
-                .dontTransform()
-                .downsample(DownsampleStrategy.NONE)
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .into(binding.photoView)
-            return
-        }
-
-        // 对于 EPUB 内的图片，尝试直接从 EPUB 读取
-        ReadBook.book?.let { book ->
-            if (book.isEpub) {
-                execute {
-                    io.legado.app.model.fileBook.FileBook.getImage(book, src)?.use { input ->
-                        android.graphics.BitmapFactory.decodeStream(input)
-                    }
-                }.onSuccess { bitmap ->
-                    bitmap?.let { binding.photoView.setImageBitmap(it) }
-                }.onError {
-                    context?.toastOnUi("加载图片失败: ${it.localizedMessage}")
+        execute {
+            when {
+                src.startsWith("data:") -> {
+                    val pos = src.indexOf(";base64,")
+                    if (pos == -1) null
+                    else decodeBytes(Base64.decode(src.substring(pos + 8), Base64.DEFAULT), w, h)
                 }
-                return
-            }
-        }
 
-        val normalRequest = ImageLoader.load(requireContext(), src)
+                book != null -> {
+                    val file = BookHelp.getImage(book, src)
+                    when {
+                        file.exists() -> decodeFile(file.absolutePath, w, h)
+                        book.isEpub -> FileBook.getImage(book, src)?.use { input ->
+                            decodeBytes(input.readBytes(), w, h)
+                        }
+
+                        else -> null
+                    }
+                }
+
+                else -> null
+            }?.apply { density = targetDensity }
+        }.onSuccess { bitmap ->
+            if (bitmap != null) binding.photoView.setImageBitmap(bitmap)
+            else loadByGlide()
+        }.onError {
+            loadByGlide()
+        }
+    }
+
+    /** 先用 BitmapFactory 解栅格图，失败则按 SVG 渲染 */
+    private fun decodeBytes(bytes: ByteArray, w: Int, h: Int): Bitmap? =
+        BitmapUtils.decodeBitmap(bytes, w, h) ?: SvgUtils.renderInto(bytes, w, h)
+
+    private fun decodeFile(path: String, w: Int, h: Int): Bitmap? =
+        BitmapUtils.decodeBitmap(path, w, h) ?: SvgUtils.renderInto(path, w, h)
+
+    /**
+     * 本地路径都不命中时的兜底
+     * 先查 covers 磁盘缓存（封面场景命中），否则走正常请求
+     */
+    private fun loadByGlide() {
+        val ctx = context ?: return
+        val normalRequest = ImageLoader.load(ctx, src)
             .apply(requestOptions)
             .error(BookCover.defaultDrawable)
             .dontTransform()
             .downsample(DownsampleStrategy.NONE)
 
-        // 优先从 covers 缓存中查找，找不到再去执行正常的网络请求
-        ImageLoader.load(requireContext(), src)
+        ImageLoader.load(ctx, src)
             .apply(requestOptions)
             .signature(ObjectKey("covers"))
             .onlyRetrieveFromCache(true)
@@ -139,7 +153,10 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
     @SuppressLint("CheckResult")
     private fun doSaveImage(uri: Uri) {
         execute {
-            val file = localImageFile ?: run {
+            val localFile = ReadBook.book?.let { book ->
+                BookHelp.getImage(book, src).takeIf { it.exists() }
+            }
+            val file = localFile ?: run {
                 val glide = Glide.with(requireContext())
                 runCatching {
                     glide.downloadOnly()
