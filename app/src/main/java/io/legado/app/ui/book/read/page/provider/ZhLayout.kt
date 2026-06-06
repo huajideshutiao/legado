@@ -76,6 +76,7 @@ class ZhLayout(
         ?: getDesiredWidth("我", textPaint).also {
             cnCharWidthCache[textPaint] = it
         }
+    private val widthLimit = width + textPaint.letterSpacing * textPaint.textSize
 
     enum class BreakMod { NORMAL, BREAK_ONE_CHAR, BREAK_MORE_CHAR, CPS_1, CPS_2, CPS_3, }
     class Locate {
@@ -102,7 +103,7 @@ class ZhLayout(
             var breakCharCnt = 0
             var breakClusterCnt = 0
 
-            if (lineW > width) {
+            if (lineW > widthLimit) {
                 /*禁止在行尾的标点处理*/
                 breakMod = if (index >= 1 && isPrePanc(words[index - 1])) {
                     if (index >= 2 && isPrePanc(words[index - 2])) BreakMod.CPS_2//如果后面还有一个禁首标点则异常
