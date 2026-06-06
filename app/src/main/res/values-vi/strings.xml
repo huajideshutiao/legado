@@ -1173,7 +1173,6 @@
     <string name="disable_manga_click_scroll">Vô hiệu hóa lật trang bằng cách nhấn</string>
     <string name="enable_auto_page_scroll">Bật lật trang tự động</string>
     <string name="manga_auto_page_speed">Tốc độ lật trang %s</string>
-    <string name="enable_auto_scroll">Bật cuộn</string>
     <string name="manga_footer_config">Cấu hình chân trang</string>
     <string name="setting_manga_auto_page_speed">Đặt tốc độ lật trang tự động</string>
     <string name="book_reader_info_bar">Trang. %1$d/%2$d  Chương. %3$d/%4$d -> %5$s%%</string>

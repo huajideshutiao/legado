@@ -1203,7 +1203,6 @@
     <string name="disable_manga_click_scroll">禁用点击翻页</string>
     <string name="enable_auto_page_scroll">开启自动翻页</string>
     <string name="manga_auto_page_speed">翻页速度 %s</string>
-    <string name="enable_auto_scroll">开启滚动</string>
     <string name="manga_footer_config">页脚配置</string>
     <string name="setting_manga_auto_page_speed">设置自动翻页速度</string>
     <string name="book_reader_info_bar">页数. %1$d/%2$d  章节. %3$d/%4$d -> %5$s%%</string>
@@ -1222,7 +1221,7 @@
     <string name="manga_header_footer">页脚</string>
     <string name="manga_radio_left">靠左</string>
     <string name="manga_radio_center">居中</string>
-    <string name="enable_manga_horizontal_scroll">水平滚动</string>
+    <string name="enable_manga_horizontal_scroll">左右翻页</string>
     <string name="manga_color_filter">滤镜</string>
     <string name="hide_manga_title">隐藏漫画列表标题</string>
     <string name="refresh_explore">刷新发现</string>
@@ -1230,9 +1229,8 @@
     <string name="system_media_control_compatibility_change">系统媒体控件兼容性更改</string>
     <string name="system_media_control_compatibility_change_summary">当锁屏不显示系统媒体控件时可以尝试开启，比如oneui7.0或vivo等</string>
     <string name="read_aloud_pause_resume">朗读暂停/继续</string>
-    <string name="manga_epaper">墨水屏</string>
-    <string name="manga_epaper_stting">墨水屏设置</string>
-    <string name="manga_epaper_value">阈值</string>
+    <string name="contrast">对比度</string>
+
     <string name="disable_horizontal_page_snap">禁用水平翻页效果</string>
     <string name="enable_manga_gray">开启图片灰色</string>
     <string name="manga_gif_auto_next">GIF播放完成后翻页</string>

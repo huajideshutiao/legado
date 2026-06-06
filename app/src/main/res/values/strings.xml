@@ -1205,7 +1205,6 @@
     <string name="disable_manga_click_scroll">Disable tap to turn page</string>
     <string name="enable_auto_page_scroll">Enable auto page scroll</string>
     <string name="manga_auto_page_speed">Page speed %s</string>
-    <string name="enable_auto_scroll">Enable scroll</string>
     <string name="manga_footer_config">Footer config</string>
     <string name="setting_manga_auto_page_speed">Set auto page speed</string>
     <string name="book_reader_info_bar">Page. %1$d/%2$d  Chapter. %3$d/%4$d -> %5$s%%</string>
@@ -1224,7 +1223,7 @@
     <string name="manga_header_footer">Footer</string>
     <string name="manga_radio_left">Left</string>
     <string name="manga_radio_center">Center</string>
-    <string name="enable_manga_horizontal_scroll">Horizontal scroll</string>
+    <string name="enable_manga_horizontal_scroll">Left-Right page turn</string>
     <string name="manga_color_filter">Color filter</string>
     <string name="hide_manga_title">Hide manga list title</string>
     <string name="refresh_explore">Refresh explore</string>
@@ -1232,9 +1231,8 @@
     <string name="system_media_control_compatibility_change">System Media Control Compatibility Change</string>
     <string name="system_media_control_compatibility_change_summary">If system media controls do not appear on the lock screen, you can try enabling this, for example on OneUI 7.0 or Vivo devices.</string>
     <string name="read_aloud_pause_resume">Pause/Resume Speech</string>
-    <string name="manga_epaper">E-ink</string>
-    <string name="manga_epaper_stting">E-ink settings</string>
-    <string name="manga_epaper_value">Threshold</string>
+    <string name="contrast">Contrast</string>
+
     <string name="disable_horizontal_page_snap">Disable horizontal page snap</string>
     <string name="enable_manga_gray">Enable grayscale images</string>
     <string name="manga_gif_auto_next">Turn page after GIF finishes</string>

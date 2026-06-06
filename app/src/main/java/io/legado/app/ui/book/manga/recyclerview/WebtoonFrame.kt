@@ -35,16 +35,12 @@ class WebtoonFrame : FrameLayout {
         onAction = callback
     }
 
-    var disabledClickScroll = false
-
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         recycler?.tapListener = { ev ->
             val action = clickArea.getAction(ev.x, ev.y)
             if (action != -1) {
-                if (!(disabledClickScroll && (action == 1 || action == 2))) {
-                    onAction?.invoke(action)
-                }
+                onAction?.invoke(action)
             }
         }
     }

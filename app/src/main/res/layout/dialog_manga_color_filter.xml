@@ -25,6 +25,13 @@
             app:title="@string/brightness" />
 
         <io.legado.app.ui.widget.DetailSeekBar
+            android:id="@+id/dsb_contrast"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:max="100"
+            app:title="@string/contrast" />
+
+        <io.legado.app.ui.widget.DetailSeekBar
             android:id="@+id/dsb_r"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -45,12 +52,11 @@
             app:max="255"
             app:title="B" />
 
-        <io.legado.app.ui.widget.DetailSeekBar
-            android:id="@+id/dsb_a"
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/cb_gray"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:max="255"
-            app:title="A" />
+            android:text="@string/enable_manga_gray" />
 
     </LinearLayout>
 

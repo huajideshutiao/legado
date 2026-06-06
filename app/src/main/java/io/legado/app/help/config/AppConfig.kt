@@ -651,13 +651,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.mangaPreDownloadNum, value)
         }
 
-    //点击翻页
-    var disableClickScroll
-        get() = appCtx.getPrefBoolean(PreferKey.disableClickScroll, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.disableClickScroll, value)
-        }
-
     //漫画滚动速度
     var mangaAutoPageSpeed
         get() = appCtx.getPrefInt(PreferKey.mangaAutoPageSpeed, 3)
@@ -690,25 +683,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.hideMangaTitle, false)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.hideMangaTitle, value)
-        }
-
-    //开启墨水屏模式
-    var enableMangaEInk
-        get() = appCtx.getPrefBoolean(PreferKey.enableMangaEInk, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.enableMangaEInk, value)
-        }
-
-    var mangaEInkThreshold
-        get() = appCtx.getPrefInt(PreferKey.mangaEInkThreshold, 150)
-        set(value) {
-            appCtx.putPrefInt(PreferKey.mangaEInkThreshold, value)
-        }
-
-    var disableHorizontalPageSnap
-        get() = appCtx.getPrefBoolean(PreferKey.disableHorizontalPageSnap, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.disableHorizontalPageSnap, value)
         }
 
     var enableMangaGray

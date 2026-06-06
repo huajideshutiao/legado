@@ -29,7 +29,6 @@ import io.legado.app.databinding.ItemBookMangaPageBinding
 import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
-import io.legado.app.ui.book.manga.entities.EpaperTransformation
 import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
@@ -42,7 +41,6 @@ class MangaAdapter(private val context: Context) :
     private val inflater: LayoutInflater = LayoutInflater.from(context)
     private lateinit var mConfig: MangaColorFilterConfig
     private var mTransformation: BitmapTransformation? = null
-    private var currentMangaEInkThreshold = 0
     var book: Book? = null
     var bookSource: BookSource? = null
 
@@ -155,22 +153,37 @@ class MangaAdapter(private val context: Context) :
             )
         }
 
+        private val colorMatrix = ColorMatrix()
+        private val matrixArray = FloatArray(20)
+
         fun setImageColorFilter() {
-            require(
-                mConfig.r in 0..255 &&
-                        mConfig.g in 0..255 &&
-                        mConfig.b in 0..255 &&
-                        mConfig.a in 0..255
-            ) {
-                "ARGB values must be between 0-255"
-            }
-            val matrix = floatArrayOf(
-                (255 - mConfig.r) / 255f, 0f, 0f, 0f, 0f,
-                0f, (255 - mConfig.g) / 255f, 0f, 0f, 0f,
-                0f, 0f, (255 - mConfig.b) / 255f, 0f, 0f,
-                0f, 0f, 0f, (255 - mConfig.a) / 255f, 0f
-            )
-            binding.image.colorFilter = ColorMatrixColorFilter(ColorMatrix(matrix))
+            val r = (255 - mConfig.r) / 255f
+            val g = (255 - mConfig.g) / 255f
+            val b = (255 - mConfig.b) / 255f
+            val contrast = 1f + mConfig.ct / 50f
+            val brightness = (1f - contrast) * 128f
+
+            // 直接计算合并后的矩阵值，减少对象创建和矩阵乘法
+            // R通道
+            matrixArray[0] = r * contrast
+            matrixArray[4] = brightness
+            // G通道
+            matrixArray[6] = g * contrast
+            matrixArray[9] = brightness
+            // B通道
+            matrixArray[12] = b * contrast
+            matrixArray[14] = brightness
+            // A通道
+            matrixArray[18] = 1f
+
+            // 其余位置置 0
+            matrixArray[1] = 0f; matrixArray[2] = 0f; matrixArray[3] = 0f
+            matrixArray[5] = 0f; matrixArray[7] = 0f; matrixArray[8] = 0f
+            matrixArray[10] = 0f; matrixArray[11] = 0f; matrixArray[13] = 0f
+            matrixArray[15] = 0f; matrixArray[16] = 0f; matrixArray[17] = 0f; matrixArray[19] = 0f
+
+            colorMatrix.set(matrixArray)
+            binding.image.colorFilter = ColorMatrixColorFilter(colorMatrix)
         }
     }
 
@@ -287,24 +300,6 @@ class MangaAdapter(private val context: Context) :
     fun setMangaImageColorFilter(config: MangaColorFilterConfig) {
         mConfig = config
         notifyItemRangeChanged(0, itemCount)
-    }
-
-    fun enableMangaEInk(enable: Boolean, value: Int) {
-        if (enable) {
-            currentMangaEInkThreshold = value
-            mTransformation = EpaperTransformation(currentMangaEInkThreshold)
-        } else {
-            mTransformation = null
-        }
-        notifyItemRangeChanged(0, itemCount)
-    }
-
-    fun updateThreshold(mangaEInkThreshold: Int) {
-        if (currentMangaEInkThreshold != mangaEInkThreshold) {
-            currentMangaEInkThreshold = mangaEInkThreshold
-            mTransformation = EpaperTransformation(currentMangaEInkThreshold)
-            notifyItemRangeChanged(0, itemCount)
-        }
     }
 
     //开启灰色图片

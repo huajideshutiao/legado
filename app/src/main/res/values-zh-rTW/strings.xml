@@ -1186,7 +1186,6 @@
     <string name="disable_manga_click_scroll">禁用點擊翻頁</string>
     <string name="enable_auto_page_scroll">開啟自動翻頁</string>
     <string name="manga_auto_page_speed">翻頁速度 %s</string>
-    <string name="enable_auto_scroll">開啟滾動</string>
     <string name="manga_footer_config">頁尾配置</string>
     <string name="setting_manga_auto_page_speed">設定自動翻頁速度</string>
     <string name="book_reader_info_bar">頁數. %1$d/%2$d  章節. %3$d/%4$d -> %5$s%%</string>
