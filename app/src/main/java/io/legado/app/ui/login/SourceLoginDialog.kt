@@ -56,42 +56,36 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
         val loginUi = source.loginUi()
         try {
             loginUi?.forEachIndexed { index, rowUi ->
-                when (rowUi.type) {
+                val view = when (rowUi.type) {
                     RowUi.Type.text -> ItemSourceEditBinding.inflate(
                         layoutInflater,
-                        binding.root,
+                        binding.flexbox,
                         false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        it.root.id = index + 1000
-                        it.textInputLayout.hint = rowUi.name
-                        it.editText.setText(loginInfo?.get(rowUi.name))
-                        it.editText.setAutofillHints("username")
-                    }
+                    ).apply {
+                        textInputLayout.hint = rowUi.name
+                        editText.setText(loginInfo?.get(rowUi.name))
+                        editText.setAutofillHints("username")
+                    }.root
 
                     RowUi.Type.password -> ItemSourceEditBinding.inflate(
                         layoutInflater,
-                        binding.root,
+                        binding.flexbox,
                         false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        it.root.id = index + 1000
-                        it.textInputLayout.hint = rowUi.name
-                        it.editText.inputType =
+                    ).apply {
+                        textInputLayout.hint = rowUi.name
+                        editText.inputType =
                             InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
-                        it.editText.setText(loginInfo?.get(rowUi.name))
-                        it.editText.setAutofillHints("password")
-                    }
+                        editText.setText(loginInfo?.get(rowUi.name))
+                        editText.setAutofillHints("password")
+                    }.root
 
                     RowUi.Type.select -> ItemLoginSelectBinding.inflate(
                         layoutInflater,
-                        binding.root,
+                        binding.flexbox,
                         false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        rowUi.style().apply(it.root)
-                        it.root.id = index + 1000
-                        it.textView.text = rowUi.name
+                    ).apply {
+                        rowUi.style().apply(root)
+                        textView.text = rowUi.name
                         val chars = rowUi.chars ?: emptyList()
                         val adapter = ArrayAdapter(
                             requireContext(),
@@ -100,11 +94,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         ).apply {
                             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                         }
-                        it.spinner.adapter = adapter
+                        spinner.adapter = adapter
                         var selectedPosition =
                             chars.indexOf(loginInfo?.get(rowUi.name)).coerceAtLeast(0)
-                        it.spinner.setSelection(selectedPosition)
-                        it.spinner.onItemSelectedListener =
+                        spinner.setSelection(selectedPosition)
+                        spinner.onItemSelectedListener =
                             object : AdapterView.OnItemSelectedListener {
                                 override fun onItemSelected(
                                     parent: AdapterView<*>?,
@@ -119,41 +113,40 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
                                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
                             }
-                    }
+                    }.root
 
                     RowUi.Type.toggle -> ItemLoginToggleBinding.inflate(
                         layoutInflater,
-                        binding.root,
+                        binding.flexbox,
                         false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        rowUi.style().apply(it.root)
-                        it.root.id = index + 1000
-                        it.swt.text = rowUi.name
-                        it.swt.isChecked = loginInfo?.get(rowUi.name) == "true"
-                        it.swt.setOnUserCheckedChangeListener {
+                    ).apply {
+                        rowUi.style().apply(root)
+                        swt.text = rowUi.name
+                        swt.isChecked = loginInfo?.get(rowUi.name) == "true"
+                        swt.setOnUserCheckedChangeListener {
                             handleButtonClick(source, rowUi, loginUi)
                         }
-                    }
+                    }.root
 
                     else -> ItemFilletTextBinding.inflate(
                         layoutInflater,
-                        binding.root,
+                        binding.flexbox,
                         false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        if (rowUi.type == RowUi.Type.button) rowUi.style().apply(it.root)
+                    ).apply {
+                        if (rowUi.type == RowUi.Type.button) rowUi.style().apply(root)
                         if (rowUi.type == RowUi.Type.title) FlexChildStyle(
                             layout_flexBasisPercent = 1F
-                        ).apply(it.root)
-                        it.root.id = index + 1000
-                        it.textView.text = rowUi.name
-                        it.textView.setPadding(16.dpToPx())
-                        it.root.onClick {
+                        ).apply(root)
+                        textView.text = rowUi.name
+                        textView.setPadding(16.dpToPx())
+                        root.onClick {
                             handleButtonClick(source, rowUi, loginUi)
                         }
-                    }
+                    }.root
                 }
+                view.id = index + 1000
+                view.minimumHeight = 60.dpToPx()
+                binding.flexbox.addView(view)
             }
         } catch (e: NullPointerException) {
             AppLog.put("登录UI JSON 数据错误", e, true)

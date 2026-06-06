@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<io.legado.app.lib.theme.view.ThemeSwitch xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/swt"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_gravity="center"
-    android:padding="8dp">
+    android:layout_height="match_parent"
+    android:gravity="center_vertical"
+    android:padding="8dp"
+    tools:ignore="TouchTargetSizeCheck"
+    tools:text="测试">
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/swt"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        tools:ignore="TouchTargetSizeCheck"
-        tools:text="测试" />
-
-</FrameLayout>
+</io.legado.app.lib.theme.view.ThemeSwitch>
