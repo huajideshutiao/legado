@@ -27,6 +27,7 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
         execute {
             book = IntentData.book as Book
             book?.let {
+                bookUrl = it.bookUrl
                 contentProcessor = ContentProcessor.get(it.name, it.origin)
             }
         }.onSuccess {
