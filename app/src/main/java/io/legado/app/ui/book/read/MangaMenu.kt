@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.animation.Animation
@@ -12,7 +11,6 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.databinding.ViewMangaMenuBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
@@ -21,10 +19,8 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.manga.ReadMangaViewModel
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.activity
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.openUrl
@@ -87,9 +83,6 @@ class MangaMenu @JvmOverloads constructor(
 
     private fun initView() = binding.run {
         initAnimation(menuInListener, menuOutListener)
-        val brightnessBackground = GradientDrawable()
-        brightnessBackground.cornerRadius = 5F.dpToPx()
-        brightnessBackground.setColor(ColorUtils.adjustAlpha(bgColor, 0.5f))
         if (AppConfig.isEInkMode) {
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             bottomMenu.setBackgroundResource(R.drawable.bg_eink_border_top)
@@ -101,7 +94,6 @@ class MangaMenu @JvmOverloads constructor(
         } else {
             titleBarAddition.gone()
         }
-        upBrightnessVwPos(binding.root)
         /**
          * 确保视图不被导航栏遮挡
          */

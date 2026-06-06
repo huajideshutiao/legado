@@ -1,20 +1,18 @@
+@file:Suppress("DEPRECATION")
+
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.DisplayMetrics
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.WindowMetrics
-import android.widget.FrameLayout
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -30,7 +28,6 @@ import io.legado.app.ui.widget.dialog.TextDialog
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
     arguments: Bundle.() -> Unit = {}
 ) {
-    @Suppress("DEPRECATION")
     val dialog = T::class.java.newInstance()
     val bundle = Bundle()
     bundle.apply(arguments)
@@ -71,13 +68,11 @@ val WindowManager.windowSize: DisplayMetrics
             displayMetrics.widthPixels = windowWidth - insetsWidth
             displayMetrics.heightPixels = windowHeight - insetsHeight
         } else {
-            @Suppress("DEPRECATION")
             defaultDisplay.getMetrics(displayMetrics)
         }
         return displayMetrics
     }
 
-@Suppress("DEPRECATION")
 fun Activity.fullScreen() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.setDecorFitsSystemWindows(true)
@@ -94,7 +89,6 @@ fun Activity.fullScreen() {
 /**
  * 设置状态栏颜色
  */
-@Suppress("DEPRECATION")
 fun Activity.setStatusBarColorAuto(
     @ColorInt color: Int,
     fullScreen: Boolean
@@ -108,7 +102,6 @@ fun Activity.setStatusBarColorAuto(
     setLightStatusBar(isLightBar)
 }
 
-@SuppressLint("ObsoleteSdkInt")
 fun Activity.setLightStatusBar(isLightBar: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.insetsController?.let {
@@ -125,24 +118,20 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
             }
         }
     }
-    @Suppress("DEPRECATION")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        val decorView = window.decorView
-        val systemUiVisibility = decorView.systemUiVisibility
-        if (isLightBar) {
-            decorView.systemUiVisibility =
-                systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        } else {
-            decorView.systemUiVisibility =
-                systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        }
+    val decorView = window.decorView
+    val systemUiVisibility = decorView.systemUiVisibility
+    if (isLightBar) {
+        decorView.systemUiVisibility =
+            systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+    } else {
+        decorView.systemUiVisibility =
+            systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
     }
 }
 
 /**
  * 设置导航栏颜色
  */
-@Suppress("DEPRECATION")
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
     val isLightBor = ColorUtils.isColorLight(color)
     window.navigationBarColor = color
@@ -161,7 +150,6 @@ fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
             }
         }
     }
-    @Suppress("DEPRECATION")
     val decorView = window.decorView
     var systemUiVisibility = decorView.systemUiVisibility
     systemUiVisibility = if (isLightBor) {
@@ -195,33 +183,6 @@ fun Activity.toggleSystemBar(show: Boolean) {
 }
 
 /////以下方法需要在View完全被绘制出来之后调用，否则判断不了,在比如 onWindowFocusChanged（）方法中可以得到正确的结果/////
-
-/**
- * 返回NavigationBar
- */
-val Activity.navigationBar: View?
-    get() {
-        val viewGroup = (window.decorView as? ViewGroup) ?: return null
-        for (i in 0 until viewGroup.childCount) {
-            val child = viewGroup.getChildAt(i)
-            val childId = child.id
-            if (childId != View.NO_ID
-                && resources.getResourceEntryName(childId) == "navigationBarBackground"
-            ) {
-                return child
-            }
-        }
-        return null
-    }
-
-/**
- * 返回navigationBar位置
- */
-val Activity.navigationBarGravity: Int
-    get() {
-        val gravity = (navigationBar?.layoutParams as? FrameLayout.LayoutParams)?.gravity
-        return gravity ?: Gravity.BOTTOM
-    }
 
 /**
  * 显示目录help下的帮助文档

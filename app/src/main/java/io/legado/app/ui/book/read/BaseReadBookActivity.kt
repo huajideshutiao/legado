@@ -18,7 +18,6 @@ import io.legado.app.databinding.ActivityBookReadBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSimulatedReadingBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
@@ -165,8 +164,7 @@ abstract class BaseReadBookActivity :
             setLightStatusBar(ReadBookConfig.durConfig.curStatusIconDark())
         } else {
             val statusBarColor =
-                if ((AppConfig.readBarStyleFollowPage
-                        && ReadBookConfig.durConfig.curBgType() == 0)
+                if (ReadBookConfig.durConfig.curBgType() == 0
                     || useBgMeanColor
                 ) {
                     ReadBookConfig.bgMeanColor

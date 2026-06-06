@@ -70,53 +70,6 @@
 
     </io.legado.app.ui.widget.TitleBar>
 
-    <LinearLayout
-        android:id="@+id/ll_brightness"
-        android:layout_width="wrap_content"
-        android:layout_height="0dp"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="16dp"
-        android:background="@color/transparent30"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        app:layout_constraintBottom_toTopOf="@+id/bottom_menu"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar"
-        tools:ignore="RtlHardcoded">
-
-        <ImageView
-            android:id="@+id/iv_brightness_auto"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_margin="8dp"
-            android:contentDescription="@string/brightness_auto"
-            android:src="@drawable/ic_brightness_auto"
-            tools:ignore="ImageContrastCheck" />
-
-        <io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper
-            android:layout_width="wrap_content"
-            android:layout_height="0dp"
-            android:layout_weight="1">
-
-            <io.legado.app.ui.widget.seekbar.VerticalSeekBar
-                android:id="@+id/seek_brightness"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:max="255"
-                app:seekBarRotation="CW270" />
-
-        </io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper>
-
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/vw_brightness_pos_adjust"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_margin="8dp"
-            android:contentDescription="@string/adjust_pos"
-            android:src="@drawable/ic_swap_horiz"
-            app:tint="@color/white" />
-
-    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/bottom_menu"
@@ -208,6 +161,7 @@
                 app:fabSize="mini"
                 app:pressedTranslationZ="2dp"
                 tools:ignore="UnusedAttribute" />
+
 
         </LinearLayout>
 

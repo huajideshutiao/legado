@@ -521,7 +521,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     override fun updateColorFilter(config: MangaColorFilterConfig) {
         mAdapter.setMangaImageColorFilter(config)
-        updateWindowBrightness(config.l)
     }
 
     override fun updateGray(enable: Boolean) {

@@ -22,11 +22,9 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.number.showNumberPicker
-import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setupAsBottomDialog
 
@@ -35,7 +33,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
 
     override fun onStart() {
         super.onStart()
-        dialog?.window?.setupAsBottomDialog(360.dpToPx())
+        dialog?.window?.setupAsBottomDialog(480.dpToPx())
     }
 
     override fun onCreateView(
@@ -66,10 +64,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_read)
             upPreferenceSummary(PreferKey.pageTouchSlop, slopSquare.toString())
-            if (!CanvasRecorderFactory.isSupport) {
-                removePref(PreferKey.optimizeRender)
-                preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)
-            }
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -96,7 +90,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
             key: String?
         ) {
             when (key) {
-                PreferKey.readBodyToLh -> activity?.recreate()
                 PreferKey.hideStatusBar -> {
                     ReadBookConfig.hideStatusBar = getPrefBoolean(PreferKey.hideStatusBar)
                     postEvent(EventBus.UP_CONFIG, arrayListOf(0, 2))
@@ -108,7 +101,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.keepLight -> postEvent(key, true)
-                PreferKey.textSelectAble -> postEvent(key, getPrefBoolean(key))
                 PreferKey.screenOrientation -> {
                     (activity as? ReadBookActivity)?.setOrientation()
                 }
@@ -117,10 +109,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 PreferKey.textBottomJustify,
                 PreferKey.useZhLayout -> {
                     postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-                }
-
-                PreferKey.showBrightnessView -> {
-                    postEvent(PreferKey.showBrightnessView, "")
                 }
 
 //                PreferKey.expandTextMenu -> {
@@ -132,8 +120,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                     ReadBook.loadContent(false)
                 }
 
-                PreferKey.showReadTitleAddition,
-                PreferKey.readBarStyleFollowPage -> {
+                PreferKey.showReadTitleAddition -> {
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }
 
@@ -141,19 +128,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                     postEvent(EventBus.UP_SEEK_BAR, true)
                 }
 
-                PreferKey.noAnimScrollPage -> {
-                    ReadBook.callBack?.upPageAnim()
-                }
-
-                PreferKey.optimizeRender -> {
-                    ChapterProvider.upStyle()
-                    ReadBook.callBack?.upPageAnim(true)
-                    ReadBook.loadContent(false)
-                }
-
-                PreferKey.paddingDisplayCutouts -> {
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                }
             }
         }
 

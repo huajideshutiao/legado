@@ -35,7 +35,6 @@ import kotlin.math.min
  * 阅读内容视图
  */
 class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
-    var selectAble = AppConfig.textSelectAble
     val selectedPaint by lazy {
         Paint().apply {
             color = context.getCompatColor(R.color.btn_bg_press_2)
@@ -217,7 +216,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             when (column) {
                 is ImageColumn -> callBack.onImageLongPress(x, y, column.src)
                 is TextColumn -> {
-                    if (!selectAble) return@touch
                     column.selected = true
                     select(textPos)
                 }
@@ -232,7 +230,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     @Suppress("UNUSED_ANONYMOUS_PARAMETER")
     fun click(x: Float, y: Float): Boolean {
         var handled = false
-        touch(x, y) { _, textPos, textPage, textLine, column ->
+        touch(x, y) { _, _, _, _, column ->
             when (column) {
                 is ButtonColumn -> {
                     context.toastOnUi("Button Pressed!")

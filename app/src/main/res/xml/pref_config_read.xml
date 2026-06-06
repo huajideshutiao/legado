@@ -34,20 +34,6 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="readBodyToLh"
-        android:title="@string/read_body_to_lh"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="paddingDisplayCutouts"
-        android:title="@string/padding_display_cutouts"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="0"
         android:entries="@array/double_page_title"
@@ -108,13 +94,6 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="keyPageOnLongPress"
-        android:title="@string/key_page_on_long_press"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="pageTouchSlop"
         android:summary="@string/page_touch_slop_summary"
@@ -130,50 +109,15 @@
         app:isBottomBackground="true" />
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="selectText"
-        android:title="@string/selectText"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="showBrightnessView"
-        android:title="@string/show_brightness_view"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="noAnimScrollPage"
-        android:title="@string/no_anim_scroll_page"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="previewImageByClick"
         android:title="@string/preview_image_by_click"
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="optimizeRender"
-        android:title="@string/enable_optimize_render"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="clickRegionalConfig"
         android:title="@string/click_regional_config"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="disableReturnKey"
-        android:title="@string/disable_return_key"
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
@@ -195,8 +139,4 @@
         android:key="showReadTitleAddition"
         android:title="@string/show_read_title_addition" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="readBarStyleFollowPage"
-        android:title="@string/read_bar_style_follow_page" />
 </androidx.preference.PreferenceScreen>

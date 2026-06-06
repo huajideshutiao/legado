@@ -30,7 +30,6 @@ class AutoPager(private val readView: ReadView) : Runnable {
     fun start() {
         isRunning = true
         isEInkMode = AppConfig.isEInkMode
-        readView.curPage.upSelectAble(false)
         if (isEInkMode) {
             readView.postDelayed(this, ReadBookConfig.autoReadSpeed * 1000L)
         } else {
@@ -48,7 +47,6 @@ class AutoPager(private val readView: ReadView) : Runnable {
         isPausing = false
         isEInkMode = false
         readView.removeCallbacks(this)
-        readView.curPage.upSelectAble(AppConfig.textSelectAble)
         readView.invalidate()
         reset()
         canvasRecorder.recycle()

@@ -105,7 +105,6 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.iconItemOnLongClick
@@ -276,9 +275,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 autoPageStop()
                 return@addCallback
             }
-            if (getPrefBoolean("disableReturnKey") && !menuLayoutIsVisible) {
-                return@addCallback
-            }
             finish()
         }
         viewModel.initData(intent) { applyBookmarkPosition(intent) }
@@ -306,11 +302,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         upSystemUiVisibility()
-        if (hasFocus) {
-            binding.readMenu.upBrightnessState()
-        } else if (!menuLayoutIsVisible) {
-            ReadBook.cancelPreDownloadTask()
-        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -389,7 +380,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menuHandler.onMenuOpened(featureId, menu)
+        menuHandler.onMenuOpened(menu)
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -445,7 +436,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 松开按键事件
      */
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyHandler.onKeyUp(keyCode, event)) return true
+        if (keyHandler.onKeyUp(keyCode)) return true
         return super.onKeyUp(keyCode, event)
     }
 
@@ -1091,7 +1082,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * colorSelectDialog
      */
     override fun onDialogDismissed(dialogId: Int) {
-        colorHandler.onDialogDismissed(dialogId)
+        colorHandler.onDialogDismissed()
     }
 
     override fun onTocRegexDialogResult(tocRegex: String) {
@@ -1270,52 +1261,51 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
 
         fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-            if (menuLayoutIsVisible) {
+            if (menuLayoutIsVisible || event.repeatCount > 0) {
                 return false
             }
-            val longPress = event.repeatCount > 0
             when {
                 isPrevKey(keyCode) -> {
-                    handleKeyPage(PageDirection.PREV, longPress)
+                    handleKeyPage(PageDirection.PREV)
                     return true
                 }
 
                 isNextKey(keyCode) -> {
-                    handleKeyPage(PageDirection.NEXT, longPress)
+                    handleKeyPage(PageDirection.NEXT)
                     return true
                 }
             }
             when (keyCode) {
-                KeyEvent.KEYCODE_VOLUME_UP -> if (volumeKeyPage(PageDirection.PREV, longPress)) {
+                KeyEvent.KEYCODE_VOLUME_UP -> if (volumeKeyPage(PageDirection.PREV)) {
                     return true
                 }
 
-                KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeyPage(PageDirection.NEXT, longPress)) {
+                KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeyPage(PageDirection.NEXT)) {
                     return true
                 }
 
                 KeyEvent.KEYCODE_PAGE_UP -> {
-                    handleKeyPage(PageDirection.PREV, longPress)
+                    handleKeyPage(PageDirection.PREV)
                     return true
                 }
 
                 KeyEvent.KEYCODE_PAGE_DOWN -> {
-                    handleKeyPage(PageDirection.NEXT, longPress)
+                    handleKeyPage(PageDirection.NEXT)
                     return true
                 }
 
                 KeyEvent.KEYCODE_SPACE -> {
-                    handleKeyPage(PageDirection.NEXT, longPress)
+                    handleKeyPage(PageDirection.NEXT)
                     return true
                 }
             }
             return false
         }
 
-        fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        fun onKeyUp(keyCode: Int): Boolean {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    if (volumeKeyPage(PageDirection.NONE, false)) {
+                    if (volumeKeyPage(PageDirection.NONE)) {
                         return true
                     }
                 }
@@ -1331,35 +1321,34 @@ class ReadBookActivity : BaseReadBookActivity(),
             if (menuLayoutIsVisible || !AppConfig.mouseWheelPage) {
                 return
             }
-            keyPageDebounce(direction, mouseWheel = true, longPress = false)
+            keyPageDebounce(direction, mouseWheel = true)
         }
 
         /**
          * 音量键翻页
          */
-        private fun volumeKeyPage(direction: PageDirection, longPress: Boolean): Boolean {
+        private fun volumeKeyPage(direction: PageDirection): Boolean {
             if (!AppConfig.volumeKeyPage) {
                 return false
             }
             if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
                 return false
             }
-            handleKeyPage(direction, longPress)
+            handleKeyPage(direction)
             return true
         }
 
-        private fun handleKeyPage(direction: PageDirection, longPress: Boolean) {
-            if (AppConfig.keyPageOnLongPress || direction == PageDirection.NONE) {
+        private fun handleKeyPage(direction: PageDirection) {
+            if (direction == PageDirection.NONE) {
                 keyPage(direction)
             } else {
-                keyPageDebounce(direction, longPress = longPress)
+                keyPageDebounce(direction)
             }
         }
 
         private fun keyPageDebounce(
             direction: PageDirection,
-            mouseWheel: Boolean = false,
-            longPress: Boolean
+            mouseWheel: Boolean = false
         ) {
             nextPageDebounce.apply {
                 wait = 200L
@@ -1414,7 +1403,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             upMenu()
         }
 
-        fun onMenuOpened(featureId: Int, menu: Menu) {
+        fun onMenuOpened(menu: Menu) {
             menu.findItem(R.id.menu_same_title_removed)?.isChecked =
                 ReadBook.curTextChapter?.sameTitleRemoved == true
         }
@@ -1695,12 +1684,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             observeEvent<Boolean>(PreferKey.keepLight) {
                 upScreenTimeOut()
             }
-            observeEvent<Boolean>(PreferKey.textSelectAble) {
-                readView.curPage.upSelectAble(it)
-            }
-            observeEvent<String>(PreferKey.showBrightnessView) {
-                readMenu.upBrightnessState()
-            }
             observeEvent<List<SearchResult>>(EventBus.SEARCH_RESULT) {
                 viewModel.searchResultList = it
             }
@@ -1739,7 +1722,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    inner class ReadBookColorHandler {
+    class ReadBookColorHandler {
         /**
          * colorSelectDialog
          */
@@ -1748,17 +1731,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 TEXT_COLOR -> {
                     setCurTextColor(color)
                     postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6, 9, 11))
-                    if (AppConfig.readBarStyleFollowPage) {
-                        postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
-                    }
+                    postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }
 
                 BG_COLOR -> {
                     setCurBg(0, "#${color.hexString}")
                     postEvent(EventBus.UP_CONFIG, arrayListOf(1))
-                    if (AppConfig.readBarStyleFollowPage) {
-                        postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
-                    }
+                    postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }
 
                 TIP_COLOR -> {
@@ -1778,7 +1757,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         /**
          * colorSelectDialog
          */
-        fun onDialogDismissed(dialogId: Int) = Unit
+        fun onDialogDismissed() = Unit
     }
 
     companion object {

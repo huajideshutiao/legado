@@ -12,7 +12,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.data.entities.Book
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
@@ -78,11 +77,8 @@ abstract class BaseReadActivity<VB : ViewBinding, VM : BaseReadViewModel>(
     open fun upLayoutInDisplayCutoutMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = if (ReadBookConfig.readBodyToLh) {
+                layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                } else {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
-                }
             }
         }
     }
@@ -107,15 +103,6 @@ abstract class BaseReadActivity<VB : ViewBinding, VM : BaseReadViewModel>(
                 noButton { viewModel.removeFromBookshelf { super.finish() } }
             }
         }
-    }
-
-    fun updateWindowBrightness(brightness: Int) {
-        val layoutParams = window.attributes
-        val normalizedBrightness = brightness.toFloat() / 255.0f
-        layoutParams.screenBrightness = normalizedBrightness.coerceIn(0f, 1f)
-        window.attributes = layoutParams
-        // 强制刷新屏幕
-        window.decorView.postInvalidate()
     }
 
     fun isPrevKey(keyCode: Int): Boolean {

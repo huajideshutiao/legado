@@ -18,8 +18,6 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
     private val mVelocity: VelocityTracker = VelocityTracker.obtain()
     private val slopSquare get() = readView.pageSlopSquare2
 
-    var noAnim: Boolean = false
-
     override fun onAnimStart(animationSpeed: Int) {
         readView.onScrollAnimStart()
         //惯性滚动
@@ -127,10 +125,6 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
             readView.isAbortAnim = false
             return
         }
-        if (noAnim) {
-            curPage.scroll(calcNextPageOffset())
-            return
-        }
         readView.setStartPoint(0f, 0f, false)
         startScroll(0, 0, 0, calcNextPageOffset(), animationSpeed)
     }
@@ -138,10 +132,6 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
     override fun prevPageByAnim(animationSpeed: Int) {
         if (readView.isAbortAnim) {
             readView.isAbortAnim = false
-            return
-        }
-        if (noAnim) {
-            curPage.scroll(calcPrevPageOffset())
             return
         }
         readView.setStartPoint(0f, 0f, false)

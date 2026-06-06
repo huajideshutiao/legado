@@ -38,8 +38,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var clickActionBR = appCtx.getPrefInt(PreferKey.clickActionBR, 1)
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
-    var optimizeRender = CanvasRecorderFactory.isSupport
-            && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
+    val optimizeRender get() = CanvasRecorderFactory.isSupport
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -76,9 +75,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.clickActionBR -> clickActionBR =
                 appCtx.getPrefInt(PreferKey.clickActionBR, 1)
 
-            PreferKey.readBodyToLh -> ReadBookConfig.readBodyToLh =
-                appCtx.getPrefBoolean(PreferKey.readBodyToLh, true)
-
             PreferKey.useZhLayout -> ReadBookConfig.useZhLayout =
                 appCtx.getPrefBoolean(PreferKey.useZhLayout)
 
@@ -86,9 +82,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
             PreferKey.useDefaultCover -> useDefaultCover =
                 appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
-
-            PreferKey.optimizeRender -> optimizeRender = CanvasRecorderFactory.isSupport
-                    && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
 
             PreferKey.recordLog -> recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
 
@@ -143,23 +136,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.showWaitUpCount, value)
         }
-
-    var readBrightness: Int
-        get() = if (isNightTheme) {
-            appCtx.getPrefInt(PreferKey.nightBrightness, 100)
-        } else {
-            appCtx.getPrefInt(PreferKey.brightness, 100)
-        }
-        set(value) {
-            if (isNightTheme) {
-                appCtx.putPrefInt(PreferKey.nightBrightness, value)
-            } else {
-                appCtx.putPrefInt(PreferKey.brightness, value)
-            }
-        }
-
-    val textSelectAble: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.textSelectAble, true)
 
     val screenOrientation: String?
         get() = appCtx.getPrefString(PreferKey.screenOrientation)
@@ -289,9 +265,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.ttsFollowSys, value)
         }
-
-    val noAnimScrollPage: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.noAnimScrollPage, false)
 
     const val defaultSpeechRate = 5
 
@@ -524,9 +497,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val progressBarBehavior: String?
         get() = appCtx.getPrefString(PreferKey.progressBarBehavior, "page")
 
-    val keyPageOnLongPress
-        get() = appCtx.getPrefBoolean(PreferKey.keyPageOnLongPress, false)
-
     val volumeKeyPage
         get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPage, true)
 
@@ -535,9 +505,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val mouseWheelPage
         get() = appCtx.getPrefBoolean(PreferKey.mouseWheelPage, true)
-
-    val paddingDisplayCutouts
-        get() = appCtx.getPrefBoolean(PreferKey.paddingDisplayCutouts, false)
 
     var searchScope: String
         get() = appCtx.getPrefString("searchScope") ?: ""
@@ -587,12 +554,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.showReadTitleAddition, value)
         }
-    var readBarStyleFollowPage: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.readBarStyleFollowPage, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.readBarStyleFollowPage, value)
-        }
-
     var sourceEditMaxLine: Int
         get() {
             val maxLine = appCtx.getPrefInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
@@ -609,12 +570,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.audioPlayWakeLock)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.audioPlayWakeLock, value)
-        }
-
-    var brightnessVwPos: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.brightnessVwPos)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.brightnessVwPos, value)
         }
 
     fun detectClickArea() {

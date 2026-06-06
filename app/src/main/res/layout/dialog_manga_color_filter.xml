@@ -18,13 +18,6 @@
             android:textSize="18sp" />
 
         <io.legado.app.ui.widget.DetailSeekBar
-            android:id="@+id/dsb_brightness"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:max="255"
-            app:title="@string/brightness" />
-
-        <io.legado.app.ui.widget.DetailSeekBar
             android:id="@+id/dsb_contrast"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

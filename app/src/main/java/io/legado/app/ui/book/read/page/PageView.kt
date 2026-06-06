@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
@@ -15,7 +14,6 @@ import io.legado.app.R
 import io.legado.app.constant.AppConst.timeFormat
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ViewBookPageBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.model.ReadBook
@@ -134,20 +132,15 @@ class PageView(context: Context) : FrameLayout(context) {
     }
 
     fun upPaddingDisplayCutouts() {
-        if (AppConfig.paddingDisplayCutouts) {
-            binding.vwRoot.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
-                val insets = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                binding.vwRoot.setPadding(
-                    insets.left,
-                    if (binding.vwStatusBar.isGone) insets.top else 0,
-                    insets.right,
-                    insets.bottom
-                )
-                windowInsets
-            }
-        } else {
-            ViewCompat.setOnApplyWindowInsetsListener(binding.vwRoot, null)
-            binding.vwRoot.setPadding(0, 0, 0, 0)
+        binding.vwRoot.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            binding.vwRoot.setPadding(
+                insets.left,
+                if (binding.vwStatusBar.isGone) insets.top else 0,
+                insets.right,
+                insets.bottom
+            )
+            windowInsets
         }
     }
 
@@ -385,13 +378,6 @@ class PageView(context: Context) : FrameLayout(context) {
      */
     fun scroll(offset: Int) {
         binding.contentTextView.scroll(offset)
-    }
-
-    /**
-     * 更新是否开启选择功能
-     */
-    fun upSelectAble(selectAble: Boolean) {
-        binding.contentTextView.selectAble = selectAble
     }
 
     /**

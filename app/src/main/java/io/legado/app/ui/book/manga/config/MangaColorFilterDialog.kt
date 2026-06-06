@@ -31,7 +31,6 @@ class MangaColorFilterDialog : BaseDialogFragment(R.layout.dialog_manga_color_fi
 
     private fun initData() {
         binding.run {
-            dsbBrightness.progress = mConfig.l
             dsbContrast.progress = mConfig.ct + 50
             dsbR.progress = mConfig.r
             dsbG.progress = mConfig.g
@@ -43,10 +42,6 @@ class MangaColorFilterDialog : BaseDialogFragment(R.layout.dialog_manga_color_fi
     private fun initView() {
         binding.run {
             dsbContrast.valueFormat = { "${it - 50}" }
-            dsbBrightness.onChanged = {
-                mConfig.l = it
-                callback?.updateColorFilter(mConfig)
-            }
             dsbContrast.onChanged = {
                 mConfig.ct = it - 50
                 callback?.updateColorFilter(mConfig)

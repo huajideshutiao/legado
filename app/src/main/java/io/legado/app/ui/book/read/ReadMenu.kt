@@ -3,20 +3,17 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.PorterDuff
-import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.LayoutInflater
-import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 import android.view.animation.Animation
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.graphics.toColorInt
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import io.legado.app.R
-import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ViewReadMenuBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -29,9 +26,7 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.onCancelled
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.Selector
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.buttonDisabledColor
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -41,12 +36,9 @@ import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.activity
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
 import splitties.views.onClick
@@ -63,10 +55,10 @@ class ReadMenu @JvmOverloads constructor(
     private val binding = ViewReadMenuBinding.inflate(LayoutInflater.from(context), this, true)
     private var confirmSkipToChapter: Boolean = false
     private val immersiveMenu: Boolean
-        get() = AppConfig.readBarStyleFollowPage && ReadBookConfig.durConfig.curBgType() == 0
+        get() = ReadBookConfig.durConfig.curBgType() == 0
     private var bgColor: Int = if (immersiveMenu) {
         kotlin.runCatching {
-            Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+            ReadBookConfig.durConfig.curBgStr().toColorInt()
         }.getOrDefault(context.bottomBackground)
     } else {
         context.bottomBackground
@@ -82,11 +74,6 @@ class ReadMenu @JvmOverloads constructor(
         .setPressedColor(ColorUtils.darkenColor(bgColor))
         .create()
     private var onMenuOutEnd: (() -> Unit)? = null
-    private val showBrightnessView
-        get() = context.getPrefBoolean(
-            PreferKey.showBrightnessView,
-            true
-        )
     private val sourceMenu by lazy {
         PopupMenu(context, binding.tvSourceAction).apply {
             inflate(R.menu.book_read_source)
@@ -115,7 +102,6 @@ class ReadMenu @JvmOverloads constructor(
                 ReadBook.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
             binding.tvSourceAction.isGone = ReadBook.isLocalBook
             callBack.upSystemUiVisibility()
-            binding.llBrightness.visible(showBrightnessView)
         }
 
         @SuppressLint("RtlHardcoded")
@@ -150,7 +136,6 @@ class ReadMenu @JvmOverloads constructor(
 
     init {
         initView()
-        upBrightnessState()
         bindEvent()
     }
 
@@ -177,10 +162,6 @@ class ReadMenu @JvmOverloads constructor(
             tvChapterName.setTextColor(textColor)
             tvChapterUrl.setTextColor(textColor)
         }
-        val brightnessBackground = GradientDrawable()
-        brightnessBackground.cornerRadius = 5F.dpToPx()
-        brightnessBackground.setColor(ColorUtils.adjustAlpha(bgColor, 0.5f))
-        llBrightness.background = brightnessBackground
         if (AppConfig.isEInkMode) {
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             llBottomBg.setBackgroundResource(R.drawable.bg_eink_border_top)
@@ -205,17 +186,11 @@ class ReadMenu @JvmOverloads constructor(
         tvFont.setTextColor(textColor)
         ivSetting.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         tvSetting.setTextColor(textColor)
-        vwBrightnessPosAdjust.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        llBrightness.setOnClickListener(null)
-        seekBrightness.post {
-            seekBrightness.progress = AppConfig.readBrightness
-        }
         if (AppConfig.showReadTitleBarAddition) {
             titleBarAddition.visible()
         } else {
             titleBarAddition.gone()
         }
-        upBrightnessVwPos(binding.root)
         /**
          * 确保视图不被导航栏遮挡
          */
@@ -236,7 +211,7 @@ class ReadMenu @JvmOverloads constructor(
     private fun upColorConfig() {
         bgColor = if (immersiveMenu) {
             kotlin.runCatching {
-                Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+                ReadBookConfig.durConfig.curBgStr().toColorInt()
             }.getOrDefault(context.bottomBackground)
         } else {
             context.bottomBackground
@@ -250,34 +225,6 @@ class ReadMenu @JvmOverloads constructor(
             .setDefaultColor(bgColor)
             .setPressedColor(ColorUtils.darkenColor(bgColor))
             .create()
-    }
-
-    fun upBrightnessState() {
-        if (brightnessAuto()) {
-            binding.ivBrightnessAuto.setColorFilter(context.accentColor)
-            binding.seekBrightness.isEnabled = false
-        } else {
-            binding.ivBrightnessAuto.setColorFilter(context.buttonDisabledColor)
-            binding.seekBrightness.isEnabled = true
-        }
-        setScreenBrightness(AppConfig.readBrightness.toFloat())
-    }
-
-    /**
-     * 设置屏幕亮度
-     */
-    fun setScreenBrightness(value: Float) {
-        activity?.run {
-            var brightness = BRIGHTNESS_OVERRIDE_NONE
-            if (!brightnessAuto() && value != BRIGHTNESS_OVERRIDE_NONE) {
-                brightness = value
-                if (brightness < 1f) brightness = 1f
-                brightness /= 255f
-            }
-            val params = window.attributes
-            params.screenBrightness = brightness
-            window.attributes = params
-        }
     }
 
     fun runMenuIn(anim: Boolean = !AppConfig.isEInkMode) {
@@ -309,10 +256,6 @@ class ReadMenu @JvmOverloads constructor(
                 menuOutListener.onAnimationEnd(menuBottomOut)
             }
         }
-    }
-
-    private fun brightnessAuto(): Boolean {
-        return context.getPrefBoolean("brightnessAuto", true) || !showBrightnessView
     }
 
     private fun bindEvent() = binding.run {
@@ -368,29 +311,6 @@ class ReadMenu @JvmOverloads constructor(
                         && ReadBook.curTextChapter?.isVip == true
                         && ReadBook.curTextChapter?.isPay != true
             sourceMenu.show()
-        }
-        //亮度跟随
-        ivBrightnessAuto.setOnClickListener {
-            context.putPrefBoolean("brightnessAuto", !brightnessAuto())
-            upBrightnessState()
-        }
-        //亮度调节
-        seekBrightness.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    setScreenBrightness(progress.toFloat())
-                }
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                AppConfig.readBrightness = seekBar.progress
-            }
-
-        })
-        vwBrightnessPosAdjust.setOnClickListener {
-            AppConfig.brightnessVwPos = !AppConfig.brightnessVwPos
-            upBrightnessVwPos(binding.root)
         }
         //阅读进度
         seekReadPage.setOnSeekBarChangeListener(object : SeekBarChangeListener {
