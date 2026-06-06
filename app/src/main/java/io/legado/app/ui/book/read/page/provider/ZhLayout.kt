@@ -23,10 +23,46 @@ class ZhLayout(
 ) : Layout(text, textPaint, width, Alignment.ALIGN_NORMAL, 0f, 0f) {
     companion object {
         private val postPanc = hashSetOf(
-            "，", "。", "：", "？", "！", "、", "”", "’", "）", "》", "}",
-            "】", ")", ">", "]", "}", ",", ".", "?", "!", ":", "」", "；", ";"
+            "！",
+            "，",
+            "。",
+            "、",
+            "；",
+            "：",
+            "？",
+            "”",
+            "’",
+            "）",
+            "］",
+            "｝",
+            "》",
+            "〉",
+            "〕",
+            "】",
+            "〗",
+            "」",
+            "』",
+            "﹂",
+            "﹄",
+            "…",
+            "—",
+            "～",
+            "·",
+            "!",
+            ",",
+            ".",
+            ":",
+            ";",
+            "?",
+            ")",
+            "]",
+            "}",
+            ">"
         )
-        private val prePanc = hashSetOf("“", "（", "《", "【", "‘", "‘", "(", "<", "[", "{", "「")
+        private val prePanc = hashSetOf(
+            "“", "‘", "（", "［", "｛", "《", "〈", "〔", "【", "〖", "『", "「", "﹁", "﹃",
+            "(", "[", "{", "<"
+        )
         private val cnCharWidthCache = WeakHashMap<Paint, Float>()
     }
 
