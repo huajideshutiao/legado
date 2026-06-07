@@ -1196,9 +1196,6 @@
     <string name="hide_manga_title">Ẩn tiêu đề danh sách manga</string>
     <string name="refresh_explore">Làm mới khám phá</string>
     <string name="padding_display_cutouts">Đệm các phần cắt hiển thị</string>
-    <string name="manga_epaper">Màn hình mực</string>
-    <string name="manga_epaper_stting">Cài đặt màn hình mực</string>
-    <string name="manga_epaper_value">Ngưỡng</string>
     <string name="disable_horizontal_page_snap">禁用水平翻页效果</string>
     <string name="enable_manga_gray">Bật ảnh xám</string>
     <string name="play_mode">Chế độ phát</string>
