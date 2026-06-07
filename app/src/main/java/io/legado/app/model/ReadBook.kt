@@ -879,6 +879,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
     }
 
+    @Synchronized
     fun upToc() {
         val bookSource = bookSource ?: return
         val book = book ?: return

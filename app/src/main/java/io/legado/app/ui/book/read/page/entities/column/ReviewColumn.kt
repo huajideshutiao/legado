@@ -43,16 +43,14 @@ data class ReviewColumn(
         // bitmap 含 padding 防 stroke 被边界裁；绘制时反向偏移 padding
         val pad = kotlin.math.ceil(scale).toInt()
         val bmp = getOutlineBitmap(iconW, iconH, scale, pad)
-        paint.style = Paint.Style.FILL
         canvas.drawBitmap(bmp, left - pad, top - pad, paint)
 
-        // 仅数字按 count 重画
-        paint.textSize = 12f * scale
-        val fm = paint.fontMetrics
+        // 数字字号同章稳定，textSize 仅在 scale 变化时切；fm 也缓存
+        ensureCountTextSize(paint, scale)
         canvas.drawText(
             countText,
             left + 12.5f * scale,
-            top + 10f * scale - (fm.ascent + fm.descent) / 2f,
+            top + 10f * scale - cachedFmCenter,
             paint
         )
     }
@@ -72,6 +70,18 @@ data class ReviewColumn(
         private var cachedBitmap: Bitmap? = null
         private var cachedW: Int = 0
         private var cachedH: Int = 0
+
+        // 数字 textSize 缓存：scale 同章一致，多列共用同一份
+        private var cachedScale: Float = Float.NaN
+        private var cachedFmCenter: Float = 0f
+
+        private fun ensureCountTextSize(paint: Paint, scale: Float) {
+            if (scale == cachedScale) return
+            paint.textSize = 12f * scale
+            val fm = paint.fontMetrics
+            cachedFmCenter = (fm.ascent + fm.descent) / 2f
+            cachedScale = scale
+        }
 
         @Synchronized
         private fun getOutlineBitmap(iconW: Float, iconH: Float, scale: Float, pad: Int): Bitmap {

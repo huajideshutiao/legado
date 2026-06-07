@@ -491,148 +491,125 @@ class BookSourceEditActivity :
         val reviewRule = ReviewRule()
         sourceEntities.forEach {
             when (it.key) {
-                "bookSourceType" -> source.bookSourceType =
-                    indexToBookSourceType(it.value?.toIntOrNull() ?: 0)
-                "enabled" -> source.enabled = it.value == "true"
-                "enabledCookieJar" -> source.enabledCookieJar = it.value == "true"
-                "enableDangerousApi" -> source.enableDangerousApi = it.value == "true"
-                else -> {
-                    it.value = it.value?.takeIf { s -> s.isNotBlank() }
-                    when (it.key) {
-                        "bookSourceUrl" -> source.bookSourceUrl = it.value ?: ""
-                        "bookSourceName" -> source.bookSourceName = it.value ?: ""
-                        "bookSourceGroup" -> source.bookSourceGroup = it.value
-                        "loginUrl" -> source.loginUrl = it.value
-                        "loginUi" -> source.loginUi = it.value
-                        "loginCheckJs" -> source.loginCheckJs = it.value
-                        "coverDecodeJs" -> source.coverDecodeJs = it.value
-                        "bookUrlPattern" -> source.bookUrlPattern = it.value
-                        "header" -> source.header = it.value
-                        "bookSourceComment" -> source.bookSourceComment = it.value
-                        "concurrentRate" -> source.concurrentRate = it.value
-                        "variableComment" -> source.variableComment = it.value
-                        "jsLib" -> source.jsLib = it.value
-                    }
-                }
+                "bookSourceType" -> source.bookSourceType = indexToBookSourceType(it.intValue)
+                "enabled" -> source.enabled = it.boolValue
+                "enabledCookieJar" -> source.enabledCookieJar = it.boolValue
+                "enableDangerousApi" -> source.enableDangerousApi = it.boolValue
+                "bookSourceUrl" -> source.bookSourceUrl = it.text.orEmpty()
+                "bookSourceName" -> source.bookSourceName = it.text.orEmpty()
+                "bookSourceGroup" -> source.bookSourceGroup = it.text
+                "loginUrl" -> source.loginUrl = it.text
+                "loginUi" -> source.loginUi = it.text
+                "loginCheckJs" -> source.loginCheckJs = it.text
+                "coverDecodeJs" -> source.coverDecodeJs = it.text
+                "bookUrlPattern" -> source.bookUrlPattern = it.text
+                "header" -> source.header = it.text
+                "bookSourceComment" -> source.bookSourceComment = it.text
+                "concurrentRate" -> source.concurrentRate = it.text
+                "variableComment" -> source.variableComment = it.text
+                "jsLib" -> source.jsLib = it.text
             }
         }
         searchEntities.forEach {
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "searchUrl" -> source.searchUrl = it.value
-                "checkKeyWord" -> searchRule.checkKeyWord = it.value
-                "bookList" -> searchRule.bookList = it.value
-                "name" -> searchRule.name = it.value
-                "author" -> searchRule.author = it.value
-                "kind" -> searchRule.kind = it.value
-                "intro" -> searchRule.intro = it.value
-                "wordCount" -> searchRule.wordCount = it.value
-                "lastChapter" -> searchRule.lastChapter = it.value
-                "coverUrl" -> searchRule.coverUrl = it.value
-                "bookUrl" -> searchRule.bookUrl = it.value
-                "hasMoreRule" -> searchRule.hasMoreRule = it.value
+                "searchUrl" -> source.searchUrl = it.text
+                "checkKeyWord" -> searchRule.checkKeyWord = it.text
+                "bookList" -> searchRule.bookList = it.text
+                "name" -> searchRule.name = it.text
+                "author" -> searchRule.author = it.text
+                "kind" -> searchRule.kind = it.text
+                "intro" -> searchRule.intro = it.text
+                "wordCount" -> searchRule.wordCount = it.text
+                "lastChapter" -> searchRule.lastChapter = it.text
+                "coverUrl" -> searchRule.coverUrl = it.text
+                "bookUrl" -> searchRule.bookUrl = it.text
+                "hasMoreRule" -> searchRule.hasMoreRule = it.text
             }
         }
         exploreEntities.forEach {
             when (it.key) {
-                "enabledExplore" -> {
-                    source.enabledExplore = it.value == "true"
-                    return@forEach
-                }
-                "exploreStyle" -> {
-                    source.exploreStyle = (it.value?.toIntOrNull() ?: 0).coerceIn(0, 3)
-                    return@forEach
-                }
-            }
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
-            when (it.key) {
-                "exploreUrl" -> source.exploreUrl = it.value
-                "bookList" -> exploreRule.bookList = it.value
-                "name" -> exploreRule.name = it.value
-                "author" -> exploreRule.author = it.value
-                "kind" -> exploreRule.kind = it.value
-                "intro" -> exploreRule.intro = it.value
-                "wordCount" -> exploreRule.wordCount = it.value
-                "lastChapter" -> exploreRule.lastChapter = it.value
-                "coverUrl" -> exploreRule.coverUrl = it.value
-                "bookUrl" -> exploreRule.bookUrl = it.value
-                "hasMoreRule" -> exploreRule.hasMoreRule = it.value
+                "enabledExplore" -> source.enabledExplore = it.boolValue
+                "exploreStyle" -> source.exploreStyle = it.intValue.coerceIn(0, 3)
+                "exploreUrl" -> source.exploreUrl = it.text
+                "bookList" -> exploreRule.bookList = it.text
+                "name" -> exploreRule.name = it.text
+                "author" -> exploreRule.author = it.text
+                "kind" -> exploreRule.kind = it.text
+                "intro" -> exploreRule.intro = it.text
+                "wordCount" -> exploreRule.wordCount = it.text
+                "lastChapter" -> exploreRule.lastChapter = it.text
+                "coverUrl" -> exploreRule.coverUrl = it.text
+                "bookUrl" -> exploreRule.bookUrl = it.text
+                "hasMoreRule" -> exploreRule.hasMoreRule = it.text
             }
         }
         infoEntities.forEach {
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "init" -> bookInfoRule.init = it.value
-                "name" -> bookInfoRule.name = it.value
-                "author" -> bookInfoRule.author = it.value
-                "kind" -> bookInfoRule.kind = it.value
-                "intro" -> bookInfoRule.intro = it.value
-                "wordCount" -> bookInfoRule.wordCount = it.value
-                "lastChapter" -> bookInfoRule.lastChapter = it.value
-                "coverUrl" -> bookInfoRule.coverUrl = it.value
-                "tocUrl" -> bookInfoRule.tocUrl = it.value
-                "canReName" -> bookInfoRule.canReName = it.value
-                "downloadUrls" -> bookInfoRule.downloadUrls = it.value
+                "init" -> bookInfoRule.init = it.text
+                "name" -> bookInfoRule.name = it.text
+                "author" -> bookInfoRule.author = it.text
+                "kind" -> bookInfoRule.kind = it.text
+                "intro" -> bookInfoRule.intro = it.text
+                "wordCount" -> bookInfoRule.wordCount = it.text
+                "lastChapter" -> bookInfoRule.lastChapter = it.text
+                "coverUrl" -> bookInfoRule.coverUrl = it.text
+                "tocUrl" -> bookInfoRule.tocUrl = it.text
+                "canReName" -> bookInfoRule.canReName = it.text
+                "downloadUrls" -> bookInfoRule.downloadUrls = it.text
             }
         }
         tocEntities.forEach {
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "preUpdateJs" -> tocRule.preUpdateJs = it.value
-                "chapterList" -> tocRule.chapterList = it.value
-                "chapterName" -> tocRule.chapterName = it.value
-                "chapterUrl" -> tocRule.chapterUrl = it.value
-                "formatJs" -> tocRule.formatJs = it.value
-                "isVolume" -> tocRule.isVolume = it.value
-                "updateTime" -> tocRule.updateTime = it.value
-                "isVip" -> tocRule.isVip = it.value
-                "isPay" -> tocRule.isPay = it.value
-                "nextTocUrl" -> tocRule.nextTocUrl = it.value
+                "preUpdateJs" -> tocRule.preUpdateJs = it.text
+                "chapterList" -> tocRule.chapterList = it.text
+                "chapterName" -> tocRule.chapterName = it.text
+                "chapterUrl" -> tocRule.chapterUrl = it.text
+                "formatJs" -> tocRule.formatJs = it.text
+                "isVolume" -> tocRule.isVolume = it.text
+                "updateTime" -> tocRule.updateTime = it.text
+                "isVip" -> tocRule.isVip = it.text
+                "isPay" -> tocRule.isPay = it.text
+                "nextTocUrl" -> tocRule.nextTocUrl = it.text
             }
         }
         contentEntities.forEach {
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "content" -> contentRule.content = it.value
-                "title" -> contentRule.title = it.value
-                "nextContentUrl" -> contentRule.nextContentUrl = it.value
-                "shouldOverrideUrlLoading" -> contentRule.shouldOverrideUrlLoading = it.value
-                "webJs" -> contentRule.webJs = it.value
-                "sourceRegex" -> contentRule.sourceRegex = it.value
-                "replaceRegex" -> contentRule.replaceRegex = it.value
-                "imageStyle" -> contentRule.imageStyle = it.value
-                "imageDecode" -> contentRule.imageDecode = it.value
-                "payAction" -> contentRule.payAction = it.value
-                "lrcRule" -> contentRule.lrcRule = it.value
-                "musicCover" -> contentRule.musicCover = it.value
+                "content" -> contentRule.content = it.text
+                "title" -> contentRule.title = it.text
+                "nextContentUrl" -> contentRule.nextContentUrl = it.text
+                "shouldOverrideUrlLoading" -> contentRule.shouldOverrideUrlLoading = it.text
+                "webJs" -> contentRule.webJs = it.text
+                "sourceRegex" -> contentRule.sourceRegex = it.text
+                "replaceRegex" -> contentRule.replaceRegex = it.text
+                "imageStyle" -> contentRule.imageStyle = it.text
+                "imageDecode" -> contentRule.imageDecode = it.text
+                "payAction" -> contentRule.payAction = it.text
+                "lrcRule" -> contentRule.lrcRule = it.text
+                "musicCover" -> contentRule.musicCover = it.text
             }
         }
         reviewEntities.forEach {
-            if (it.key == "enabledReview") {
-                source.enabledReview = it.value == "true"
-                return@forEach
-            }
-            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
-                "reviewUrl" -> reviewRule.reviewUrl = it.value
-                "reviewList" -> reviewRule.reviewList = it.value
-                "reviewCountRule" -> reviewRule.reviewCountRule = it.value
-                "totalCountRule" -> reviewRule.totalCountRule = it.value
-                "hasMoreRule" -> reviewRule.hasMoreRule = it.value
-                "reviewIdRule" -> reviewRule.reviewIdRule = it.value
-                "avatarRule" -> reviewRule.avatarRule = it.value
-                "nameRule" -> reviewRule.nameRule = it.value
-                "contentRule" -> reviewRule.contentRule = it.value
-                "postTimeRule" -> reviewRule.postTimeRule = it.value
-                "extraRule" -> reviewRule.extraRule = it.value
-                "imagesRule" -> reviewRule.imagesRule = it.value
-                "voteUpCountRule" -> reviewRule.voteUpCountRule = it.value
-                "replyCountRule" -> reviewRule.replyCountRule = it.value
-                "replyListUrl" -> reviewRule.replyListUrl = it.value
-                "voteUpRule" -> reviewRule.voteUpRule = it.value
-                "voteDownRule" -> reviewRule.voteDownRule = it.value
-                "replyRule" -> reviewRule.replyRule = it.value
-                "deleteRule" -> reviewRule.deleteRule = it.value
+                "enabledReview" -> source.enabledReview = it.boolValue
+                "reviewUrl" -> reviewRule.reviewUrl = it.text
+                "reviewList" -> reviewRule.reviewList = it.text
+                "reviewCountRule" -> reviewRule.reviewCountRule = it.text
+                "totalCountRule" -> reviewRule.totalCountRule = it.text
+                "hasMoreRule" -> reviewRule.hasMoreRule = it.text
+                "reviewIdRule" -> reviewRule.reviewIdRule = it.text
+                "avatarRule" -> reviewRule.avatarRule = it.text
+                "nameRule" -> reviewRule.nameRule = it.text
+                "contentRule" -> reviewRule.contentRule = it.text
+                "postTimeRule" -> reviewRule.postTimeRule = it.text
+                "extraRule" -> reviewRule.extraRule = it.text
+                "imagesRule" -> reviewRule.imagesRule = it.text
+                "voteUpCountRule" -> reviewRule.voteUpCountRule = it.text
+                "replyCountRule" -> reviewRule.replyCountRule = it.text
+                "replyListUrl" -> reviewRule.replyListUrl = it.text
+                "voteUpRule" -> reviewRule.voteUpRule = it.text
+                "voteDownRule" -> reviewRule.voteDownRule = it.text
+                "replyRule" -> reviewRule.replyRule = it.text
+                "deleteRule" -> reviewRule.deleteRule = it.text
             }
         }
         source.ruleSearch = searchRule

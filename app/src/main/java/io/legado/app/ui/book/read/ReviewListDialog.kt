@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read
 
 import android.app.Application
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -10,7 +11,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.graphics.toColorInt
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -74,12 +75,11 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     // 段评模式头部，sort 切换时要刷按钮文案，保留 binding 引用
     private var listHeaderBinding: ItemReviewListHeaderBinding? = null
 
-    // 楼主原评论的点赞/点踩态（仅回复详情页用）；点赞乐观更新走这里
-    private var parentVoted: Boolean = false
-    private var parentVotedDown: Boolean = false
-    private val parentVoteUpColor = "#E53935".toColorInt()
-    private var parentDefaultVoteCountColors: android.content.res.ColorStateList? = null
     private val adapter by lazy { ReviewAdapter(requireContext()) }
+
+    // 楼主原评论 binding，用于回复详情页"乐观点赞"局部刷新
+    private var parentBinding: ItemReviewBinding? = null
+    private var parentReview: Review? = null
 
     /** 点击单条段评 → 弹回复输入框，replyTo 暂存为该条 */
     private fun onReviewClicked(review: Review) {
@@ -139,6 +139,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         val parentReview = arguments?.getString("parentReviewKey")?.let {
             IntentData.get<Review>(it)
         }
+        this.parentReview = parentReview
         viewModel.chapterIndex = chapterIndex
         viewModel.paragraphIndex = paragraphIndex
         viewModel.replyReviewId = parentReview?.id
@@ -167,6 +168,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         if (parentReview != null) {
             adapter.addHeaderView { parent ->
                 val b = ItemReviewBinding.inflate(layoutInflater, parent, false)
+                parentBinding = b
                 bindParentReview(b, parentReview)
                 b
             }
@@ -266,15 +268,15 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         }.show()
     }
 
-    /** 回复详情页 header：渲染楼主原评论，禁用"查看回复"入口（已经在详情页内）。 */
+    /** 回复详情页 header：渲染楼主原评论；vote 与图片复用 adapter 的同一套逻辑。 */
     private fun bindParentReview(b: ItemReviewBinding, item: Review) {
         b.tvName.text = item.name.orEmpty()
         b.tvContent.text = item.content
         b.tvContent.maxLines = Int.MAX_VALUE
         b.tvPostTime.text = item.postTime.orEmpty()
         b.tvExtra.text = item.extra.orEmpty()
-        parentDefaultVoteCountColors = b.tvVoteCount.textColors
-        renderParentVoteState(b, item)
+        adapter.captureDefaultVoteColors(b.tvVoteCount.textColors)
+        adapter.renderVoteState(b, item)
         ImageLoader.load(requireContext(), item.avatar)
             .placeholder(R.drawable.ic_bottom_person)
             .error(R.drawable.ic_bottom_person)
@@ -288,87 +290,83 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         b.tvReplyPreview.gone()
         b.btnMenu.gone()
         val voteUpClick = View.OnClickListener {
-            if (item.id == null) return@OnClickListener
-            val target = !parentVoted
-            parentVoted = target
-            if (target) parentVotedDown = false
-            renderParentVoteState(b, item)
+            val id = item.id ?: return@OnClickListener
+            val target = adapter.toggleVoteUp(id)
+            adapter.renderVoteState(b, item)
             viewModel.voteUp(item, target) {
-                parentVoted = !parentVoted
-                renderParentVoteState(b, item)
+                adapter.revertVoteUp(id)
+                adapter.renderVoteState(b, item)
             }
         }
         b.btnVoteUp.setOnClickListener(voteUpClick)
         b.tvVoteCount.setOnClickListener(voteUpClick)
         b.btnVoteDown.setOnClickListener {
-            if (item.id == null) return@setOnClickListener
-            val target = !parentVotedDown
-            parentVotedDown = target
-            if (target) parentVoted = false
-            renderParentVoteState(b, item)
+            val id = item.id ?: return@setOnClickListener
+            val target = adapter.toggleVoteDown(id)
+            adapter.renderVoteState(b, item)
             viewModel.voteDown(item, target) {
-                parentVotedDown = !parentVotedDown
-                renderParentVoteState(b, item)
+                adapter.revertVoteDown(id)
+                adapter.renderVoteState(b, item)
             }
         }
-        // 图片
-        b.llImages.removeAllViews()
-        if (item.images.isEmpty()) {
-            b.hsvImages.gone()
-        } else {
-            b.hsvImages.visible()
-            val density = resources.displayMetrics.density
-            val size = (120 * density).toInt()
-            val gap = (4 * density).toInt()
-            item.images.forEachIndexed { i, url ->
-                val iv = ImageView(requireContext()).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                        if (i > 0) marginStart = gap
-                    }
-                    setOnClickListener { showDialogFragment(PhotoDialog(url)) }
-                }
-                b.llImages.addView(iv)
-                ImageLoader.load(requireContext(), url).override(size, size).into(iv)
-            }
-        }
-    }
-
-    private fun renderParentVoteState(b: ItemReviewBinding, item: Review) {
-        val display = item.voteUpCount + if (parentVoted) 1 else 0
-        b.tvVoteCount.text = if (display > 0) display.toString()
-        else getString(R.string.vote_up)
-        if (parentVoted) {
-            b.tvVoteCount.setTextColor(parentVoteUpColor)
-            b.btnVoteUp.setImageResource(R.drawable.ic_review_thumb_up_filled)
-        } else {
-            parentDefaultVoteCountColors?.let { b.tvVoteCount.setTextColor(it) }
-            b.btnVoteUp.setImageResource(R.drawable.ic_review_thumb_up)
-        }
-        b.btnVoteDown.setImageResource(
-            if (parentVotedDown) R.drawable.ic_review_thumb_down_filled
-            else R.drawable.ic_review_thumb_down
-        )
+        adapter.bindImages(b, item.images)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         listHeaderBinding = null
+        parentBinding = null
+        parentReview = null
         _binding = null
     }
 
     inner class ReviewAdapter(context: Context) :
         RecyclerAdapter<Review, ItemReviewBinding>(context) {
 
-        // 展开态用 review 实例 identity 跟踪；新一轮 load() 后这些实例会被替换，状态自然清掉
-        private val expanded = java.util.IdentityHashMap<Review, Boolean>()
-
-        // 点赞/点踩态用 review.id（稳定）跟踪；翻页/重载后保留
+        // 展开态、点赞/点踩态都用 review.id 跟踪：稳定，与重载/翻页解耦
+        // id 缺失的条目（极少数老书源）始终走折叠态、无法点赞，是可接受的退化
+        // 无 id 条目使用 review.content 的 hashCode 作为 key（不会与正常 id 冲突，因为前者带 #）
+        private val expanded = HashSet<String>()
         private val voted = HashSet<String>()
         private val votedDown = HashSet<String>()
 
-        private val voteUpColor = "#E53935".toColorInt()
-        private var defaultVoteCountColors: android.content.res.ColorStateList? = null
+        private val voteUpColor = ContextCompat.getColor(context, R.color.review_voted)
+        private var defaultVoteCountColors: ColorStateList? = null
+
+        private fun expandKey(item: Review): String = item.id ?: "#${item.content.hashCode()}"
+
+        /** 父项 binding 也用这套色；首次进来时由父项捕获到默认 textColors */
+        fun captureDefaultVoteColors(colors: ColorStateList) {
+            if (defaultVoteCountColors == null) defaultVoteCountColors = colors
+        }
+
+        fun toggleVoteUp(id: String): Boolean {
+            val target = !voted.contains(id)
+            if (target) {
+                voted.add(id)
+                votedDown.remove(id) // 互斥
+            } else voted.remove(id)
+            return target
+        }
+
+        fun toggleVoteDown(id: String): Boolean {
+            val target = !votedDown.contains(id)
+            if (target) {
+                votedDown.add(id)
+                voted.remove(id) // 互斥
+            } else votedDown.remove(id)
+            return target
+        }
+
+        fun revertVoteUp(id: String) {
+            if (voted.contains(id)) voted.remove(id) else voted.add(id)
+            notifyItemByReviewId(id)
+        }
+
+        fun revertVoteDown(id: String) {
+            if (votedDown.contains(id)) votedDown.remove(id) else votedDown.add(id)
+            notifyItemByReviewId(id)
+        }
 
         override fun getViewBinding(parent: ViewGroup): ItemReviewBinding {
             return ItemReviewBinding.inflate(inflater, parent, false)
@@ -390,9 +388,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 tvContent.text = item.content
                 tvPostTime.text = item.postTime.orEmpty()
                 tvExtra.text = item.extra.orEmpty()
-                if (defaultVoteCountColors == null) {
-                    defaultVoteCountColors = tvVoteCount.textColors
-                }
+                captureDefaultVoteColors(tvVoteCount.textColors)
                 renderVoteState(binding, item)
                 if (item.replyCount > 0) {
                     tvReplyPreview.text =
@@ -405,9 +401,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                     .placeholder(R.drawable.ic_bottom_person)
                     .error(R.drawable.ic_bottom_person)
                     .into(ivAvatar)
-                bindImages(binding, item)
+                bindImages(binding, item.images)
                 // 展开/折叠
-                val isExpanded = expanded[item] == true
+                val isExpanded = expanded.contains(expandKey(item))
                 tvContent.maxLines = if (isExpanded) Int.MAX_VALUE else 6
                 tvExpand.setText(
                     if (isExpanded) R.string.review_collapse else R.string.review_expand
@@ -422,7 +418,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             }
         }
 
-        private fun renderVoteState(binding: ItemReviewBinding, item: Review) {
+        fun renderVoteState(binding: ItemReviewBinding, item: Review) {
             val id = item.id
             val isVoted = id != null && voted.contains(id)
             val isVotedDown = id != null && votedDown.contains(id)
@@ -443,21 +439,6 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             )
         }
 
-        /**
-         * 操作失败时回滚乐观更新。
-         * kind: "up" / "down"
-         */
-        fun revertVote(reviewId: String, kind: String) {
-            when (kind) {
-                "up" -> if (voted.contains(reviewId)) voted.remove(reviewId)
-                else voted.add(reviewId)
-
-                "down" -> if (votedDown.contains(reviewId)) votedDown.remove(reviewId)
-                else votedDown.add(reviewId)
-            }
-            notifyItemByReviewId(reviewId)
-        }
-
         private fun notifyItemByReviewId(reviewId: String) {
             for (i in 0 until getActualItemCount()) {
                 if (getItem(i)?.id == reviewId) {
@@ -476,10 +457,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             }
         }
 
-        private fun bindImages(binding: ItemReviewBinding, item: Review) {
+        fun bindImages(binding: ItemReviewBinding, images: List<String>) {
             val container = binding.llImages
             container.removeAllViews()
-            val images = item.images
             if (images.isEmpty()) {
                 binding.hsvImages.gone()
                 return
@@ -521,7 +501,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             binding.tvExpand.setOnClickListener {
                 val item = getItemByLayoutPosition(holder.layoutPosition)
                     ?: return@setOnClickListener
-                expanded[item] = expanded[item] != true
+                val key = expandKey(item)
+                if (expanded.contains(key)) expanded.remove(key) else expanded.add(key)
                 notifyItemChanged(holder.layoutPosition)
             }
             binding.ivAvatar.setOnClickListener {
@@ -546,13 +527,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 val item = getItemByLayoutPosition(holder.layoutPosition)
                     ?: return@OnClickListener
                 val id = item.id ?: return@OnClickListener
-                val target = !voted.contains(id)
-                if (target) {
-                    voted.add(id)
-                    votedDown.remove(id) // 互斥
-                } else voted.remove(id)
+                val target = toggleVoteUp(id)
                 notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteUp(item, target) { revertVote(id, "up") }
+                viewModel.voteUp(item, target) { revertVoteUp(id) }
             }
             binding.btnVoteUp.setOnClickListener(voteUpClick)
             binding.tvVoteCount.setOnClickListener(voteUpClick)
@@ -560,13 +537,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 val item = getItemByLayoutPosition(holder.layoutPosition)
                     ?: return@setOnClickListener
                 val id = item.id ?: return@setOnClickListener
-                val target = !votedDown.contains(id)
-                if (target) {
-                    votedDown.add(id)
-                    voted.remove(id) // 互斥
-                } else votedDown.remove(id)
+                val target = toggleVoteDown(id)
                 notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteDown(item, target) { revertVote(id, "down") }
+                viewModel.voteDown(item, target) { revertVoteDown(id) }
             }
             binding.tvReplyPreview.setOnClickListener {
                 getItemByLayoutPosition(holder.layoutPosition)?.let { openReplies(it) }

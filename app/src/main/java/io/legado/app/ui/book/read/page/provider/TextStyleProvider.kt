@@ -85,6 +85,8 @@ object TextStyleProvider {
             reviewPaint.textSize = contentPaint.textSize * 0.45f
             reviewPaint.textAlign = Paint.Align.CENTER
             reviewPaint.isAntiAlias = true
+            // 气泡填充 + 数字共用 FILL（外圈缓存的是 ALPHA_8，drawBitmap 时按 paint 上色）
+            reviewPaint.style = Paint.Style.FILL
         }
         //间距
         lineSpacingExtra = ReadBookConfig.lineSpacingExtra / 10f

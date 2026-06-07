@@ -353,6 +353,8 @@ class TextChapterLayout(
         }
 
         var isSetTypedImage = false
+        // 逻辑段序号：按源文本 '\n' 切分递增，与书源段评接口约定的 paragraphIndex 对齐
+        // ≠ TextLine.paragraphNum（视觉段序号，由 calcTextLinePosition 在排版后基于 isParagraphEnd 递增）
         var paragraphSeq = 0
         parsedLines.forEach { parsedLine ->
             currentCoroutineContext().ensureActive()
@@ -713,6 +715,8 @@ class TextChapterLayout(
         textLine: TextLine,
         sbLength: Int
     ) {
+        // 视觉段序号：按排版后的视觉行计算，同一逻辑段内多个 TextLine（折行）共享同号，
+        // 遇上一行 isParagraphEnd 才递增。与上层 paragraphSeq（逻辑段号）不同
         val lastLine = pendingTextPage.lines.lastOrNull { it.paragraphNum > 0 }
             ?: textPages.lastOrNull()?.lines?.lastOrNull { it.paragraphNum > 0 }
         textLine.paragraphNum = when {

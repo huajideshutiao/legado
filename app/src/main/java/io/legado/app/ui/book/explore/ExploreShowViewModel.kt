@@ -158,8 +158,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 selectedOptions = selectedOptions,
             )
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { pageResult ->
-            hasNextPage = pageResult.hasNextPage
+            val prevSize = books.size
             books.addAll(pageResult.books)
+            // 兜底：翻到第二页起，去重后整体未增长则视为到底；防止 hasMoreRule 缺失或配错时无限触底
+            hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
             booksData.postValue(books.toList())
             page++
         }.onError {

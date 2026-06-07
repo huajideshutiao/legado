@@ -148,19 +148,9 @@ object BookList {
             Debug.log(bookSource.bookSourceUrl, "┌判断是否有下一页")
             val raw = runCatching { analyzeRule.evalJS(hasMoreRuleStr, body) }.getOrNull()
             Debug.log(bookSource.bookSourceUrl, "└$raw")
-            parseBoolean(raw)
+            WebBook.parseBoolean(raw)
         }
         return BookListPage(bookList, hasNextPage)
-    }
-
-    private fun parseBoolean(raw: Any?): Boolean = when (raw) {
-        null -> false
-        is Boolean -> raw
-        is Number -> raw.toDouble() != 0.0
-        else -> {
-            val s = raw.toString().trim()
-            s.isNotEmpty() && !s.equals("false", true) && s != "0" && s != "null"
-        }
     }
 
     @Throws(Exception::class)

@@ -27,6 +27,15 @@ data class EditEntity(
         span
     )
 
+    /** 文本字段值：trim 后空串视为 null */
+    val text: String? get() = value?.takeIf { it.isNotBlank() }
+
+    /** 复选框值：value == "true" */
+    val boolValue: Boolean get() = value == "true"
+
+    /** 下拉框选中下标：value.toIntOrNull() ?: 0 */
+    val intValue: Int get() = value?.toIntOrNull() ?: 0
+
     object ViewType {
 
         const val text = 0

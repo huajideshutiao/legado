@@ -294,8 +294,8 @@ object WebBook {
 
     /**
      * 获取某条段评的回复列表
-     * 用 reviewRule.replyListUrl 这个 JS 规则惰性求出回复列表 URL：
-     * 变量 paragraphIndex / reviewId，规则返回回复列表 URL 字符串。
+     * reviewRule.replyListUrl 与 reviewUrl 同样走 AnalyzeUrl，
+     * 书源用 @js:/<js></js> 写动态 URL，可访问 paragraphIndex / reviewId 变量。
      * 复用 reviewList/avatarRule 等同一套解析规则。
      */
     suspend fun getReviewRepliesAwait(
@@ -310,22 +310,13 @@ object WebBook {
             ?: throw NoStackTraceException("书源未配置段评规则")
         val replyListUrlRule = reviewRule.replyListUrl
             ?: throw NoStackTraceException("书源未配置回复列表URL规则")
-        val variables = mutableMapOf<String, Any>(
+        val variables = mapOf<String, Any>(
             "paragraphIndex" to paragraphIndex,
             "reviewId" to reviewId,
         )
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
-        val urlAnalyzeRule = AnalyzeRule(book, bookSource)
-            .setChapter(bookChapter)
-            .setBaseUrl(baseUrl)
-            .setCoroutineContext(currentCoroutineContext())
-            .setVariables(variables)
-        urlAnalyzeRule.setContent("")
-        val replyListUrl = urlAnalyzeRule.evalJS(replyListUrlRule)
-            ?.toString()?.takeIf { it.isNotBlank() }
-            ?: throw NoStackTraceException("replyListUrl 规则返回空")
         val analyzeUrl = AnalyzeUrl(
-            mUrl = replyListUrl,
+            mUrl = replyListUrlRule,
             page = page,
             baseUrl = baseUrl,
             source = bookSource,
@@ -479,6 +470,20 @@ object WebBook {
     }
 
     data class ParsedRule(val rule: String, val reverse: Boolean)
+
+    /**
+     * JS 规则求值结果 → Boolean
+     * 支持原生 Boolean/数值/字符串("false"/"0"/"null"/空 视为 false)
+     */
+    internal fun parseBoolean(raw: Any?): Boolean = when (raw) {
+        null -> false
+        is Boolean -> raw
+        is Number -> raw.toDouble() != 0.0
+        else -> {
+            val s = raw.toString().trim()
+            s.isNotEmpty() && !s.equals("false", true) && s != "0" && s != "null"
+        }
+    }
 
     internal fun parseRulePrefix(rule: String?): ParsedRule {
         var reverse = false

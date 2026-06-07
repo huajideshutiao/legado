@@ -62,7 +62,7 @@ object BookReview {
             Debug.log(bookSource.bookSourceUrl, "┌判断是否有下一页")
             val raw = analyzeRule.getString(hasMoreRuleStr)
             Debug.log(bookSource.bookSourceUrl, "└$raw")
-            parseBoolean(raw)
+            WebBook.parseBoolean(raw)
         }
         // 段评总数：请求级，与 hasMoreRule 同上下文（content 仍是整页 body）
         // 透传字符串，UI 直接展示；未配置规则返回 null
@@ -156,16 +156,6 @@ object BookReview {
         }
         Debug.log(bookSource.bookSourceUrl, "◇段评条数:${list.size}")
         return ReviewPage(list, hasNextPage = hasNextPage, totalCount = totalCount)
-    }
-
-    private fun parseBoolean(raw: Any?): Boolean = when (raw) {
-        null -> false
-        is Boolean -> raw
-        is Number -> raw.toDouble() != 0.0
-        else -> {
-            val s = raw.toString().trim()
-            s.isNotEmpty() && !s.equals("false", true) && s != "0" && s != "null"
-        }
     }
 
     /**

@@ -29,6 +29,8 @@
 
     <color name="highlight">#d3321b</color>
 
+    <color name="review_voted">#E53935</color>
+
     <color name="btn_bg">#100e0e0e</color>
     <color name="btn_bg_press_2">#20000000</color>
 
