@@ -76,7 +76,7 @@ val appDb by lazy {
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 83, to = 84),
-        AutoMigration(from = 84, to = 85),
+        AutoMigration(from = 84, to = 85, spec = Migration84To85::class),
     ]
 )
 abstract class AppDatabase : RoomDatabase() {

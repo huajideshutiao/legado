@@ -1,34 +1,17 @@
 package io.legado.app.data
 
+import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.entities.BookGroup
 import java.util.Calendar
 
 object DatabaseMigrations {
 
     val migrations: Array<Migration> by lazy {
         arrayOf(
-            migration_80_81, migration_81_82, migration_82_83, migration_84_85
+            migration_80_81, migration_81_82, migration_82_83
         )
-    }
-
-    // 历史数据清洗：原本写在 AppDatabase.onOpen 里，每次打开库都会跑，
-    // 实际只需对存量数据执行一次，改为一次性迁移。
-    private val migration_84_85 = object : Migration(84, 85) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            // 移除已废弃的分组：音频(-3)、本地未分组(-5)
-            db.execSQL("delete from book_groups where groupId in (-3, -5)")
-            // 网络未分组(-4)统一重命名为未分组
-            db.execSQL(
-                "update book_groups set groupName = '未分组' " +
-                    "where groupId = ${io.legado.app.data.entities.BookGroup.IdUngrouped} " +
-                    "and groupName = '网络未分组'"
-            )
-            // 旧版误把字符串 'null' 当作 loginUi 写入
-            db.execSQL("update book_sources set loginUi = null where loginUi = 'null'")
-            db.execSQL("update httpTTS set loginUi = null where loginUi = 'null'")
-            db.execSQL("update httpTTS set concurrentRate = '0' where concurrentRate is null")
-        }
     }
 
     private val migration_80_81 = object : Migration(80, 81) {
@@ -163,4 +146,23 @@ object DatabaseMigrations {
         }
     }
 
+}
+
+// 历史数据清洗：原本写在 AppDatabase.onOpen 里，每次打开库都会跑，
+// 实际只需对存量数据执行一次，借 84→85 自动迁移的 onPostMigrate 一次性完成。
+class Migration84To85 : AutoMigrationSpec {
+    override fun onPostMigrate(db: SupportSQLiteDatabase) {
+        // 移除已废弃的分组：音频(-3)、本地未分组(-5)
+        db.execSQL("delete from book_groups where groupId in (-3, -5)")
+        // 网络未分组(-4)统一重命名为未分组
+        db.execSQL(
+            "update book_groups set groupName = '未分组' " +
+                "where groupId = ${BookGroup.IdUngrouped} " +
+                "and groupName = '网络未分组'"
+        )
+        // 旧版误把字符串 'null' 当作 loginUi 写入
+        db.execSQL("update book_sources set loginUi = null where loginUi = 'null'")
+        db.execSQL("update httpTTS set loginUi = null where loginUi = 'null'")
+        db.execSQL("update httpTTS set concurrentRate = '0' where concurrentRate is null")
+    }
 }
