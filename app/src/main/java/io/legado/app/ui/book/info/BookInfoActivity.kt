@@ -213,6 +213,9 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_download_local)?.isVisible =
             book?.origin?.startsWith(BookType.webDavTag) == true
         menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
+        menu.findItem(R.id.menu_review)?.isVisible = viewModel.curBookSource?.let {
+            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
+        } == true
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -260,6 +263,7 @@ class BookInfoActivity :
             R.id.menu_delete_alert -> LocalConfig.bookInfoDeleteAlert = !item.isChecked
             R.id.menu_upload -> book?.let { uploadBook(it) }
             R.id.menu_download_local -> book?.let { viewModel.downloadToLocal(it) }
+            R.id.menu_review -> viewModel.openCommentDialog(this)
         }
         return super.onCompatOptionsItemSelected(item)
     }

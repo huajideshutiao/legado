@@ -15,6 +15,7 @@ class BookSourceDebugModel(application: Application) : BaseViewModel(application
     var bookSrc: String? = null
     var tocSrc: String? = null
     var contentSrc: String? = null
+    var reviewSrc: String? = null
 
     fun init(sourceUrl: String?, finally: () -> Unit) {
         //优先使用这个，不会抛出异常
@@ -47,6 +48,7 @@ class BookSourceDebugModel(application: Application) : BaseViewModel(application
             20 -> bookSrc = msg
             30 -> tocSrc = msg
             40 -> contentSrc = msg
+            50 -> reviewSrc = msg
             else -> callback?.invoke(state, msg)
         }
     }

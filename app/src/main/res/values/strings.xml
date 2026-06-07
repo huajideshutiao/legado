@@ -880,6 +880,7 @@
     <string name="boo_src">Book source code</string>
     <string name="toc_src">Chapters source code</string>
     <string name="content_src">Content source code</string>
+    <string name="review_src">Review source code</string>
     <string name="list_src">List source code</string>
     <string name="title_font_size">Font size</string>
     <string name="title_margin_top">Margin top</string>
@@ -1047,7 +1048,7 @@
     <string name="check_selected_interval">Select zones</string>
     <string name="show_add_to_shelf_alert_title">Prompt to add to bookshelf when return</string>
     <string name="show_add_to_shelf_alert_summary">Prompt to add to bookshelf when return from reading books that are not on the bookshelf</string>
-    <string name="review">Review</string>
+    <string name="review">Comments</string>
     <string name="rule_avatar">Paragraph review author avatar(avatarRule)</string>
     <string name="rule_review_name">Paragraph review author name(nameRule)</string>
     <string name="rule_review_extra">Paragraph review extra info(extraRule)</string>
@@ -1056,7 +1057,7 @@
     <string name="rule_reply_count">Reply count(replyCountRule)</string>
     <string name="review_post_hint">Have something to say?</string>
     <string name="review_replies_count">All %1$d replies &gt;</string>
-    <string name="review_replies_detail_title">Review detail</string>
+    <string name="review_replies_detail_title">Comment detail</string>
     <string name="review_replies_section_title">All replies · %1$d</string>
     <string name="review_list_section_title">All comments · %1$s</string>
     <string name="review_sort_hot">Hot</string>
@@ -1076,8 +1077,8 @@
     <string name="rule_reply">Reply rule(replyRule)</string>
     <string name="rule_delete_review">Delete rule(deleteRule)</string>
     <string name="enable_review">Enable paragraph review</string>
-    <string name="confirm_delete_review">Delete this review?</string>
-    <string name="review_list_empty">No reviews yet</string>
+    <string name="confirm_delete_review">Delete this comment?</string>
+    <string name="review_list_empty">No comments yet</string>
     <string name="post_review">Post</string>
     <string name="reply_review">Reply</string>
     <string name="vote_up">Like</string>

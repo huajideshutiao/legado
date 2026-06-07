@@ -38,7 +38,7 @@ object BookReview {
     ): ReviewPage {
         body ?: throw NoStackTraceException("段评内容为空")
         Debug.log(bookSource.bookSourceUrl, "≡获取段评成功:${redirectUrl}")
-        Debug.log(bookSource.bookSourceUrl, body, state = 30)
+        Debug.log(bookSource.bookSourceUrl, body, state = 50)
         val list = arrayListOf<Review>()
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body)

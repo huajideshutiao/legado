@@ -133,10 +133,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        if (rowUi.type == RowUi.Type.button) rowUi.style().apply(root)
                         if (rowUi.type == RowUi.Type.title) FlexChildStyle(
                             layout_flexBasisPercent = 1F
                         ).apply(root)
+                        else rowUi.style().apply(root)
                         textView.text = rowUi.name
                         textView.setPadding(16.dpToPx())
                         root.onClick {
@@ -214,6 +214,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         loginData[rowUi.name] = it.toString()
                     }
                 }
+
                 RowUi.Type.select -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
                     (ItemLoginSelectBinding.bind(rowView).spinner.selectedItem as? String)

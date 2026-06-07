@@ -870,6 +870,7 @@
     <string name="boo_src">书籍源码</string>
     <string name="toc_src">目录源码</string>
     <string name="content_src">正文源码</string>
+    <string name="review_src">评论源码</string>
     <string name="list_src">列表源码</string>
     <string name="url_already">此 URL 已订阅</string>
     <string name="high_brush_title">高刷新率</string>
@@ -1044,7 +1045,7 @@
     <string name="check_selected_interval">选中所选区间</string>
     <string name="show_add_to_shelf_alert_title">返回时提示放入书架</string>
     <string name="show_add_to_shelf_alert_summary">阅读未放入书架的书籍在返回时提示放入书架</string>
-    <string name="review">段评</string>
+    <string name="review">评论</string>
     <string name="rule_review_url">段评URL（reviewUrl）</string>
     <string name="rule_review_list">段评列表节点（reviewList）</string>
     <string name="rule_review_count">整章段评数规则（reviewCountRule）</string>
@@ -1055,9 +1056,9 @@
     <string name="rule_review_images">段评图片列表（imagesRule）</string>
     <string name="rule_vote_up_count">点赞数（voteUpCountRule）</string>
     <string name="rule_reply_count">回复数（replyCountRule）</string>
-    <string name="review_post_hint">有趣段评千千万，不如你也来一条？</string>
+    <string name="review_post_hint">想说点什么？</string>
     <string name="review_replies_count">全部 %1$d 条回复 &gt;</string>
-    <string name="review_replies_detail_title">段评详情</string>
+    <string name="review_replies_detail_title">评论详情</string>
     <string name="review_replies_section_title">全部回复 · %1$d</string>
     <string name="review_list_section_title">全部评论 · %1$s</string>
     <string name="review_sort_hot">最热</string>
@@ -1073,8 +1074,8 @@
     <string name="rule_reply">回复评论规则（replyRule）</string>
     <string name="rule_delete_review">删除规则（deleteRule）</string>
     <string name="enable_review">启用段评</string>
-    <string name="confirm_delete_review">确定删除这条段评？</string>
-    <string name="review_list_empty">还没有段评</string>
+    <string name="confirm_delete_review">确定删除这条评论？</string>
+    <string name="review_list_empty">还没有评论</string>
     <string name="post_review">发布</string>
     <string name="reply_review">回复</string>
     <string name="vote_up">点赞</string>

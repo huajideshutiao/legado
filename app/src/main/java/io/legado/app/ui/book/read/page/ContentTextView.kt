@@ -7,6 +7,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import io.legado.app.R
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
@@ -238,8 +239,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
 
                 is ReviewColumn -> {
-                    callBack.onReviewClick(textPage.chapterIndex, column.paragraphIndex)
-                    handled = true
+                    val chapter = ReadBook.chapterList?.getOrNull(textPage.chapterIndex)
+                    if (chapter != null) {
+                        callBack.onReviewClick(chapter, column.paragraphIndex)
+                        handled = true
+                    }
                 }
 
                 is ImageColumn -> if(column.onClick.isNotEmpty()){
@@ -713,7 +717,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         fun upSelectedEnd(x: Float, y: Float)
         fun onImageLongPress(x: Float, y: Float, src: String)
         fun onImageClick(src: String, onClick: String )
-        fun onReviewClick(chapterIndex: Int, paragraphIndex: Int)
+        fun onReviewClick(chapter: BookChapter, paragraphIndex: Int)
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
     }

@@ -94,4 +94,9 @@
         android:title="@string/hide_manga_title"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_review"
+        android:title="@string/review"
+        app:showAsAction="never" />
+
 </menu>

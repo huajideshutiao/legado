@@ -109,6 +109,11 @@
         android:visible="false"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_review"
+        android:title="@string/review"
+        app:showAsAction="never" />
+
     <group android:id="@+id/menu_group_epub">
 
         <item

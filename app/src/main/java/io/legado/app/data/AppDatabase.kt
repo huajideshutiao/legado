@@ -127,9 +127,7 @@ abstract class AppDatabase : RoomDatabase() {
                         e
                     )
                 }
-            }
 
-            override fun onOpen(db: SupportSQLiteDatabase) {
                 // 预置分组：groupId, 名称, 排序, 可刷新(1/0), 显示(1/0)
                 val presetGroups = arrayOf(
                     arrayOf<Any>(BookGroup.IdAll, "全部", -10, 1, 1),
@@ -145,40 +143,16 @@ abstract class AppDatabase : RoomDatabase() {
                 presetGroups.forEach { g ->
                     db.execSQL(insertGroupSql, arrayOf(g[0], g[1], g[2], g[3], g[4], g[0]))
                 }
-                // 移除已废弃的分组：音频(-3)、本地未分组(-5)；网络未分组(-4)统一重命名为未分组
-                db.execSQL("delete from book_groups where groupId in (-3, -5)")
-                db.execSQL(
-                    "update book_groups set groupName = '未分组' " +
-                        "where groupId = ${BookGroup.IdUngrouped} and groupName = '网络未分组'"
-                )
-                @Language("sql")
-                val upBookSourceLoginUiSql =
-                    "update book_sources set loginUi = null where loginUi = 'null'"
-                db.execSQL(upBookSourceLoginUiSql)
-                @Language("sql")
-                val upHttpTtsLoginUiSql =
-                    "update httpTTS set loginUi = null where loginUi = 'null'"
-                db.execSQL(upHttpTtsLoginUiSql)
-                @Language("sql")
-                val upHttpTtsConcurrentRateSql =
-                    "update httpTTS set concurrentRate = '0' where concurrentRate is null"
-                db.execSQL(upHttpTtsConcurrentRateSql)
-                db.query("select * from keyboardAssists order by serialNo").use {
-                    if (it.count == 0) {
-                        DefaultData.keyboardAssists.forEach { keyboardAssist ->
-                            val contentValues = ContentValues().apply {
-                                put("type", keyboardAssist.type)
-                                put("key", keyboardAssist.key)
-                                put("value", keyboardAssist.value)
-                                put("serialNo", keyboardAssist.serialNo)
-                            }
-                            db.insert(
-                                "keyboardAssists",
-                                SQLiteDatabase.CONFLICT_REPLACE,
-                                contentValues
-                            )
-                        }
+
+                // 预置键盘助手
+                DefaultData.keyboardAssists.forEach { keyboardAssist ->
+                    val contentValues = ContentValues().apply {
+                        put("type", keyboardAssist.type)
+                        put("key", keyboardAssist.key)
+                        put("value", keyboardAssist.value)
+                        put("serialNo", keyboardAssist.serialNo)
                     }
+                    db.insert("keyboardAssists", SQLiteDatabase.CONFLICT_REPLACE, contentValues)
                 }
             }
         }

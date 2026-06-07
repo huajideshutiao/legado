@@ -2,6 +2,7 @@ package io.legado.app.ui.book.info
 
 import android.app.Application
 import android.net.Uri
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseReadViewModel
@@ -23,8 +24,10 @@ import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBook.WebFile
+import io.legado.app.ui.book.read.ReviewListDialog
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 
@@ -38,6 +41,12 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
         set(value) {
             value?.let { bookData.postValue(it) }
         }
+
+    /** 详情页无章节上下文, 弹书籍级评论 (paragraphIndex=-1) */
+    override fun openCommentDialog(activity: AppCompatActivity) {
+        val book = curBook ?: return
+        activity.showDialogFragment(ReviewListDialog(book, null, -1))
+    }
 
     fun initData() {
         execute {

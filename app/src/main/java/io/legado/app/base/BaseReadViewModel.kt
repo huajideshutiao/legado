@@ -2,6 +2,7 @@ package io.legado.app.base
 
 import android.app.Application
 import android.net.Uri
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
 import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
@@ -36,10 +37,12 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
+import io.legado.app.ui.book.read.ReviewListDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.catch
@@ -408,6 +411,16 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      */
     protected open fun onUpSource(book: Book) {
         curBookSource = IntentData.source as? BookSource
+    }
+
+    /**
+     * 打开章节级评论对话框 (paragraphIndex=0)
+     * 段评 (paragraphIndex>0) 由小说阅读页点击段落气泡触发, 不走此入口
+     */
+    open fun openCommentDialog(activity: AppCompatActivity) {
+        val book = curBook ?: return
+        val chapter = chapterListData.value?.getOrNull(book.durChapterIndex) ?: return
+        activity.showDialogFragment(ReviewListDialog(book, chapter, 0))
     }
 
     override fun onCleared() {

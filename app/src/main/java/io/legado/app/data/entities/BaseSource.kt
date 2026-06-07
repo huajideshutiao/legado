@@ -12,6 +12,7 @@ import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.help.JsExtensions
+import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.help.http.CookieStore
@@ -288,7 +289,12 @@ interface BaseSource : JsExtensions {
         return RhinoScriptEngine.eval(jsStr, scope)
     }
 
-    fun showLoginDialog(activity: AppCompatActivity) {
+    fun showLoginDialog() {
+        showLoginDialog(LifecycleHelp.currentActivity as? AppCompatActivity)
+    }
+
+    fun showLoginDialog(activity: AppCompatActivity?) {
+        activity ?: return
         if (loginUi.isNullOrEmpty()) {
             if (!loginUrl.isNullOrBlank()) {
                 activity.startActivity<io.legado.app.ui.browser.WebViewActivity> {
@@ -308,7 +314,12 @@ interface BaseSource : JsExtensions {
 
     fun hasLogin(): Boolean = !(loginUrl.isNullOrBlank() && loginUi.isNullOrBlank())
 
-    fun showSourceVariableDialog(activity: AppCompatActivity) {
+    fun showSourceVariableDialog() {
+        showSourceVariableDialog(LifecycleHelp.currentActivity as? AppCompatActivity)
+    }
+
+    fun showSourceVariableDialog(activity: AppCompatActivity?) {
+        activity ?: return
         if (this !is BookSource) return
         val suffix = "源变量可在js中通过source.getVariable()获取"
         val comment =

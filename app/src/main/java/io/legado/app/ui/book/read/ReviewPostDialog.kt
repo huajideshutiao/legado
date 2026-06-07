@@ -14,14 +14,14 @@ import android.view.inputmethod.EditorInfo
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.setFragmentResult
 import io.legado.app.R
 import io.legado.app.databinding.DialogReviewPostBinding
 import io.legado.app.utils.showSoftInput
 
-/** 段评输入对话框：底部输入条，模仿 KeyboardToolPop 的 IME 占位机制。 */
+/** 段评输入对话框：底部输入条，靠 SOFT_INPUT_ADJUST_RESIZE 让窗口随 IME 收缩，
+ *  底部 gravity 的内容自动贴到键盘上方，和 KeyboardToolPop 的占位思路一致。 */
 class ReviewPostDialog() : DialogFragment() {
 
     constructor(replyPreview: String? = null) : this() {
@@ -49,7 +49,7 @@ class ReviewPostDialog() : DialogFragment() {
                 WindowManager.LayoutParams.WRAP_CONTENT,
             )
             setGravity(Gravity.BOTTOM)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             setWindowAnimations(0)
         }
         super.onStart()
@@ -57,11 +57,10 @@ class ReviewPostDialog() : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        reserveImeSpace(view)
         val replyPreview = arguments?.getString(KEY_REPLY_PREVIEW)
         if (!replyPreview.isNullOrBlank()) {
-            val trimmed = replyPreview.take(20).let {
-                if (replyPreview.length > 20) "$it…" else it
+            val trimmed = replyPreview.take(15).let {
+                if (replyPreview.length > 15) "$it…" else it
             }
             binding.etInput.hint = getString(R.string.reply_review) + ": " + trimmed
         }
@@ -84,19 +83,14 @@ class ReviewPostDialog() : DialogFragment() {
         view.postDelayed({
             if (isAdded) binding.etInput.showSoftInput()
         }, IME_DELAY_MS)
-    }
 
-    // 对齐 KeyboardToolPop：监听 IME insets 拿 imeHeight 当底部占位（margin 不拉 bg）。
-    // 没缓存时先用屏高 35% 兜底，避免首次开窗 IME 起来时撞透；之后 snap 到精确值。
-    private fun reserveImeSpace(view: View) {
-        val initial = cachedImeHeightPx.takeIf { it > 0 }
-            ?: (resources.displayMetrics.heightPixels * 35 / 100)
-        view.updateLayoutParams<ViewGroup.MarginLayoutParams> { bottomMargin = initial }
-        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            if (ime > 0 && ime != cachedImeHeightPx) {
-                cachedImeHeightPx = ime
-                v.updateLayoutParams<ViewGroup.MarginLayoutParams> { bottomMargin = ime }
+        var imeSeen = false
+        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (imeVisible) {
+                imeSeen = true
+            } else if (imeSeen && isAdded) {
+                dismissAllowingStateLoss()
             }
             insets
         }
@@ -119,6 +113,5 @@ class ReviewPostDialog() : DialogFragment() {
         const val KEY_CONTENT = "content"
         private const val KEY_REPLY_PREVIEW = "replyPreview"
         private const val IME_DELAY_MS = 120L
-        private var cachedImeHeightPx: Int = 0
     }
 }

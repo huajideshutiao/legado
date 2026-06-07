@@ -1030,8 +1030,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }.start()
     }
 
-    override fun onReviewClick(chapterIndex: Int, paragraphIndex: Int) {
-        showDialogFragment(ReviewListDialog(chapterIndex, paragraphIndex))
+    override fun onReviewClick(chapter: BookChapter, paragraphIndex: Int) {
+        val book = ReadBook.book ?: return
+        showDialogFragment(ReviewListDialog(book, chapter, paragraphIndex))
     }
 
     /**
@@ -1410,6 +1411,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         fun onMenuOpened(menu: Menu) {
             menu.findItem(R.id.menu_same_title_removed)?.isChecked =
                 ReadBook.curTextChapter?.sameTitleRemoved == true
+            menu.findItem(R.id.menu_review)?.isVisible = ReadBook.bookSource?.let {
+                it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
+            } == true
         }
 
         /**
@@ -1607,6 +1611,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
 
                 R.id.menu_effective_replaces -> showDialogFragment<EffectiveReplacesDialog>()
+
+                R.id.menu_review -> viewModel.openCommentDialog(this@ReadBookActivity)
 
                 R.id.menu_help -> showHelp()
             }

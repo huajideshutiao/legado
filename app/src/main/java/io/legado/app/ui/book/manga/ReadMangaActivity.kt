@@ -534,6 +534,13 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         return super.onCompatCreateOptionsMenu(menu)
     }
 
+    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
+        menu.findItem(R.id.menu_review)?.isVisible = viewModel.curBookSource?.let {
+            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
+        } == true
+        return super.onMenuOpened(featureId, menu)
+    }
+
     /**
      * 菜单
      */
@@ -648,6 +655,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                     resetAllGifAutoNext()
                 }
             }
+
+            R.id.menu_review -> viewModel.openCommentDialog(this)
         }
         return super.onCompatOptionsItemSelected(item)
     }

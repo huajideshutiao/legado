@@ -7,9 +7,9 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class ReviewRule(
-    var reviewUrl: String? = null,          // 段评列表URL，支持{{paragraphIndex}}占位符，0表示章节级评论
-    var reviewList: String? = null,         // 段评列表节点选择器
-    var reviewCountRule: String? = null,    // 整章段评数规则，返回 {paragraphIndex: count}，0=章节级
+    var reviewUrl: String? = null,          // 评论列表URL，支持{{paragraphIndex}}占位符：-1=书籍级, 0=章节级, >0=段评级
+    var reviewList: String? = null,         // 评论列表节点选择器
+    var reviewCountRule: String? = null,    // 整章段评数规则，返回 {paragraphIndex: count}，仅 paragraphIndex>0 生效
     var reviewIdRule: String? = null,       // 段评ID规则（每条 item 内解析）
     var avatarRule: String? = null,         // 段评发布者头像
     var nameRule: String? = null,           // 段评发布者用户名

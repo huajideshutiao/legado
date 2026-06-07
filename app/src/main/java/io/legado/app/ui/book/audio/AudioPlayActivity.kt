@@ -112,6 +112,9 @@ class AudioPlayActivity :
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = AudioPlay.bookSource?.hasLogin() == true
         menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
+        menu.findItem(R.id.menu_review)?.isVisible = AudioPlay.bookSource?.let {
+            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
+        } == true
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -138,6 +141,8 @@ class AudioPlayActivity :
                 IntentData.source = it
                 sourceEditResult.launch {}
             }
+
+            R.id.menu_review -> viewModel.openCommentDialog(this)
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }

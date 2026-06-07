@@ -23,7 +23,8 @@ import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
 import io.legado.app.databinding.DialogReviewListBinding
 import io.legado.app.databinding.ItemReviewBinding
@@ -31,11 +32,11 @@ import io.legado.app.databinding.ItemReviewListHeaderBinding
 import io.legado.app.databinding.ItemReviewRepliesHeaderBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.getBookSource
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
@@ -50,17 +51,23 @@ import kotlinx.coroutines.Dispatchers.IO
 private const val PAYLOAD_VOTE = 1
 
 /**
- * 段评列表对话框（BottomSheet 风格）
+ * 评论列表对话框（BottomSheet 风格）
+ * - paragraphIndex > 0：段评（点击段落尾部气泡进入）
+ * - paragraphIndex == 0：章节级评论（阅读类页面菜单进入）
+ * - paragraphIndex == -1：书籍级评论（详情页菜单进入，chapter 传 null）
+ * book/chapter 通过 IntentData 透传，无 DB 二次查询
  */
 class ReviewListDialog() : BottomSheetDialogFragment() {
 
     constructor(
-        chapterIndex: Int,
+        book: Book,
+        chapter: BookChapter?,
         paragraphIndex: Int,
         parentReview: Review? = null,
     ) : this() {
         arguments = Bundle().apply {
-            putInt("chapterIndex", chapterIndex)
+            putString("bookKey", IntentData.put(book))
+            chapter?.let { putString("chapterKey", IntentData.put(it)) }
             putInt("paragraphIndex", paragraphIndex)
             parentReview?.let { putString("parentReviewKey", IntentData.put(it)) }
         }
@@ -96,8 +103,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
 
     private fun openReplies(review: Review) {
         if (review.id.isNullOrBlank()) return
+        val book = viewModel.book ?: return
         showDialogFragment(
-            ReviewListDialog(viewModel.chapterIndex, viewModel.paragraphIndex, review)
+            ReviewListDialog(book, viewModel.chapter, viewModel.paragraphIndex, review)
         )
     }
 
@@ -134,13 +142,19 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val chapterIndex = arguments?.getInt("chapterIndex") ?: 0
-        val paragraphIndex = arguments?.getInt("paragraphIndex") ?: 0
-        val parentReview = arguments?.getString("parentReviewKey")?.let {
+        val args = arguments
+        val book = args?.getString("bookKey")?.let { IntentData.get<Book>(it) }
+        if (book == null) {
+            dismiss(); return
+        }
+        val chapter = args.getString("chapterKey")?.let { IntentData.get<BookChapter>(it) }
+        val paragraphIndex = args.getInt("paragraphIndex")
+        val parentReview = args.getString("parentReviewKey")?.let {
             IntentData.get<Review>(it)
         }
         this.parentReview = parentReview
-        viewModel.chapterIndex = chapterIndex
+        viewModel.book = book
+        viewModel.chapter = chapter
         viewModel.paragraphIndex = paragraphIndex
         viewModel.replyReviewId = parentReview?.id
         binding.tvTitle.text = when {
@@ -148,7 +162,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 binding.etInput.setHint(R.string.reply_review)
                 getString(R.string.review_replies_detail_title)
             }
-            paragraphIndex == 0 -> getString(R.string.review)
+            paragraphIndex <= 0 -> getString(R.string.review)
             else -> getString(R.string.review) + "  #" + paragraphIndex
         }
         binding.btnClose.setOnClickListener { dismiss() }
@@ -193,8 +207,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             }
         }
         // 翻到底用 footer LoadMoreView 显示"加载中"
+        // 首屏也复用它：默认 startLoad，等 loadMoreDoneLiveData 回来再决定 stop/noMore
         adapter.addFooterView { ViewLoadMoreBinding.bind(loadMoreView) }
-        loadMoreView.stopLoad()
+        loadMoreView.startLoad()
         binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
@@ -214,11 +229,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             showDialogFragment(ReviewPostDialog(replyPreview = preview))
         }
 
-        // 中央转圈：仅段评模式下、列表为空时显示；回复详情页有顶部楼主可见，无需转圈
         viewModel.reviewsLiveData.observe(viewLifecycleOwner) { list ->
             adapter.setItems(list)
-            if (list.isEmpty() && parentReview == null) binding.rotateLoading.visible()
-            else binding.rotateLoading.gone()
         }
         // 翻页追加：notifyItemRangeInserted，不动已有 ViewHolder，避免抖动
         viewModel.appendReviewsLiveData.observe(viewLifecycleOwner) { list ->
@@ -258,9 +270,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 if (newSort != viewModel.sort) {
                     viewModel.sort = newSort
                     listHeaderBinding?.btnSort?.setText(sortLabelRes(newSort))
-                    // 立刻清空列表 + 显示转圈，让用户感知到正在重新加载
+                    // 立刻清空列表，footer 重新转起来当首屏 loading
                     adapter.setItems(emptyList())
-                    binding.rotateLoading.visible()
+                    loadMoreView.startLoad()
                     viewModel.load()
                 }
                 true
@@ -549,11 +561,13 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
 
     class ReviewViewModel(application: Application) : BaseViewModel(application) {
 
-        var chapterIndex: Int = 0
+        // book/chapter 由 onViewCreated 从 IntentData 直接灌入, 不查 DB
+        var book: Book? = null
+        var chapter: BookChapter? = null
         var paragraphIndex: Int = 0
         var replyReviewId: String? = null
 
-        // 段评排序：0=最热，1=最新；仅段评列表用，注入到 reviewUrl 的 {{sort}}
+        // 评论排序：0=最热，1=最新；仅列表用，注入到 reviewUrl 的 {{sort}}
         var sort: Int = 0
 
         private var currentPage = 1
@@ -567,7 +581,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         // 仅 loadMore 完成时发：true=还有更多，false=没了
         val loadMoreDoneLiveData = MutableLiveData<Boolean>()
 
-        // 段评总数文本（仅首页发，翻页响应里的总数与首页等价无需重发）
+        // 评论总数文本（仅首页发，翻页响应里的总数与首页等价无需重发）
         val totalCountLiveData = MutableLiveData<String?>()
 
         fun load() {
@@ -583,23 +597,23 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         }
 
         private fun fetchPage(append: Boolean) {
-            val book = ReadBook.book ?: run {
+            val b = book ?: run {
                 context.toastOnUi("无当前书籍"); return
             }
-            val source = ReadBook.bookSource ?: run {
+            val source = b.getBookSource() ?: run {
                 context.toastOnUi("无书源"); return
             }
+            val ch = chapter
             val page = currentPage
             loading = true
             execute(context = IO) {
-                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
                 val rid = replyReviewId
                 if (rid != null) {
                     WebBook.getReviewRepliesAwait(
-                        source, book, chapter, paragraphIndex, rid, page
+                        source, b, ch, paragraphIndex, rid, page
                     ).getOrThrow()
                 } else {
-                    WebBook.getReviewListAwait(source, book, chapter, paragraphIndex, page, sort)
+                    WebBook.getReviewListAwait(source, b, ch, paragraphIndex, page, sort)
                         .getOrThrow()
                 }
             }.onSuccess { result ->
@@ -611,7 +625,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                     if (append) appendReviewsLiveData.value = reviews
                     else reviewsLiveData.value = reviews
                 }
-                // 段评总数仅首页发（首页 = !append），避免翻页/排序切换覆盖同一数字
+                // 评论总数仅首页发（首页 = !append），避免翻页/排序切换覆盖同一数字
                 if (!append && replyReviewId == null) {
                     totalCountLiveData.value = result.totalCount
                 }
@@ -620,7 +634,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 loadMoreDoneLiveData.value = hasMore
             }.onError {
                 if (append) currentPage -= 1
-                context.toastOnUi("段评加载失败: ${it.localizedMessage}")
+                context.toastOnUi("评论加载失败: ${it.localizedMessage}")
                 if (!append) reviewsLiveData.value = emptyList()
                 loadMoreDoneLiveData.value = true
             }.onFinally {
@@ -666,8 +680,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             onSuccess: ((Any?) -> Unit)? = null,
             onError: (() -> Unit)? = null,
         ) {
-            val book = ReadBook.book ?: return
-            val source = ReadBook.bookSource ?: return
+            val b = book ?: return
+            val source = b.getBookSource() ?: return
             val rule = source.ruleReview ?: return
             val ruleText = ruleSelector(rule)
             if (ruleText.isNullOrBlank()) {
@@ -675,12 +689,12 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 onError?.invoke()
                 return
             }
+            val ch = chapter
             execute(context = IO) {
-                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
                 WebBook.evalReviewActionAwait(
                     bookSource = source,
-                    book = book,
-                    bookChapter = chapter,
+                    book = b,
+                    bookChapter = ch,
                     rule = ruleText,
                     paragraphIndex = paragraphIndex,
                     reviewId = reviewId,

@@ -428,6 +428,9 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                 setTitle(R.string.out_favorites)
             }
         }
+        menu.findItem(R.id.menu_review)?.isVisible = viewModel.curBookSource?.let {
+            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
+        } == true
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -489,6 +492,8 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                 IntentData.source = it
                 sourceEditResult.launch {}
             }
+
+            R.id.menu_review -> viewModel.openCommentDialog(this)
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }

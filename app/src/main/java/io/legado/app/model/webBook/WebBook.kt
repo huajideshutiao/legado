@@ -381,12 +381,12 @@ object WebBook {
     ): Result<Any?> = runCatching {
         val variables = mutableMapOf<String, Any>("paragraphIndex" to paragraphIndex)
         reviewId?.let { variables["reviewId"] = it }
-        contentText?.let { variables["content"] = it }
         selected?.let { variables["selected"] = it }
         val analyzeRule = AnalyzeRule(book, bookSource)
             .setChapter(bookChapter)
             .setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)
             .setCoroutineContext(currentCoroutineContext())
+            .setContent(contentText)
             .setVariables(variables)
         analyzeRule.setContent("")
         analyzeRule.evalJS(rule)

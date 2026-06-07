@@ -853,6 +853,7 @@
     <string name="boo_src">書籍原始碼</string>
     <string name="toc_src">目錄原始碼</string>
     <string name="content_src">正文原始碼</string>
+    <string name="review_src">評論原始碼</string>
     <string name="list_src">列表原始碼</string>
     <string name="url_already">此url已訂閱</string>
     <string name="high_brush_title">高刷</string>
@@ -1025,7 +1026,7 @@
     <string name="check_selected_interval">選中所選區間</string>
     <string name="show_add_to_shelf_alert_title">返回時提示放入書架</string>
     <string name="show_add_to_shelf_alert_summary">閱讀未放入書架的書籍在返回時提示放入書架</string>
-    <string name="review">段評</string>
+    <string name="review">評論</string>
     <string name="rule_review_url">段評URL（reviewUrl）</string>
     <string name="rule_avatar">段評發布者大頭貼（avatarRule）</string>
     <string name="rule_review_content">段評內容（contentRule）</string>
