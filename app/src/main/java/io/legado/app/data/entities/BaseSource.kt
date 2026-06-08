@@ -17,6 +17,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
+import io.legado.app.model.Debug
 import io.legado.app.ui.login.SourceLoginDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
@@ -150,7 +151,10 @@ interface BaseSource : JsExtensions {
                     putAll(map)
                 }
             } catch (e: Exception) {
-                AppLog.put("执行请求头规则出错\n$e", e)
+                "执行请求头规则出错\n${e.localizedMessage}".let { msg ->
+                    AppLog.put(msg, e)
+                    Debug.log(getKey(), msg, state = -1)
+                }
             }
         }
         if (!has(AppConst.UA_NAME, true)) {
