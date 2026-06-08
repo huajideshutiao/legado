@@ -267,7 +267,7 @@ object WebBook {
             AppConst.JsVarName.SORT to sort,
             AppConst.JsVarName.PAGE to page,
         )
-        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
+        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
         val analyzeUrl = AnalyzeUrl(
             rawUrl = rawUrl,
             baseUrl = baseUrl,
@@ -316,7 +316,7 @@ object WebBook {
             AppConst.JsVarName.REVIEW_ID to reviewId,
             AppConst.JsVarName.PAGE to page,
         )
-        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
+        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
         val analyzeUrl = AnalyzeUrl(
             rawUrl = replyListUrlRule,
             baseUrl = baseUrl,
@@ -387,7 +387,7 @@ object WebBook {
         selected?.let { variables[AppConst.JsVarName.SELECTED] = it }
         val analyzeRule = AnalyzeRule(book, bookSource).apply {
             chapter = bookChapter
-            setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)
+            setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.bookUrl)
             coroutineContext = currentCoroutineContext()
             setContent(contentText)
             this.variables = variables
