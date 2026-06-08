@@ -257,41 +257,15 @@ object WebBook {
         paragraphIndex: Int,
         page: Int = 1,
         sort: Int = 0,
-    ): Result<ReviewPage> = runCatching {
-        val reviewRule = bookSource.ruleReview
-            ?: throw NoStackTraceException("书源未配置段评规则")
-        val rawUrl = reviewRule.reviewUrl
-            ?: throw NoStackTraceException("reviewUrl 为空")
-        val variables = mapOf(
+    ): Result<ReviewPage> = fetchReviewPage(
+        bookSource, book, bookChapter,
+        urlRuleSelector = { it.reviewUrl to "reviewUrl 为空" },
+        variables = mapOf(
             AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex,
             AppConst.JsVarName.SORT to sort,
             AppConst.JsVarName.PAGE to page,
         )
-        val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
-        val analyzeUrl = AnalyzeUrl(
-            rawUrl = rawUrl,
-            baseUrl = baseUrl,
-            source = bookSource,
-            ruleData = book,
-            chapter = bookChapter,
-            coroutineContext = currentCoroutineContext(),
-            variables = variables
-        )
-        val res = checkLogin(analyzeUrl, bookSource)
-        checkRedirect(bookSource, res)
-        BookReview.analyzeReviewList(
-            bookSource = bookSource,
-            book = book,
-            bookChapter = bookChapter,
-            baseUrl = baseUrl,
-            redirectUrl = res.url,
-            body = res.body,
-            reviewRule = reviewRule,
-            variables = variables
-        )
-    }.onFailure {
-        currentCoroutineContext().ensureActive()
-    }
+    )
 
     /**
      * 获取某条段评的回复列表
@@ -306,19 +280,30 @@ object WebBook {
         paragraphIndex: Int,
         reviewId: String,
         page: Int = 1,
-    ): Result<ReviewPage> = runCatching {
-        val reviewRule = bookSource.ruleReview
-            ?: throw NoStackTraceException("书源未配置段评规则")
-        val replyListUrlRule = reviewRule.replyListUrl
-            ?: throw NoStackTraceException("书源未配置回复列表URL规则")
-        val variables = mapOf<AppConst.JsVarName, Any>(
+    ): Result<ReviewPage> = fetchReviewPage(
+        bookSource, book, bookChapter,
+        urlRuleSelector = { it.replyListUrl to "书源未配置回复列表URL规则" },
+        variables = mapOf(
             AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex,
             AppConst.JsVarName.REVIEW_ID to reviewId,
             AppConst.JsVarName.PAGE to page,
         )
+    )
+
+    private suspend fun fetchReviewPage(
+        bookSource: BookSource,
+        book: Book,
+        bookChapter: BookChapter?,
+        urlRuleSelector: (io.legado.app.data.entities.rule.ReviewRule) -> Pair<String?, String>,
+        variables: Map<AppConst.JsVarName, Any>,
+    ): Result<ReviewPage> = runCatching {
+        val reviewRule = bookSource.ruleReview
+            ?: throw NoStackTraceException("书源未配置段评规则")
+        val (rawUrl, missingMsg) = urlRuleSelector(reviewRule)
+        if (rawUrl.isNullOrBlank()) throw NoStackTraceException(missingMsg)
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
         val analyzeUrl = AnalyzeUrl(
-            rawUrl = replyListUrlRule,
+            rawUrl = rawUrl,
             baseUrl = baseUrl,
             source = bookSource,
             ruleData = book,
