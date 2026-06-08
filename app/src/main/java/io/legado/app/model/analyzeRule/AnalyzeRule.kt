@@ -49,22 +49,22 @@ import kotlin.coroutines.EmptyCoroutineContext
 @Keep
 @Suppress("unused", "RegExpRedundantEscape")
 class AnalyzeRule(
-    private var ruleData: RuleDataInterface? = null,
+    var ruleData: RuleDataInterface? = null,
     private val source: BaseSource? = null,
     private val preUpdateJs: Boolean = false
 ) : JsExtensions {
 
     private val book get() = ruleData as? BaseBook
 
-    private var chapter: BookChapter? = null
-    private var nextChapterUrl: String? = null
+    var chapter: BookChapter? = null
+    var nextChapterUrl: String? = null
     private var content: Any? = null
     private var baseUrl: String? = null
     private var redirectUrl: URL? = null
     private var isJSON: Boolean = false
     private var isRegex: Boolean = false
 
-    private var variables: Map<String, Any>? = null
+    var variables: Map<String, Any>? = null
 
     private var analyzeByXPath: AnalyzeByXPath? = null
     private var analyzeByJSoup: AnalyzeByJSoup? = null
@@ -76,7 +76,10 @@ class AnalyzeRule(
     private var topScopeRef: WeakReference<Scriptable>? = null
     private var evalJSCallCount = 0
 
-    private var coroutineContext: CoroutineContext = EmptyCoroutineContext
+    var coroutineContext: CoroutineContext = EmptyCoroutineContext
+        set(value) {
+            field = value.minusKey(ContinuationInterceptor)
+        }
 
     private var loggedNonStandardJSON = false
 
@@ -886,32 +889,6 @@ class AnalyzeRule(
         private val evalPattern =
             Pattern.compile("@get:\\{[^}]+?\\}|\\{\\{[\\w\\W]*?\\}\\}", Pattern.CASE_INSENSITIVE)
         private val regexPattern = Pattern.compile("\\$\\d{1,2}")
-
-        fun AnalyzeRule.setCoroutineContext(context: CoroutineContext): AnalyzeRule {
-            coroutineContext = context.minusKey(ContinuationInterceptor)
-            return this
-        }
-
-        fun AnalyzeRule.setRuleData(ruleData: RuleDataInterface?): AnalyzeRule {
-            this.ruleData = ruleData
-            return this
-        }
-
-        fun AnalyzeRule.setNextChapterUrl(nextChapterUrl: String?): AnalyzeRule {
-            this.nextChapterUrl = nextChapterUrl
-            return this
-        }
-
-        fun AnalyzeRule.setChapter(chapter: BookChapter?): AnalyzeRule {
-            this.chapter = chapter
-            return this
-        }
-
-        fun AnalyzeRule.setVariables(variables: Map<String, Any>?): AnalyzeRule {
-            this.variables = variables
-            return this
-        }
-
     }
 
 }

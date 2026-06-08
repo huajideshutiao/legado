@@ -643,7 +643,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val page = relativePage(selectStart.relativePagePos)
         page.getTextChapter().let { chapter ->
             ReadBook.book?.let { book ->
-                return book.createBookMark().apply {
+                return Bookmark(bookName = book.name, bookAuthor = book.author).apply {
                     chapterIndex = page.chapterIndex
                     chapterPos = chapter.getReadLength(page.index) +
                             page.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)

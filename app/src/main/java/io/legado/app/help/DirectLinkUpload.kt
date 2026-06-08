@@ -3,7 +3,6 @@ package io.legado.app.help
 import androidx.annotation.Keep
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
@@ -60,8 +59,10 @@ object DirectLinkUpload {
         if (mFile is File) {
             mFile.delete()
         }
-        val analyzeRule = AnalyzeRule().setContent(res.body, res.url)
-            .setCoroutineContext(currentCoroutineContext())
+        val analyzeRule = AnalyzeRule().apply {
+            setContent(res.body, res.url)
+            coroutineContext = currentCoroutineContext()
+        }
         val downloadUrl = analyzeRule.getString(downloadUrlRule)
         if (downloadUrl.isBlank()) {
             throw NoStackTraceException("上传失败,${res.body}")

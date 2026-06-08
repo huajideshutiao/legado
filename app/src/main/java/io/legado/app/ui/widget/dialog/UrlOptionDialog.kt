@@ -9,6 +9,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.databinding.DialogUrlOptionEditBinding
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class UrlOptionDialog : BaseDialogFragment(R.layout.dialog_url_option_edit) {
@@ -27,15 +28,16 @@ class UrlOptionDialog : BaseDialogFragment(R.layout.dialog_url_option_edit) {
 
     private fun getUrlOption(): AnalyzeUrl.UrlOption {
         val urlOption = AnalyzeUrl.UrlOption()
-        urlOption.useWebView(binding.cbUseWebView.isChecked)
-        urlOption.setMethod(binding.editMethod.text.toString())
-        urlOption.setCharset(binding.editCharset.text.toString())
-        urlOption.setHeaders(binding.editHeaders.text.toString())
-        urlOption.setBody(binding.editBody.text.toString())
-        urlOption.setRetry(binding.editRetry.text.toString())
-        urlOption.setType(binding.editType.text.toString())
-        urlOption.setWebJs(binding.editWebJs.text.toString())
-        urlOption.setJs(binding.editJs.text.toString())
+        urlOption.useWebView = binding.cbUseWebView.isChecked
+        urlOption.method = binding.editMethod.text.toString()
+        urlOption.charset = binding.editCharset.text.toString()
+        urlOption.headers = binding.editHeaders.text.toString().ifBlank { null }
+            ?.let { GSON.fromJsonObject<Map<String, Any?>>(it).getOrNull() }
+        urlOption.body = binding.editBody.text.toString()
+        urlOption.retry = binding.editRetry.text.toString().ifBlank { null }?.toIntOrNull()
+        urlOption.type = binding.editType.text.toString()
+        urlOption.webJs = binding.editWebJs.text.toString()
+        urlOption.js = binding.editJs.text.toString()
         return urlOption
     }
 

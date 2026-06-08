@@ -12,8 +12,6 @@ import io.legado.app.help.source.exploreKindsJson
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setRuleData
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.GSON
@@ -46,16 +44,16 @@ object BookList {
         body ?: throw NoStackTraceException(
             appCtx.getString(
                 R.string.error_get_web_content,
-                analyzeUrl.ruleUrl
+                analyzeUrl.urlAfterJs
             )
         )
         val bookList = ArrayList<SearchBook>()
-        Debug.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
+        Debug.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.urlAfterJs}")
         Debug.log(bookSource.bookSourceUrl, body, state = 10)
         val analyzeRule = AnalyzeRule(ruleData, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
+        analyzeRule.coroutineContext = currentCoroutineContext()
         if (!isSearch) {
             checkExploreJson(bookSource)
         }
@@ -168,13 +166,13 @@ object BookList {
         book.bookUrl = if (isRedirect) {
             baseUrl
         } else {
-            NetworkUtils.getAbsoluteURL(analyzeUrl.url, analyzeUrl.ruleUrl)
+            NetworkUtils.getAbsoluteURL(analyzeUrl.url, analyzeUrl.urlAfterJs)
         }
         book.origin = bookSource.bookSourceUrl
         book.originName = bookSource.bookSourceName
         book.originOrder = bookSource.customOrder
         book.type = bookSource.getBookType()
-        analyzeRule.setRuleData(book)
+        analyzeRule.ruleData = book
         BookInfo.analyzeBookInfo(
             book,
             body,
@@ -216,7 +214,7 @@ object BookList {
         searchBook.origin = bookSource.bookSourceUrl
         searchBook.originName = bookSource.bookSourceName
         searchBook.originOrder = bookSource.customOrder
-        analyzeRule.setRuleData(searchBook)
+        analyzeRule.ruleData = searchBook
         analyzeRule.setContent(item)
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名", log)

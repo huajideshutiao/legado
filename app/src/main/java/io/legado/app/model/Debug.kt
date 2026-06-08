@@ -11,8 +11,6 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
@@ -387,9 +385,9 @@ object Debug {
         log(debugSource, "︾开始解析歌词规则")
         val task = Coroutine.async(scope) {
             val rule = AnalyzeRule(book, bookSource)
-            rule.setCoroutineContext(currentCoroutineContext())
+            rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(bookChapter.url)
-            rule.setChapter(bookChapter)
+            rule.chapter = bookChapter
             rule.evalJS(lrcRule)
         }.onSuccess { raw ->
             when (raw) {
@@ -427,9 +425,9 @@ object Debug {
         log(debugSource, "︾开始解析音乐封面规则")
         val task = Coroutine.async(scope) {
             val rule = AnalyzeRule(book, bookSource)
-            rule.setCoroutineContext(currentCoroutineContext())
+            rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(bookChapter.url)
-            rule.setChapter(bookChapter)
+            rule.chapter = bookChapter
             rule.evalJS(musicCover).toString()
         }.onSuccess { url ->
             log(debugSource, "≡音乐封面 URL:$url")

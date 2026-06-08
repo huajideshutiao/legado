@@ -126,7 +126,7 @@ class TextChapterLayout(
             // 后续 ReadBook 会在 deferred 完成时触发重排——保证「即开即用」
             reviewCountMap = reviewCountDeferred?.takeIf { it.isCompleted }?.await()
             val parsedLines = ChapterContentParser.parse(bookContent)
-            val imageStyle = book.getImageStyle()
+            val imageStyle = book.config.imageStyle
             val isSingle = imageStyle.equals(Book.imgStyleSingle, true)
             val allImages = parsedLines.flatMap { it.images }.map { it.src }.distinct()
 
@@ -322,7 +322,7 @@ class TextChapterLayout(
         parsedLines: List<ChapterContentParser.ParsedLine>
     ) {
         val contents = bookContent.textList
-        val imageStyle = book.getImageStyle()
+        val imageStyle = book.config.imageStyle
         val isSingleStyle = imageStyle.equals(Book.imgStyleSingle, true)
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
         // 当前书源启用段评 + 配了 reviewUrl 才追加 ▨ 占位符

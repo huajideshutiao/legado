@@ -37,7 +37,7 @@ data class ImageColumn(
 
     override fun draw(view: ContentTextView, canvas: Canvas) {
         val book = ReadBook.book ?: return
-        val isSingle = book.getImageStyle().equals(Book.imgStyleSingle, true)
+        val isSingle = book.config.imageStyle.equals(Book.imgStyleSingle, true)
 
         val containerW = end - start
         val containerH = textLine.height

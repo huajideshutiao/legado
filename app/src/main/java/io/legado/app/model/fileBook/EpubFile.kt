@@ -209,7 +209,7 @@ class EpubFile(var book: Book) {
             it.attr("src", src)
         }
         val tag = Book.rubyTag
-        if (book.getDelTag(tag)) {
+        if (book.config.delTag and tag == tag) {
             elements.select("rp, rt").remove()
         }
         val html = elements.outerHtml()
@@ -256,7 +256,7 @@ class EpubFile(var book: Book) {
         }
         /*选择去除正文中的H标签，部分书籍标题与阅读标题重复待优化*/
         val tag = Book.hTag
-        if (book.getDelTag(tag)) {
+        if (book.config.delTag and tag == tag) {
             bodyElement.run {
                 select("h1, h2, h3, h4, h5, h6").remove()
                 //getElementsMatchingOwnText(chapter.title)?.remove()

@@ -54,7 +54,7 @@ class ReadRssViewModel(application: Application) : BaseReadViewModel(application
                 val baseUrl = if (book.originName == "RSS") source.bookSourceUrl else book.tocUrl
                 urlLiveData.postValue(
                     AnalyzeUrl(
-                        mUrl = chapter.url,
+                        rawRuleUrl = chapter.url,
                         baseUrl = baseUrl,
                         source = source,
                         coroutineContext = currentCoroutineContext(),

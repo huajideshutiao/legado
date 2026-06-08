@@ -26,7 +26,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.splitNotBlank
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
-import java.nio.charset.Charset
 import java.time.LocalDate
 
 @Parcelize
@@ -169,86 +168,14 @@ data class Book(
 
     fun getDisplayIntro() = customIntro.takeUnless { it.isNullOrEmpty() } ?: intro
 
-    //自定义简介有自动更新的需求时，可通过更新intro再调用upCustomIntro()完成
-    @Suppress("unused")
-    fun upCustomIntro() {
-        customIntro = intro
-    }
-
-    fun fileCharset(): Charset {
-        return charset(charset ?: "UTF-8")
-    }
-
     @IgnoredOnParcel
     val config: ReadConfig
-        get() {
-            if (readConfig == null){
-                readConfig = ReadConfig()
-            }
-            return readConfig!!
-        }
-
-    fun setReverseToc(reverseToc: Boolean) {
-        config.reverseToc = reverseToc
-    }
-
-    fun getReverseToc(): Boolean {
-        return config.reverseToc
-    }
-
-    fun setUseReplaceRule(useReplaceRule: Boolean) {
-        config.useReplaceRule = useReplaceRule
-    }
+        get() = readConfig ?: ReadConfig().also { readConfig = it }
 
     fun getUseReplaceRule(): Boolean {
         return config.useReplaceRule ?: (!isImage && !isEpub && AppConfig.replaceEnableDefault)
     }
 
-    fun setReSegment(reSegment: Boolean) {
-        config.reSegment = reSegment
-    }
-
-    fun getReSegment(): Boolean {
-        return config.reSegment
-    }
-
-    fun setImageStyle(imageStyle: String?) {
-        config.imageStyle = imageStyle
-    }
-
-    fun getImageStyle(): String? {
-        return config.imageStyle
-    }
-
-    fun setTtsEngine(ttsEngine: String?) {
-        config.ttsEngine = ttsEngine
-    }
-
-    fun getTtsEngine(): String? {
-        return config.ttsEngine
-    }
-
-    fun setSplitLongChapter(limitLongContent: Boolean) {
-        config.splitLongChapter = limitLongContent
-    }
-
-    fun getSplitLongChapter(): Boolean {
-        return config.splitLongChapter
-    }
-
-    // readSimulating 的 setter 和 getter
-    fun setReadSimulating(readSimulating: Boolean) {
-        config.readSimulating = readSimulating
-    }
-
-    fun getReadSimulating(): Boolean {
-        return config.readSimulating
-    }
-
-    // startDate 的 setter 和 getter
-    fun setStartDate(startDate: LocalDate?) {
-        config.startDate = startDate
-    }
     fun getStartDate(): LocalDate? {
         if (!config.readSimulating || config.startDate == null) {
             return LocalDate.now()
@@ -256,35 +183,10 @@ data class Book(
         return config.startDate
     }
 
-    // startChapter 的 setter 和 getter
-    fun setStartChapter(startChapter: Int) {
-        config.startChapter = startChapter
-    }
     fun getStartChapter(): Int {
         if (config.readSimulating) return config.startChapter ?: 0
         return this.durChapterIndex
     }
-
-    // dailyChapters 的 setter 和 getter
-    fun setDailyChapters(dailyChapters: Int) {
-        config.dailyChapters = dailyChapters
-    }
-
-    fun getDailyChapters(): Int {
-        return config.dailyChapters
-    }
-    fun getDelTag(tag: Long): Boolean {
-        return config.delTag and tag == tag
-    }
-
-    fun addDelTag(tag: Long) {
-        config.delTag = config.delTag or tag
-    }
-
-    fun removeDelTag(tag: Long) {
-        config.delTag = config.delTag and tag.inv()
-    }
-
     fun getFolderName(): String {
         folderName?.let {
             return it
@@ -334,13 +236,6 @@ data class Book(
         newBook.canUpdate = canUpdate
         newBook.readConfig = readConfig
         return newBook
-    }
-
-    fun createBookMark(): Bookmark {
-        return Bookmark(
-            bookName = name,
-            bookAuthor = author,
-        )
     }
 
     fun save() {

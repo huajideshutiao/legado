@@ -13,9 +13,6 @@ import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setVariables
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.GSON
@@ -46,7 +43,7 @@ object WebBook {
         }
         val ruleData = RuleData()
         val analyzeUrl = AnalyzeUrl(
-            mUrl = url,
+            rawRuleUrl = url,
             key = if (isSearch) key else null,
             page = page,
             baseUrl = bookSource.bookSourceUrl,
@@ -89,7 +86,7 @@ object WebBook {
             )
         } else {
             val analyzeUrl = AnalyzeUrl(
-                mUrl = book.bookUrl,
+                rawRuleUrl = book.bookUrl,
                 baseUrl = bookSource.bookSourceUrl,
                 source = bookSource,
                 ruleData = book,
@@ -117,7 +114,7 @@ object WebBook {
         val source = if (urlMatcher.find()) {
             GSON.fromJsonObject<AnalyzeUrl.UrlOption>(
                 bookUrl.substring(urlMatcher.end())
-            ).getOrNull()?.getOrigin()?.let {
+            ).getOrNull()?.origin?.let {
                 appDb.bookSourceDao.getBookSource(it)
             }
         }else appDb.bookSourceDao.getBookSourceAddBook(baseUrl)
@@ -168,7 +165,7 @@ object WebBook {
                 )
             } else {
                 val analyzeUrl = AnalyzeUrl(
-                    mUrl = book.tocUrl,
+                    rawRuleUrl = book.tocUrl,
                     baseUrl = book.bookUrl,
                     source = bookSource,
                     ruleData = book,
@@ -221,7 +218,7 @@ object WebBook {
             )
         } else {
             val analyzeUrl = AnalyzeUrl(
-                mUrl = chapterUrl,
+                rawRuleUrl = chapterUrl,
                 baseUrl = book.tocUrl,
                 source = bookSource,
                 ruleData = book,
@@ -267,7 +264,7 @@ object WebBook {
         )
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
         val analyzeUrl = AnalyzeUrl(
-            mUrl = rawUrl,
+            rawRuleUrl = rawUrl,
             page = page,
             baseUrl = baseUrl,
             source = bookSource,
@@ -316,7 +313,7 @@ object WebBook {
         )
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
         val analyzeUrl = AnalyzeUrl(
-            mUrl = replyListUrlRule,
+            rawRuleUrl = replyListUrlRule,
             page = page,
             baseUrl = baseUrl,
             source = bookSource,
@@ -353,10 +350,11 @@ object WebBook {
             ?: throw NoStackTraceException("书源未配置段评规则")
         val countRule = reviewRule.reviewCountRule
             ?: return@runCatching emptyMap<Int, Int>()
-        val analyzeRule = AnalyzeRule(book, bookSource)
-            .setChapter(bookChapter)
-            .setBaseUrl(bookChapter.getAbsoluteURL(book))
-            .setCoroutineContext(currentCoroutineContext())
+        val analyzeRule = AnalyzeRule(book, bookSource).apply {
+            chapter = bookChapter
+            setBaseUrl(bookChapter.getAbsoluteURL(book))
+            coroutineContext = currentCoroutineContext()
+        }
         analyzeRule.setContent("")
         val res = analyzeRule.evalJS(countRule)
         BookReview.analyzeReviewCount(bookSource, res)
@@ -382,12 +380,13 @@ object WebBook {
         val variables = mutableMapOf<String, Any>("paragraphIndex" to paragraphIndex)
         reviewId?.let { variables["reviewId"] = it }
         selected?.let { variables["selected"] = it }
-        val analyzeRule = AnalyzeRule(book, bookSource)
-            .setChapter(bookChapter)
-            .setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)
-            .setCoroutineContext(currentCoroutineContext())
-            .setContent(contentText)
-            .setVariables(variables)
+        val analyzeRule = AnalyzeRule(book, bookSource).apply {
+            chapter = bookChapter
+            setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)
+            coroutineContext = currentCoroutineContext()
+            setContent(contentText)
+            this.variables = variables
+        }
         analyzeRule.setContent("")
         analyzeRule.evalJS(rule)
     }.onFailure {
@@ -422,9 +421,9 @@ object WebBook {
         return runCatching {
             val preUpdateJs = bookSource.ruleToc?.preUpdateJs
             if (!preUpdateJs.isNullOrBlank()) {
-                AnalyzeRule(book, bookSource, true)
-                    .setCoroutineContext(currentCoroutineContext())
-                    .evalJS(preUpdateJs)
+                AnalyzeRule(book, bookSource, true).apply {
+                    coroutineContext = currentCoroutineContext()
+                }.evalJS(preUpdateJs)
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()

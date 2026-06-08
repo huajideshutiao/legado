@@ -238,9 +238,9 @@ abstract class BaseReadBookActivity :
         val book = ReadBook.book ?: return
         val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val alertBinding = DialogSimulatedReadingBinding.inflate(layoutInflater).apply {
-            srEnabled.isChecked = book.getReadSimulating()
+            srEnabled.isChecked = book.config.readSimulating
             editStart.setText(book.getStartChapter().toString())
-            editNum.setText(book.getDailyChapters().toString())
+            editNum.setText(book.config.dailyChapters.toString())
             startDate.setText(book.getStartDate()?.format(dateFormatter))
             startDate.isFocusable = false // 设置为false，不允许获得焦点
             startDate.isCursorVisible = false // 不显示光标
@@ -273,10 +273,10 @@ abstract class BaseReadBookActivity :
                         if (it.isEmpty()) LocalDate.now()
                         else LocalDate.parse(it, dateFormatter)
                     }
-                    book.setStartDate(date)
-                    book.setDailyChapters(num)
-                    book.setStartChapter(start)
-                    book.setReadSimulating(enabled)
+                    book.config.startDate = date
+                    book.config.dailyChapters = num
+                    book.config.startChapter = start
+                    book.config.readSimulating = enabled
                     book.save()
                     ReadBook.clearTextChapter()
                     viewModel.initData(intent)

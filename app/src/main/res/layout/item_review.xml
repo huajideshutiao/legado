@@ -69,7 +69,6 @@
             android:ellipsize="end"
             android:maxLines="6"
             android:textColor="@color/primaryText"
-            android:textSize="16sp"
             tools:text="long content\nlong content\nlong content\nlong content\nlong content\nlong content" />
 
         <TextView

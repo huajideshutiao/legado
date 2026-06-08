@@ -16,8 +16,6 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapAsync
@@ -61,7 +59,7 @@ object BookChapterList {
                 while (nextUrl.isNotEmpty() && !nextUrlList.contains(nextUrl)) {
                     nextUrlList.add(nextUrl)
                     val analyzeUrl = AnalyzeUrl(
-                        mUrl = nextUrl,
+                        rawRuleUrl = nextUrl,
                         source = bookSource,
                         ruleData = book,
                         coroutineContext = currentCoroutineContext()
@@ -90,7 +88,7 @@ object BookChapterList {
                     }
                 }.mapAsync(AppConfig.threadCount) { urlStr ->
                     val analyzeUrl = AnalyzeUrl(
-                        mUrl = urlStr,
+                        rawRuleUrl = urlStr,
                         source = bookSource,
                         ruleData = book,
                         coroutineContext = currentCoroutineContext()
@@ -120,7 +118,7 @@ object BookChapterList {
         //去重
         val lh = LinkedHashSet(chapterList)
         val list = ArrayList(lh)
-        if (!book.getReverseToc()) {
+        if (!book.config.reverseToc) {
             list.reverse()
         }
         Debug.log(book.origin, "◇目录总数:${list.size}")
@@ -178,7 +176,7 @@ object BookChapterList {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
+        analyzeRule.coroutineContext = currentCoroutineContext()
         //获取目录列表
         val chapterList = arrayListOf<BookChapter>()
         Debug.log(bookSource.bookSourceUrl, "┌获取目录列表", log)
@@ -215,7 +213,7 @@ object BookChapterList {
                 currentCoroutineContext().ensureActive()
                 analyzeRule.setContent(item)
                 val bookChapter = BookChapter(bookUrl = book.bookUrl)
-                analyzeRule.setChapter(bookChapter)
+                analyzeRule.chapter = bookChapter
                 bookChapter.title = analyzeRule.getString(nameRule)
                 bookChapter.url = analyzeRule.getString(urlRule)
                 bookChapter.tag = analyzeRule.getString(upTimeRule)

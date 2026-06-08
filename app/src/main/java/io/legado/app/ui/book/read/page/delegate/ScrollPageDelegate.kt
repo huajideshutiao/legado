@@ -149,7 +149,7 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
             return -visibleHeight
         }
         val visiblePage = readView.getCurVisiblePage()
-        val isTextStyle = book.getImageStyle().equals(Book.imgStyleText, true)
+        val isTextStyle = book.config.imageStyle.equals(Book.imgStyleText, true)
         if (!isTextStyle && visiblePage.hasImageOrEmpty()) {
             return -visibleHeight
         }
@@ -165,7 +165,7 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
             return visibleHeight
         }
         val visiblePage = readView.getCurVisiblePage()
-        val isTextStyle = book.getImageStyle().equals(Book.imgStyleText, true)
+        val isTextStyle = book.config.imageStyle.equals(Book.imgStyleText, true)
         if (!isTextStyle && visiblePage.hasImageOrEmpty()) {
             return visibleHeight
         }

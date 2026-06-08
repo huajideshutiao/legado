@@ -54,7 +54,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             baseUrl = analyzeUrl.headerMap["Origin"] ?: analyzeUrl.url
             headerMap.putAll(analyzeUrl.headerMap)
             if (analyzeUrl.isPost()) {
-                html = analyzeUrl.getStrResponseAwait(useWebView = false).body
+                html = analyzeUrl.getStrResponseAwait(allowWebView = false).body
             }
             if (dataUriRegex.matches(analyzeUrl.url)) {
                 html = analyzeUrl.getByteArrayAwait().toString(Charsets.UTF_8)
@@ -92,7 +92,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
                     headerMapF = headerMap,
                     source = source,
                     coroutineContext = coroutineContext
-                ).getStrResponseAwait(useWebView = false).body
+                ).getStrResponseAwait(allowWebView = false).body
                 SourceVerificationHelp.setResult(sourceOrigin, html ?: "")
             }.onSuccess {
                 success.invoke()

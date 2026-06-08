@@ -195,7 +195,7 @@ object ImageProvider {
     ): Bitmap {
         //src为空白时 可能被净化替换掉了 或者规则失效
         if (book.getUseReplaceRule() && src.isBlank()) {
-            book.setUseReplaceRule(false)
+            book.config.useReplaceRule = false
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
 

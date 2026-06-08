@@ -32,6 +32,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
@@ -61,8 +62,6 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.fileBook.FileBook.getHandler
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
@@ -926,9 +925,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                         throw NoStackTraceException("no pay action")
                     }
                     val analyzeRule = AnalyzeRule(book, source)
-                    analyzeRule.setCoroutineContext(coroutineContext)
+                    analyzeRule.coroutineContext = coroutineContext
                     analyzeRule.setBaseUrl(chapter.url)
-                    analyzeRule.setChapter(chapter)
+                    analyzeRule.chapter = chapter
                     analyzeRule.evalJS(payAction).toString()
                 }.onSuccess(IO) {
                     if (it.isAbsUrl()) {
@@ -1023,9 +1022,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             val source =
                 ReadBook.bookSource ?: throw NoStackTraceException("no book source")
             val analyzeRule = AnalyzeRule(book, source)
-            analyzeRule.setCoroutineContext(coroutineContext)
+            analyzeRule.coroutineContext = coroutineContext
             analyzeRule.setBaseUrl(chapter!!.url)
-            analyzeRule.setChapter(chapter)
+            analyzeRule.chapter = chapter
             analyzeRule.evalJS(onClick).toString()
         }.start()
     }
@@ -1172,7 +1171,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val book = ReadBook.book
         val page = ReadBook.curTextChapter?.getPage(ReadBook.durPageIndex)
         if (book != null && page != null) {
-            val bookmark = book.createBookMark().apply {
+            val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
                 chapterIndex = ReadBook.durChapterIndex
                 chapterPos = ReadBook.durChapterPos
                 chapterName = page.title
@@ -1184,7 +1183,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun changeReplaceRuleState() {
         ReadBook.book?.let {
-            it.setUseReplaceRule(!it.getUseReplaceRule())
+            it.config.useReplaceRule = !it.getUseReplaceRule()
             menuHandler.menu?.findItem(R.id.menu_enable_replace)?.isChecked = it.getUseReplaceRule()
             viewModel.replaceRuleChanged()
         }
@@ -1432,11 +1431,14 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.id.menu_group_epub -> item.isVisible = book.isEpub
                     else -> when (item.itemId) {
                         R.id.menu_enable_replace -> item.isChecked = book.getUseReplaceRule()
-                        R.id.menu_re_segment -> item.isChecked = book.getReSegment()
+                        R.id.menu_re_segment -> item.isChecked = book.config.reSegment
 
                         R.id.menu_reverse_content -> item.isVisible = onLine
-                        R.id.menu_del_ruby_tag -> item.isChecked = book.getDelTag(Book.rubyTag)
-                        R.id.menu_del_h_tag -> item.isChecked = book.getDelTag(Book.hTag)
+                        R.id.menu_del_ruby_tag -> item.isChecked =
+                            book.config.delTag and Book.rubyTag == Book.rubyTag
+
+                        R.id.menu_del_h_tag -> item.isChecked =
+                            book.config.delTag and Book.hTag == Book.hTag
                     }
                 }
             }
@@ -1525,17 +1527,17 @@ class ReadBookActivity : BaseReadBookActivity(),
 
                 R.id.menu_enable_replace -> changeReplaceRuleState()
                 R.id.menu_re_segment -> ReadBook.book?.let {
-                    it.setReSegment(!it.getReSegment())
-                    item.isChecked = it.getReSegment()
+                    it.config.reSegment = !it.config.reSegment
+                    item.isChecked = it.config.reSegment
                     ReadBook.loadContent(false)
                 }
 
                 R.id.menu_del_ruby_tag -> ReadBook.book?.let {
                     item.isChecked = !item.isChecked
                     if (item.isChecked) {
-                        it.addDelTag(Book.rubyTag)
+                        it.config.delTag = it.config.delTag or Book.rubyTag
                     } else {
-                        it.removeDelTag(Book.rubyTag)
+                        it.config.delTag = it.config.delTag and Book.rubyTag.inv()
                     }
                     refreshContentAll(it)
                 }
@@ -1543,9 +1545,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                 R.id.menu_del_h_tag -> ReadBook.book?.let {
                     item.isChecked = !item.isChecked
                     if (item.isChecked) {
-                        it.addDelTag(Book.hTag)
+                        it.config.delTag = it.config.delTag or Book.hTag
                     } else {
-                        it.removeDelTag(Book.hTag)
+                        it.config.delTag = it.config.delTag and Book.hTag.inv()
                     }
                     refreshContentAll(it)
                 }
@@ -1576,7 +1578,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                         imgStyles
                     ) { _, index ->
                         val imageStyle = imgStyles[index]
-                        ReadBook.book?.setImageStyle(imageStyle)
+                        ReadBook.book?.let { it.config.imageStyle = imageStyle }
                         if (imageStyle == Book.imgStyleSingle) {
                             binding.readView.upPageAnim()
                         }

@@ -10,9 +10,6 @@ import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setVariables
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -44,9 +41,9 @@ object BookReview {
         analyzeRule.setContent(body)
         analyzeRule.setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
-        analyzeRule.setVariables(variables)
-        bookChapter?.let { analyzeRule.setChapter(it) }
+        analyzeRule.coroutineContext = currentCoroutineContext()
+        analyzeRule.variables = variables
+        bookChapter?.let { analyzeRule.chapter = it }
         val listRule = reviewRule.reviewList
         if (listRule.isNullOrBlank()) {
             Debug.log(bookSource.bookSourceUrl, "≡未配置段评列表规则,视为空")

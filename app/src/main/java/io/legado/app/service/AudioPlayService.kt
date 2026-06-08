@@ -41,8 +41,6 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.LrcParser
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
 import io.legado.app.model.webBook.WebBook.getContentAwait
@@ -757,9 +755,9 @@ class AudioPlayService : BaseService(), Player.Listener {
             val musicCover = bookSource.getContentRule().musicCover
             AudioPlay.durCoverUrl = if (!musicCover.isNullOrBlank()) {
                 val rule = AnalyzeRule(book, bookSource).apply {
-                    setCoroutineContext(currentCoroutineContext())
+                    coroutineContext = currentCoroutineContext()
                     setBaseUrl(chapter.url)
-                    setChapter(chapter)
+                    this.chapter = chapter
                 }
                 rule.evalJS(musicCover).toString()
             } else book.getDisplayCover()
@@ -782,9 +780,9 @@ class AudioPlayService : BaseService(), Player.Listener {
             val lrcRule = bookSource.getContentRule().lrcRule
             if (lrcRule.isNullOrBlank()) return@execute emptyList()
             val rule = AnalyzeRule(book, bookSource).apply {
-                setCoroutineContext(currentCoroutineContext())
+                coroutineContext = currentCoroutineContext()
                 setBaseUrl(chapter.url)
-                setChapter(chapter)
+                this.chapter = chapter
             }
             val raw = rule.evalJS(lrcRule) as? NativeArray ?: return@execute emptyList()
             LrcParser.parse(raw)

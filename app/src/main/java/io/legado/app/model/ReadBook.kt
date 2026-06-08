@@ -150,18 +150,18 @@ object ReadBook : CoroutineScope by MainScope() {
     fun upWebBook(book: Book) {
         if (book.isLocal) {
             bookSource = null
-            if (book.getImageStyle().isNullOrBlank() && (book.isImage || book.isPdf)) {
-                book.setImageStyle(Book.imgStyleFull)
+            if (book.config.imageStyle.isNullOrBlank() && (book.isImage || book.isPdf)) {
+                book.config.imageStyle = Book.imgStyleFull
             }
         } else {
             appDb.bookSourceDao.getBookSource(book.origin)?.let {
                 bookSource = it
-                if (book.getImageStyle().isNullOrBlank()) {
+                if (book.config.imageStyle.isNullOrBlank()) {
                     var imageStyle = it.getContentRule().imageStyle
                     if (imageStyle.isNullOrBlank() && (book.isImage || book.isPdf)) {
                         imageStyle = Book.imgStyleFull
                     }
-                    book.setImageStyle(imageStyle)
+                    book.config.imageStyle = imageStyle
                 }
             } ?: let {
                 bookSource = null
@@ -908,7 +908,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun pageAnim(): Int {
         val anim = ReadBookConfig.pageAnim
-        return if (book?.getImageStyle()
+        return if (book?.config?.imageStyle
                 .equals(Book.imgStyleSingle, true) && anim == scrollPageAnim
         ) {
             PageAnim.coverPageAnim

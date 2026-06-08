@@ -203,7 +203,7 @@ class BookInfoActivity :
             isVisible = hasSource
         }
         menu.findItem(R.id.menu_split_long_chapter)?.apply {
-            isChecked = book?.getSplitLongChapter() ?: true
+            isChecked = book?.config?.splitLongChapter ?: true
             isVisible = book?.isLocalTxt ?: false
         }
         menu.findItem(R.id.menu_login)?.isVisible = viewModel.curBookSource?.hasLogin() == true
@@ -254,7 +254,7 @@ class BookInfoActivity :
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
             R.id.menu_split_long_chapter -> book?.let {
                 upLoading(true)
-                it.setSplitLongChapter(!item.isChecked)
+                it.config.splitLongChapter = !item.isChecked
                 lifecycleScope.launch { viewModel.loadBookInfo(it) }
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)

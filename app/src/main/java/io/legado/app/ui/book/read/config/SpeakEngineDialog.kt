@@ -128,7 +128,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         tvFooterLeft.setText(R.string.book)
         tvFooterLeft.visible()
         tvFooterLeft.setOnClickListener {
-            ReadBook.book?.setTtsEngine(ttsEngine)
+            ReadBook.book?.let { it.config.ttsEngine = ttsEngine }
             callBack?.upSpeakEngineSummary()
             ReadAloud.upReadAloudClass()
             dismissAllowingStateLoss()
@@ -136,7 +136,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         tvOk.setText(R.string.general)
         tvOk.visible()
         tvOk.setOnClickListener {
-            ReadBook.book?.setTtsEngine(null)
+            ReadBook.book?.let { it.config.ttsEngine = null }
             AppConfig.ttsEngine = ttsEngine
             callBack?.upSpeakEngineSummary()
             ReadAloud.upReadAloudClass()

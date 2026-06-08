@@ -120,7 +120,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         menu.findItem(R.id.menu_load_word_count)?.isChecked =
             AppConfig.tocCountWords
         menu.findItem(R.id.menu_split_long_chapter)?.isChecked =
-            viewModel.bookData.value?.getSplitLongChapter() == true
+            viewModel.bookData.value?.config?.splitLongChapter == true
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -133,7 +133,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             R.id.menu_split_long_chapter -> {
                 viewModel.bookData.value?.let { book ->
                     item.isChecked = !item.isChecked
-                    book.setSplitLongChapter(item.isChecked)
+                    book.config.splitLongChapter = item.isChecked
                     upBookAndToc(book)
                 }
             }

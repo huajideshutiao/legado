@@ -16,9 +16,6 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setNextChapterUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
@@ -61,9 +58,9 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
-        analyzeRule.setChapter(bookChapter)
-        analyzeRule.setNextChapterUrl(mNextChapterUrl)
+        analyzeRule.coroutineContext = currentCoroutineContext()
+        analyzeRule.chapter = bookChapter
+        analyzeRule.nextChapterUrl = mNextChapterUrl
         currentCoroutineContext().ensureActive()
         val titleRule = contentRule.title
         if (!titleRule.isNullOrBlank()) {
@@ -92,7 +89,7 @@ object BookContent {
                 nextUrlList.add(nextUrl)
                 currentCoroutineContext().ensureActive()
                 val analyzeUrl = AnalyzeUrl(
-                    mUrl = nextUrl,
+                    rawRuleUrl = nextUrl,
                     source = bookSource,
                     ruleData = book,
                     coroutineContext = currentCoroutineContext()
@@ -119,7 +116,7 @@ object BookContent {
                 }
             }.mapAsync(AppConfig.threadCount) { urlStr ->
                 val analyzeUrl = AnalyzeUrl(
-                    mUrl = urlStr,
+                    rawRuleUrl = urlStr,
                     source = bookSource,
                     ruleData = book,
                     coroutineContext = currentCoroutineContext()
@@ -173,10 +170,10 @@ object BookContent {
     ): Pair<String, List<String>> {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
-        analyzeRule.setCoroutineContext(currentCoroutineContext())
-        analyzeRule.setNextChapterUrl(nextChapterUrl)
+        analyzeRule.coroutineContext = currentCoroutineContext()
+        analyzeRule.nextChapterUrl = nextChapterUrl
         val nextUrlList = arrayListOf<String>()
-        analyzeRule.setChapter(chapter)
+        analyzeRule.chapter = chapter
         //获取正文
         val content = analyzeRule.getString(contentRule.content, unescape = false)
         //获取下一页链接

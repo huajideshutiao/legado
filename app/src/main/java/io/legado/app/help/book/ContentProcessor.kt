@@ -127,7 +127,7 @@ class ContentProcessor private constructor(
             } catch (e: Exception) {
                 AppLog.put("去除重复标题出错\n${e.localizedMessage}", e)
             }
-            if (reSegment && book.getReSegment()) {
+            if (reSegment && book.config.reSegment) {
                 //重新分段
                 mContent = ContentHelp.reSegment(mContent, chapter.title)
             }

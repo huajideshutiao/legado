@@ -102,7 +102,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                                 author.contains(searchKey)
                         },
                         onUrlResolved = if (isSingleSource) { analyzeUrl: AnalyzeUrl ->
-                            val options = parseExploreOptionsFromUrl(analyzeUrl.rawRuleUrl)
+                            val options = parseExploreOptionsFromUrl(analyzeUrl.urlAfterJs)
                             if (options.isNotEmpty()) {
                                 callBack.onSearchOptionsResolved(options)
                             }

@@ -169,7 +169,7 @@ object ImportOldData {
             book.lastCheckCount = jsonItem.readInt("$.newChapters") ?: 0
             book.order = jsonItem.readInt("$.serialNumber") ?: 0
             book.variable = jsonItem.readString("$.variable")
-            book.setUseReplaceRule(jsonItem.readBool("$.useReplaceRule") == true)
+            book.config.useReplaceRule = jsonItem.readBool("$.useReplaceRule") == true
             books.add(book)
         }
         return books

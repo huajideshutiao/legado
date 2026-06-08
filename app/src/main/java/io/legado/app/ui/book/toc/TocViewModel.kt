@@ -54,7 +54,7 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     fun reverseToc(success: (book: Book) -> Unit) {
         execute {
             bookData.value?.apply {
-                setReverseToc(!getReverseToc())
+                config.reverseToc = !config.reverseToc
                 val toc = appDb.bookChapterDao.getChapterList(bookUrl)
                 val newToc = toc.reversed()
                 newToc.forEachIndexed { index, bookChapter ->

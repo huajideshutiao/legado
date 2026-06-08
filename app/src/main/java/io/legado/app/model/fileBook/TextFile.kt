@@ -70,7 +70,7 @@ class TextFile(private var book: Book) {
     //使用正则划分目录，每个章节的最大允许长度
     private val maxLengthWithToc = 102400
 
-    private var charset: Charset = book.fileCharset()
+    private var charset: Charset = charset(book.charset ?: "UTF-8")
 
     private var txtBuffer: ByteArray? = null
     private var bufferStart = -1L
@@ -90,7 +90,7 @@ class TextFile(private var book: Book) {
                 if (book.charset.isNullOrBlank() || modified) {
                     book.charset = EncodingDetect.getEncode(buffer.copyOf(length))
                 }
-                charset = book.fileCharset()
+                charset = charset(book.charset ?: "UTF-8")
                 if (book.tocUrl.isBlank() || modified) {
                     val blockContent = String(buffer, 0, length, charset)
                     book.tocUrl = getTocRule(blockContent)?.pattern() ?: ""
@@ -198,7 +198,7 @@ class TextFile(private var book: Book) {
                     val chapterContent = blockContent.substring(seekPos, chapterStart)
                     val chapterLength = chapterContent.toByteArray(charset).size.toLong()
                     val lastStart = toc.lastOrNull()?.start ?: curOffset
-                    if (book.getSplitLongChapter() && curOffset + chapterLength - lastStart > maxLengthWithToc) {
+                    if (book.config.splitLongChapter && curOffset + chapterLength - lastStart > maxLengthWithToc) {
                         toc.lastOrNull()?.let {
                             it.end = it.start
                             it.tag = null
@@ -313,7 +313,7 @@ class TextFile(private var book: Book) {
             }
             toc.lastOrNull()?.let { chapter ->
                 //章节字数太多进行拆分
-                if (book.getSplitLongChapter() && chapter.end!! - chapter.start!! > maxLengthWithToc) {
+                if (book.config.splitLongChapter && chapter.end!! - chapter.start!! > maxLengthWithToc) {
                     val end = chapter.end!!
                     chapter.end = chapter.start
                     chapter.tag = null

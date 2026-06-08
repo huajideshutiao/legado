@@ -18,6 +18,7 @@ import io.legado.app.data.entities.rule.ExploreRule
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
+import io.legado.app.model.analyzeRule.AnalyzeUrl
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -47,6 +48,11 @@ val GSON: Gson by lazy {
         .registerTypeAdapter(TocRule::class.java, TocRule.jsonDeserializer)
         .registerTypeAdapter(ContentRule::class.java, ContentRule.jsonDeserializer)
         .registerTypeAdapter(ReviewRule::class.java, ReviewRule.jsonDeserializer)
+        .registerTypeAdapter(
+            AnalyzeUrl.UrlOption::class.java,
+            AnalyzeUrl.UrlOption.jsonDeserializer
+        )
+        .registerTypeAdapter(AnalyzeUrl.UrlOption::class.java, AnalyzeUrl.UrlOption.jsonSerializer)
         .create()
 }
 

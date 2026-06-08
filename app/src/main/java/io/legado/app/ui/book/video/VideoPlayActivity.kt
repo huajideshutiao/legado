@@ -577,7 +577,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         updateResolutionButtonText()
 
         val analyzeUrl = AnalyzeUrl(
-            mUrl = resolution.url,
+            rawRuleUrl = resolution.url,
             source = viewModel.curBookSource,
             headerMapF = source.headers
         )

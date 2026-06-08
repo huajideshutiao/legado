@@ -4,7 +4,6 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import kotlinx.coroutines.currentCoroutineContext
 
@@ -43,7 +42,9 @@ data class DictRule(
         if (showRule.isBlank()) {
             return body!!
         }
-        val analyzeRule = AnalyzeRule().setCoroutineContext(currentCoroutineContext())
+        val analyzeRule = AnalyzeRule().apply {
+            coroutineContext = currentCoroutineContext()
+        }
         return analyzeRule.getString(showRule, mContent = body)
     }
 

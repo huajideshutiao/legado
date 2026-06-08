@@ -150,7 +150,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 source, url, page, isSearch = false,
                 onUrlResolved = { analyzeUrl: AnalyzeUrl ->
                     val oldSize = exploreOptions.size
-                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.rawRuleUrl))
+                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.urlAfterJs))
                     if (exploreOptions.size > oldSize) {
                         optionsReadyLiveData.postValue(Unit)
                     }

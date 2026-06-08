@@ -18,7 +18,7 @@ import splitties.init.appCtx
 
 object ReadAloud {
     private var aloudClass: Class<*> = getReadAloudClass()
-    val ttsEngine get() = ReadBook.book?.getTtsEngine() ?: AppConfig.ttsEngine
+    val ttsEngine get() = ReadBook.book?.config?.ttsEngine ?: AppConfig.ttsEngine
     var httpTTS: HttpTTS? = null
 
     private fun getReadAloudClass(): Class<*> {

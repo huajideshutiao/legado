@@ -7,6 +7,13 @@ import androidx.media3.common.MediaItem
 import cn.hutool.core.codec.PercentCodec
 import cn.hutool.core.net.RFC3986
 import com.bumptech.glide.load.model.GlideUrl
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonSerializer
+import com.google.gson.reflect.TypeToken
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst.UA_NAME
@@ -26,7 +33,6 @@ import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.CookieManager.mergeCookies
 import io.legado.app.help.http.CookieStore
-import io.legado.app.help.http.RequestMethod
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.get
@@ -42,12 +48,9 @@ import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
 import io.legado.app.utils.isJson
-import io.legado.app.utils.isJsonArray
-import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isXml
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
@@ -56,6 +59,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.Buffer
 import java.io.InputStream
+import java.lang.reflect.Type
 import java.net.URLEncoder
 import java.nio.charset.Charset
 import java.util.concurrent.TimeUnit
@@ -69,11 +73,10 @@ import kotlin.math.max
  * Created by GKF on 2018/1/24.
  * 搜索URL规则解析
  */
-@Suppress("unused", "MemberVisibilityCanBePrivate")
 @Keep
 @SuppressLint("DefaultLocale")
 class AnalyzeUrl(
-    private val mUrl: String,
+    val rawRuleUrl: String,
     private val key: String? = null,
     private val page: Int? = null,
     private val speakText: String? = null,
@@ -91,39 +94,27 @@ class AnalyzeUrl(
     private val variables: Map<String, Any>? = null
 ) : JsExtensions {
 
-    var ruleUrl = ""
-        private set
+    private var ruleUrl = rawRuleUrl
 
     /**
      * `ruleUrl` 经过 @js / <js></js> 解析后、{{...}} 与 <name(opts)> 替换之前的形态，
      * 供调用方发现 URL 中静态声明的可选项。
      */
-    var rawRuleUrl = ""
+    var urlAfterJs = ""
         private set
     var url: String = ""
-
-    //private set
-    var type: String? = null
-        private set
     val headerMap = LinkedHashMap<String, String>()
-    private var body: String? = null
     var urlNoQuery: String = ""
-    private var encodedForm: String? = null
-    private var encodedQuery: String? = null
-    private var charset: String? = null
-    private var method = RequestMethod.GET
+    var encodedParams: String? = null
     private var proxy: String? = null
-    private var retry: Int = 0
-    private var useWebView: Boolean = false
-    private var webJs: String? = null
+    private var option: UrlOption? = null
     private val enabledCookieJar = source?.enabledCookieJar == true
     private val domain: String
-    private var webViewDelayTime: Long = 1000L
     private val concurrentRateLimiter = ConcurrentRateLimiter(source)
 
-    // 服务器ID
-    var serverID: Long? = null
-        private set
+    // 直接转发到 option 的派生属性
+    val type: String? get() = option?.type
+    val serverID: Long? get() = option?.serverID
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
@@ -159,13 +150,13 @@ class AnalyzeUrl(
     }
 
     /**
-     * 处理url
+     * 处理url，可由书源 JS 在登录检测后再次调用以重新解析。
      */
     fun initUrl() {
-        ruleUrl = mUrl
+        ruleUrl = rawRuleUrl
         //执行@js,<js></js>
         analyzeJs()
-        rawRuleUrl = ruleUrl
+        urlAfterJs = ruleUrl
         //替换参数
         ruleUrl = replaceKeyPageJs(replaceDynamicOptions(ruleUrl))
         //处理URL
@@ -197,21 +188,18 @@ class AnalyzeUrl(
      */
     private fun analyzeJs() {
         if (!ruleUrl.contains("js")) return
-        var start = 0
         val jsMatcher = JS_PATTERN.matcher(ruleUrl)
         var result = ruleUrl
+        var start = 0
+        fun useSegment(end: Int) {
+            ruleUrl.substring(start, end).trim().takeIf { it.isNotEmpty() }?.let { result = it }
+        }
         while (jsMatcher.find()) {
-            val s = ruleUrl.substring(start, jsMatcher.start()).trim()
-            if (s.isNotEmpty()) {
-                result = s.replace("@result", result)
-            }
+            useSegment(jsMatcher.start())
             result = evalJS(jsMatcher.group(2) ?: jsMatcher.group(1), result).toString()
             start = jsMatcher.end()
         }
-        val s = ruleUrl.substring(start).trim()
-        if (s.isNotEmpty()) {
-            result = s.replace("@result", result)
-        }
+        useSegment(ruleUrl.length)
         ruleUrl = result
     }
 
@@ -253,115 +241,73 @@ class AnalyzeUrl(
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
             val urlOptionStr = ruleUrl.substring(urlOptionEnd)
-            val urlOption = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
+            option = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
                 ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")
                 }
-            urlOption?.let { option ->
-                option.getMethod()?.takeIf { it.equals("POST", true) }
-                    ?.let { method = RequestMethod.POST }
-                option.getHeaderMap()
-                    ?.forEach { headerMap[it.key.toString()] = it.value.toString() }
-                body = option.getBody()
-                type = option.getType()
-                charset = option.getCharset()
-                retry = option.getRetry()
-                useWebView = option.useWebView()
-                webJs = option.getWebJs()
-                option.getJs()?.let { jsStr -> evalJS(jsStr, url)?.toString()?.let { url = it } }
-                serverID = option.getServerID()
-                webViewDelayTime = max(0, option.getWebViewDelayTime() ?: 0)
+            option?.let { opt ->
+                opt.headers?.forEach { (k, v) -> headerMap[k] = v.toString() }
+                opt.js?.let { jsStr -> evalJS(jsStr, url)?.toString()?.let { url = it } }
             }
         }
         urlNoQuery = url
-        when (method) {
-            RequestMethod.GET -> {
-                val pos = url.indexOf('?')
-                if (pos != -1) {
-                    analyzeQuery(url.substring(pos + 1))
-                    urlNoQuery = url.substring(0, pos)
-                }
+        if (isPost()) {
+            val body = option?.body
+            if (body != null && !body.isJson() && !body.isXml() && headerMap["Content-Type"].isNullOrEmpty()) {
+                analyzeParams(body, false)
             }
-
-            RequestMethod.POST -> {
-                if (body != null && !body.isJson() && !body.isXml() && headerMap["Content-Type"].isNullOrEmpty()) {
-                    analyzeFields(body!!)
-                }
+        } else {
+            val pos = url.indexOf('?')
+            if (pos != -1) {
+                analyzeParams(url.substring(pos + 1), true)
+                urlNoQuery = url.substring(0, pos)
             }
         }
     }
 
     /**
-     * 解析QueryMap <key>=<value>
+     * 解析参数 <key>=<value>
      * name=
      * name=name
      * name=<BASE64> eg name=bmFtZQ==
+     * isQuery=true 时是 URL query，false 时是 POST form body
      */
-    private fun analyzeFields(fieldsTxt: String) {
-        encodedForm = encodeParams(fieldsTxt, charset, false)
-    }
-
-    private fun analyzeQuery(query: String) {
-        encodedQuery = encodeParams(query, charset, true)
+    private fun analyzeParams(text: String, isQuery: Boolean) {
+        encodedParams = encodeParams(text, option?.charset, isQuery)
     }
 
     private fun encodeParams(params: String, charset: String?, isQuery: Boolean): String {
         val checkEncoded = charset.isNullOrEmpty()
-        val charset = when {
+        val cs = when {
             charset.isNullOrEmpty() -> Charsets.UTF_8
             charset == "escape" -> null
             else -> charset(charset)
         }
-        if (isQuery && charset != null) {
-            if (NetworkUtils.encodedQuery(params)) {
-                return params
-            }
-            return queryEncoder.encode(params, charset)
+        if (isQuery && cs != null) {
+            return if (NetworkUtils.encodedQuery(params)) params
+            else queryEncoder.encode(params, cs)
         }
-        val len = params.length
-        val sb = StringBuilder()
-        var pos = 0
-        while (pos < len) {
-            if (sb.isNotEmpty()) {
-                sb.append("&")
+        // 与旧实现保持一致：吃掉单个结尾 '&' 和所有开头 '&'，中间空段保留为 '&&'
+        return params.removeSuffix("&")
+            .split('&')
+            .dropWhile { it.isEmpty() }
+            .joinToString("&") { pair ->
+                val eq = pair.indexOf('=')
+                if (eq == -1) {
+                    encodeOne(pair, checkEncoded, cs)
+                } else {
+                    encodeOne(pair.substring(0, eq), checkEncoded, cs) +
+                        "=" + encodeOne(pair.substring(eq + 1), checkEncoded, cs)
+                }
             }
-            var ampOffset = params.indexOf("&", pos)
-            if (ampOffset == -1) {
-                ampOffset = len
-            }
-            val eqOffset = params.indexOf("=", pos)
-            val key: String
-            val value: String?
-            if (eqOffset == -1 || eqOffset > ampOffset) {
-                key = params.substring(pos, ampOffset)
-                value = null
-            } else {
-                key = params.substring(pos, eqOffset)
-                value = params.substring(eqOffset + 1, ampOffset)
-            }
-            sb.appendEncoded(key, checkEncoded, charset)
-            if (value != null) {
-                sb.append("=")
-                sb.appendEncoded(value, checkEncoded, charset)
-            }
-            pos = ampOffset + 1
-        }
-        return sb.toString()
     }
 
-    private fun StringBuilder.appendEncoded(
-        value: String,
-        checkEncoded: Boolean,
-        charset: Charset?
-    ) {
-        if (checkEncoded && NetworkUtils.encodedForm(value)) {
-            append(value)
-        } else if (charset == null) {
-            append(EncoderUtils.escape(value))
-        } else {
-            append(URLEncoder.encode(value, charset))
+    private fun encodeOne(value: String, checkEncoded: Boolean, charset: Charset?): String =
+        when {
+            checkEncoded && NetworkUtils.encodedForm(value) -> value
+            charset == null -> EncoderUtils.escape(value)
+            else -> URLEncoder.encode(value, charset)
         }
-    }
 
     /**
      * 执行JS
@@ -419,13 +365,13 @@ class AnalyzeUrl(
     suspend fun getStrResponseAwait(
         jsStr: String? = null,
         sourceRegex: String? = null,
-        useWebView: Boolean = true,
+        allowWebView: Boolean = true,
     ): StrResponse {
         getByteArrayIfDataUri()?.let { return StrResponse(url, it.toHexString()) }
         concurrentRateLimiter.withLimit {
             setCookie()
             try {
-                return if (this.useWebView && useWebView) {
+                return if (option?.useWebView == true && allowWebView) {
                     getWebViewResponse(jsStr, sourceRegex)
                 } else {
                     getOkHttpStrResponse()
@@ -442,27 +388,29 @@ class AnalyzeUrl(
     private suspend fun getWebViewResponse(
         jsStr: String?,
         sourceRegex: String?,
-    ): StrResponse = when (method) {
-        RequestMethod.POST -> {
-            val res = getClient().newCallStrResponse(retry) {
-                addHeaders(headerMap)
-                url(urlNoQuery)
-                if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) postForm(
-                    encodedForm ?: ""
-                )
-                else postJson(body)
-            }
-            BackstageWebView(
-                url = res.url, html = res.body, tag = source?.getKey(),
-                javaScript = webJs ?: jsStr, sourceRegex = sourceRegex,
-                headerMap = headerMap, delayTime = webViewDelayTime
+    ): StrResponse {
+        val js = option?.webJs ?: jsStr
+        val delay = option?.let { max(0L, it.webViewDelayTime ?: 0L) } ?: 1000L
+        if (!isPost()) {
+            return BackstageWebView(
+                url = url, tag = source?.getKey(),
+                javaScript = js, sourceRegex = sourceRegex,
+                headerMap = headerMap, delayTime = delay
             ).getStrResponse()
         }
-
-        else -> BackstageWebView(
-            url = url, tag = source?.getKey(),
-            javaScript = webJs ?: jsStr, sourceRegex = sourceRegex,
-            headerMap = headerMap, delayTime = webViewDelayTime
+        val body = option?.body
+        val res = getClient().newCallStrResponse(option?.retry ?: 0) {
+            addHeaders(headerMap)
+            url(urlNoQuery)
+            if (!encodedParams.isNullOrEmpty() || body.isNullOrBlank()) postForm(
+                encodedParams ?: ""
+            )
+            else postJson(body)
+        }
+        return BackstageWebView(
+            url = res.url, html = res.body, tag = source?.getKey(),
+            javaScript = js, sourceRegex = sourceRegex,
+            headerMap = headerMap, delayTime = delay
         ).getStrResponse()
     }
 
@@ -470,7 +418,7 @@ class AnalyzeUrl(
      * OkHttp方式获取StrResponse
      */
     private suspend fun getOkHttpStrResponse(): StrResponse =
-        getClient().newCallStrResponse(retry) {
+        getClient().newCallStrResponse(option?.retry ?: 0) {
             addHeaders(headerMap)
             configureRequest()
         }.let {
@@ -485,31 +433,25 @@ class AnalyzeUrl(
      * 配置OkHttp请求参数（GET/POST）
      */
     private fun okhttp3.Request.Builder.configureRequest() {
-        when (method) {
-            RequestMethod.POST -> {
-                url(urlNoQuery)
-                val contentType = headerMap["Content-Type"]
-                val body = body
-                if (!encodedForm.isNullOrEmpty() || body.isNullOrBlank()) postForm(
-                    encodedForm ?: ""
-                )
-                else if (!contentType.isNullOrBlank()) post(
-                    body.toRequestBody(contentType.toMediaType())
-                )
-                else postJson(body)
-            }
-
-            else -> get(urlNoQuery, encodedQuery)
+        if (!isPost()) {
+            get(urlNoQuery, encodedParams)
+            return
         }
+        url(urlNoQuery)
+        val contentType = headerMap["Content-Type"]
+        val body = option?.body
+        if (!encodedParams.isNullOrEmpty() || body.isNullOrBlank()) postForm(encodedParams ?: "")
+        else if (!contentType.isNullOrBlank()) post(body.toRequestBody(contentType.toMediaType()))
+        else postJson(body)
     }
 
     @JvmOverloads
     fun getStrResponse(
         jsStr: String? = null,
         sourceRegex: String? = null,
-        useWebView: Boolean = true,
+        allowWebView: Boolean = true,
     ): StrResponse =
-        runBlocking(coroutineContext) { getStrResponseAwait(jsStr, sourceRegex, useWebView) }
+        runBlocking(coroutineContext) { getStrResponseAwait(jsStr, sourceRegex, allowWebView) }
 
     /**
      * 访问网站,返回Response
@@ -517,9 +459,9 @@ class AnalyzeUrl(
     suspend fun getResponseAwait(): Response = concurrentRateLimiter.withLimit {
         setCookie()
         try {
-            getClient().newCallResponse(retry) {
+            getClient().newCallResponse(option?.retry ?: 0) {
                 addHeaders(headerMap)
-                tag(String::class.java, mUrl)
+                tag(String::class.java, rawRuleUrl)
                 configureRequest()
             }
         } finally {
@@ -539,6 +481,7 @@ class AnalyzeUrl(
         }.build()
     }
 
+    @Suppress("unused")
     fun getResponse(): Response = runBlocking(coroutineContext) { getResponseAwait() }
 
     private fun getByteArrayIfDataUri(): ByteArray? {
@@ -572,9 +515,9 @@ class AnalyzeUrl(
      * 上传文件
      */
     suspend fun upload(fileName: String, file: Any, contentType: String): StrResponse {
-        return getProxyClient(proxy).newCallStrResponse(retry) {
+        return getProxyClient(proxy).newCallStrResponse(option?.retry ?: 0) {
             url(urlNoQuery)
-            val bodyMap = GSON.fromJsonObject<HashMap<String, Any>>(body).getOrNull()!!
+            val bodyMap = GSON.fromJsonObject<HashMap<String, Any>>(option?.body).getOrNull()!!
             bodyMap.forEach { (k, v) ->
                 if (v.toString() == "fileRequest") {
                     bodyMap[k] =
@@ -620,7 +563,7 @@ class AnalyzeUrl(
 
     fun getUserAgent(): String = headerMap.get(UA_NAME, true) ?: AppConfig.userAgent
 
-    fun isPost(): Boolean = method == RequestMethod.POST
+    fun isPost(): Boolean = option?.method.equals("POST", true)
 
     override fun getSource(): BaseSource? = source
 
@@ -637,157 +580,155 @@ class AnalyzeUrl(
     }
 
     @Keep
-    data class UrlOption(
-        private var method: String? = null,
-        private var charset: String? = null,
-        private var headers: Any? = null,
-        private var body: Any? = null,
-        /**
-         * 源Url
-         **/
-        private var origin: String? = null,
-        /**
-         * 重试次数
-         **/
-        private var retry: Int? = null,
-        /**
-         * 类型
-         **/
-        private var type: String? = null,
-        /**
-         * 是否使用webView
-         **/
-        private var webView: Any? = null,
-        /**
-         * webView中执行的js
-         **/
-        private var webJs: String? = null,
+    class UrlOption {
+        var method: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
+            }
+        var charset: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
+            }
+
+        /** 源Url */
+        var origin: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
+            }
+
+        /** 类型 */
+        var type: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
+            }
+
+        /** webView中执行的js */
+        var webJs: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
+            }
+
         /**
          * 解析完url参数时执行的js
          * 执行结果会赋值给url
          */
-        private var js: String? = null,
-        /**
-         * 服务器id
-         */
-        private var serverID: Long? = null,
-        /**
-         * webview等待页面加载完毕的延迟时间（毫秒）
-         */
-        private var webViewDelayTime: Long? = null,
-    ) {
-        fun setMethod(value: String?) {
-            method = if (value.isNullOrBlank()) null else value
-        }
-
-        fun getMethod(): String? {
-            return method
-        }
-
-        fun setCharset(value: String?) {
-            charset = if (value.isNullOrBlank()) null else value
-        }
-
-        fun getCharset(): String? {
-            return charset
-        }
-
-        fun setOrigin(value: String?) {
-            origin = if (value.isNullOrBlank()) null else value
-        }
-
-        fun getOrigin(): String? {
-            return origin
-        }
-
-        fun setRetry(value: String?) {
-            retry = if (value.isNullOrEmpty()) null else value.toIntOrNull()
-        }
-
-        fun getRetry(): Int {
-            return retry ?: 0
-        }
-
-        fun setType(value: String?) {
-            type = if (value.isNullOrBlank()) null else value
-        }
-
-        fun getType(): String? {
-            return type
-        }
-
-        fun useWebView(): Boolean {
-            return when (webView) {
-                null, "", false, "false" -> false
-                else -> true
+        var js: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
             }
-        }
 
-        fun useWebView(boolean: Boolean) {
-            webView = if (boolean) true else null
-        }
+        /** 重试次数 */
+        var retry: Int? = null
 
-        fun setHeaders(value: String?) {
-            headers = if (value.isNullOrBlank()) {
-                null
-            } else {
-                GSON.fromJsonObject<Map<String, Any>>(value).getOrNull()
+        /** 服务器id */
+        var serverID: Long? = null
+
+        /** webview等待页面加载完毕的延迟时间（毫秒） */
+        var webViewDelayTime: Long? = null
+
+        /** 请求体；持有字符串，序列化时若内容可解析为 JSON 对象/数组会被还原为嵌套结构 */
+        var body: String? = null
+            set(value) {
+                field = value?.ifBlank { null }
             }
-        }
 
-        fun getHeaderMap(): Map<*, *>? {
-            return when (val value = headers) {
-                is Map<*, *> -> value
-                is String -> GSON.fromJsonObject<Map<String, Any>>(value).getOrNull()
-                else -> null
+        /** 请求头 */
+        var headers: Map<String, Any?>? = null
+
+        /** 是否使用 webView */
+        var useWebView: Boolean = false
+
+        companion object {
+            private val mapType: Type = TypeToken.getParameterized(
+                Map::class.java, String::class.java, Any::class.java
+            ).type
+
+            private val falseStrings = setOf("", "false")
+
+            val jsonDeserializer = JsonDeserializer<UrlOption> { json, _, _ ->
+                val obj = json.asJsonObject
+                UrlOption().apply {
+                    method = obj.flexString("method")
+                    charset = obj.flexString("charset")
+                    origin = obj.flexString("origin")
+                    type = obj.flexString("type")
+                    webJs = obj.flexString("webJs")
+                    js = obj.flexString("js")
+                    retry = obj.flexNumber("retry")?.toInt()
+                    serverID = obj.flexNumber("serverID")?.toLong()
+                    webViewDelayTime = obj.flexNumber("webViewDelayTime")?.toLong()
+                    useWebView = obj.flexBool("webView")
+                    body = obj["body"]?.let { el ->
+                        when {
+                            el.isJsonNull -> null
+                            el.isJsonPrimitive -> el.asString.ifBlank { null }
+                            else -> el.toString()
+                        }
+                    }
+                    headers = obj["headers"]?.let { el ->
+                        when {
+                            el.isJsonNull -> null
+                            el.isJsonObject ->
+                                GSON.fromJson<Map<String, Any?>>(el, mapType)
+
+                            el.isJsonPrimitive && el.asJsonPrimitive.isString ->
+                                GSON.fromJsonObject<Map<String, Any?>>(el.asString).getOrNull()
+
+                            else -> null
+                        }
+                    }
+                }
             }
-        }
 
-        fun setBody(value: String?) {
-            body = when {
-                value.isNullOrBlank() -> null
-                value.isJsonObject() -> GSON.fromJsonObject<Map<String, Any>>(value).getOrNull()
-                value.isJsonArray() -> GSON.fromJsonArray<Map<String, Any>>(value).getOrNull()
-                else -> value
+            val jsonSerializer = JsonSerializer<UrlOption> { src, _, ctx ->
+                JsonObject().apply {
+                    src.method?.let { addProperty("method", it) }
+                    src.charset?.let { addProperty("charset", it) }
+                    src.origin?.let { addProperty("origin", it) }
+                    src.type?.let { addProperty("type", it) }
+                    src.webJs?.let { addProperty("webJs", it) }
+                    src.js?.let { addProperty("js", it) }
+                    src.retry?.let { addProperty("retry", it) }
+                    src.serverID?.let { addProperty("serverID", it) }
+                    src.webViewDelayTime?.let { addProperty("webViewDelayTime", it) }
+                    if (src.useWebView) addProperty("webView", true)
+                    src.body?.let { b ->
+                        add("body", b.parseAsJsonContainer() ?: JsonPrimitive(b))
+                    }
+                    src.headers?.let { add("headers", ctx.serialize(it)) }
+                }
             }
-        }
 
-        fun getBody(): String? {
-            return body?.let {
-                it as? String ?: GSON.toJson(it)
+            private fun JsonObject.flexString(key: String): String? = this[key]
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString?.ifBlank { null }
+
+            private fun JsonObject.flexNumber(key: String): Number? {
+                val el = this[key] ?: return null
+                if (!el.isJsonPrimitive) return null
+                val p = el.asJsonPrimitive
+                return when {
+                    p.isNumber -> p.asNumber
+                    p.isString -> p.asString.toLongOrNull() ?: p.asString.toDoubleOrNull()
+                    else -> null
+                }
             }
-        }
 
-        fun setWebJs(value: String?) {
-            webJs = if (value.isNullOrBlank()) null else value
-        }
+            private fun JsonObject.flexBool(key: String): Boolean {
+                val el = this[key] ?: return false
+                if (el.isJsonNull) return false
+                if (!el.isJsonPrimitive) return true
+                val p = el.asJsonPrimitive
+                return when {
+                    p.isBoolean -> p.asBoolean
+                    p.isString -> p.asString.lowercase() !in falseStrings
+                    else -> true
+                }
+            }
 
-        fun getWebJs(): String? {
-            return webJs
-        }
-
-        fun setJs(value: String?) {
-            js = if (value.isNullOrBlank()) null else value
-        }
-
-        fun getJs(): String? {
-            return js
-        }
-
-        fun setServerID(value: String?) {
-            serverID = if (value.isNullOrBlank()) null else value.toLong()
-        }
-
-        fun getServerID(): Long? {
-            return serverID
-        }
-
-        fun setWebViewDelayTime(value: String?) {
-            webViewDelayTime = if (value.isNullOrBlank()) null else value.toLong()
-        }
-
-        fun getWebViewDelayTime(): Long? {
-            return webViewDelayTime
+            private fun String.parseAsJsonContainer(): JsonElement? = runCatching {
+                JsonParser.parseString(this)
+            }.getOrNull()?.takeIf { it.isJsonObject || it.isJsonArray }
         }
     }
 
