@@ -1,5 +1,6 @@
 package io.legado.app.model.webBook
 
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -42,15 +43,18 @@ object WebBook {
             else url = bookSource.searchUrl!!
         }
         val ruleData = RuleData()
+        val variables = buildMap<AppConst.JsVarName, Any> {
+            if (isSearch) put(AppConst.JsVarName.KEY, key)
+            if (page != null) put(AppConst.JsVarName.PAGE, page)
+        }
         val analyzeUrl = AnalyzeUrl(
-            rawRuleUrl = url,
-            key = if (isSearch) key else null,
-            page = page,
+            rawUrl = url,
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
             ruleData = ruleData,
             coroutineContext = currentCoroutineContext(),
-            selectedOptions = selectedOptions
+            selectedOptions = selectedOptions,
+            variables = variables
         )
         onUrlResolved?.invoke(analyzeUrl)
         val res = checkLogin(analyzeUrl, bookSource)
@@ -86,7 +90,7 @@ object WebBook {
             )
         } else {
             val analyzeUrl = AnalyzeUrl(
-                rawRuleUrl = book.bookUrl,
+                rawUrl = book.bookUrl,
                 baseUrl = bookSource.bookSourceUrl,
                 source = bookSource,
                 ruleData = book,
@@ -165,7 +169,7 @@ object WebBook {
                 )
             } else {
                 val analyzeUrl = AnalyzeUrl(
-                    rawRuleUrl = book.tocUrl,
+                    rawUrl = book.tocUrl,
                     baseUrl = book.bookUrl,
                     source = bookSource,
                     ruleData = book,
@@ -218,7 +222,7 @@ object WebBook {
             )
         } else {
             val analyzeUrl = AnalyzeUrl(
-                rawRuleUrl = chapterUrl,
+                rawUrl = chapterUrl,
                 baseUrl = book.tocUrl,
                 source = bookSource,
                 ruleData = book,
@@ -259,13 +263,13 @@ object WebBook {
         val rawUrl = reviewRule.reviewUrl
             ?: throw NoStackTraceException("reviewUrl 为空")
         val variables = mapOf(
-            "paragraphIndex" to paragraphIndex,
-            "sort" to sort,
+            AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex,
+            AppConst.JsVarName.SORT to sort,
+            AppConst.JsVarName.PAGE to page,
         )
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
         val analyzeUrl = AnalyzeUrl(
-            rawRuleUrl = rawUrl,
-            page = page,
+            rawUrl = rawUrl,
             baseUrl = baseUrl,
             source = bookSource,
             ruleData = book,
@@ -307,14 +311,14 @@ object WebBook {
             ?: throw NoStackTraceException("书源未配置段评规则")
         val replyListUrlRule = reviewRule.replyListUrl
             ?: throw NoStackTraceException("书源未配置回复列表URL规则")
-        val variables = mapOf<String, Any>(
-            "paragraphIndex" to paragraphIndex,
-            "reviewId" to reviewId,
+        val variables = mapOf<AppConst.JsVarName, Any>(
+            AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex,
+            AppConst.JsVarName.REVIEW_ID to reviewId,
+            AppConst.JsVarName.PAGE to page,
         )
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.tocUrl
         val analyzeUrl = AnalyzeUrl(
-            rawRuleUrl = replyListUrlRule,
-            page = page,
+            rawUrl = replyListUrlRule,
             baseUrl = baseUrl,
             source = bookSource,
             ruleData = book,
@@ -377,9 +381,10 @@ object WebBook {
         contentText: String? = null,
         selected: Boolean? = null,
     ): Result<Any?> = runCatching {
-        val variables = mutableMapOf<String, Any>("paragraphIndex" to paragraphIndex)
-        reviewId?.let { variables["reviewId"] = it }
-        selected?.let { variables["selected"] = it }
+        val variables =
+            mutableMapOf<AppConst.JsVarName, Any>(AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex)
+        reviewId?.let { variables[AppConst.JsVarName.REVIEW_ID] = it }
+        selected?.let { variables[AppConst.JsVarName.SELECTED] = it }
         val analyzeRule = AnalyzeRule(book, bookSource).apply {
             chapter = bookChapter
             setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.tocUrl)

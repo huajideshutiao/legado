@@ -106,7 +106,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
             if (resolution != null) {
                 videoUrl.postValue(
                     AnalyzeUrl(
-                        rawRuleUrl = resolution.url,
+                        rawUrl = resolution.url,
                         source = curBookSource,
                         headerMapF = source.headers
                     )

@@ -3,6 +3,7 @@ package io.legado.app.data.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import io.legado.app.constant.AppConst
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,7 +38,11 @@ data class DictRule(
      * 搜索字典
      */
     suspend fun search(word: String): String {
-        val analyzeUrl = AnalyzeUrl(urlRule, key = word, coroutineContext = currentCoroutineContext())
+        val analyzeUrl = AnalyzeUrl(
+            urlRule,
+            coroutineContext = currentCoroutineContext(),
+            variables = mapOf(AppConst.JsVarName.KEY to word)
+        )
         val body = analyzeUrl.getStrResponseAwait().body
         if (showRule.isBlank()) {
             return body!!

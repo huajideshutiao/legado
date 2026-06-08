@@ -16,6 +16,7 @@ import com.google.gson.JsonSerializer
 import com.google.gson.reflect.TypeToken
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppPattern
@@ -76,11 +77,7 @@ import kotlin.math.max
 @Keep
 @SuppressLint("DefaultLocale")
 class AnalyzeUrl(
-    val rawRuleUrl: String,
-    private val key: String? = null,
-    private val page: Int? = null,
-    private val speakText: String? = null,
-    private val speakSpeed: Int? = null,
+    val rawUrl: String,
     private var baseUrl: String = "",
     private val source: BaseSource? = null,
     private val ruleData: RuleDataInterface? = null,
@@ -91,10 +88,11 @@ class AnalyzeUrl(
     headerMapF: Map<String, String>? = null,
     hasLoginHeader: Boolean = true,
     private val selectedOptions: Map<String, String>? = null,
-    private val variables: Map<String, Any>? = null
+    /** 额外注入到 evalJS 作用域的键值对，例如 key、page */
+    private val variables: Map<AppConst.JsVarName, Any>? = null
 ) : JsExtensions {
 
-    private var ruleUrl = rawRuleUrl
+    private var tmpUrl = rawUrl
 
     /**
      * `ruleUrl` 经过 @js / <js></js> 解析后、{{...}} 与 <name(opts)> 替换之前的形态，
@@ -153,12 +151,12 @@ class AnalyzeUrl(
      * 处理url，可由书源 JS 在登录检测后再次调用以重新解析。
      */
     fun initUrl() {
-        ruleUrl = rawRuleUrl
+        tmpUrl = rawUrl
         //执行@js,<js></js>
         analyzeJs()
-        urlAfterJs = ruleUrl
+        urlAfterJs = tmpUrl
         //替换参数
-        ruleUrl = replaceKeyPageJs(replaceDynamicOptions(ruleUrl))
+        tmpUrl = replaceKeyPageJs(replaceDynamicOptions(tmpUrl))
         //处理URL
         analyzeUrl()
     }
@@ -187,20 +185,20 @@ class AnalyzeUrl(
      * 执行@js,<js></js>
      */
     private fun analyzeJs() {
-        if (!ruleUrl.contains("js")) return
-        val jsMatcher = JS_PATTERN.matcher(ruleUrl)
-        var result = ruleUrl
+        if (!tmpUrl.contains("js")) return
+        val jsMatcher = JS_PATTERN.matcher(tmpUrl)
+        var result = tmpUrl
         var start = 0
         fun useSegment(end: Int) {
-            ruleUrl.substring(start, end).trim().takeIf { it.isNotEmpty() }?.let { result = it }
+            tmpUrl.substring(start, end).trim().takeIf { it.isNotEmpty() }?.let { result = it }
         }
         while (jsMatcher.find()) {
             useSegment(jsMatcher.start())
             result = evalJS(jsMatcher.group(2) ?: jsMatcher.group(1), result).toString()
             start = jsMatcher.end()
         }
-        useSegment(ruleUrl.length)
-        ruleUrl = result
+        useSegment(tmpUrl.length)
+        tmpUrl = result
     }
 
     /**
@@ -227,12 +225,12 @@ class AnalyzeUrl(
      * 解析Url
      */
     private fun analyzeUrl() {
-        var urlNoOption = ruleUrl
+        var urlNoOption = tmpUrl
         var urlOptionEnd = -1
-        if (ruleUrl.contains("{")) {
-            val urlMatcher = paramPattern.matcher(ruleUrl)
+        if (tmpUrl.contains("{")) {
+            val urlMatcher = paramPattern.matcher(tmpUrl)
             if (urlMatcher.find()) {
-                urlNoOption = ruleUrl.substring(0, urlMatcher.start())
+                urlNoOption = tmpUrl.substring(0, urlMatcher.start())
                 urlOptionEnd = urlMatcher.end()
             }
         }
@@ -240,7 +238,7 @@ class AnalyzeUrl(
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
-            val urlOptionStr = ruleUrl.substring(urlOptionEnd)
+            val urlOptionStr = tmpUrl.substring(urlOptionEnd)
             option = GSONStrict.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()
                 ?: GSON.fromJsonObject<UrlOption>(urlOptionStr).getOrNull()?.also {
                     log("链接参数 JSON 格式不规范，请改为规范格式")
@@ -314,17 +312,13 @@ class AnalyzeUrl(
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
-            variables?.forEach { (k, v) -> bindings[k] = v }
+            variables?.forEach { (k, v) -> bindings[k.key] = v }
             bindings["java"] = this
             // 响应阶段(loginCheckJs/请求头 JS)需要"当前请求 URL"，所以优先用 url；
             // 但 {{...}} 模板求值发生在 analyzeUrl() 之前，此时 url 还是空，降级用构造器传入的 baseUrl
             bindings["baseUrl"] = url.ifEmpty { baseUrl }
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager
-            bindings["page"] = page
-            bindings["key"] = key
-            bindings["speakText"] = speakText
-            bindings["speakSpeed"] = speakSpeed
             bindings["book"] = ruleData as? Book
             bindings["chapter"] = chapter
             bindings["source"] = source
@@ -461,7 +455,7 @@ class AnalyzeUrl(
         try {
             getClient().newCallResponse(option?.retry ?: 0) {
                 addHeaders(headerMap)
-                tag(String::class.java, rawRuleUrl)
+                tag(String::class.java, rawUrl)
                 configureRequest()
             }
         } finally {

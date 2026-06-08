@@ -1,6 +1,7 @@
 package io.legado.app.model.webBook
 
 import com.google.gson.reflect.TypeToken
+import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -31,7 +32,7 @@ object BookReview {
         redirectUrl: String,
         body: String?,
         reviewRule: ReviewRule,
-        variables: Map<String, Any>? = null
+        variables: Map<AppConst.JsVarName, Any>? = null
     ): ReviewPage {
         body ?: throw NoStackTraceException("段评内容为空")
         Debug.log(bookSource.bookSourceUrl, "≡获取段评成功:${redirectUrl}")

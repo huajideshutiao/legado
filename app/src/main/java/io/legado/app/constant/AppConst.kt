@@ -124,8 +124,23 @@ object AppConst {
 
     const val timeLimit = 15000L
 
-    const val bookSourcePartEntities = "bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore, (loginUrl is not null and trim(loginUrl) <> '') hasLoginUrl, lastUpdateTime, respondTime, weight, (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl"
-
     const val coverRuleConfigKey = "legadoCoverRuleConfig"
+
+    /**
+     * 注入到 evalJS 作用域的变量名白名单。
+     * 通过 [io.legado.app.model.analyzeRule.AnalyzeUrl] / [io.legado.app.model.analyzeRule.AnalyzeRule] 的 `variables` 参数注入时，仅允许使用此处声明的键，
+     * 防止散落字符串导致拼写错误或难以追踪。
+     */
+    @Keep
+    enum class JsVarName(val key: String) {
+        KEY("key"),
+        PAGE("page"),
+        SPEAK_TEXT("speakText"),
+        SPEAK_SPEED("speakSpeed"),
+        PARAGRAPH_INDEX("paragraphIndex"),
+        SORT("sort"),
+        REVIEW_ID("reviewId"),
+        SELECTED("selected"),
+    }
 
 }

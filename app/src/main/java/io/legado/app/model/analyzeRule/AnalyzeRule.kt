@@ -5,6 +5,7 @@ import androidx.annotation.Keep
 import com.script.CompiledScript
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
@@ -64,7 +65,7 @@ class AnalyzeRule(
     private var isJSON: Boolean = false
     private var isRegex: Boolean = false
 
-    var variables: Map<String, Any>? = null
+    var variables: Map<AppConst.JsVarName, Any>? = null
 
     private var analyzeByXPath: AnalyzeByXPath? = null
     private var analyzeByJSoup: AnalyzeByJSoup? = null
@@ -780,7 +781,7 @@ class AnalyzeRule(
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         val bindings = buildScriptBindings { bindings ->
-            variables?.forEach { (k, v) -> bindings[k] = v }
+            variables?.forEach { (k, v) -> bindings[k.key] = v }
             bindings["java"] = this
             bindings["cookie"] = CookieStore
             bindings["cache"] = CacheManager

@@ -59,7 +59,7 @@ object BookChapterList {
                 while (nextUrl.isNotEmpty() && !nextUrlList.contains(nextUrl)) {
                     nextUrlList.add(nextUrl)
                     val analyzeUrl = AnalyzeUrl(
-                        rawRuleUrl = nextUrl,
+                        rawUrl = nextUrl,
                         source = bookSource,
                         ruleData = book,
                         coroutineContext = currentCoroutineContext()
@@ -88,7 +88,7 @@ object BookChapterList {
                     }
                 }.mapAsync(AppConfig.threadCount) { urlStr ->
                     val analyzeUrl = AnalyzeUrl(
-                        rawRuleUrl = urlStr,
+                        rawUrl = urlStr,
                         source = bookSource,
                         ruleData = book,
                         coroutineContext = currentCoroutineContext()

@@ -27,6 +27,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.script.ScriptException
 import io.legado.app.R
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.HttpTTS
@@ -343,11 +344,13 @@ class HttpReadAloudService : BaseReadAloudService(),
             try {
                 val analyzeUrl = AnalyzeUrl(
                     httpTts.url,
-                    speakText = speakText,
-                    speakSpeed = speechRate,
                     source = httpTts,
                     readTimeout = 300 * 1000L,
-                    coroutineContext = currentCoroutineContext()
+                    coroutineContext = currentCoroutineContext(),
+                    variables = mapOf(
+                        AppConst.JsVarName.SPEAK_TEXT to speakText,
+                        AppConst.JsVarName.SPEAK_SPEED to speechRate,
+                    )
                 )
                 var response = analyzeUrl.getResponseAwait()
                 currentCoroutineContext().ensureActive()
