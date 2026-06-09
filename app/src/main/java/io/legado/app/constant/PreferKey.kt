@@ -146,7 +146,6 @@ object PreferKey {
     const val pauseReadAloudWhilePhoneCalls = "pauseReadAloudWhilePhoneCalls"
     const val readAloudByMediaButton = "readAloudByMediaButton"
     const val devFeat = "devFeat"
-    const val disableMangaScale = "disableMangaScale"
     const val disableMangaPageAnim = "disableMangaPageAnim"
     const val autoCheckNewBackup = "autoCheckNewBackup"
 

@@ -25,12 +25,11 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/menu_disable_manga_scale"
+        android:id="@+id/menu_hide_manga_title"
         android:checkable="true"
         android:checked="false"
-        android:title="@string/disable_manga_scale"
+        android:title="@string/hide_manga_title"
         app:showAsAction="never" />
-
     <item
         android:id="@+id/menu_enable_auto_page"
         android:checkable="true"
@@ -79,13 +78,6 @@
     <item
         android:id="@+id/menu_manga_color_filter"
         android:title="@string/manga_color_filter"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/menu_hide_manga_title"
-        android:checkable="true"
-        android:checked="false"
-        android:title="@string/hide_manga_title"
         app:showAsAction="never" />
 
     <item

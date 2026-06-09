@@ -250,38 +250,31 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             itemAnimator = null
             layoutManager = mLayoutManager
             setHasFixedSize(true)
-            setDisableMangaScale(AppConfig.disableMangaScale)
             setRecyclerViewPreloader(AppConfig.mangaPreDownloadNum)
-            longTapListener = {
-                val centerPosition = findCenterViewPosition()
-                val item = mAdapter.getItem(centerPosition)
-                if (item is MangaPage) {
-                    saveImage(item.mImageUrl)
-                    true
-                } else {
-                    false
-                }
-            }
-            setPreScrollListener { _, _, _, position ->
-                if (mAdapter.isNotEmpty()) {
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                private var lastCenter = RecyclerView.NO_POSITION
+
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    val position = rv.findCenterViewPosition()
+                    if (position == RecyclerView.NO_POSITION || position == lastCenter) return
+                    lastCenter = position
+                    if (!mAdapter.isNotEmpty()) return
                     val item = mAdapter.getItem(position)
-                    if (item is BaseMangaPage) {
-                        if (viewModel.durChapterIndex < item.chapterIndex) {
-                            viewModel.moveToNextChapter()
-                        } else if (viewModel.durChapterIndex > item.chapterIndex) {
-                            viewModel.moveToPrevChapter()
-                        } else {
-                            viewModel.durChapterPos = item.index
-                            viewModel.curPageChanged()
-                        }
-                        if (item is MangaPage) {
-                            binding.mangaMenu.upSeekBar(item.index, item.imageCount)
-                            upInfoBar(item)
-                        }
+                    if (item !is BaseMangaPage) return
+                    if (viewModel.durChapterIndex < item.chapterIndex) {
+                        viewModel.moveToNextChapter()
+                    } else if (viewModel.durChapterIndex > item.chapterIndex) {
+                        viewModel.moveToPrevChapter()
+                    } else {
+                        viewModel.durChapterPos = item.index
+                        viewModel.curPageChanged()
+                    }
+                    if (item is MangaPage) {
+                        binding.mangaMenu.upSeekBar(item.index, item.imageCount)
+                        upInfoBar(item)
                     }
                 }
-            }
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+
                 override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                     //仅在滚动彻底停止后，才让停稳的居中页 GIF 从第一帧单次播放并准备翻页，
                     //其余页恢复无限循环。这样可避免预布局/滑动途中误装填导致提前播完、停在末帧。
@@ -294,6 +287,16 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         binding.webtoonFrame.run {
             onAction {
                 click(it)
+            }
+            longTapListener = {
+                val centerPosition = binding.recyclerView.findCenterViewPosition()
+                val item = mAdapter.getItem(centerPosition)
+                if (item is MangaPage) {
+                    saveImage(item.mImageUrl)
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -555,12 +558,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 }
             }
 
-            R.id.menu_disable_manga_scale -> {
-                item.isChecked = !item.isChecked
-                AppConfig.disableMangaScale = item.isChecked
-                setDisableMangaScale(item.isChecked)
-            }
-
             R.id.menu_enable_auto_page -> {
                 item.isChecked = !item.isChecked
                 enableAutoPage = item.isChecked
@@ -721,7 +718,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         this.mMenu = menu
         menu.findItem(R.id.menu_pre_manga_number).title =
             getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)
-        menu.findItem(R.id.menu_disable_manga_scale).isChecked = AppConfig.disableMangaScale
         menu.findItem(R.id.menu_manga_auto_page_speed).title =
             getString(R.string.manga_auto_page_speed, AppConfig.mangaAutoPageSpeed)
         menu.findItem(R.id.menu_enable_horizontal_scroll).isChecked =
@@ -731,14 +727,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         menu.findItem(R.id.menu_manga_gif_auto_next).run {
             isVisible = AppConfig.enableMangaHorizontalScroll
             isChecked = AppConfig.enableMangaGifAutoNext
-        }
-    }
-
-    private fun setDisableMangaScale(disable: Boolean) {
-        binding.webtoonFrame.disableMangaScale = disable
-        binding.recyclerView.disableMangaScale = disable
-        if (disable) {
-            binding.recyclerView.resetZoom()
         }
     }
 

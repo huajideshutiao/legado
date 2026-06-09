@@ -1184,7 +1184,6 @@
     <string name="read_aloud_by_media_button_summary">透過耳機按鍵來啟動朗讀</string>
     <string name="group_sources_by_domain">按網域分組顯示</string>
     <string name="theme_config">主題配置</string>
-    <string name="disable_manga_scale">禁用漫畫縮放</string>
     <string name="disable_manga_click_scroll">禁用點擊翻頁</string>
     <string name="enable_auto_page_scroll">開啟自動翻頁</string>
     <string name="manga_auto_page_speed">翻頁速度 %s</string>

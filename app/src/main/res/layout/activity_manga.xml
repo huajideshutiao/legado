@@ -3,14 +3,15 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/book_ant_10">
 
     <io.legado.app.ui.book.manga.recyclerview.WebtoonFrame
         android:id="@+id/webtoon_frame"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <io.legado.app.ui.book.manga.recyclerview.WebtoonRecyclerView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
@@ -38,8 +39,7 @@
     <FrameLayout
         android:id="@+id/fl_loading"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/background">
+        android:layout_height="match_parent">
 
         <LinearLayout
             android:id="@+id/ll_loading"
@@ -66,7 +66,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/loading"
-                android:textColor="@color/primaryText" />
+                android:textColor="#FFFFFF" />
         </LinearLayout>
 
         <LinearLayout
@@ -81,7 +81,7 @@
                 android:id="@+id/tv_msg"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/primaryText" />
+                android:textColor="#ffffff" />
 
             <io.legado.app.ui.widget.text.AccentTextView
                 android:id="@+id/tv_retry"

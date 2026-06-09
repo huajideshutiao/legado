@@ -584,13 +584,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val devFeat: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.devFeat, false)
 
-    //禁用漫画缩放
-    var disableMangaScale: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.disableMangaScale, true)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.disableMangaScale, value)
-        }
-
     var disableMangaPageAnim: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.disableMangaPageAnim, false)
         set(value) {
