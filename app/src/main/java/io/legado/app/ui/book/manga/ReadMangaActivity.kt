@@ -27,12 +27,9 @@ import io.legado.app.base.BaseReadActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
-import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityMangaBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
@@ -41,7 +38,6 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.receiver.NetworkChangedListener
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaColorFilterDialog
@@ -86,7 +82,7 @@ import java.text.DecimalFormat
 import kotlin.math.ceil
 
 class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewModel>(),
-    ChangeBookSourceDialog.CallBack, MangaMenu.CallBack,
+    MangaMenu.CallBack,
     MangaColorFilterDialog.Callback, ScrollTimer.ScrollCallback {
 
     override val currentBook: Book?
@@ -507,18 +503,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
         scrollToNext()
     }
 
-    override val oldBook: Book?
-        get() = viewModel.curBook
-
-    override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
-        if (book.isImage) {
-            binding.flLoading.isVisible = true
-            viewModel.changeTo(source, book, toc)
-        } else {
-            toastOnUi("所选择的源不是漫画源")
-        }
-    }
-
     override fun updateColorFilter(config: MangaColorFilterConfig) {
         mAdapter.setMangaImageColorFilter(config)
     }
@@ -546,13 +530,6 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     @SuppressLint("StringFormatMatches", "NotifyDataSetChanged")
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_change_source -> {
-                binding.mangaMenu.runMenuOut()
-                viewModel.curBook?.let {
-                    showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
-                }
-            }
-
             R.id.menu_catalog -> {
                 IntentData.book = viewModel.curBook
                 IntentData.chapterList = viewModel.chapterListData.value
