@@ -17,12 +17,13 @@ import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.net.toUri
+import androidx.fragment.app.commit
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.Download
-import io.legado.app.ui.association.FileAssociationDialog
+import io.legado.app.ui.association.FileAssociationFragment
 import io.legado.app.ui.widget.anima.RefreshProgressBar
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -30,7 +31,6 @@ import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.setDarkeningAllowed
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.visible
 import java.net.URLDecoder
@@ -132,7 +132,9 @@ object WebViewUtil {
         when (url.scheme) {
             "http", "https" -> return false
             "legado", "yuedu" -> {
-                activity.showDialogFragment(FileAssociationDialog(url))
+                activity.supportFragmentManager.commit {
+                    add(FileAssociationFragment(url), "FileAssociationFragment")
+                }
                 return true
             }
 

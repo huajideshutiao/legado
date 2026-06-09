@@ -2,13 +2,14 @@ package io.legado.app.ui.association
 
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.config.AppConfig
@@ -38,7 +39,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 
-class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_view) {
+class FileAssociationFragment() : Fragment() {
 
     constructor(uri: Uri) : this() {
         arguments = Bundle().apply {
@@ -49,37 +50,38 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     private val viewModel by viewModels<FileAssociationViewModel>()
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
-        val uri = arguments?.getParcelable<Uri>("uri") ?: return@registerHandleFile
-        result.uri?.let { treeUri ->
-            AppConfig.defaultBookTreeUri = treeUri.toString()
-            importBook(treeUri, uri)
-        }
+            val uri = arguments?.getParcelable<Uri>("uri") ?: return@registerHandleFile
+            result.uri?.let { treeUri ->
+                AppConfig.defaultBookTreeUri = treeUri.toString()
+                importBook(treeUri, uri)
+            }
         }
     }
 
     private val isShell get() = activity is AssociationActivity
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val uri = arguments?.getParcelable<Uri>("uri") ?: return dismiss()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val uri = arguments?.getParcelable<Uri>("uri") ?: return removeSelf()
 
-        viewModel.importBookLiveData.observe(viewLifecycleOwner) {
+        viewModel.importBookLiveData.observe(this) {
             importBook(it)
         }
-        viewModel.successLive.observe(viewLifecycleOwner) {
+        viewModel.successLive.observe(this) {
             handleSuccess(it)
         }
-        viewModel.errorLive.observe(viewLifecycleOwner) {
+        viewModel.errorLive.observe(this) {
             toastOnUi(it)
             finishActivity()
         }
-        viewModel.openBookLiveData.observe(viewLifecycleOwner) {
+        viewModel.openBookLiveData.observe(this) {
             requireContext().startActivityForBook(it)
             finishActivity()
         }
-        viewModel.onLineImportLive.observe(viewLifecycleOwner) {
+        viewModel.onLineImportLive.observe(this) {
             handleOnLineImport(it)
         }
-        viewModel.notSupportedLiveData.observe(viewLifecycleOwner) { data ->
+        viewModel.notSupportedLiveData.observe(this) { data ->
             alert(
                 title = appCtx.getString(R.string.draw),
                 message = appCtx.getString(R.string.file_not_supported, data.second)
@@ -167,9 +169,9 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
         }
     }
 
-    private fun showImportDialog(dialog: BaseDialogFragment) {
-        (requireActivity() as? androidx.appcompat.app.AppCompatActivity)?.showDialogFragment(dialog)
-        dismiss()
+    private fun showImportDialog(dialog: DialogFragment) {
+        (activity as? AppCompatActivity)?.showDialogFragment(dialog)
+        removeSelf()
     }
 
     private fun finallyDialog(title: String, msg: String) {
@@ -184,8 +186,17 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     private fun finishActivity() {
         if (isShell) {
             activity?.finish()
+        } else {
+            removeSelf()
         }
-        dismiss()
+    }
+
+    private fun removeSelf() {
+        if (isAdded) {
+            parentFragmentManager.beginTransaction()
+                .remove(this)
+                .commitAllowingStateLoss()
+        }
     }
 
     private fun importBook(uri: Uri) {
@@ -211,7 +222,7 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         if (treeDoc?.checkWrite() != true) {
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
-                        this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
+                        this@FileAssociationFragment.readUri(uri) { fileDoc, inputStream ->
                             val name = fileDoc.name
                             var doc = treeDoc.findFile(name)
                             if (doc == null || fileDoc.lastModified > doc.lastModified()) {
@@ -231,7 +242,7 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         if (!treeFile.checkWrite()) {
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
-                        this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
+                        this@FileAssociationFragment.readUri(uri) { fileDoc, inputStream ->
                             val name = fileDoc.name
                             val file = treeFile.getFile(name)
                             if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
