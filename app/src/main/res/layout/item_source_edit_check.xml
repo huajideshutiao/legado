@@ -2,6 +2,7 @@
 <io.legado.app.lib.theme.view.ThemeCheckBox xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/checkBox"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="48dp"
+    android:gravity="center_vertical"
     android:paddingHorizontal="12dp"
     android:paddingVertical="6dp" />
