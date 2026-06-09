@@ -117,6 +117,7 @@ object PreferKey {
     const val welcomeShowIcon = "welcomeShowIcon"
     const val pageTouchSlop = "pageTouchSlop"
     const val showAddToShelfAlert = "showAddToShelfAlert"
+    const val bookInfoDeleteAlert = "bookInfoDeleteAlert"
     const val ignoreAudioFocus = "ignoreAudioFocus"
     const val progressBarBehavior = "progressBarBehavior"
     const val sourceEditMaxLine = "sourceEditMaxLine"

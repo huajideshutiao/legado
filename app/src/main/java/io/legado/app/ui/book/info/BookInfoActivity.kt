@@ -212,7 +212,6 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag
         menu.findItem(R.id.menu_download_local)?.isVisible =
             book?.origin?.startsWith(BookType.webDavTag) == true
-        menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
         menu.findItem(R.id.menu_review)?.isVisible =
             viewModel.curBookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
@@ -227,7 +226,6 @@ class BookInfoActivity :
             }
 
             R.id.menu_share_it -> viewModel.curBook?.let { shareBook(it) }
-            R.id.menu_refresh -> refreshBook()
             R.id.menu_login -> viewModel.curBookSource?.let {
                 IntentData.book = viewModel.bookData.value
                 it.showLoginDialog(this)
@@ -258,8 +256,6 @@ class BookInfoActivity :
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
             }
-
-            R.id.menu_delete_alert -> LocalConfig.bookInfoDeleteAlert = !item.isChecked
             R.id.menu_upload -> book?.let { uploadBook(it) }
             R.id.menu_download_local -> book?.let { viewModel.downloadToLocal(it) }
             R.id.menu_review -> viewModel.openCommentDialog(this)
@@ -625,7 +621,7 @@ class BookInfoActivity :
     @SuppressLint("InflateParams")
     private fun deleteBook() {
         viewModel.getBook()?.let { book ->
-            if (!LocalConfig.bookInfoDeleteAlert) {
+            if (!AppConfig.bookInfoDeleteAlert) {
                 viewModel.delBook(LocalConfig.deleteBookOriginal) {
                     setResult(RESULT_DELETED)
                     finish()

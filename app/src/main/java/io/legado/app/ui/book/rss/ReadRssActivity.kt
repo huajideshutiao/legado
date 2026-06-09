@@ -23,7 +23,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.http.CookieManager
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -139,7 +138,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
 
             R.id.menu_rss_star -> {
                 if (viewModel.inBookshelf) {
-                    if (LocalConfig.bookInfoDeleteAlert) {
+                    if (AppConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw, messageResource = R.string.sure_del
                         ) {

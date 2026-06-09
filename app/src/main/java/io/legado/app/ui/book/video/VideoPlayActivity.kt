@@ -42,7 +42,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
@@ -442,7 +442,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
             R.id.menu_shelf -> {
                 if (viewModel.inBookshelf) {
-                    if (LocalConfig.bookInfoDeleteAlert) {
+                    if (AppConfig.bookInfoDeleteAlert) {
                         alert(
                             titleResource = R.string.draw, messageResource = R.string.sure_del
                         ) {

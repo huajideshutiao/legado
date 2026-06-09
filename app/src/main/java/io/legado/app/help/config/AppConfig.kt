@@ -467,6 +467,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val showAddToShelfAlert get() = appCtx.getPrefBoolean(PreferKey.showAddToShelfAlert, true)
 
+    var bookInfoDeleteAlert
+        get() = appCtx.getPrefBoolean(PreferKey.bookInfoDeleteAlert, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.bookInfoDeleteAlert, value)
+
     val ignoreAudioFocus get() = appCtx.getPrefBoolean(PreferKey.ignoreAudioFocus, false)
 
     var pauseReadAloudWhilePhoneCalls

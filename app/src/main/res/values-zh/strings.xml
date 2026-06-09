@@ -1045,6 +1045,8 @@
     <string name="check_selected_interval">选中所选区间</string>
     <string name="show_add_to_shelf_alert_title">返回时提示放入书架</string>
     <string name="show_add_to_shelf_alert_summary">阅读未放入书架的书籍在返回时提示放入书架</string>
+    <string name="book_info_delete_alert_title">删除书籍时提醒</string>
+    <string name="book_info_delete_alert_summary">删除书籍前弹出确认对话框</string>
     <string name="review">评论</string>
     <string name="rule_review_url">段评URL（reviewUrl）</string>
     <string name="rule_review_list">段评列表节点（reviewList）</string>

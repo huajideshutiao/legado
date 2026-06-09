@@ -101,6 +101,12 @@
         android:summary="@string/show_add_to_shelf_alert_summary"
         android:title="@string/show_add_to_shelf_alert_title" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="bookInfoDeleteAlert"
+        android:summary="@string/book_info_delete_alert_summary"
+        android:title="@string/book_info_delete_alert_title" />
+
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="default_version"
         android:key="updateToVariant"

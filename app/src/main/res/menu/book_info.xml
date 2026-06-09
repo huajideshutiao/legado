@@ -25,23 +25,16 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/menu_refresh"
-        android:title="@string/refresh"
+        android:id="@+id/menu_top"
+        android:title="@string/to_top"
         app:showAsAction="never" />
-
-    <item
-        android:id="@+id/menu_review"
-        android:title="@string/review"
-        app:showAsAction="never" />
-
     <item
         android:id="@+id/menu_login"
         android:title="@string/login"
         app:showAsAction="never" />
-
     <item
-        android:id="@+id/menu_top"
-        android:title="@string/to_top"
+        android:id="@+id/menu_review"
+        android:title="@string/review"
         app:showAsAction="never" />
 
     <item
@@ -73,12 +66,6 @@
     <item
         android:id="@+id/menu_split_long_chapter"
         android:title="@string/split_long_chapter"
-        android:checkable="true"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/menu_delete_alert"
-        android:title="@string/delete_alert"
         android:checkable="true"
         app:showAsAction="never" />
 

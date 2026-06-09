@@ -1048,6 +1048,8 @@
     <string name="check_selected_interval">Select zones</string>
     <string name="show_add_to_shelf_alert_title">Prompt to add to bookshelf when return</string>
     <string name="show_add_to_shelf_alert_summary">Prompt to add to bookshelf when return from reading books that are not on the bookshelf</string>
+    <string name="book_info_delete_alert_title">Confirm before deleting book</string>
+    <string name="book_info_delete_alert_summary">Show a confirmation dialog when removing a book from the bookshelf</string>
     <string name="review">Comments</string>
     <string name="rule_avatar">Paragraph review author avatar(avatarRule)</string>
     <string name="rule_review_name">Paragraph review author name(nameRule)</string>
