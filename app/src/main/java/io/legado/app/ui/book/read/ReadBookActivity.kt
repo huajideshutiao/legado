@@ -1410,9 +1410,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         fun onMenuOpened(menu: Menu) {
             menu.findItem(R.id.menu_same_title_removed)?.isChecked =
                 ReadBook.curTextChapter?.sameTitleRemoved == true
-            menu.findItem(R.id.menu_review)?.isVisible = ReadBook.bookSource?.let {
-                it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
-            } == true
+            menu.findItem(R.id.menu_review)?.isVisible =
+                ReadBook.bookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
         }
 
         /**

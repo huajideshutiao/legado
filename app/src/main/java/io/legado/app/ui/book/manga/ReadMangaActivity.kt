@@ -535,9 +535,8 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_review)?.isVisible = viewModel.curBookSource?.let {
-            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
-        } == true
+        menu.findItem(R.id.menu_review)?.isVisible =
+            viewModel.curBookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
     }
 

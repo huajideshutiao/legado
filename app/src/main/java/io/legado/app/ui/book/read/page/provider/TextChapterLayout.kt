@@ -325,9 +325,9 @@ class TextChapterLayout(
         val imageStyle = book.config.imageStyle
         val isSingleStyle = imageStyle.equals(Book.imgStyleSingle, true)
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
-        // 当前书源启用段评 + 配了 reviewUrl 才追加 ▨ 占位符
-        val enableReview = book.getBookSource()?.let {
-            it.enabledReview && it.ruleReview?.reviewUrl?.isNotBlank() == true
+        // 当前书源启用段评 + 配了 reviewCountRule 才追加 ▨ 占位符
+        val enableReview = ReadBook.bookSource?.let {
+            it.enabledReview && !it.ruleReview?.reviewCountRule.isNullOrBlank()
         } == true
 
         if (titleMode != 2 || bookChapter.isVolume || contents.isEmpty()) {

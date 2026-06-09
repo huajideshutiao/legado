@@ -112,9 +112,8 @@ class AudioPlayActivity :
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = AudioPlay.bookSource?.hasLogin() == true
         menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
-        menu.findItem(R.id.menu_review)?.isVisible = AudioPlay.bookSource?.let {
-            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
-        } == true
+        menu.findItem(R.id.menu_review)?.isVisible =
+            AudioPlay.bookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
     }
 

@@ -213,9 +213,8 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_download_local)?.isVisible =
             book?.origin?.startsWith(BookType.webDavTag) == true
         menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
-        menu.findItem(R.id.menu_review)?.isVisible = viewModel.curBookSource?.let {
-            it.enabledReview && !it.ruleReview?.reviewUrl.isNullOrBlank()
-        } == true
+        menu.findItem(R.id.menu_review)?.isVisible =
+            viewModel.curBookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
     }
 
