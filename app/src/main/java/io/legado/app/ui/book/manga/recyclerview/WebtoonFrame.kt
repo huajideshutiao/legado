@@ -10,7 +10,7 @@ import android.view.ScaleGestureDetector
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
-import androidx.recyclerview.widget.LinearLayoutManager
+import android.widget.OverScroller
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.ui.book.read.config.ClickArea
 import io.legado.app.utils.findCenterViewPosition
@@ -64,6 +64,10 @@ class WebtoonFrame : FrameLayout {
     private var lastFocusX = 0f
     private var lastFocusY = 0f
 
+    // 画面惯性：用系统 OverScroller，物理曲线和边界停止都跟 RV 自己 fling 时走同一套，
+    // 不再单独配速度衰减系数 / 时长。
+    private val panScroller = OverScroller(context, DecelerateInterpolator())
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         clickArea.setRect(w, h)
@@ -75,6 +79,7 @@ class WebtoonFrame : FrameLayout {
         super.onDetachedFromWindow()
         animator?.cancel()
         animator = null
+        panScroller.forceFinished(true)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -150,6 +155,7 @@ class WebtoonFrame : FrameLayout {
         lastY = y
         isPanning = true
         animator?.cancel()
+        panScroller.forceFinished(true) // 接管惯性，避免画面被两路写入打架
         // 清零小数累计，让每次手势独立结算
         scrollRemainderX = 0f
         scrollRemainderY = 0f
@@ -258,20 +264,49 @@ class WebtoonFrame : FrameLayout {
      */
     private fun finishPan() {
         val rv = recycler ?: return
-        val isHorizontal = (rv.layoutManager as? LinearLayoutManager)?.orientation ==
-            LinearLayoutManager.HORIZONTAL
-        if (!isHorizontal) return
-
-        // 反号：手指向左滑（vx < 0）想看后一页，对应 RV 滚动方向为正向（scroll 值变大）。
-        // 这里送的是屏幕 px/s，与未缩放时手指直接给 RV 的量纲一致，不做 / currentScale。
-        val flung = rv.fling(-pendingFlingVelocityX.toInt(), -pendingFlingVelocityY.toInt())
+        val vx = pendingFlingVelocityX
+        val vy = pendingFlingVelocityY
         pendingFlingVelocityX = 0f
         pendingFlingVelocityY = 0f
+
+        // 画面惯性：用 OverScroller 在 [-clampMax, +clampMax] 内 fling，撞边自然停。
+        // 横向/纵向同样处理，不区分翻页方向。
+        flingPan(vx, vy)
+
+        // RV 自身的 fling：与未缩放时手指直接给 RV 的量纲一致；横向由 PagerSnapHelper
+        // 决定翻不翻，纵向就是普通滚动。反号是因为手指方向与 RV scroll 方向相反。
+        val flung = rv.fling(-vx.toInt(), -vy.toInt())
         if (!flung) {
             val center = rv.findCenterViewPosition()
             if (center != RecyclerView.NO_POSITION) {
                 rv.smoothScrollToPosition(center)
             }
+        }
+    }
+
+    private fun flingPan(vx: Float, vy: Float) {
+        // transX 与手指方向同向（手指右滑 vx>0，transX 增大），scroller 直接复用
+        // transX/Y 当坐标、vx/vy 当速度，边界 [-clampMax, +clampMax] 让 OverScroller 自然停。
+        val maxX = clampMaxX().toInt()
+        val maxY = clampMaxY().toInt()
+        panScroller.fling(
+            transX.toInt(), transY.toInt(),
+            vx.toInt(), vy.toInt(),
+            -maxX, maxX, -maxY, maxY,
+        )
+        if (!panScroller.isFinished) postInvalidateOnAnimation()
+    }
+
+    override fun computeScroll() {
+        super.computeScroll()
+        if (panScroller.computeScrollOffset()) {
+            transX = panScroller.currX.toFloat()
+            transY = panScroller.currY.toFloat()
+            recycler?.let {
+                it.translationX = transX
+                it.translationY = transY
+            }
+            postInvalidateOnAnimation()
         }
     }
 
@@ -284,6 +319,7 @@ class WebtoonFrame : FrameLayout {
             // 必须手指全抬后重新两指落下才能进缩放。
             if (isPanning) return false
             animator?.cancel()
+            panScroller.forceFinished(true) // 同 onDoubleTap：抢占翻页惯性的写入权
             lastFocusX = detector.focusX
             lastFocusY = detector.focusY
             return true
@@ -328,6 +364,7 @@ class WebtoonFrame : FrameLayout {
 
         override fun onDoubleTap(ev: MotionEvent): Boolean {
             animator?.cancel()
+            panScroller.forceFinished(true) // 翻页惯性窗口内双击会被惯性反向覆写 transX，必须先停
             // 只要不是恰好 1×（无论放大还是缩小中的中间态），都先归位到 1×
             if (!isAtDefaultScale()) {
                 animateTo(DEFAULT_RATE, 0f, 0f)
