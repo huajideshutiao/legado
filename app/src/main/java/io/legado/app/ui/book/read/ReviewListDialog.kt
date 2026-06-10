@@ -254,8 +254,18 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     }
 
     private fun submitPost(text: String) {
-        viewModel.reply(content = text, reviewId = replyToReview?.id)
+        val target = replyToReview
         replyToReview = null
+        val targetIdx = target?.let { t ->
+            adapter.getItems().indexOfFirst { it.id == t.id }
+        } ?: -1
+        viewModel.reply(content = text, reviewId = target?.id, onHandled = {
+            target ?: return@reply
+            target.replyCount += 1
+            if (targetIdx >= 0) {
+                adapter.notifyItemChanged(targetIdx + adapter.getHeaderCount())
+            }
+        })
     }
 
     private fun sortLabelRes(sort: Int): Int =
@@ -642,8 +652,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             }
         }
 
-        fun reply(content: String, reviewId: String?) = runRule(
-            { it.replyRule }, content = content, reviewId = reviewId, reloadOnSuccess = true
+        fun reply(content: String, reviewId: String?, onHandled: (() -> Unit)? = null) = runRule(
+            { it.replyRule }, content = content, reviewId = reviewId, reloadOnSuccess = true,
+            onSuccess = { onHandled?.invoke() }
         )
 
         fun voteUp(review: Review, selected: Boolean, onError: () -> Unit) {
@@ -659,16 +670,15 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         // onRemoved: JS 返回 true 时回调，dialog 据此本地移除；其他返回值走 load() 整页重载
         fun delete(review: Review, onRemoved: (id: String) -> Unit) {
             val id = review.id ?: return
-            runRule({ it.deleteRule }, reviewId = id, onSuccess = { result ->
-                if (asBoolean(result)) onRemoved(id) else load()
-            })
+            runRule({ it.deleteRule }, reviewId = id, onSuccess = { onRemoved(id) })
         }
 
-        private fun asBoolean(v: Any?): Boolean = when (v) {
-            null -> false
-            is Boolean -> v
-            is Number -> v.toDouble() != 0.0
-            else -> v.toString().trim().equals("true", ignoreCase = true)
+        private fun asBoolean(v: Any?): Boolean {
+            if (v == null) return false
+            if (v is Boolean) return v
+            if (v is Number) return v.toDouble() != 0.0
+            val s = v.toString().trim()
+            return s.isNotEmpty() && !s.equals("false", ignoreCase = true)
         }
 
         private fun runRule(
@@ -702,6 +712,10 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                     selected = selected,
                 ).getOrThrow()
             }.onSuccess { result ->
+                // 仅返回 true 类值表示规则"已处理"，走成功路径；
+                // 其它返回值表示规则"不想处理"，静默放过（不视为失败也不触发 onSuccess）；
+                // 只有抛异常才算失败，由下面的 onError 处理。
+                if (!asBoolean(result)) return@onSuccess
                 if (reloadOnSuccess) load()
                 onSuccess?.invoke(result)
             }.onError {

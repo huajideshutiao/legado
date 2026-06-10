@@ -374,10 +374,9 @@ object WebBook {
             chapter = bookChapter
             setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.bookUrl)
             coroutineContext = currentCoroutineContext()
-            setContent(contentText)
+            setContent(contentText ?: "")
             this.variables = variables
         }
-        analyzeRule.setContent("")
         analyzeRule.evalJS(rule)
     }.onFailure {
         currentCoroutineContext().ensureActive()
