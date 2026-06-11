@@ -1083,6 +1083,7 @@
     <string name="review_list_empty">No comments yet</string>
     <string name="post_review">Post</string>
     <string name="reply_review">Reply</string>
+    <string name="reply_review_to">Reply: %1$s</string>
     <string name="vote_up">Like</string>
     <string name="vote_down">Dislike</string>
     <string name="tag_explore_enabled">Flag: found enabled</string>

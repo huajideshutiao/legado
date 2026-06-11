@@ -1,7 +1,9 @@
 package io.legado.app.ui.book.read
 
+import android.app.Activity.RESULT_OK
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
@@ -10,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.viewModels
@@ -88,10 +91,28 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     private var parentBinding: ItemReviewBinding? = null
     private var parentReview: Review? = null
 
+    // 段评输入面板:Activity 模拟 BottomSheet,通过 launcher 回写内容
+    private val reviewPostLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val content = result.data
+                ?.getStringExtra(ReviewPostActivity.RESULT_CONTENT)
+                .orEmpty()
+            if (content.isNotBlank()) submitPost(content)
+        }
+    }
+
+    private fun launchPostActivity(replyPreview: String?) {
+        val intent = Intent(requireContext(), ReviewPostActivity::class.java)
+        replyPreview?.let { intent.putExtra(ReviewPostActivity.EXTRA_REPLY_PREVIEW, it) }
+        reviewPostLauncher.launch(intent)
+    }
+
     /** 点击单条段评 → 弹回复输入框，replyTo 暂存为该条 */
     private fun onReviewClicked(review: Review) {
         replyToReview = review
-        showDialogFragment(ReviewPostDialog(replyPreview = review.content))
+        launchPostActivity(review.content)
     }
 
     private fun confirmDelete(review: Review, onRemove: (id: String) -> Unit) {
@@ -167,14 +188,6 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         }
         binding.btnClose.setOnClickListener { dismiss() }
 
-        // 接收输入对话框返回的内容并提交（输入对话框走 childFragmentManager）
-        childFragmentManager.setFragmentResultListener(
-            ReviewPostDialog.REQUEST_KEY, viewLifecycleOwner
-        ) { _, bundle ->
-            val content = bundle.getString(ReviewPostDialog.KEY_CONTENT).orEmpty()
-            if (content.isNotBlank()) submitPost(content)
-        }
-
         // 列表
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -226,7 +239,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         binding.etInput.setOnClickListener {
             replyToReview = parentReview
             val preview = parentReview?.content
-            showDialogFragment(ReviewPostDialog(replyPreview = preview))
+            launchPostActivity(preview)
         }
 
         viewModel.reviewsLiveData.observe(viewLifecycleOwner) { list ->

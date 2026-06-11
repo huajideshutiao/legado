@@ -120,7 +120,13 @@
             <meta-data
                 android:name="com.samsung.android.support.REMOTE_ACTION"
                 android:resource="@xml/spen_remote_actions" />
-        </activity> <!-- 阅读漫画界面 -->
+        </activity> <!-- 段评输入面板(模拟 BottomSheet 的 Activity) -->
+        <activity
+            android:name=".ui.book.read.ReviewPostActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false"
+            android:theme="@style/AppTheme.BottomSheetInput"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustNothing" /> <!-- 阅读漫画界面 -->
         <activity
             android:name=".ui.book.manga.ReadMangaActivity"
             android:exported="false"

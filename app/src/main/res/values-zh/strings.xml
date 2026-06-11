@@ -1080,6 +1080,7 @@
     <string name="review_list_empty">还没有评论</string>
     <string name="post_review">发布</string>
     <string name="reply_review">回复</string>
+    <string name="reply_review_to">回复: %1$s</string>
     <string name="vote_up">点赞</string>
     <string name="vote_down">点踩</string>
     <string name="tag_explore_enabled">标志:发现已启用</string>

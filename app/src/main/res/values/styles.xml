@@ -18,6 +18,10 @@
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
+    <!-- 点击外部关闭由 Activity 内 root.setOnClickListener 处理,
+         windowCloseOnTouchOutside 只对 floating Activity 生效,这里没必要声明。 -->
+    <style name="AppTheme.BottomSheetInput" parent="AppTheme.Transparent" />
+
     <!-- Welcome主题 -->
     <style name="AppTheme.Welcome" parent="Base.AppTheme">
         <item name="android:windowNoTitle">true</item>
