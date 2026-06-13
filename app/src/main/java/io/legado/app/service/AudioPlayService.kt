@@ -435,6 +435,10 @@ class AudioPlayService : BaseService(), Player.Listener {
         upPlayProgressForLrcJob?.cancel()
         val lrc = durLrcData ?: return
         if (lrc.isEmpty() || lrc.last().first == -1) return
+        // 切歌中(stop 后未 prepare 新 mediaItem)player 处于 IDLE,
+        // exoPlayer.currentPosition 仍是上一首的残留位置,据此推进会把新章节歌词跳到旧位置;
+        // 新媒体 prepare 完成后 STATE_READY 会再次触发本方法,这里直接退出。
+        if (exoPlayer.playbackState == Player.STATE_IDLE) return
         val subCount = FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount
 
         // 注意: 此协程绑定主线程(lifecycleScope 默认 Main),因为 ExoPlayer 默认绑定主 looper,
