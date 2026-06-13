@@ -328,7 +328,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             val id = item.id ?: return@OnClickListener
             val target = adapter.toggleVoteUp(id)
             adapter.renderVoteState(b, item)
-            viewModel.voteUp(item, target) {
+            viewModel.voteUp(item, !target) {
                 adapter.revertVoteUp(id)
                 adapter.renderVoteState(b, item)
             }
@@ -339,7 +339,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             val id = item.id ?: return@setOnClickListener
             val target = adapter.toggleVoteDown(id)
             adapter.renderVoteState(b, item)
-            viewModel.voteDown(item, target) {
+            viewModel.voteDown(item, !target) {
                 adapter.revertVoteDown(id)
                 adapter.renderVoteState(b, item)
             }
@@ -564,7 +564,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 val id = item.id ?: return@OnClickListener
                 val target = toggleVoteUp(id)
                 notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteUp(item, target) { revertVoteUp(id) }
+                viewModel.voteUp(item, !target) { revertVoteUp(id) }
             }
             binding.btnVoteUp.setOnClickListener(voteUpClick)
             binding.tvVoteCount.setOnClickListener(voteUpClick)
@@ -574,7 +574,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 val id = item.id ?: return@setOnClickListener
                 val target = toggleVoteDown(id)
                 notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteDown(item, target) { revertVoteDown(id) }
+                viewModel.voteDown(item, !target) { revertVoteDown(id) }
             }
             binding.tvReplyPreview.setOnClickListener {
                 getItemByLayoutPosition(holder.layoutPosition)?.let { openReplies(it) }

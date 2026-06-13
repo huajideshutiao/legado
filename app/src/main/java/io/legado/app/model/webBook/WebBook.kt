@@ -353,7 +353,7 @@ object WebBook {
 
     /**
      * 执行一个段评动作规则（点赞/点踩/回复/删除）
-     * 规则是 JS：变量包含 paragraphIndex / reviewId（可空）/ selected（点赞点踩用，目标态）/ content（回复用）。
+     * 规则是 JS：变量包含 paragraphIndex / reviewId（可空）/ selected（点赞点踩用，当前态）/ content（回复用）。
      * 返回规则执行结果（书源可返回字符串作为错误提示，正常成功时通常无返回值）。
      */
     suspend fun evalReviewActionAwait(
