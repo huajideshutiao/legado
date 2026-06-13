@@ -61,96 +61,114 @@ object BookInfo {
             }
         }
         val mCanReName = canReName && !infoRule.canReName.isNullOrBlank()
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取书名")
-        analyzeRule.getString(infoRule.name).let {
-            if (it.isNotEmpty() && (mCanReName || book.name.isEmpty())) {
-                book.name = it
-            }
-            Debug.log(bookSource.bookSourceUrl, "└${it}")
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取作者")
-        analyzeRule.getString(infoRule.author).let {
-            if (it.isNotEmpty() && (mCanReName || book.author.isEmpty())) {
-                book.author = it
-            }
-            Debug.log(bookSource.bookSourceUrl, "└${it}")
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取分类")
-        try {
-            analyzeRule.getStringList(infoRule.kind)?.joinToString(",")?.let {
-                book.kind = it
-                    Debug.log(bookSource.bookSourceUrl, "└${it}")
-                } ?: Debug.log(bookSource.bookSourceUrl, "└")
-        } catch (e: Exception) {
+        if (!infoRule.name.isNullOrBlank()) {
             currentCoroutineContext().ensureActive()
-            Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            LogUtils.e("获取分类出错", e.stackTraceToString())
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取字数")
-        try {
-            wordCountFormat(analyzeRule.getString(infoRule.wordCount)).let {
-                book.wordCount = it
-                Debug.log(bookSource.bookSourceUrl, "└${it}")
-            }
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            LogUtils.e("获取字数出错", e.stackTraceToString())
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取最新章节")
-        try {
-            analyzeRule.getString(infoRule.lastChapter).let {
-                book.latestChapterTitle = it
-                Debug.log(bookSource.bookSourceUrl, "└${it}")
-            }
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            LogUtils.e("获取最新章节出错", e.stackTraceToString())
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取简介")
-        try {
-            HtmlFormatter.format(analyzeRule.getString(infoRule.intro)).let {
-                book.intro = it
-                Debug.log(bookSource.bookSourceUrl, "└${it}")
-            }
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            LogUtils.e("获取简介出错", e.stackTraceToString())
-        }
-        currentCoroutineContext().ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取封面链接")
-        try {
-            analyzeRule.getString(infoRule.coverUrl).let {
-                if (it.isNotEmpty()) {
-                    book.coverUrl = NetworkUtils.getAbsoluteURL(redirectUrl, it)
+            Debug.log(bookSource.bookSourceUrl, "┌获取书名")
+            analyzeRule.getString(infoRule.name).let {
+                if (it.isNotEmpty() && (mCanReName || book.name.isEmpty())) {
+                    book.name = it
                 }
                 Debug.log(bookSource.bookSourceUrl, "└${it}")
             }
-        } catch (e: Exception) {
+        }
+        if (!infoRule.author.isNullOrBlank()) {
             currentCoroutineContext().ensureActive()
-            Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
-            LogUtils.e("获取封面出错", e.stackTraceToString())
+            Debug.log(bookSource.bookSourceUrl, "┌获取作者")
+            analyzeRule.getString(infoRule.author).let {
+                if (it.isNotEmpty() && (mCanReName || book.author.isEmpty())) {
+                    book.author = it
+                }
+                Debug.log(bookSource.bookSourceUrl, "└${it}")
+            }
+        }
+        if (!infoRule.kind.isNullOrBlank()) {
+            currentCoroutineContext().ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取分类")
+            try {
+                analyzeRule.getStringList(infoRule.kind)?.joinToString(",")?.let {
+                    book.kind = it
+                    Debug.log(bookSource.bookSourceUrl, "└${it}")
+                } ?: Debug.log(bookSource.bookSourceUrl, "└")
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                LogUtils.e("获取分类出错", e.stackTraceToString())
+            }
+        }
+        if (!infoRule.wordCount.isNullOrBlank()) {
+            currentCoroutineContext().ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取字数")
+            try {
+                wordCountFormat(analyzeRule.getString(infoRule.wordCount)).let {
+                    book.wordCount = it
+                    Debug.log(bookSource.bookSourceUrl, "└${it}")
+                }
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                LogUtils.e("获取字数出错", e.stackTraceToString())
+            }
+        }
+        if (!infoRule.lastChapter.isNullOrBlank()) {
+            currentCoroutineContext().ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取最新章节")
+            try {
+                analyzeRule.getString(infoRule.lastChapter).let {
+                    book.latestChapterTitle = it
+                    Debug.log(bookSource.bookSourceUrl, "└${it}")
+                }
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                LogUtils.e("获取最新章节出错", e.stackTraceToString())
+            }
+        }
+        if (!infoRule.intro.isNullOrBlank()) {
+            currentCoroutineContext().ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取简介")
+            try {
+                HtmlFormatter.format(analyzeRule.getString(infoRule.intro)).let {
+                    book.intro = it
+                    Debug.log(bookSource.bookSourceUrl, "└${it}")
+                }
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                LogUtils.e("获取简介出错", e.stackTraceToString())
+            }
+        }
+        if (!infoRule.coverUrl.isNullOrBlank()) {
+            currentCoroutineContext().ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取封面链接")
+            try {
+                analyzeRule.getString(infoRule.coverUrl).let {
+                    if (it.isNotEmpty()) {
+                        book.coverUrl = NetworkUtils.getAbsoluteURL(redirectUrl, it)
+                    }
+                    Debug.log(bookSource.bookSourceUrl, "└${it}")
+                }
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                LogUtils.e("获取封面出错", e.stackTraceToString())
+            }
         }
         currentCoroutineContext().ensureActive()
         if (!book.isWebFile) {
-            Debug.log(bookSource.bookSourceUrl, "┌获取目录链接")
-            book.tocUrl = analyzeRule.getString(infoRule.tocUrl, isUrl = true)
+            if (!infoRule.tocUrl.isNullOrBlank()) {
+                Debug.log(bookSource.bookSourceUrl, "┌获取目录链接")
+                book.tocUrl = analyzeRule.getString(infoRule.tocUrl, isUrl = true)
+                Debug.log(bookSource.bookSourceUrl, "└${book.tocUrl}")
+            }
             if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl
             if (book.tocUrl == baseUrl) {
                 book.tocHtml = body
             }
-            Debug.log(bookSource.bookSourceUrl, "└${book.tocUrl}")
         } else {
             Debug.log(bookSource.bookSourceUrl, "┌获取文件下载链接")
-            book.downloadUrls = analyzeRule.getStringList(infoRule.downloadUrls, isUrl = true)
+            if (!infoRule.downloadUrls.isNullOrBlank()) {
+                book.downloadUrls = analyzeRule.getStringList(infoRule.downloadUrls, isUrl = true)
+            }
             if (book.downloadUrls.isNullOrEmpty()) {
                 Debug.log(bookSource.bookSourceUrl, "└")
                 throw NoStackTraceException("下载链接为空")
@@ -161,5 +179,6 @@ object BookInfo {
             }
         }
     }
+
 
 }
