@@ -31,6 +31,7 @@ class ReviewPostActivity : AppCompatActivity() {
     private var dismissed = false
     private var exitY = 0f
     private var imeY = 0f
+    private var imeAnimating = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -73,6 +74,12 @@ class ReviewPostActivity : AppCompatActivity() {
         ViewCompat.setWindowInsetsAnimationCallback(
             binding.root,
             object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
+                override fun onPrepare(animation: WindowInsetsAnimationCompat) {
+                    if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
+                        imeAnimating = true
+                    }
+                }
+
                 override fun onProgress(
                     insets: WindowInsetsCompat,
                     runningAnimations: MutableList<WindowInsetsAnimationCompat>
@@ -83,10 +90,18 @@ class ReviewPostActivity : AppCompatActivity() {
                     }
                     return insets
                 }
+
+                override fun onEnd(animation: WindowInsetsAnimationCompat) {
+                    if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
+                        imeAnimating = false
+                    }
+                }
             }
         )
         binding.root.setOnApplyWindowInsetsListenerCompat { _, insets ->
-            if (!dismissed) {
+            // IME 动画期间 onApplyWindowInsets 会先收到终值,
+            // 让 onProgress 独占 imeY,避免 sheet 闪现到完全上升位置后再回滚重播动画。
+            if (!dismissed && !imeAnimating) {
                 imeY = -insets.getInsets(WindowInsetsCompat.Type.ime()).bottom.toFloat()
                 applySheetTranslation()
             }
