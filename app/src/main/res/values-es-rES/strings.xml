@@ -481,6 +481,7 @@
     <string name="theme_mode">Tipo de tema</string>
     <string name="theme_mode_desc">Seleccione el tema que prefiera</string>
     <string name="join_qq_group">Únase al grupo QQ</string>
+    <string name="join_telegram_group">Únase al grupo de Telegram</string>
     <string name="bg_image_per">Para establecer la imagen de fondo requiere del permiso de almacenamiento</string>
     <string name="input_book_source_url">Ingrese la dirección de origen del libro</string>
     <string name="del_file">Borrar archivo</string>

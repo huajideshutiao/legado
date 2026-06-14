@@ -479,6 +479,7 @@
     <string name="theme_mode">Chế độ chủ đề</string>
     <string name="theme_mode_desc">Chọn chủ đề bạn muốn</string>
     <string name="join_qq_group">Tham gia nhóm QQ</string>
+    <string name="join_telegram_group">Tham gia nhóm Telegram</string>
     <string name="bg_image_per">Đặt ảnh nền cần quyền truy cập bộ nhớ</string>
     <string name="input_book_source_url">Nhập địa chỉ nguồn sách</string>
     <string name="del_file">Xóa tệp</string>

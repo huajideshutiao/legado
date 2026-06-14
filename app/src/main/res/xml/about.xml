@@ -9,6 +9,21 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
+        android:key="telegramGroup"
+        android:title="@string/join_telegram_group"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="qqGroup"
+        android:title="@string/join_qq_group"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:isPreferenceVisible="false" />
+
+    <io.legado.app.lib.prefs.Preference
         android:key="update_log"
         android:title="@string/update_log"
         app:allowDividerAbove="false"

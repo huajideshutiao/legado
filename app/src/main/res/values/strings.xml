@@ -491,6 +491,7 @@
     <string name="theme_mode">Theme mode</string>
     <string name="theme_mode_desc">Select a theme you want</string>
     <string name="join_qq_group">Join QQ group</string>
+    <string name="join_telegram_group">Join Telegram group</string>
     <string name="bg_image_per">Set the background image requires storage permission</string>
     <string name="input_book_source_url">Input book source address</string>
     <string name="del_file">Delete file</string>

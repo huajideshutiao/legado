@@ -490,6 +490,7 @@
     <string name="theme_mode">主题模式</string>
     <string name="theme_mode_desc">选择主题模式</string>
     <string name="join_qq_group">加入 QQ 群</string>
+    <string name="join_telegram_group">加入 Telegram 群</string>
     <string name="bg_image_per">获取背景图片需存储权限</string>
     <string name="input_book_source_url">输入书源网址</string>
     <string name="del_file">删除文件</string>

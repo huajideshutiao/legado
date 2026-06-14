@@ -9,8 +9,6 @@
   
 Legado / 开源阅读
 <br>
-<a href="https://gedoor.github.io" target="_blank">gedoor.github.io</a> / <a href="https://www.legado.top/" target="_blank">legado.top</a>
-<br>
 Legado is a free and open source novel reader for Android.
 </div>
 
@@ -74,15 +72,7 @@ You can customize the book source, set your own rules, and capture web page data
 
 #### Telegram
 
-[![Telegram-group](https://img.shields.io/badge/Telegram-group-blue)](https://t.me/yueduguanfang) [![Telegram-channel](https://img.shields.io/badge/Telegram-channel-blue)](https://t.me/legado_channels)
-
-#### Discord
-
-[![Discord](https://img.shields.io/discord/560731361414086666?color=%235865f2&label=Discord)](https://discord.gg/VtUfRyzRXn)
-
-#### Other
-
-https://www.yuque.com/legado/wiki/community
+[![Telegram-group](https://img.shields.io/badge/Telegram-group-blue)](https://t.me/+mT22ceIeiSllM2U1)
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">

@@ -477,6 +477,7 @@
     <string name="theme_mode">主題模式</string>
     <string name="theme_mode_desc">選擇主題模式</string>
     <string name="join_qq_group">加入QQ羣</string>
+    <string name="join_telegram_group">加入Telegram羣</string>
     <string name="bg_image_per">獲取背景圖片需存儲權限</string>
     <string name="input_book_source_url">輸入書源網址</string>
     <string name="del_file">刪除文件</string>

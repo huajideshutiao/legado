@@ -49,6 +49,8 @@ class AboutFragment : PreferenceFragmentCompat() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             "contributors" -> openUrl(R.string.contributors_url)
+            "telegramGroup" -> openUrl(R.string.telegram_group_url)
+            "qqGroup" -> openUrl(R.string.qq_group_url)
             "check_update" -> AppUpdate.check(
                 lifecycleScope,
                 requireActivity() as AppCompatActivity

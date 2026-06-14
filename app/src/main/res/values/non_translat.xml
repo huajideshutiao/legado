@@ -4,6 +4,8 @@
     <string name="email" translatable="false">gekunfei@live.com</string>
 
     <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>
+    <string name="telegram_group_url" translatable="false">https://t.me/+mT22ceIeiSllM2U1</string>
+    <string name="qq_group_url" translatable="false"></string>
 
     <string name="http_ip" translatable="false">http://%1$s:%2$d</string>
     <string name="git_hub" translatable="false">GitHub</string>
