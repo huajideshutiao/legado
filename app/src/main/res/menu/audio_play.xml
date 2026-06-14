@@ -11,6 +11,11 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_review"
+        android:icon="@drawable/ic_edit"
+        android:title="@string/review"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/menu_login"
         android:title="@string/login"
         app:showAsAction="never" />
@@ -41,11 +46,6 @@
         android:checkable="true"
         app:showAsAction="never" />
 
-
-    <item
-        android:id="@+id/menu_review"
-        android:title="@string/review"
-        app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_log"

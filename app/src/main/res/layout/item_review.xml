@@ -31,22 +31,22 @@
             <TextView
                 android:id="@+id/tv_name"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:ellipsize="end"
-                android:gravity="bottom"
+                android:gravity="center_vertical"
                 android:singleLine="true"
                 android:textColor="@color/secondaryText"
-                android:textSize="12sp"
+                android:textSize="14sp"
                 tools:text="user name" />
 
             <TextView
                 android:id="@+id/tv_extra"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:gravity="bottom"
-                android:paddingStart="4dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
                 android:singleLine="true"
                 android:textColor="@color/secondaryText"
                 android:textSize="12sp"
@@ -69,18 +69,17 @@
             android:ellipsize="end"
             android:maxLines="6"
             android:textColor="@color/primaryText"
+            android:textSize="15sp"
             tools:text="long content\nlong content\nlong content\nlong content\nlong content\nlong content" />
 
-        <TextView
+        <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_expand"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="start"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:paddingVertical="2dp"
             android:text="@string/review_expand"
             android:textColor="@color/secondaryText"
-            android:textSize="12sp"
             android:visibility="gone"
             tools:visibility="visible" />
 
