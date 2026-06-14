@@ -61,7 +61,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import org.mozilla.javascript.NativeArray
 import splitties.systemservices.notificationManager
 
 /**
@@ -788,7 +787,7 @@ class AudioPlayService : BaseService(), Player.Listener {
                 setBaseUrl(chapter.url)
                 this.chapter = chapter
             }
-            val raw = rule.evalJS(lrcRule) as? NativeArray ?: return@execute emptyList()
+            val raw = rule.evalJS(lrcRule) as? List<*> ?: return@execute emptyList()
             LrcParser.parse(raw)
         }.onSuccess {
             if (it.isEmpty()) return@onSuccess

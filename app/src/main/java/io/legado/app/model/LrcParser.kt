@@ -1,7 +1,5 @@
 package io.legado.app.model
 
-import org.mozilla.javascript.NativeArray
-
 /**
  * 解析书源 lrc 规则返回的歌词数据。
  *
@@ -15,7 +13,7 @@ import org.mozilla.javascript.NativeArray
  */
 object LrcParser {
 
-    fun parse(content: NativeArray): List<Pair<Int, String>> {
+    fun parse(content: List<*>): List<Pair<Int, String>> {
         val tmp = mutableListOf<Pair<Int, String>>()
         for (i in content.indices) {
             (content[i] as String).replace("00-1", "000")
