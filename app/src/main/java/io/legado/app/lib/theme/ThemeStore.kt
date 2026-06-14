@@ -159,8 +159,7 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
     // Commit method
 
     override fun apply() {
-        mEditor.putLong(ThemeStorePrefKeys.VALUES_CHANGED, System.currentTimeMillis())
-            .putBoolean(ThemeStorePrefKeys.IS_CONFIGURED_KEY, true)
+        mEditor.putBoolean(ThemeStorePrefKeys.IS_CONFIGURED_KEY, true)
             .apply()
         accentColor = accentColor()
     }
@@ -305,11 +304,5 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
             }
             return true
         }
-
-        /**
-         * 主题版本号，每次 apply 时更新
-         */
-        val currentVersion: Long
-            get() = prefs(appCtx).getLong(ThemeStorePrefKeys.VALUES_CHANGED, 0L)
     }
 }

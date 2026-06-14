@@ -50,7 +50,7 @@ abstract class BaseActivity<VB : ViewBinding>(
 ) : AppCompatActivity() {
 
     protected abstract val binding: VB
-    private var themeVersion = 0L
+    private var needRecreate = false
 
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
@@ -80,7 +80,6 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     @SuppressLint("ObsoleteSdkInt")
     override fun onCreate(savedInstanceState: Bundle?) {
-        themeVersion = ThemeStore.currentVersion
         initTheme()
         window.decorView.disableAutoFill()
         super.onCreate(savedInstanceState)
@@ -100,12 +99,8 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     override fun onStart() {
         super.onStart()
-        syncTheme()
-    }
-
-    private fun syncTheme() {
-        if (themeVersion < ThemeStore.currentVersion) {
-            themeVersion = ThemeStore.currentVersion
+        if (needRecreate) {
+            needRecreate = false
             recreate()
         }
     }
@@ -122,7 +117,6 @@ abstract class BaseActivity<VB : ViewBinding>(
         findViewById<TitleBar>(R.id.title_bar)
             ?.onMultiWindowModeChanged(isInMultiWindow, fullScreen)
         setupSystemBar()
-        syncTheme()
     }
 
     abstract fun onActivityCreated(savedInstanceState: Bundle?)
@@ -229,7 +223,11 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     open fun observeLiveBus() {
         observeEvent<String>(EventBus.RECREATE) {
-            syncTheme()
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                recreate()
+            } else {
+                needRecreate = true
+            }
         }
     }
 

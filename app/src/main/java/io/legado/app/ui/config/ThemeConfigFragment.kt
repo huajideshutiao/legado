@@ -477,7 +477,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                         recreate = true
                     }
                     if (recreate) {
-                        postEvent(EventBus.RECREATE, "")
+                        recreateActivities()
                     } else if (notifyMain) {
                         postEvent(EventBus.NOTIFY_MAIN, false)
                     }

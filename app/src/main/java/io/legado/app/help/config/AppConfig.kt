@@ -174,7 +174,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var bookshelfGridWidth: Int
-        get() = appCtx.getPrefInt(PreferKey.bookshelfGridWidth, 100)
+        get() = appCtx.getPrefInt(PreferKey.bookshelfGridWidth, 120)
         set(value) {
             appCtx.putPrefInt(PreferKey.bookshelfGridWidth, value)
         }

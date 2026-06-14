@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.Menu
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import androidx.annotation.ColorInt
 import androidx.annotation.StyleRes
@@ -183,6 +184,10 @@ class TitleBar @JvmOverloads constructor(
                 }
             }
             stateListAnimator = null
+            // AppBarLayout 默认 outline 会受 paddingTop(状态栏高度) 影响,
+            // 使得 elevation 阴影画到 TitleBar 内部(状态栏与 toolbar 之间)。
+            // 显式改用 BOUNDS,让阴影投在 TitleBar 外边缘。
+            outlineProvider = ViewOutlineProvider.BOUNDS
             elevation = context.elevation
         }
         a.recycle()

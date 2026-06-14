@@ -8,7 +8,6 @@ object ThemeStorePrefKeys {
     const val CONFIG_PREFS_KEY_DEFAULT = "app_themes"
     const val IS_CONFIGURED_KEY = "is_configured"
     const val IS_CONFIGURED_VERSION_KEY = "is_configured_version"
-    const val VALUES_CHANGED = "values_changed"
 
     const val KEY_PRIMARY_COLOR = "primary_color"
     const val KEY_PRIMARY_COLOR_DARK = "primary_color_dark"
