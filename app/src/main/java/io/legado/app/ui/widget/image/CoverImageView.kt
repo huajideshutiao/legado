@@ -20,6 +20,7 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
 import io.legado.app.constant.AppPattern
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
 import io.legado.app.utils.dpToPx
@@ -50,7 +51,9 @@ class CoverImageView @JvmOverloads constructor(
         }
 
     init {
-        scaleType = ScaleType.CENTER_CROP
+        // 默认封面是 .9.png,需要 FIT_XY 才能让拉伸区生效;
+        // 加载到真实封面后切回 CENTER_CROP (见 glideListener)
+        scaleType = ScaleType.FIT_XY
         transitionName = "img_cover"
         contentDescription = context.getString(R.string.img_cover)
         if (isInEditMode) {
@@ -222,7 +225,8 @@ class CoverImageView @JvmOverloads constructor(
                 isFirstResource: Boolean
             ): Boolean {
                 defaultCover = true
-                return false
+                showDefaultCover()
+                return true
             }
 
             override fun onResourceReady(
@@ -233,10 +237,20 @@ class CoverImageView @JvmOverloads constructor(
                 isFirstResource: Boolean
             ): Boolean {
                 defaultCover = false
+                scaleType = ScaleType.CENTER_CROP
                 return false
             }
 
         }
+    }
+
+    /**
+     * 默认封面分支:绕过 Glide 直接 setImageDrawable,
+     * 保留 NinePatchDrawable 的 9-patch chunk,配合 FIT_XY 让拉伸区生效。
+     */
+    private fun showDefaultCover() {
+        scaleType = ScaleType.FIT_XY
+        setImageDrawable(BookCover.defaultDrawable)
     }
 
     fun load(
@@ -254,11 +268,20 @@ class CoverImageView @JvmOverloads constructor(
         this.name = name?.replace(AppPattern.bdRegex, "")?.trim()
         this.author = author?.replace(AppPattern.bdRegex, "")?.trim()
         defaultCover = true
+        showDefaultCover()
         invalidate()
+        // useDefaultCover 或无 path 时直接停在默认封面,不进 Glide -- 保住 9-patch
+        if (path.isNullOrBlank() || AppConfig.useDefaultCover) {
+            onLoadFinish?.invoke()
+            return
+        }
         val requestManager = fragment?.let {
             lifecycle?.let { Glide.with(fragment).lifecycle(it) }
         } ?: Glide.with(context)
         val doLoad = {
+            // placeholder 走 setImageDrawable,不进 Bitmap pipeline,9-patch chunk 不会被光栅化;
+            // 配合 init/showDefaultCover 设的 FIT_XY,加载期间默认图能正确拉伸。
+            // error 由 glideListener.onLoadFailed 接管 (return true),所以这里不需要再传。
             BookCover.load(
                 requestManager,
                 path,
@@ -267,7 +290,9 @@ class CoverImageView @JvmOverloads constructor(
                 inBookshelf,
                 onLoadFinish
             )
-                .addListener(glideListener).placeholder(BookCover.defaultDrawable).into(this)
+                .addListener(glideListener)
+                .placeholder(BookCover.defaultDrawable)
+                .into(this)
             Unit
         }
         // 等待布局完成，确保Glide获取到最新的cover宽高

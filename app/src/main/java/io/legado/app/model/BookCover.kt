@@ -66,13 +66,20 @@ object BookCover {
         }
         val key = if (isNightTheme) PreferKey.defaultCoverDark else PreferKey.defaultCover
         val path = appCtx.getPrefString(key)
+        val fallback = appCtx.resources.getDrawable(R.drawable.image_cover_default, null)
         if (path.isNullOrBlank()) {
-            defaultDrawable = appCtx.resources.getDrawable(R.drawable.image_cover_default, null)
+            defaultDrawable = fallback
             return
         }
         defaultDrawable = kotlin.runCatching {
-            BitmapUtils.decodeBitmap(path, 600, 900)!!.toDrawable(appCtx.resources)
-        }.getOrDefault(appCtx.resources.getDrawable(R.drawable.image_cover_default, null))
+            // .9.png 走 createFromPath 才能保留 ninePatchChunk;
+            // 普通图继续走下采样路径避免大图 OOM
+            if (path.endsWith(".9.png", ignoreCase = true)) {
+                Drawable.createFromPath(path)
+            } else {
+                BitmapUtils.decodeBitmap(path, 300, 400)?.toDrawable(appCtx.resources)
+            } ?: fallback
+        }.getOrDefault(fallback)
     }
 
     /**
