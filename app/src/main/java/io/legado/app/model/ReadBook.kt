@@ -83,8 +83,8 @@ object ReadBook : CoroutineScope by MainScope() {
     private val curChapterLoadingLock = Mutex()
     private val nextChapterLoadingLock = Mutex()
 
-    // 段评数迟到→重排时缓存已就绪的 map，避免重排再起一次 IO 又被布局非阻塞 peek 错过造成死循环
-    private val pendingReviewCountMap = ConcurrentHashMap<Int, Map<Int, Int>>()
+    // 段评数按 chapter.index 复用 Deferred，已完成的留作不切书时的缓存
+    private val reviewCountDeferred = ConcurrentHashMap<Int, Deferred<Map<Int, Int>?>>()
 
     /* 跳转进度前进度记录 */
     var lastBookProgress: BookProgress? = null
@@ -536,6 +536,7 @@ object ReadBook : CoroutineScope by MainScope() {
             val book = book!!
             val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
             if (addLoading(index)) {
+                startReviewCountFetchAsync(book, chapter)
                 BookHelp.getContent(book, chapter)?.let {
                     contentLoadFinish(
                         book,
@@ -566,6 +567,7 @@ object ReadBook : CoroutineScope by MainScope() {
             try {
                 val book = book!!
                 val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
+                startReviewCountFetchAsync(book, chapter)
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
@@ -663,7 +665,6 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         chapterLoadingJobs[chapter.index]?.cancel()
         val job = Coroutine.async(this, start = CoroutineStart.LAZY) {
-            // 段评数 IO 与正文排版无依赖，先启动；排版 job 内部 await，由 layout 决定哪些段挂气泡
             val countDeferred = startReviewCountFetchAsync(book, chapter)
             val textChapter = processContent(book, chapter, content, countDeferred)
             when (val offset = chapter.index - durChapterIndex) {
@@ -744,8 +745,6 @@ object ReadBook : CoroutineScope by MainScope() {
             return
         }
         kotlin.runCatching {
-            // 段评数 IO 与正文排版无依赖，先起步；layout 内非阻塞 peek，没到就先不挂气泡，
-            // scheduleReviewRelayoutIfNeeded 负责后到触发重排。
             val countDeferred = startReviewCountFetchAsync(book, chapter)
             val textChapter = processContent(book, chapter, content, countDeferred)
             when (val offset = chapter.index - durChapterIndex) {
@@ -829,10 +828,10 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     /**
-     * 与正文加载并行启动段评数 IO。
-     * 返回 null 表示不需要拉（未启用 / 无书源 / 无 reviewCountRule）。
+     * 与正文加载并行启动段评数 IO，按 chapter.index 复用 Deferred。
+     * 返回 null 表示不需要拉。
      */
-    private fun CoroutineScope.startReviewCountFetchAsync(
+    private fun startReviewCountFetchAsync(
         book: Book, chapter: BookChapter
     ): Deferred<Map<Int, Int>?>? {
         val source = bookSource ?: return null
@@ -840,19 +839,16 @@ object ReadBook : CoroutineScope by MainScope() {
         val rule = source.ruleReview ?: return null
         if (rule.reviewUrl.isNullOrBlank()) return null
         if (rule.reviewCountRule.isNullOrBlank()) return null
-        pendingReviewCountMap.remove(chapter.index)?.let { cached ->
-            return CompletableDeferred<Map<Int, Int>?>().apply { complete(cached) }
-        }
-        return async(IO) {
+        reviewCountDeferred[chapter.index]?.let { return it }
+        val deferred = async(IO) {
             WebBook.getReviewCountAwait(source, book, chapter).getOrNull()
         }
+        reviewCountDeferred[chapter.index] = deferred
+        return deferred
     }
 
     /**
-     * 段评数迟到则触发整章重排：
-     * - 排版时 count 已就绪 → reviewCountApplied=true，本函数直接返回
-     * - 排版时 count 尚未就绪 → 这里 await，等到后 clear+reload 当前章
-     * 排版时已就绪的常见情况是 reviewCountUrl 走本地缓存/上次已 warm。
+     * 段评数迟于排版到达时触发整章重排
      */
     private fun CoroutineScope.scheduleReviewRelayoutIfNeeded(
         deferred: Deferred<Map<Int, Int>?>?,
@@ -864,16 +860,13 @@ object ReadBook : CoroutineScope by MainScope() {
         launch {
             val map = deferred.await() ?: return@launch
             if (map.isEmpty()) return@launch
-            // 等期间用户翻走/换书了就别动了，下次自然带 count 重排
             if (chapter.index != durChapterIndex) return@launch
             if (curTextChapter !== textChapter) return@launch
             withContext(Main) {
                 if (chapter.index != durChapterIndex) return@withContext
                 if (curTextChapter !== textChapter) return@withContext
-                // 先暂存 map，让重排时 startReviewCountFetchAsync 命中缓存直接返回已完成 Deferred，
-                // 否则布局非阻塞 peek 又会错过新一轮 IO 触发死循环
-                pendingReviewCountMap[chapter.index] = map
                 clearTextChapter()
+                reviewCountDeferred[chapter.index] = CompletableDeferred(map)
                 loadContent(resetPageOffset = false)
             }
         }
@@ -1010,6 +1003,15 @@ object ReadBook : CoroutineScope by MainScope() {
                 iterator.remove()
             }
         }
+        // 已完成的留作不切书时的缓存；未完成且出窗口的取消，避免快速翻章累积并行 IO
+        val reviewIter = reviewCountDeferred.iterator()
+        while (reviewIter.hasNext()) {
+            val (index, deferred) = reviewIter.next()
+            if (!deferred.isCompleted && (clearAll || index !in durChapterIndex - 1..durChapterIndex + 1)) {
+                deferred.cancel()
+                reviewIter.remove()
+            }
+        }
     }
 
     /**
@@ -1036,7 +1038,8 @@ object ReadBook : CoroutineScope by MainScope() {
         downloadScope.coroutineContext.cancelChildren()
         coroutineContext.cancelChildren()
         ImageProvider.clear()
-        pendingReviewCountMap.clear()
+        reviewCountDeferred.values.forEach { it.cancel() }
+        reviewCountDeferred.clear()
         clearExpiredChapterLoadingJob(true)
         if (!CacheBookService.isRun) {
             CacheBook.close()

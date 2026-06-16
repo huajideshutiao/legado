@@ -136,7 +136,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         val ctx = context ?: return
         val normalRequest = ImageLoader.load(ctx, src)
             .apply(requestOptions)
-            .error(BookCover.defaultDrawable)
+            .error(BookCover.newDefaultDrawable())
             .dontTransform()
             .downsample(DownsampleStrategy.NONE)
 

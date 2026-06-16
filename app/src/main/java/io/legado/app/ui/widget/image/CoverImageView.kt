@@ -250,7 +250,7 @@ class CoverImageView @JvmOverloads constructor(
      */
     private fun showDefaultCover() {
         scaleType = ScaleType.FIT_XY
-        setImageDrawable(BookCover.defaultDrawable)
+        setImageDrawable(BookCover.newDefaultDrawable())
     }
 
     fun load(
@@ -291,7 +291,7 @@ class CoverImageView @JvmOverloads constructor(
                 onLoadFinish
             )
                 .addListener(glideListener)
-                .placeholder(BookCover.defaultDrawable)
+                .placeholder(BookCover.newDefaultDrawable())
                 .into(this)
             Unit
         }

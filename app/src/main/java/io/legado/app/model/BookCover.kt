@@ -51,6 +51,15 @@ object BookCover {
         upDefaultCover()
     }
 
+    /**
+     * 拿默认封面的一个独立壳子 -- 共享底层 Bitmap/ninePatchChunk,
+     * 但各自有独立的 bounds/alpha,避免多个 ImageView 共享同一实例时 bounds 互相串扰。
+     * 没有 ConstantState 的极少数 Drawable (理论上不会有) 回退共享原实例。
+     */
+    fun newDefaultDrawable(): Drawable {
+        return defaultDrawable.constantState?.newDrawable(appCtx.resources) ?: defaultDrawable
+    }
+
     @SuppressLint("UseCompatLoadingForDrawables")
     fun upDefaultCover() {
         val isNightTheme = AppConfig.isNightTheme
@@ -94,7 +103,7 @@ object BookCover {
         onLoadFinish: (() -> Unit)? = null,
     ): RequestBuilder<Drawable> {
         if (AppConfig.useDefaultCover) {
-            return requestManager.load(defaultDrawable).centerCrop()
+            return requestManager.load(newDefaultDrawable()).centerCrop()
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
@@ -125,7 +134,7 @@ object BookCover {
                 }
             })
         }
-        return builder.error(defaultDrawable).centerCrop()
+        return builder.error(newDefaultDrawable()).centerCrop()
     }
 
     /**
@@ -140,14 +149,14 @@ object BookCover {
     ): RequestBuilder<Drawable> {
         val blurOptions = RequestOptions().transform(BlurTransformation(), CenterCrop())
         if (AppConfig.useDefaultCover) {
-            return requestManager.load(defaultDrawable).apply(blurOptions)
+            return requestManager.load(newDefaultDrawable()).apply(blurOptions)
         }
         var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
         if (sourceOrigin != null) {
             options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
         }
         return ImageLoader.load(requestManager, path, inBookshelf).apply(options).apply(blurOptions)
-            .error(requestManager.load(defaultDrawable).apply(blurOptions))
+            .error(requestManager.load(newDefaultDrawable()).apply(blurOptions))
     }
 
     /**
