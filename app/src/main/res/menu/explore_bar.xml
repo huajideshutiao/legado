@@ -13,4 +13,8 @@
         android:title="@string/switchLayout"
         android:icon="@drawable/ic_layout_big_card"
         app:showAsAction="always" />
+    <item
+        android:id="@+id/menu_source_filter_rule"
+        android:title="@string/source_filter_rule"
+        app:showAsAction="never" />
 </menu>

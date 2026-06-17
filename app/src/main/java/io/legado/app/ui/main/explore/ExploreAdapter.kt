@@ -6,6 +6,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.widget.GridLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -15,9 +16,6 @@ import androidx.core.view.isGone
 import androidx.core.view.isNotEmpty
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.recyclerview.widget.RecyclerView
-import androidx.transition.ChangeBounds
-import androidx.transition.TransitionManager
-import com.google.android.flexbox.FlexboxLayout
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
@@ -26,7 +24,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
-import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
@@ -56,6 +53,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     companion object {
         // Material standard duration：展开/收起动画统一固定时长，不再按内容高度计算
         private const val EXPAND_DURATION_MS = 220L
+        const val PAYLOAD_REFRESH = "refresh"
     }
 
     override fun getViewBinding(parent: ViewGroup): ItemFindBookBinding {
@@ -69,14 +67,20 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         payloads: MutableList<Any>
     ) {
         binding.run {
+            val actualPos = holder.layoutPosition - getHeaderCount()
+
+            if (payloads.contains(PAYLOAD_REFRESH)) {
+                if (exIndex == actualPos) handleRefresh(holder, binding, item)
+                return@run
+            }
+
             if (payloads.isEmpty()) {
                 tvName.text = item.bookSourceName
             }
 
-            val actualPos = holder.layoutPosition - getHeaderCount()
             val isUpdate = payloads.isNotEmpty()
 
-            resetFlexboxState(flexbox)
+            resetGridState(flexbox)
 
             if (exIndex == actualPos) {
                 handleExpand(binding, item, isUpdate)
@@ -87,13 +91,13 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     }
 
     /**
-     * 重置 Flexbox 基础状态和取消未完成的动画
+     * 重置分类网格的基础状态并取消未完成的动画
      */
-    private fun resetFlexboxState(flexbox: FlexboxLayout) {
-        (flexbox.tag as? ValueAnimator)?.cancel()
-        flexbox.isVerticalScrollBarEnabled = false
-        flexbox.isHorizontalScrollBarEnabled = false
-        flexbox.overScrollMode = View.OVER_SCROLL_NEVER
+    private fun resetGridState(grid: GridLayout) {
+        (grid.tag as? ValueAnimator)?.cancel()
+        grid.isVerticalScrollBarEnabled = false
+        grid.isHorizontalScrollBarEnabled = false
+        grid.overScrollMode = View.OVER_SCROLL_NEVER
     }
 
     /**
@@ -133,37 +137,37 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * 下方 item 的让位由 RecyclerView 默认行为完成；如果展开后底部超出视口，动画结束时再 smoothScroll 一次。
      */
     private fun executeExpandAnimation(binding: ItemFindBookBinding) {
-        val flexbox = binding.flexbox
+        val grid = binding.flexbox
         val root = binding.root
         val rv = root.parent as? RecyclerView
 
-        flexbox.visible()
-        flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        grid.visible()
+        grid.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
 
-        val targetHeight = measureFlexboxTargetHeight(flexbox, root, rv)
+        val targetHeight = measureGridTargetHeight(grid, root, rv)
         val parentHeight = rv?.height ?: context.resources.displayMetrics.heightPixels
         val animTargetHeight = targetHeight.coerceAtMost(parentHeight)
 
-        flexbox.layoutParams.height = 0
+        grid.layoutParams.height = 0
 
         val animator = ValueAnimator.ofInt(0, animTargetHeight).apply {
             interpolator = FastOutSlowInInterpolator()
             duration = EXPAND_DURATION_MS
             addUpdateListener {
-                flexbox.layoutParams = flexbox.layoutParams.apply {
+                grid.layoutParams = grid.layoutParams.apply {
                     height = it.animatedValue as Int
                 }
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                    flexbox.tag = null
+                    grid.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    grid.tag = null
                     ensureExpandedItemVisible(root, rv)
                 }
             })
         }
 
-        flexbox.tag = animator
+        grid.tag = animator
         animator.start()
     }
 
@@ -189,50 +193,128 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     }
 
     /**
+     * ================= 刷新逻辑 =================
+     * 长按菜单"刷新分类"触发：保持展开状态，原地替换 flexbox 内容，
+     * 用 ValueAnimator 在旧/新高度之间平滑过渡。
+     */
+    private fun handleRefresh(
+        holder: ItemViewHolder, binding: ItemFindBookBinding, item: BookSourcePart
+    ) {
+        val bookSource = item.getBookSource() ?: return
+        val targetPos = holder.layoutPosition - getHeaderCount()
+        val grid = binding.flexbox
+        (grid.tag as? ValueAnimator)?.cancel()
+        grid.tag = null
+        binding.ivStatus.setImageResource(R.drawable.ic_arrow_down)
+        binding.rotateLoading.loadingColor = context.accentColor
+        binding.rotateLoading.visible()
+        Coroutine.async(callBack.scope) {
+            bookSource.exploreKinds()
+        }.onSuccess { kinds ->
+            // ViewHolder 在异步等待期间可能被复用绑定到别的 item，避免把内容写错位置
+            val currentPos = holder.layoutPosition - getHeaderCount()
+            if (currentPos != targetPos || exIndex != targetPos) return@onSuccess
+
+            val startHeight = grid.height
+            // 取消任何残留高度动画后再重建 children；不要走 TransitionManager，
+            // 否则 RecyclerView 作为 sceneRoot 会把整批 child 误判为 disappear/appear，
+            // 导致部分 TextView 进 overlay 后新 text/columnSpec 不生效。
+            upKindList(grid, bookSource, kinds)
+
+            if (!AppConfig.isEInkMode && startHeight > 0) {
+                animateRefreshHeight(binding, grid, startHeight)
+            } else {
+                grid.layoutParams = grid.layoutParams.apply {
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                }
+                grid.visible()
+            }
+        }.onFinally {
+            if (holder.layoutPosition - getHeaderCount() == targetPos) {
+                binding.rotateLoading.gone()
+            }
+        }
+    }
+
+    /**
+     * 刷新后的高度过渡：从 startHeight 平滑到新内容的实际高度，避免一次性跳变。
+     */
+    private fun animateRefreshHeight(
+        binding: ItemFindBookBinding, grid: GridLayout, startHeight: Int
+    ) {
+        val root = binding.root
+        val rv = root.parent as? RecyclerView
+        val targetHeight = measureGridTargetHeight(grid, root, rv)
+        val parentHeight = rv?.height ?: context.resources.displayMetrics.heightPixels
+        val endHeight = targetHeight.coerceAtMost(parentHeight)
+
+        grid.layoutParams.height = startHeight
+        grid.visible()
+
+        val animator = ValueAnimator.ofInt(startHeight, endHeight).apply {
+            interpolator = FastOutSlowInInterpolator()
+            duration = EXPAND_DURATION_MS
+            addUpdateListener {
+                grid.layoutParams = grid.layoutParams.apply {
+                    height = it.animatedValue as Int
+                }
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    grid.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    grid.tag = null
+                }
+            })
+        }
+        grid.tag = animator
+        animator.start()
+    }
+
+    /**
      * ================= 收起逻辑 =================
      */
     private fun handleCollapse(binding: ItemFindBookBinding, isUpdate: Boolean) {
-        val flexbox = binding.flexbox
+        val grid = binding.flexbox
         binding.rotateLoading.gone()
 
-        if (flexbox.isGone) {
+        if (grid.isGone) {
             binding.ivStatus.setImageResource(R.drawable.ic_arrow_right)
             return
         }
 
-        if (!AppConfig.isEInkMode && isUpdate && flexbox.height > 0) {
+        if (!AppConfig.isEInkMode && isUpdate && grid.height > 0) {
             val rv = binding.root.parent as? RecyclerView
             val parentHeight = rv?.height ?: context.resources.displayMetrics.heightPixels
-            val animStartHeight = flexbox.height.coerceAtMost(parentHeight)
+            val animStartHeight = grid.height.coerceAtMost(parentHeight)
 
-            if (flexbox.height > animStartHeight) {
-                flexbox.layoutParams.height = animStartHeight
+            if (grid.height > animStartHeight) {
+                grid.layoutParams.height = animStartHeight
             }
 
             val animator = ValueAnimator.ofInt(animStartHeight, 0).apply {
                 interpolator = FastOutSlowInInterpolator()
                 duration = EXPAND_DURATION_MS
                 addUpdateListener {
-                    flexbox.layoutParams = flexbox.layoutParams.apply {
+                    grid.layoutParams = grid.layoutParams.apply {
                         height = it.animatedValue as Int
                     }
                 }
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
-                        flexbox.gone()
-                        flexbox.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                        recyclerFlexbox(flexbox)
-                        flexbox.tag = null
+                        grid.gone()
+                        grid.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                        recyclerGrid(grid)
+                        grid.tag = null
                     }
                 })
             }
 
-            flexbox.tag = animator
+            grid.tag = animator
             animator.start()
         } else {
-            recyclerFlexbox(flexbox)
-            flexbox.gone()
-            flexbox.layoutParams = flexbox.layoutParams.apply {
+            recyclerGrid(grid)
+            grid.gone()
+            grid.layoutParams = grid.layoutParams.apply {
                 height = ViewGroup.LayoutParams.WRAP_CONTENT
             }
         }
@@ -240,12 +322,12 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     }
 
     /**
-     * 测量 Flexbox 的预期高度
+     * 测量分类网格的预期高度
      */
-    private fun measureFlexboxTargetHeight(
-        flexbox: FlexboxLayout, root: View, rv: RecyclerView?
+    private fun measureGridTargetHeight(
+        grid: GridLayout, root: View, rv: RecyclerView?
     ): Int {
-        val lp = flexbox.layoutParams
+        val lp = grid.layoutParams
         val horizontalMargin =
             (lp as? ViewGroup.MarginLayoutParams)?.let { it.leftMargin + it.rightMargin } ?: 0
         val parentWidth = if (root.width > 0) root.width else rv?.width ?: 1000
@@ -255,25 +337,21 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         )
         val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
 
-        flexbox.measure(widthSpec, heightSpec)
-        return flexbox.measuredHeight
+        grid.measure(widthSpec, heightSpec)
+        return grid.measuredHeight
     }
 
-    private fun upKindList(flexbox: FlexboxLayout, source: BookSource, kinds: List<ExploreKind>) {
-        recyclerFlexbox(flexbox)
+    private fun upKindList(grid: GridLayout, source: BookSource, kinds: List<ExploreKind>) {
+        recyclerGrid(grid)
         if (kinds.isEmpty()) return
 
         kotlin.runCatching {
             kinds.forEach { kind ->
-                val tv = getFlexboxChild(flexbox)
-                flexbox.addView(tv)
+                val tv = getGridChild(grid)
+                grid.addView(tv)
                 tv.text = kind.title
 
-                if (kind.type == RowUi.Type.title) {
-                    FlexChildStyle(layout_flexBasisPercent = 1F).apply(tv)
-                } else {
-                    kind.style().apply(tv)
-                }
+                kind.style().apply(tv)
 
                 tv.setOnClickListener {
                     when {
@@ -299,19 +377,19 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     }
 
     @Synchronized
-    private fun getFlexboxChild(flexbox: FlexboxLayout): TextView {
+    private fun getGridChild(grid: GridLayout): TextView {
         return if (recycler.isEmpty()) {
-            ItemFilletTextBinding.inflate(inflater, flexbox, false).root
+            ItemFilletTextBinding.inflate(inflater, grid, false).root
         } else {
             recycler.removeLastElement() as TextView
         }
     }
 
     @Synchronized
-    private fun recyclerFlexbox(flexbox: FlexboxLayout) {
-        if (flexbox.isNotEmpty()) {
-            recycler.addAll(flexbox.children)
-            flexbox.removeAllViews()
+    private fun recyclerGrid(grid: GridLayout) {
+        if (grid.isNotEmpty()) {
+            recycler.addAll(grid.children)
+            grid.removeAllViews()
         }
     }
 
@@ -361,13 +439,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 R.id.menu_refresh -> Coroutine.async(callBack.scope) {
                     source.clearExploreKindsCache()
                 }.onSuccess {
-                    if (!AppConfig.isEInkMode) {
-                        (view.parent?.parent as? ViewGroup)?.let { parentView ->
-                            TransitionManager.beginDelayedTransition(parentView, ChangeBounds())
-                        }
-                    }
-                    exIndex = -1
-                    notifyItemChanged(position + getHeaderCount(), false)
+                    notifyItemChanged(position + getHeaderCount(), PAYLOAD_REFRESH)
                 }
 
                 R.id.menu_del -> callBack.deleteSource(source)

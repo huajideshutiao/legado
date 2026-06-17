@@ -27,7 +27,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ActivityArrangeBookBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.databinding.DialogExportConfigBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.IntentData
@@ -96,14 +96,14 @@ import kotlin.math.max
  * 书架管理
  */
 class BookshelfManageActivity :
-    VMBaseActivity<ActivityArrangeBookBinding, BookshelfManageViewModel>(),
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, BookshelfManageViewModel>(),
     PopupMenu.OnMenuItemClickListener,
     SelectActionBar.CallBack,
     BookAdapter.CallBack,
     SourcePickerDialog.Callback,
     GroupSelectDialog.CallBack {
 
-    override val binding by viewBinding(ActivityArrangeBookBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     override val viewModel by viewModels<BookshelfManageViewModel>()
     override val groupList: ArrayList<BookGroup> = arrayListOf()
     private val groupRequestCode = 22
@@ -140,6 +140,7 @@ class BookshelfManageActivity :
     private val exportBookPathKey = "exportBookPath"
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.bookshelf_management)
         viewModel.groupId = intent.getLongExtra("groupId", -1)
         lifecycleScope.launch {
             viewModel.groupName = withContext(IO) {

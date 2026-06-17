@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
@@ -14,7 +15,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
-import io.legado.app.databinding.ActivityDictRuleBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
@@ -43,13 +44,13 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
-class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewModel>(),
+class DictRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, DictRuleViewModel>(),
     PopupMenu.OnMenuItemClickListener,
     SelectActionBar.CallBack,
     DictRuleAdapter.CallBack {
 
     override val viewModel by viewModels<DictRuleViewModel>()
-    override val binding by viewBinding(ActivityDictRuleBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     private val importRecordKey = "dictRuleUrls"
     private val adapter by lazy { DictRuleAdapter(this, this) }
 
@@ -69,6 +70,8 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.dict_rule)
+        binding.titleBar.findViewById<View>(R.id.search_view).visibility = View.GONE
         initRecyclerView()
         initSelectActionView()
         observeDictRuleData()

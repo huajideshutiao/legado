@@ -53,16 +53,15 @@
         android:layout_gravity="center"
         android:paddingTop="4dp">
 
-        <com.google.android.flexbox.FlexboxLayout
+        <GridLayout
             android:id="@+id/flexbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:clipToPadding="false"
+            android:columnCount="12"
+            android:orientation="horizontal"
             android:overScrollMode="never"
-            android:visibility="gone"
-            app:flexDirection="row"
-            app:flexWrap="wrap"
-            app:showDivider="middle" />
+            android:visibility="gone" />
 
     </FrameLayout>
 

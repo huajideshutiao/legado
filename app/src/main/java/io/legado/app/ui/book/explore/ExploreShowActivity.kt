@@ -4,32 +4,40 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.source.SearchBookFilter
+import io.legado.app.ui.book.filter.SourceFilterEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.setUpExploreOptions
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
 
 /**
  * 发现列表
  */
 class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
-    BaseExploreShowAdapter.CallBack {
+    BaseExploreShowAdapter.CallBack, SourceFilterEditDialog.Callback {
     override val binding by viewBinding(ActivityExploreShowBinding::inflate)
     override val viewModel by viewModels<ExploreShowViewModel>()
     private lateinit var adapter: BaseExploreShowAdapter<*>
@@ -142,6 +150,16 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             R.id.menu_star -> {
                 viewModel.toggleFavorite()
             }
+
+            R.id.menu_source_filter_rule -> {
+                val defaultScope = viewModel.bookSource?.let { SearchScope(it).toString() }
+                showDialogFragment(
+                    SourceFilterEditDialog(
+                        existing = null,
+                        defaultScope = defaultScope
+                    )
+                )
+            }
         }
         return super.onCompatOptionsItemSelected(item)
     }
@@ -195,6 +213,12 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     override fun isInBookshelf(book: BaseBook): Boolean {
         return viewModel.isInBookShelf(book)
+    }
+
+    override fun onSourceFilterRuleSave(rule: SourceFilterRule, isNew: Boolean) {
+        lifecycleScope.launch(IO) {
+            SearchBookFilter.save(rule, isNew)
+        }
     }
 
     override fun showBookInfo(book: BaseBook, longClick: Boolean) {

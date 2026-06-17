@@ -1286,4 +1286,22 @@
     <string name="book_type_comic">Comic</string>
     <string name="enable_dangerous_api_confirm">Warning: Allowing unknown sources to use dangerous APIs can cause unpredictable results. In the worst case, it may lead to app data being cleared or leaked, and locally accessible files being exposed. Please make sure you have audited the code and trust the source, otherwise do not enable this.</string>
     <string name="dev_feat_summary">Enable some experimental features, such as 16:9 video thumbnails and direct access to the reading page with a click</string>
+    <string name="source_filter_rule">Block rules</string>
+    <string name="source_filter_rule_empty">No rules. Tap + to add.</string>
+    <string name="source_filter_rule_name">Name</string>
+    <string name="source_filter_rule_pattern">Regex pattern</string>
+    <string name="source_filter_rule_fields">Apply to fields (any matches → drop)</string>
+    <string name="source_filter_rule_scope_label">Apply to</string>
+    <string name="source_filter_rule_scope_summary_all">All sources</string>
+    <string name="source_filter_rule_scope_all">Scope: all sources</string>
+    <string name="source_filter_rule_scope_fmt">Scope: %s</string>
+    <string name="source_filter_rule_invalid_pattern">Invalid regex</string>
+    <string name="source_filter_rule_no_field">Pick at least one field</string>
+    <string name="source_filter_rule_delete_all_confirm">Delete all block rules?</string>
+    <string name="import_source_filter_rule">Import block rules</string>
+    <string name="source_filter_field_name">Title</string>
+    <string name="source_filter_field_author">Author</string>
+    <string name="source_filter_field_intro">Intro</string>
+    <string name="source_filter_field_kind">Category</string>
+    <string name="source_filter_field_word_count">Word count</string>
 </resources>

@@ -239,7 +239,8 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
 
     @Transaction
     fun enable(enable: Boolean, bookSources: List<BookSourcePart>) {
-        bookSources.map { it.bookSourceUrl }.chunked(999) { chunk -> enableIn(chunk, enable) }
+        // 留一个绑定槽位给 :enable，host parameter 总数必须 ≤ 999（SQLite 默认上限）
+        bookSources.map { it.bookSourceUrl }.chunked(998) { chunk -> enableIn(chunk, enable) }
     }
 
     @Query("update book_sources set enabledExplore = :enable where bookSourceUrl = :bookSourceUrl")
@@ -251,14 +252,17 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Transaction
     fun enableExplore(enable: Boolean, bookSources: List<BookSourcePart>) {
         bookSources.map { it.bookSourceUrl }
-            .chunked(999) { chunk -> enableExploreIn(chunk, enable) }
+            .chunked(998) { chunk -> enableExploreIn(chunk, enable) }
     }
 
     @Query(
-        """update book_sources 
+        """update book_sources
         set customOrder = :customOrder where bookSourceUrl = :bookSourceUrl"""
     )
     fun upOrder(bookSourceUrl: String, customOrder: Int)
+
+    @Query("update book_sources set customOrder = customOrder + :offset")
+    fun shiftCustomOrder(offset: Int)
 
     @Transaction
     fun upOrder(bookSources: List<BookSourcePart>) {

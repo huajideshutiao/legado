@@ -23,6 +23,7 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
+import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.CacheManager
 import io.legado.app.help.DirectLinkUpload
@@ -160,6 +161,9 @@ object Restore {
         }
         fileToListT<DictRule>(path, "dictRule.json")?.let {
             appDb.dictRuleDao.insert(*it.toTypedArray())
+        }
+        fileToListT<SourceFilterRule>(path, "sourceFilterRule.json")?.let {
+            appDb.sourceFilterRuleDao.insert(*it.toTypedArray())
         }
         fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
             appDb.keyboardAssistsDao.insert(*it.toTypedArray())

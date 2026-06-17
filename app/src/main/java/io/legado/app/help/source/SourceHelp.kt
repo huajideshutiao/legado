@@ -45,20 +45,31 @@ object SourceHelp {
     }
 
     fun deleteBookSourceParts(sources: List<BookSourcePart>) {
-        appDb.runInTransaction {
-            sources.forEach {
-                deleteBookSourceInternal(it.bookSourceUrl)
-            }
-        }
-        AppCacheManager.clearSourceVariables()
+        if (sources.isEmpty()) return
+        val keys = sources.map { it.bookSourceUrl }
+        deleteBookSourcesByKeys(sources = sources, keys = keys)
     }
 
     fun deleteBookSources(sources: List<BookSource>) {
+        if (sources.isEmpty()) return
+        val keys = sources.map { it.bookSourceUrl }
+        deleteBookSourcesByKeys(keys = keys)
+    }
+
+    private fun deleteBookSourcesByKeys(
+        sources: List<BookSourcePart>? = null,
+        keys: List<String>
+    ) {
         appDb.runInTransaction {
-            sources.forEach {
-                deleteBookSourceInternal(it.bookSourceUrl)
+            if (sources != null) {
+                appDb.bookSourceDao.delete(sources)
+            } else {
+                keys.chunked(999) { appDb.bookSourceDao.deleteIn(it) }
             }
+            // deleteSourceVariables 含 LIKE 'v_KEY_%'，无法折叠成 IN 批量；逐键执行，但仍包在外层事务里
+            keys.forEach { appDb.cacheDao.deleteSourceVariables(it) }
         }
+        SourceConfig.removeSources(keys)
         AppCacheManager.clearSourceVariables()
     }
 
@@ -84,17 +95,26 @@ object SourceHelp {
      * 调整排序序号
      */
     fun adjustSortNumber() {
-        if (
-            appDb.bookSourceDao.maxOrder > 99999
-            || appDb.bookSourceDao.minOrder < -99999
-            || appDb.bookSourceDao.hasDuplicateOrder
-        ) {
-            val sources = appDb.bookSourceDao.allPart
-            sources.forEachIndexed { index, bookSource ->
-                bookSource.customOrder = index
-            }
-            appDb.bookSourceDao.upOrder(sources)
+        val dao = appDb.bookSourceDao
+        val max = dao.maxOrder
+        val min = dao.minOrder
+        val rangeOverflow = max > 99999 || min < -99999
+        val hasDup = dao.hasDuplicateOrder
+        if (!rangeOverflow && !hasDup) return
+
+        // 快路径：仅绝对值越界，但 max-min 还能塞进 [-99999, 99999]。
+        // 一条 UPDATE 整体平移就能修好，免去加载并回写每个 BookSourcePart。
+        if (!hasDup && (max - min) <= 199998) {
+            dao.shiftCustomOrder(-((max + min) / 2))
+            return
         }
+
+        // 兜底：全量重排为 0..N-1
+        val sources = dao.allPart
+        sources.forEachIndexed { index, bookSource ->
+            bookSource.customOrder = index
+        }
+        dao.upOrder(sources)
     }
 
 }

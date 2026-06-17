@@ -330,7 +330,7 @@ class TextChapterLayout(
             it.enabledReview && !it.ruleReview?.reviewCountRule.isNullOrBlank()
         } == true
 
-        if (titleMode != 2 || bookChapter.isVolume || contents.isEmpty()) {
+        if (titleMode != 2 || contents.isEmpty()) {
             displayTitle.splitNotBlank("\n").forEach { text ->
                 setTypeText(
                     book,
@@ -340,8 +340,7 @@ class TextChapterLayout(
                     titlePaintFontMetrics,
                     imageStyle,
                     isTitle = true,
-                    emptyContent = contents.isEmpty(),
-                    isVolumeTitle = bookChapter.isVolume
+                    emptyContent = contents.isEmpty()
                 )
                 pendingTextPage.lines.last().isParagraphEnd = true
                 stringBuilder.append("\n")
@@ -561,7 +560,6 @@ class TextChapterLayout(
         isTitle: Boolean = false,
         isFirstLine: Boolean = true,
         emptyContent: Boolean = false,
-        isVolumeTitle: Boolean = false,
         imgList: LinkedList<Img>? = null,
         paragraphIndex: Int = 0
     ) {
@@ -589,7 +587,7 @@ class TextChapterLayout(
 
         durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
         val shouldCenterTitle =
-            isTitle && (isMiddleTitle || emptyContent || isVolumeTitle || imageStyle?.uppercase() == Book.imgStyleSingle)
+            isTitle && (isMiddleTitle || emptyContent || imageStyle?.uppercase() == Book.imgStyleSingle)
 
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)

@@ -1285,4 +1285,21 @@
     <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危API会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
     <string name="resolution">分辨率</string>
     <string name="dev_feat_summary">启用一些实验性特性，比如视频封面16：9，点击直接进入阅读页</string>
+    <string name="source_filter_rule">屏蔽规则</string>
+    <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
+    <string name="source_filter_rule_name">名称</string>
+    <string name="source_filter_rule_pattern">正则表达式</string>
+    <string name="source_filter_rule_fields">作用字段（任一命中则丢弃）</string>
+    <string name="source_filter_rule_scope_label">作用范围</string>
+    <string name="source_filter_rule_scope_summary_all">全部书源</string>
+    <string name="source_filter_rule_scope_all">范围：全部书源</string>
+    <string name="source_filter_rule_scope_fmt">范围：%s</string>
+    <string name="source_filter_rule_invalid_pattern">正则表达式无效</string>
+    <string name="source_filter_rule_no_field">请至少选一个作用字段</string>
+    <string name="source_filter_rule_delete_all_confirm">删除全部屏蔽规则？</string>
+    <string name="source_filter_field_name">书名</string>
+    <string name="source_filter_field_author">作者</string>
+    <string name="source_filter_field_intro">简介</string>
+    <string name="source_filter_field_kind">分类</string>
+    <string name="source_filter_field_word_count">字数</string>
 </resources>

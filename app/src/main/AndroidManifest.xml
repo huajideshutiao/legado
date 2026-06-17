@@ -187,6 +187,10 @@
         <activity
             android:name=".ui.replace.ReplaceRuleActivity"
             android:launchMode="singleTop"
+            android:screenOrientation="behind" /> <!-- 结果过滤规则 -->
+        <activity
+            android:name=".ui.book.filter.SourceFilterRuleActivity"
+            android:launchMode="singleTop"
             android:screenOrientation="behind" /> <!-- 书籍管理 -->
         <activity
             android:name=".ui.book.manage.BookshelfManageActivity"

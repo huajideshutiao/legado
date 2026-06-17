@@ -62,6 +62,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
+                        rowUi.style(FlexChildStyle(cols = 1)).apply(root)
                         textInputLayout.hint = rowUi.name
                         editText.setText(loginInfo?.get(rowUi.name))
                         editText.setAutofillHints("username")
@@ -72,6 +73,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
+                        rowUi.style(FlexChildStyle(cols = 1)).apply(root)
                         textInputLayout.hint = rowUi.name
                         editText.inputType =
                             InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
@@ -133,10 +135,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        if (rowUi.type == RowUi.Type.title) FlexChildStyle(
-                            layout_flexBasisPercent = 1F
-                        ).apply(root)
-                        else rowUi.style().apply(root)
+                        rowUi.style().apply(root)
                         textView.text = rowUi.name
                         textView.setPadding(16.dpToPx())
                         root.onClick {

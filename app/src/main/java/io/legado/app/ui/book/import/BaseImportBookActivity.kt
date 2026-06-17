@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.import
 
 import android.os.Bundle
+import android.view.View
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.ViewModel
 import io.legado.app.R
@@ -8,7 +9,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
-import io.legado.app.databinding.ActivityImportBookBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
@@ -29,9 +30,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 abstract class BaseImportBookActivity<VM : ViewModel> :
-    VMBaseActivity<ActivityImportBookBinding, VM>() {
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, VM>() {
 
-    final override val binding by viewBinding(ActivityImportBookBinding::inflate)
+    final override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
 
     private var localBookTreeSelectListener: ((Boolean) -> Unit)? = null
     protected val searchView: SearchView by lazy {
@@ -47,6 +48,8 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        binding.layTop.visibility = View.VISIBLE
+        binding.refreshProgressBar.visibility = View.VISIBLE
         initSearchView()
     }
 

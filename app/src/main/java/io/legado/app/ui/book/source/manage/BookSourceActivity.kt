@@ -24,7 +24,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.databinding.ActivityBookSourceBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
@@ -83,12 +83,13 @@ import kotlinx.coroutines.launch
 /**
  * 书源管理界面
  */
-class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceViewModel>(),
+class BookSourceActivity :
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, BookSourceViewModel>(),
     PopupMenu.OnMenuItemClickListener,
     BookSourceAdapter.CallBack,
     SelectActionBar.CallBack,
     SearchView.OnQueryTextListener {
-    override val binding by viewBinding(ActivityBookSourceBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     override val viewModel by viewModels<BookSourceViewModel>()
     private val importRecordKey = "bookSourceRecordKey"
     private val adapter by lazy { BookSourceAdapter(this, this, binding.recyclerView) }
@@ -133,6 +134,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.book_source)
         initRecyclerView()
         initSearchView()
         upBookSource()
@@ -655,7 +657,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun upCountView() {
         binding.selectActionBar
-            .upCountView(adapter.selection.size, adapter.itemCount)
+            .upCountView(adapter.selectedSize, adapter.itemCount)
     }
 
     override fun getSourceHost(origin: String): String {

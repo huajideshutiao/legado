@@ -78,6 +78,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                         val kindCfg = kindStr.split("::")
                         var title = kindCfg.first()
                         var type = RowUi.Type.text
+                        var cols: Int? = null
                         when {
                             title.startsWith("BUTTON:") -> {
                                 title = title.substring(7)
@@ -87,9 +88,10 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                             title.startsWith("TITLE:") -> {
                                 title = title.substring(6)
                                 type = RowUi.Type.title
+                                cols = 1
                             }
                         }
-                        kinds.add(ExploreKind(title, type, kindCfg.getOrNull(1)))
+                        kinds.add(ExploreKind(title, cols, type, kindCfg.getOrNull(1)))
                     }
                 }
             }.onFailure {

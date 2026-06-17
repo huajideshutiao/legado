@@ -74,6 +74,7 @@ object Backup {
             "httpTTS.json",
             "keyboardAssists.json",
             "dictRule.json",
+            "sourceFilterRule.json",
             "servers.json",
             DirectLinkUpload.ruleFileName,
             ReadBookConfig.configFileName,
@@ -144,6 +145,7 @@ object Backup {
         writeListToJson(appDb.httpTTSDao.all, "httpTTS.json", backupPath)
         writeListToJson(appDb.keyboardAssistsDao.all, "keyboardAssists.json", backupPath)
         writeListToJson(appDb.dictRuleDao.all, "dictRule.json", backupPath)
+        writeListToJson(appDb.sourceFilterRuleDao.all, "sourceFilterRule.json", backupPath)
         GSON.toJson(appDb.serverDao.all).let { json ->
             aes.runCatching {
                 encryptBase64(json)

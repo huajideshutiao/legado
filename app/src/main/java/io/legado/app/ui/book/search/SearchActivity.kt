@@ -23,6 +23,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
+import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.ActivityBookSearchBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookFilter
@@ -30,6 +31,7 @@ import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
@@ -38,6 +40,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.filter.SourceFilterEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -79,7 +82,8 @@ import kotlin.math.abs
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, SearchAdapter.CallBack {
+    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, SearchAdapter.CallBack,
+    SourceFilterEditDialog.Callback {
 
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
@@ -160,6 +164,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
             R.id.menu_search_scope -> alertSearchScope()
             R.id.menu_source_manage -> startActivity<BookSourceActivity>()
+            R.id.menu_source_filter_rule -> showDialogFragment(
+                SourceFilterEditDialog(
+                    existing = null,
+                    defaultScope = viewModel.searchScope.toString()
+                )
+            )
             R.id.menu_log -> showDialogFragment(AppLogDialog())
             R.id.menu_1 -> {
                 viewModel.searchScope.update("")
@@ -542,6 +552,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     override fun onSearchScopeOk(searchScope: SearchScope) {
         viewModel.searchScope.update(searchScope.toString())
         checkSearch()
+    }
+
+    override fun onSourceFilterRuleSave(rule: SourceFilterRule, isNew: Boolean) {
+        lifecycleScope.launch(IO) {
+            SearchBookFilter.save(rule, isNew)
+        }
     }
 
     private fun alertSearchScope() {

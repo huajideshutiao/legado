@@ -17,6 +17,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
@@ -159,7 +160,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             )
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { pageResult ->
             val prevSize = books.size
-            books.addAll(pageResult.books)
+            books.addAll(SearchBookFilter.apply(pageResult.books))
             // 兜底：翻到第二页起，去重后整体未增长则视为到底；防止 hasMoreRule 缺失或配错时无限触底
             hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
             booksData.postValue(books.toList())

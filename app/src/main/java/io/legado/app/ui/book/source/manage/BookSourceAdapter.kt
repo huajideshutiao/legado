@@ -45,6 +45,11 @@ class BookSourceAdapter(
             }
         }
 
+    // selected 中可能残留已不在 getItems() 里的旧条目，所以仍以可见列表为准；
+    // 但用 count{} 取代 selection.size，省掉 filter 出来又立刻丢掉的 List 分配。
+    val selectedSize: Int
+        get() = getItems().count { selected.contains(it) }
+
     val diffItemCallback = object : DiffUtil.ItemCallback<BookSourcePart>() {
 
         override fun areItemsTheSame(oldItem: BookSourcePart, newItem: BookSourcePart): Boolean {

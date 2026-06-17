@@ -17,7 +17,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.databinding.ActivityReplaceRuleBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.coroutine.Coroutine
@@ -58,12 +58,12 @@ import kotlinx.coroutines.launch
 /**
  * 替换规则管理
  */
-class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRuleViewModel>(),
+class ReplaceRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, ReplaceRuleViewModel>(),
     SearchView.OnQueryTextListener,
     PopupMenu.OnMenuItemClickListener,
     SelectActionBar.CallBack,
     ReplaceRuleAdapter.CallBack {
-    override val binding by viewBinding(ActivityReplaceRuleBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     override val viewModel by viewModels<ReplaceRuleViewModel>()
     private val importRecordKey = "replaceRuleRecordKey"
     private val adapter by lazy { ReplaceRuleAdapter(this, this) }
@@ -97,6 +97,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.replace_purify)
         initRecyclerView()
         initSearchView()
         initSelectActionView()

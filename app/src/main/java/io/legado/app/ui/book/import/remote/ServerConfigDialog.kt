@@ -32,7 +32,7 @@ class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server),
     private val webDavServerUi = listOf(
         RowUi("url"),
         RowUi("username"),
-        RowUi("password", RowUi.Type.password)
+        RowUi("password", type = RowUi.Type.password)
     )
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

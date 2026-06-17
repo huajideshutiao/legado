@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
@@ -13,7 +14,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.databinding.ActivityTxtTocRuleBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
@@ -43,14 +44,15 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
-class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleViewModel>(),
+class TxtTocRuleActivity :
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, TxtTocRuleViewModel>(),
     TxtTocRuleAdapter.CallBack,
     SelectActionBar.CallBack,
     TxtTocRuleEditDialog.Callback,
     PopupMenu.OnMenuItemClickListener {
 
     override val viewModel by viewModels<TxtTocRuleViewModel>()
-    override val binding by viewBinding(ActivityTxtTocRuleBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     private val adapter: TxtTocRuleAdapter by lazy {
         TxtTocRuleAdapter(this, this)
     }
@@ -72,6 +74,8 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.txt_toc_rule)
+        binding.titleBar.findViewById<View>(R.id.search_view).visibility = View.GONE
         initView()
         initBottomActionBar()
         initData()

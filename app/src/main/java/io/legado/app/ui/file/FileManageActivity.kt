@@ -3,6 +3,7 @@ package io.legado.app.ui.file
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.content.FileProvider
@@ -10,7 +11,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
-import io.legado.app.databinding.ActivityImportBookBinding
+import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.import.local.ImportBook
@@ -23,15 +24,17 @@ import io.legado.app.utils.openFileUri
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.io.File
 
-class FileManageActivity : VMBaseActivity<ActivityImportBookBinding, FileManageViewModel>(),
+class FileManageActivity :
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, FileManageViewModel>(),
     SelectActionBar.CallBack,
     ImportBookAdapter.CallBack {
 
-    override val binding by viewBinding(ActivityImportBookBinding::inflate)
+    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
     override val viewModel by viewModels<FileManageViewModel>()
     private val adapter by lazy { ImportBookAdapter(this, this).apply { isFileManageMode = true } }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.layTop.visibility = View.VISIBLE
         initView()
         initSearchView()
         viewModel.upFiles(viewModel.rootDoc)

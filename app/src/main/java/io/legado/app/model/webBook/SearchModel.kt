@@ -9,6 +9,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.getPrefBoolean
@@ -112,7 +113,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     bookSource to page
                 }
             }.onEach { (source, page) ->
-                val items = page.books
+                val items = SearchBookFilter.apply(page.books)
                 for (book in items) {
                     book.releaseHtmlData()
                 }

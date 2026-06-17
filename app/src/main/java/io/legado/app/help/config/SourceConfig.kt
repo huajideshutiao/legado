@@ -41,5 +41,15 @@ object SourceConfig {
         }
     }
 
+    fun removeSources(origins: Collection<String>) {
+        if (origins.isEmpty()) return
+        val toRemove = sp.all.keys.filter { fullKey ->
+            origins.any { fullKey.startsWith(it) }
+        }
+        if (toRemove.isEmpty()) return
+        sp.edit {
+            toRemove.forEach { remove(it) }
+        }
+    }
 
 }

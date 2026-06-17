@@ -17,13 +17,13 @@
             android:layout_height="wrap_content"
             android:overScrollMode="ifContentScrolls">
 
-            <com.google.android.flexbox.FlexboxLayout
+            <GridLayout
                 android:id="@+id/flexbox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:clipToPadding="false"
-                app:flexDirection="row"
-                app:flexWrap="wrap" />
+                android:columnCount="12"
+                android:orientation="horizontal" />
 
         </androidx.core.widget.NestedScrollView>
 

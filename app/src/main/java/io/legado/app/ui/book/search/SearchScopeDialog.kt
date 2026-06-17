@@ -89,9 +89,9 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
             if (binding.rbGroup.isChecked) {
                 callback.onSearchScopeOk(SearchScope(adapter.selectGroups))
             } else {
-                val selectSource = adapter.selectSource
-                if (selectSource != null) {
-                    callback.onSearchScopeOk(SearchScope(selectSource))
+                val selected = adapter.selectSource
+                if (selected != null) {
+                    callback.onSearchScopeOk(SearchScope(selected))
                 } else {
                     callback.onSearchScopeOk(SearchScope(""))
                 }
@@ -145,11 +145,11 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
         var selectSource: BookSourcePart? = null
 
         override fun getItemViewType(position: Int): Int {
-            return if (binding.rbSource.isChecked) {
-                1
-            } else {
-                0
-            }
+            return if (binding.rbSource.isChecked) 1 else 0
+        }
+
+        override fun getItemCount(): Int {
+            return if (binding.rbSource.isChecked) screenSources.size else groups.size
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemViewHolder {
@@ -167,66 +167,58 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
         ) {
             if (payloads.isEmpty()) {
                 super.onBindViewHolder(holder, position, payloads)
-            } else {
-                when (holder.binding) {
-                    is ItemCheckBoxBinding -> {
-                        groups.getOrNull(position)?.let {
-                            holder.binding.checkBox.isChecked = selectGroups.contains(it)
-                            holder.binding.checkBox.text = it
-                        }
+                return
+            }
+            when (val itemBinding = holder.binding) {
+                is ItemCheckBoxBinding -> {
+                    groups.getOrNull(position)?.let {
+                        itemBinding.checkBox.isChecked = selectGroups.contains(it)
+                        itemBinding.checkBox.text = it
                     }
+                }
 
-                    is ItemRadioButtonBinding -> {
-                        screenSources.getOrNull(position)?.let {
-                            holder.binding.radioButton.isChecked = selectSource == it
-                            holder.binding.radioButton.text = it.bookSourceName
-                        }
+                is ItemRadioButtonBinding -> {
+                    screenSources.getOrNull(position)?.let { src ->
+                        itemBinding.radioButton.isChecked =
+                            selectSource?.bookSourceUrl == src.bookSourceUrl
+                        itemBinding.radioButton.text = src.bookSourceName
                     }
                 }
             }
         }
 
         override fun onBindViewHolder(holder: ItemViewHolder, position: Int) {
-            when (holder.binding) {
+            when (val itemBinding = holder.binding) {
                 is ItemCheckBoxBinding -> {
-                    groups.getOrNull(position)?.let {
-                        holder.binding.checkBox.isChecked = selectGroups.contains(it)
-                        holder.binding.checkBox.text = it
-                        holder.binding.checkBox.setOnUserCheckedChangeListener { isChecked ->
-                            if (isChecked) {
-                                selectGroups.add(it)
-                            } else {
-                                selectGroups.remove(it)
-                            }
-                            holder.itemView.post {
-                                notifyItemRangeChanged(0, itemCount, "up")
-                            }
+                    val group = groups.getOrNull(position) ?: return
+                    itemBinding.checkBox.isChecked = selectGroups.contains(group)
+                    itemBinding.checkBox.text = group
+                    itemBinding.checkBox.setOnUserCheckedChangeListener { isChecked ->
+                        if (isChecked) {
+                            selectGroups.add(group)
+                        } else {
+                            selectGroups.remove(group)
+                        }
+                        holder.itemView.post {
+                            notifyItemRangeChanged(0, itemCount, "up")
                         }
                     }
                 }
 
                 is ItemRadioButtonBinding -> {
-                    screenSources.getOrNull(position)?.let {
-                        holder.binding.radioButton.isChecked = selectSource == it
-                        holder.binding.radioButton.text = it.bookSourceName
-                        holder.binding.radioButton.setOnUserCheckedChangeListener { isChecked ->
-                            if (isChecked) {
-                                selectSource = it
-                            }
+                    val src = screenSources.getOrNull(position) ?: return
+                    itemBinding.radioButton.isChecked =
+                        selectSource?.bookSourceUrl == src.bookSourceUrl
+                    itemBinding.radioButton.text = src.bookSourceName
+                    itemBinding.radioButton.setOnUserCheckedChangeListener { isChecked ->
+                        if (isChecked) {
+                            selectSource = src
                             holder.itemView.post {
                                 notifyItemRangeChanged(0, itemCount, "up")
                             }
                         }
                     }
                 }
-            }
-        }
-
-        override fun getItemCount(): Int {
-            return if (binding.rbSource.isChecked) {
-                screenSources.size
-            } else {
-                groups.size
             }
         }
 

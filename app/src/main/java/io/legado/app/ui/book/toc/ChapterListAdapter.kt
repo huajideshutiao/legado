@@ -31,6 +31,9 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
     val cacheFileNames = hashSetOf<String>()
     private val displayTitleMap = ConcurrentHashMap<String, String>()
     private val handler = Handler(Looper.getMainLooper())
+    private var allChapters: List<BookChapter> = emptyList()
+    private val collapsedVolumeIndices = hashSetOf<Int>()
+    private var pendingChapterListReset = false
 
     override val diffItemCallback: DiffUtil.ItemCallback<BookChapter>
         get() = object : DiffUtil.ItemCallback<BookChapter>() {
@@ -62,7 +65,39 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
 
     override fun onCurrentListChanged() {
         super.onCurrentListChanged()
-        callback.onListChanged()
+        if (pendingChapterListReset) {
+            pendingChapterListReset = false
+            callback.onListChanged()
+        }
+    }
+
+    fun setChapterList(items: List<BookChapter>?) {
+        allChapters = items.orEmpty()
+        collapsedVolumeIndices.clear()
+        pendingChapterListReset = true
+        setItems(buildDisplayList())
+    }
+
+    private fun buildDisplayList(): List<BookChapter> {
+        if (collapsedVolumeIndices.isEmpty()) return allChapters
+        val out = ArrayList<BookChapter>(allChapters.size)
+        var hide = false
+        for (item in allChapters) {
+            if (item.isVolume) {
+                hide = item.index in collapsedVolumeIndices
+                out.add(item)
+            } else if (!hide) {
+                out.add(item)
+            }
+        }
+        return out
+    }
+
+    private fun toggleVolume(volume: BookChapter) {
+        if (!collapsedVolumeIndices.add(volume.index)) {
+            collapsedVolumeIndices.remove(volume.index)
+        }
+        setItems(buildDisplayList())
     }
 
     fun clearDisplayTitle() {
@@ -165,18 +200,21 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                     ivLocked.gone()
                 }
 
-                upHasCache(binding, isDur, cached)
+                upRightIcon(binding, item, isDur, cached)
             } else {
                 tvChapterName.text = getDisplayTitle(item)
-                upHasCache(binding, isDur, cached)
+                upRightIcon(binding, item, isDur, cached)
             }
         }
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemChapterListBinding) {
         holder.itemView.setOnClickListener {
-            getItem(holder.layoutPosition)?.let {
-                callback.openChapter(it)
+            val item = getItem(holder.layoutPosition) ?: return@setOnClickListener
+            if (item.isVolume) {
+                toggleVolume(item)
+            } else {
+                callback.openChapter(item)
             }
         }
         holder.itemView.setOnLongClickListener {
@@ -187,15 +225,27 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
         }
     }
 
-    private fun upHasCache(binding: ItemChapterListBinding, isDur: Boolean, cached: Boolean) =
-        binding.apply {
-            ivChecked.setImageResource(R.drawable.ic_outline_cloud_24)
-            ivChecked.visible(!cached)
-            if (isDur) {
-                ivChecked.setImageResource(R.drawable.ic_check)
-                ivChecked.visible()
-            }
+    private fun upRightIcon(
+        binding: ItemChapterListBinding,
+        item: BookChapter,
+        isDur: Boolean,
+        cached: Boolean
+    ) = binding.apply {
+        if (item.isVolume) {
+            val collapsed = item.index in collapsedVolumeIndices
+            ivChecked.setImageResource(
+                if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
+            )
+            ivChecked.visible()
+            return@apply
         }
+        ivChecked.setImageResource(R.drawable.ic_outline_cloud_24)
+        ivChecked.visible(!cached)
+        if (isDur) {
+            ivChecked.setImageResource(R.drawable.ic_check)
+            ivChecked.visible()
+        }
+    }
 
     interface Callback {
         val scope: CoroutineScope
