@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.BuildConfig
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
@@ -24,6 +25,7 @@ import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
@@ -160,7 +162,16 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             )
         }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { pageResult ->
             val prevSize = books.size
-            books.addAll(SearchBookFilter.apply(pageResult.books))
+            val (items, filteredCount) = SearchBookFilter.apply(pageResult.books)
+            if (filteredCount > 0) {
+                context.toastOnUi(
+                    context.getString(
+                        R.string.source_filter_rule_filtered_count,
+                        filteredCount
+                    )
+                )
+            }
+            books.addAll(items)
             // 兜底：翻到第二页起，去重后整体未增长则视为到底；防止 hasMoreRule 缺失或配错时无限触底
             hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
             booksData.postValue(books.toList())
@@ -173,13 +184,29 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
 
     fun isInBookShelf(book: BaseBook): Boolean {
+        if (book.bookUrl.contains("::")) return false
         val key = if (book.author.isNotBlank()) "${book.name}-${book.author}" else book.name
         return bookshelf.contains(key) || bookshelf.contains(book.bookUrl)
     }
 
+    /**
+     * 切换视频/非视频两类样式：切到非视频写 0（列表/单列），切到视频默认 2 列。
+     */
     fun switchLayout() {
         bookSource?.let {
-            it.exploreStyle = (it.exploreStyle + 1) % 4
+            it.exploreStyle = if (BookSource.exploreStyleIsVideo(it.exploreStyle)) 0
+            else BookSource.EXPLORE_STYLE_VIDEO_FLAG or 2
+            execute {
+                appDb.bookSourceDao.update(it)
+            }
+        }
+    }
+
+    /** 设置列数（保留视频布局标志位）。范围 1..6。 */
+    fun setColumnCount(cols: Int) {
+        bookSource?.let {
+            val flag = it.exploreStyle and BookSource.EXPLORE_STYLE_VIDEO_FLAG
+            it.exploreStyle = flag or cols.coerceIn(1, 6)
             execute {
                 appDb.bookSourceDao.update(it)
             }

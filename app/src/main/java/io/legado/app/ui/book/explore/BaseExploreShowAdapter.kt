@@ -15,7 +15,7 @@ abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val ca
     RecyclerAdapter<SearchBook, VB>(context) {
     override fun registerListener(holder: ItemViewHolder, binding: VB) {
         val tmp = getItem(holder.layoutPosition)?.apply {
-                if (bookUrl.contains("::")||!callBack.isInBookshelf(this))
+            if (!callBack.isInBookshelf(this))
                     addType(BookType.notShelf)
             } ?: return
         holder.itemView.setOnClickListener { callBack.showBookInfo(tmp)  }

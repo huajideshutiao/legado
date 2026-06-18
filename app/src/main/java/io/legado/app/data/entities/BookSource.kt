@@ -87,7 +87,10 @@ data class BookSource(
     var exploreUrl: String? = null,
     // 发现筛选规则
     var exploreScreen: String? = null,
-    // 发现样式,0,1,2
+    // 发现样式：位运算魔数
+    //   低 3 位 (0x07)：列数。0/1 = 单列（视频时单列网格，非视频时列表），2..6 = N 列网格（7 保留）。
+    //   bit 4   (0x10)：视频布局标记，置位表示用视频卡片项 (item_explore_video)。
+    // 例：0=列表；2=2 列卡片；0x11=单列视频；0x12=2 列视频。
     @ColumnInfo(defaultValue = "0")
     var exploreStyle: Int = 0,
     // 发现规则
@@ -270,6 +273,17 @@ data class BookSource(
     }
 
     private fun equal(a: String?, b: String?) = a == b || (a.isNullOrEmpty() && b.isNullOrEmpty())
+
+    companion object {
+        /** [exploreStyle] 低 3 位掩码：列数（0/1 单列，2..6 N 列网格） */
+        const val EXPLORE_STYLE_COLS_MASK = 0x07
+
+        /** [exploreStyle] 视频布局标志位 */
+        const val EXPLORE_STYLE_VIDEO_FLAG = 0x10
+
+        fun exploreStyleIsVideo(style: Int) = style and EXPLORE_STYLE_VIDEO_FLAG != 0
+        fun exploreStyleCols(style: Int) = style and EXPLORE_STYLE_COLS_MASK
+    }
 
     class Converters {
 

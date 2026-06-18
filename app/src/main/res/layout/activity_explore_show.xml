@@ -37,7 +37,7 @@
             android:layout_height="match_parent"
             android:clipToPadding="false"
             app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-            tools:listitem="@layout/item_search" />
+            tools:listitem="@layout/item_bookshelf_list" />
 
     </io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout>
 

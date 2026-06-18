@@ -127,7 +127,7 @@ object BookInfo {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取简介")
             try {
-                HtmlFormatter.format(analyzeRule.getString(infoRule.intro)).let {
+                HtmlFormatter.formatKeepRichTags(analyzeRule.getString(infoRule.intro)).let {
                     book.intro = it
                     Debug.log(bookSource.bookSourceUrl, "└${it}")
                 }

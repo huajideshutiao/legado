@@ -6,6 +6,7 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.pureKindText
 import io.legado.app.utils.splitNotBlank
 
 interface BaseBook : RuleDataInterface {
@@ -77,8 +78,10 @@ interface BaseBook : RuleDataInterface {
             if (it.isNotBlank()) kindList.add(it)
         }
         kind?.let {
-            val kinds = it.splitNotBlank(",", "\n")
-            kindList.addAll(kinds)
+            it.splitNotBlank(",", "\n").forEach { raw ->
+                val pure = raw.pureKindText()
+                if (pure.isNotBlank()) kindList.add(pure)
+            }
         }
         return kindList
     }

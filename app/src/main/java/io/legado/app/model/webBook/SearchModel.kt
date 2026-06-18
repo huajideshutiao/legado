@@ -113,7 +113,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                     bookSource to page
                 }
             }.onEach { (source, page) ->
-                val items = SearchBookFilter.apply(page.books)
+                val (items, filteredCount) = SearchBookFilter.apply(page.books)
+                if (filteredCount > 0) {
+                    callBack.onFiltered(filteredCount)
+                }
                 for (book in items) {
                     book.releaseHtmlData()
                 }
@@ -230,6 +233,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun onSearchCancel(exception: Throwable? = null)
         fun onSearchOptionsResolved(options: List<ExploreOption>)
         fun getSearchOptions(): List<ExploreOption>
+        fun onFiltered(count: Int) {}
     }
 
 }

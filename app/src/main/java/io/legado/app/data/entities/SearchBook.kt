@@ -75,9 +75,7 @@ data class SearchBook(
         val trimIntro = intro?.trim()
         return if (trimIntro.isNullOrEmpty()) {
             context.getString(R.string.intro_show_null)
-        } else {
-            context.getString(R.string.intro_show, trimIntro)
-        }
+        } else trimIntro
     }
 
     fun sameBookTypeLocal(bookType: Int): Boolean {

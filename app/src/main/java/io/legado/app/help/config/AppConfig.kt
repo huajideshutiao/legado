@@ -131,10 +131,67 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.showLastUpdateTime, value)
         }
 
-    var showWaitUpCount: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.showWaitUpCount, false)
+
+    var bookshelfListShowKind: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfListShowKind, false)
         set(value) {
-            appCtx.putPrefBoolean(PreferKey.showWaitUpCount, value)
+            appCtx.putPrefBoolean(PreferKey.bookshelfListShowKind, value)
+        }
+
+    var bookshelfListShowIntro: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfListShowIntro, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookshelfListShowIntro, value)
+        }
+
+    var bookshelfListIntroLines: Int
+        get() = appCtx.getPrefInt(PreferKey.bookshelfListIntroLines, 2).coerceIn(1, 3)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookshelfListIntroLines, value.coerceIn(1, 3))
+        }
+
+    const val BOTTOM_BAR_HEIGHT_MIN = 36
+    const val BOTTOM_BAR_HEIGHT_MAX = 80
+    const val BOTTOM_BAR_HEIGHT_DEFAULT = 50
+    const val BOTTOM_BAR_ICON_MIN = 18
+    const val BOTTOM_BAR_ICON_MAX = 36
+    const val BOTTOM_BAR_ICON_DEFAULT = 24
+    const val BOTTOM_BAR_LABEL_DEFAULT = 0
+
+    var bottomBarHeight: Int
+        get() = appCtx.getPrefInt(PreferKey.bottomBarHeight, BOTTOM_BAR_HEIGHT_DEFAULT)
+            .coerceIn(BOTTOM_BAR_HEIGHT_MIN, BOTTOM_BAR_HEIGHT_MAX)
+        set(value) {
+            appCtx.putPrefInt(
+                PreferKey.bottomBarHeight,
+                value.coerceIn(BOTTOM_BAR_HEIGHT_MIN, BOTTOM_BAR_HEIGHT_MAX)
+            )
+        }
+
+    var bottomBarIconSize: Int
+        get() = appCtx.getPrefInt(PreferKey.bottomBarIconSize, BOTTOM_BAR_ICON_DEFAULT)
+            .coerceIn(BOTTOM_BAR_ICON_MIN, BOTTOM_BAR_ICON_MAX)
+        set(value) {
+            appCtx.putPrefInt(
+                PreferKey.bottomBarIconSize,
+                value.coerceIn(BOTTOM_BAR_ICON_MIN, BOTTOM_BAR_ICON_MAX)
+            )
+        }
+
+    /**
+     * 0 = unlabeled, 1 = labeled, 2 = selected, 3 = auto
+     */
+    var bottomBarLabelMode: Int
+        get() = appCtx.getPrefInt(PreferKey.bottomBarLabelMode, BOTTOM_BAR_LABEL_DEFAULT)
+            .coerceIn(0, 3)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bottomBarLabelMode, value.coerceIn(0, 3))
+        }
+
+    var bookshelfShowGroupCount: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfShowGroupCount, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookshelfShowGroupCount, value)
         }
 
     val screenOrientation: String?
@@ -408,11 +465,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.openBookInfoByClickTitle, value)
         }
 
-    var showBookshelfFastScroller: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.showBookshelfFastScroller, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.showBookshelfFastScroller, value)
-        }
 
     var contentSelectSpeakMod: Int
         get() = appCtx.getPrefInt(PreferKey.contentSelectSpeakMod)
@@ -580,9 +632,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
     }
 
-    //直接跳转到视频界面，忽略详情
+    //点击书目直接进入阅读，跳过详情页
     val devFeat: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.devFeat, false)
+
+    //书目详情页改为横向布局（封面在左、信息在右）
+    val bookInfoHorizontalLayout: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookInfoHorizontalLayout, false)
 
     var disableMangaPageAnim: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.disableMangaPageAnim, false)

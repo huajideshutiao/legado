@@ -6,6 +6,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
@@ -91,7 +92,14 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                                 cols = 1
                             }
                         }
-                        kinds.add(ExploreKind(title, cols, type, kindCfg.getOrNull(1)))
+                        kinds.add(
+                            ExploreKind(
+                                title,
+                                type,
+                                kindCfg.getOrNull(1),
+                                cols?.let { FlexChildStyle(cols = it) }
+                            )
+                        )
                     }
                 }
             }.onFailure {

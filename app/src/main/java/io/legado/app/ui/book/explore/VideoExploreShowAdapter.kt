@@ -5,30 +5,26 @@ import android.os.Bundle
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.ItemBookshelfGridBinding
-import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.databinding.ItemExploreVideoBinding
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
+class VideoExploreShowAdapter(context: Context, callBack: CallBack) :
+    BaseExploreShowAdapter<ItemExploreVideoBinding>(context, callBack) {
 
-class GridExploreShowAdapter(context: Context, callBack: CallBack) :
-    BaseExploreShowAdapter<ItemBookshelfGridBinding>(context, callBack) {
-
-    override fun getViewBinding(parent: ViewGroup): ItemBookshelfGridBinding {
-        return ItemBookshelfGridBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemExploreVideoBinding {
+        return ItemExploreVideoBinding.inflate(inflater, parent, false)
     }
 
-    override fun bind(
-        binding: ItemBookshelfGridBinding, item: SearchBook
-    ) {
+    override fun bind(binding: ItemExploreVideoBinding, item: SearchBook) {
         binding.run {
-            bvUnread.gone()
-            rlLoading.gone()
-            ivCover.coverRatio = CoverImageView.CoverRatio.NOVEL
-            tvName.text = item.name
+            tvTitle.text = item.name
+            tvPubDate.text = item.wordCount
+            tvPubDate.isVisible = !item.wordCount.isNullOrBlank()
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
-            if (item.coverUrl.isNullOrBlank()) ivCover.gone()
-            else {
+            if (item.coverUrl.isNullOrBlank()) {
+                ivCover.gone()
+            } else {
                 ivCover.visible()
                 ivCover.load(
                     item.coverUrl,
@@ -42,8 +38,7 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
         }
     }
 
-
-    override fun bindChange(binding: ItemBookshelfGridBinding, item: SearchBook, bundle: Bundle) {
+    override fun bindChange(binding: ItemExploreVideoBinding, item: SearchBook, bundle: Bundle) {
         binding.run {
             bundle.keySet().forEach {
                 when (it) {
@@ -52,5 +47,4 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
             }
         }
     }
-
 }

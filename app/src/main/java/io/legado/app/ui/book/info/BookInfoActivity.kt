@@ -3,22 +3,36 @@ package io.legado.app.ui.book.info
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ImageSpan
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.View
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
@@ -79,6 +93,7 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.ui.widget.text.IntroButtonSpan
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
@@ -102,6 +117,9 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
 import splitties.views.onClick
 import splitties.views.onLongClick
 
@@ -324,7 +342,7 @@ class BookInfoActivity :
         tvAuthor.text = book.getRealAuthor()
         tvOrigin.text = book.originName
         tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
-        tvIntro.text = book.getDisplayIntro()
+        tvIntro.setIntroWithActions(book.getDisplayIntro())
         tvToc.visible(!book.isWebFile)
         upTvBookshelf()
         upKinds(book)
@@ -334,7 +352,7 @@ class BookInfoActivity :
 
     private fun applyDevFeatLayout(book: Book) = binding.run {
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val useDevFeat = AppConfig.devFeat && !book.isVideo && !isLandscape
+        val useDevFeat = AppConfig.bookInfoHorizontalLayout && !book.isVideo && !isLandscape
 
         if (useDevFeat) {
             setLightStatusBar(isDarkTheme)
@@ -420,10 +438,8 @@ class BookInfoActivity :
         val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
         val otherLabel = getString(R.string.other)
         kinds.forEach { kind ->
-            val urlSplit = kind.split("::", limit = 2)
-            val tagContent = urlSplit[0].trim()
+            val tagContent = kind.substringBefore("::").trim()
             val groupSplit = tagContent.split(":", limit = 2)
-
             if (groupSplit.size > 1 && groupSplit.all { it.isNotBlank() }) {
                 groups.getOrPut(groupSplit[0].trim()) { mutableListOf() }
                     .add(groupSplit[1].trim() to kind)
@@ -593,6 +609,123 @@ class BookInfoActivity :
         refreshLayout.setOnRefreshListener {
             refreshLayout.isRefreshing = false
             refreshBook()
+        }
+    }
+
+    private fun TextView.setIntroWithActions(intro: String?) {
+        if (intro.isNullOrBlank() || !intro.contains('<')) {
+            text = intro
+            return
+        }
+        val body = Jsoup.parseBodyFragment(intro).body()
+        val builder = SpannableStringBuilder()
+        appendIntroNodes(builder, body, this)
+        movementMethod = LinkMovementMethod.getInstance()
+        text = builder
+    }
+
+    private fun appendIntroNodes(
+        builder: SpannableStringBuilder,
+        parent: Element,
+        target: TextView
+    ) {
+        for (node in parent.childNodes()) {
+            when (node) {
+                is TextNode -> builder.append(node.wholeText)
+                is Element -> when (node.tagName().lowercase()) {
+                    "button" -> appendActionSpan(builder, node)
+                    "img" -> appendImageSpan(builder, node, target)
+                    else -> appendIntroNodes(builder, node, target)
+                }
+            }
+        }
+    }
+
+    private inline fun noUnderlineClick(crossinline onClick: () -> Unit) =
+        object : ClickableSpan() {
+            override fun onClick(widget: View) = onClick()
+            override fun updateDrawState(ds: TextPaint) {
+                ds.isUnderlineText = false
+            }
+        }
+
+    private fun appendActionSpan(
+        builder: SpannableStringBuilder,
+        node: Element
+    ) {
+        val label = node.text().ifBlank { return }
+        val action = node.attr("onclick")
+        val start = builder.length
+        builder.append(label)
+        val end = builder.length
+        builder.setSpan(
+            IntroButtonSpan(this, label),
+            start,
+            end,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        builder.setSpan(
+            noUnderlineClick { dispatchIntroAction(action) },
+            start,
+            end,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    private fun appendImageSpan(
+        builder: SpannableStringBuilder,
+        node: Element,
+        target: TextView
+    ) {
+        val src = node.absUrl("src").ifEmpty { node.attr("src") }
+        if (src.isBlank()) return
+        val placeholder: Drawable = Color.TRANSPARENT.toDrawable().apply {
+            setBounds(0, 0, 1, 1)
+        }
+        val start = builder.length
+        builder.append("\n \n")
+        val end = builder.length
+        val imgSpan = ImageSpan(placeholder, ImageSpan.ALIGN_BOTTOM)
+        builder.setSpan(imgSpan, start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        builder.setSpan(
+            noUnderlineClick { showDialogFragment(PhotoDialog(src)) },
+            start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        target.doOnLayout {
+            val width = target.width - target.paddingLeft - target.paddingRight
+            if (width <= 0) return@doOnLayout
+            Glide.with(this).load(src).into(object : CustomTarget<Drawable>() {
+                override fun onResourceReady(
+                    resource: Drawable,
+                    transition: Transition<in Drawable>?
+                ) {
+                    if (end > builder.length) return
+                    val intrinsicW = resource.intrinsicWidth.coerceAtLeast(1)
+                    val intrinsicH = resource.intrinsicHeight.coerceAtLeast(1)
+                    val height = (intrinsicH.toFloat() * width / intrinsicW).toInt()
+                    resource.setBounds(0, 0, width, height)
+                    builder.removeSpan(imgSpan)
+                    builder.setSpan(
+                        ImageSpan(resource, ImageSpan.ALIGN_BOTTOM),
+                        start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    target.text = builder
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {}
+            })
+        }
+    }
+
+    private fun dispatchIntroAction(action: String) {
+        val js = action.trim().ifEmpty { return }
+        val source = viewModel.curBookSource ?: return toastOnUi(R.string.error_no_source)
+        try {
+            source.evalJS(js) {
+                this["book"] = viewModel.getBook()
+            }
+        } catch (e: Exception) {
+            longToastOnUi(e.localizedMessage ?: e.javaClass.simpleName)
         }
     }
 

@@ -10,6 +10,11 @@ data class FlexChildStyle(
      */
     val cols: Int? = null,
 
+    /**
+     * 占据的行数。
+     */
+    val rows: Int = 1,
+
     /** 旧版字段，仅做向后兼容：未填 cols 时按数值映射到 cols。 */
     val layout_flexBasisPercent: Float = 0F,
 ) {
@@ -17,15 +22,18 @@ data class FlexChildStyle(
     private fun resolveCols(): Int {
         cols?.let { return it.coerceIn(1, MAX_COLS) }
         if (layout_flexBasisPercent <= 0f) return DEFAULT_COLS
-        // 计算在 100% 宽度内最多能放多少个，使用 1.001f 容错以处理 1/3 等浮点数精度问题
+        // 1.001f 容错处理 1/3 等浮点精度
         return (1.001f / layout_flexBasisPercent).toInt().coerceIn(1, MAX_COLS)
     }
 
     fun apply(view: View) {
         val lp = view.layoutParams as? GridLayout.LayoutParams ?: return
         lp.width = 0
-        lp.columnSpec =
-            GridLayout.spec(GridLayout.UNDEFINED, BASE_COLUMN_COUNT / resolveCols(), 1F)
+        val span = BASE_COLUMN_COUNT / resolveCols()
+        // weight 为 1f 则平分控件，为 span 则保持目的宽度
+        lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, span, span.toFloat())
+        val rowSpan = rows.coerceAtLeast(1)
+        lp.rowSpec = GridLayout.spec(GridLayout.UNDEFINED, rowSpan, GridLayout.FILL)
     }
 
     companion object {

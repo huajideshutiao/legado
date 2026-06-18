@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.BaseBook
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.ActivityExploreShowBinding
@@ -24,9 +25,12 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.video.VideoPlayActivity
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.setUpExploreOptions
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.iconItemOnLongClick
+import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -89,29 +93,20 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
     }
 
+    /**
+     * exploreStyle 位运算魔数：
+     * - 低 4 位：列数（0/1 单列；2..6 N 列网格）
+     * - bit 4 (0x10)：视频布局标志，置位时一律用 [VideoExploreShowAdapter]
+     */
     private fun initAdapter(style: Int) {
-        when (style) {
-            1 -> {
-                binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
-                adapter = BigExploreShowAdapter(this, this)
-            }
-
-            2 -> {
-                binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
-                adapter = GridExploreShowAdapter(this, this)
-            }
-
-            3 -> {
-                binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
-                adapter = GridExploreShowAdapter(this, this).apply {
-                    isVideoStyle = true
-                }
-            }
-
-            else -> {
-                binding.recyclerView.layoutManager = GridLayoutManager(this, 1)
-                adapter = ExploreShowAdapter(this, this)
-            }
+        val isVideo = BookSource.exploreStyleIsVideo(style)
+        val cols = BookSource.exploreStyleCols(style)
+        val spanCount = if (cols <= 1) 1 else cols
+        binding.recyclerView.layoutManager = GridLayoutManager(this, spanCount)
+        adapter = when {
+            isVideo -> VideoExploreShowAdapter(this, this)
+            cols <= 1 -> ExploreShowAdapter(this, this)
+            else -> GridExploreShowAdapter(this, this)
         }
     }
 
@@ -123,21 +118,36 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun upSwitchLayoutIcon() {
-        when (viewModel.exploreStyle) {
-            0 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_big_card)
-            1 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_grid)
-            2 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_video)
-            3 -> switchLayoutMenuItem?.setIcon(R.drawable.ic_layout_list)
-        }
+        val isVideo = BookSource.exploreStyleIsVideo(viewModel.exploreStyle)
+        switchLayoutMenuItem?.setIconCompat(
+            if (isVideo) R.drawable.ic_layout_list else R.drawable.ic_layout_video
+        )
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.explore_bar, menu)
+        menu.iconItemOnLongClick(R.id.menu_switch_layout) {
+            showColumnPicker()
+        }
         switchLayoutMenuItem = menu.findItem(R.id.menu_switch_layout)
         starMenuItem = menu.findItem(R.id.menu_star)
         upSwitchLayoutIcon()
         upStarIcon(viewModel.isFavorite())
         return super.onCompatCreateOptionsMenu(menu)
+    }
+
+    private fun showColumnPicker() {
+        val current = BookSource.exploreStyleCols(viewModel.exploreStyle).coerceIn(1, 6)
+        showNumberPicker(
+            this,
+            titleResId = R.string.explore_cols,
+            min = 1,
+            max = 6,
+            value = current,
+        ) { cols ->
+            viewModel.setColumnCount(cols)
+            upAdapterByStyle(viewModel.exploreStyle)
+        }
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {

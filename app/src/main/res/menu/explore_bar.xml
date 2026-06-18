@@ -11,7 +11,7 @@
     <item
         android:id="@+id/menu_switch_layout"
         android:title="@string/switchLayout"
-        android:icon="@drawable/ic_layout_big_card"
+        android:icon="@drawable/ic_layout_grid"
         app:showAsAction="always" />
     <item
         android:id="@+id/menu_source_filter_rule"
