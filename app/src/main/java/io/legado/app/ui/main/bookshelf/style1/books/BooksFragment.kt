@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
-import android.view.ViewConfiguration
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -97,7 +96,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
         val layoutManager = binding.rvBookshelf.layoutManager
-        if (spanCount == 0) {
+        if (spanCount <= 1) {
             if (layoutManager !is LinearLayoutManager) {
                 binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
             }
@@ -119,19 +118,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             activityViewModel.upToc(booksAdapter?.getItems() ?: emptyList())
         }
         val spanCount = getSpanCount()
-        if (spanCount == 0) {
+        if (spanCount <= 1) {
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
         } else {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
         }
-        if (spanCount == 0) {
+        if (spanCount <= 1) {
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
         } else {
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksGridRecycledViewPool)
         }
         val adapter = booksAdapter
         if (adapter == null) {
-            val newAdapter = if (spanCount == 0) {
+            val newAdapter = if (spanCount <= 1) {
                 BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
             } else {
                 BooksAdapterGrid(requireContext(), this)
@@ -163,14 +162,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun upFastScrollerBar() {
-        val showBookshelfFastScroller = AppConfig.showBookshelfFastScroller
-        binding.rvBookshelf.setFastScrollEnabled(showBookshelfFastScroller)
-        if (showBookshelfFastScroller) {
-            binding.rvBookshelf.scrollBarSize = 0
-        } else {
-            binding.rvBookshelf.scrollBarSize =
-                ViewConfiguration.get(requireContext()).scaledScrollBarSize
-        }
+        binding.rvBookshelf.setFastScrollEnabled(true)
+        binding.rvBookshelf.scrollBarSize = 0
     }
 
     fun upBookSort(sort: Int) {
@@ -219,7 +212,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun startLastUpdateTimeJob() {
         upLastUpdateTimeJob?.cancel()
-        if (!AppConfig.showLastUpdateTime || getSpanCount() != 0) {
+        if (!AppConfig.showLastUpdateTime || getSpanCount() > 1) {
             return
         }
         upLastUpdateTimeJob = viewLifecycleOwner.lifecycleScope.launch {

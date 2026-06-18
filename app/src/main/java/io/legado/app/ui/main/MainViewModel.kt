@@ -2,7 +2,6 @@ package io.legado.app.ui.main
 
 import android.app.Application
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
 import io.legado.app.base.BaseViewModel
@@ -58,7 +57,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private val waitLock = Any()
     private val waitUpTocBooks = LinkedHashSet<String>()
     private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
-    val onUpBooksLiveData = MutableLiveData<Int>()
+
     private var upTocJob: Job? = null
     private var cacheBookJob: Job? = null
     val booksListRecycledViewPool = RecycledViewPool().apply {
@@ -191,9 +190,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         waitUpTocBooks.isEmpty()
     }
 
-    private fun waitUpTocBooksSize(): Int = synchronized(waitLock) {
-        waitUpTocBooks.size
-    }
 
     @Synchronized
     private fun onUpTocJobCompleted() {
@@ -205,7 +201,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     private fun startUpTocJob() {
         upPool()
-        postUpBooksLiveData()
         upTocJob = viewModelScope.launch(upTocPool) {
             flow {
                 while (true) {
@@ -215,10 +210,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 onUpTocBooks.add(it)
                 postEvent(EventBus.UP_BOOKSHELF, it)
                 updateToc(it)
-            }.onEach {
                 onUpTocBooks.remove(it)
                 postEvent(EventBus.UP_BOOKSHELF, it)
-                postUpBooksLiveData()
             }.onCompletion {
                 onUpTocJobCompleted()
                 if (it == null && cacheBookJob == null && !CacheBookService.isRun) {
@@ -272,13 +265,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun postUpBooksLiveData(reset: Boolean = false) {
-        if (AppConfig.showWaitUpCount) {
-            onUpBooksLiveData.postValue(waitUpTocBooksSize() + onUpTocBooks.size)
-        } else if (reset) {
-            onUpBooksLiveData.postValue(0)
-        }
-    }
 
     @Synchronized
     private fun addDownload(source: BookSource, book: Book) {

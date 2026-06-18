@@ -1,88 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="16dp">
+    android:fillViewport="true"
+    android:scrollbars="vertical">
 
     <LinearLayout
-        android:id="@+id/ll_group_style"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:padding="6dp"
-            android:text="@string/group_style"
-            android:textColor="@color/primaryText" />
-
-        <androidx.appcompat.widget.AppCompatSpinner
-            android:id="@+id/sp_group_style"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:entries="@array/group_style"
-            tools:ignore="TouchTargetSizeCheck" />
-
-    </LinearLayout>
-
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/sw_show_unread"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="6dp"
-        android:text="@string/show_unread"
-        app:layout_constraintTop_toBottomOf="@+id/ll_group_style"
-        tools:ignore="TouchTargetSizeCheck" />
-
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/sw_show_last_update_time"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="6dp"
-        android:text="@string/show_last_update_time"
-        app:layout_constraintTop_toBottomOf="@+id/sw_show_unread"
-        tools:ignore="TouchTargetSizeCheck" />
-
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/sw_show_wait_up_books"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="6dp"
-        android:text="@string/show_wait_up_count"
-        app:layout_constraintTop_toBottomOf="@+id/sw_show_last_update_time"
-        tools:ignore="TouchTargetSizeCheck" />
-
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/sw_show_bookshelf_fast_scroller"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="6dp"
-        android:text="@string/show_bookshelf_fast_scroller"
-        app:layout_constraintTop_toBottomOf="@+id/sw_show_wait_up_books"
-        tools:ignore="TouchTargetSizeCheck" />
-
-    <io.legado.app.lib.theme.view.ThemeSwitch
-        android:id="@+id/sw_fixed_width_mode"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="6dp"
-        android:text="@string/fixed_width_mode"
-        app:layout_constraintTop_toBottomOf="@+id/sw_show_bookshelf_fast_scroller"
-        tools:ignore="TouchTargetSizeCheck" />
-
-    <LinearLayout
-        android:id="@+id/ll_layout"
-        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toLeftOf="@+id/ll_sort"
-        app:layout_constraintTop_toBottomOf="@+id/sw_fixed_width_mode">
+        android:padding="16dp">
+
+        <LinearLayout
+            android:id="@+id/ll_group_style"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:text="@string/group_style"
+                android:textColor="@color/primaryText" />
+
+            <androidx.appcompat.widget.AppCompatSpinner
+                android:id="@+id/sp_group_style"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:entries="@array/group_style"
+                tools:ignore="TouchTargetSizeCheck" />
+
+        </LinearLayout>
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_show_unread"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/show_unread"
+            tools:ignore="TouchTargetSizeCheck" />
+
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_show_group_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/bookshelf_show_group_count"
+            tools:ignore="TouchTargetSizeCheck" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_fixed_width_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/fixed_width_mode"
+            tools:ignore="TouchTargetSizeCheck" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_layout_title"
@@ -96,42 +72,113 @@
             android:id="@+id/ll_column_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
-            android:orientation="vertical"
-            android:padding="8dp">
-
-            <TextView
-                android:id="@+id/tv_column_value"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                tools:text="列表" />
-
-            <io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper
-                android:layout_width="wrap_content"
-                android:layout_height="120dp"
-                android:layout_marginTop="8dp">
-
-                <io.legado.app.ui.widget.seekbar.VerticalSeekBar
-                    android:id="@+id/sb_column_count"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:max="6"
-                    android:progress="0"
-                    app:seekBarRotation="CW270"
-                    tools:ignore="TouchTargetSizeCheck" />
-
-            </io.legado.app.ui.widget.seekbar.VerticalSeekBarWrapper>
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="6dp">
 
             <TextView
                 android:id="@+id/tv_column_label"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/column_count" />
+                android:text="@string/column_count"
+                android:textColor="@color/primaryText" />
+
+            <io.legado.app.lib.theme.view.ThemeSeekBar
+                android:id="@+id/sb_column_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="6"
+                android:progress="0"
+                tools:ignore="TouchTargetSizeCheck" />
+
+            <TextView
+                android:id="@+id/tv_column_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:minWidth="40dp"
+                android:textColor="@color/primaryText"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                tools:text="列表" />
 
         </LinearLayout>
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_show_kind"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/bookshelf_list_show_kind"
+            tools:ignore="TouchTargetSizeCheck" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_show_intro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/bookshelf_list_show_intro"
+            tools:ignore="TouchTargetSizeCheck" />
+
+        <LinearLayout
+            android:id="@+id/ll_intro_lines"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            tools:ignore="RtlSymmetry">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bookshelf_list_intro_lines"
+                android:textColor="@color/primaryText" />
+
+            <TextView
+                android:id="@+id/tv_intro_lines_minus"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:text="-"
+                android:textColor="@color/primaryText"
+                android:textSize="18sp"
+                tools:ignore="HardcodedText,TouchTargetSizeCheck" />
+
+            <TextView
+                android:id="@+id/tv_intro_lines_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:minWidth="32dp"
+                android:textColor="@color/primaryText"
+                android:textSize="16sp"
+                tools:text="2" />
+
+            <TextView
+                android:id="@+id/tv_intro_lines_plus"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/primaryText"
+                android:textSize="18sp"
+                tools:ignore="HardcodedText,TouchTargetSizeCheck" />
+
+        </LinearLayout>
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_show_last_update_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:text="@string/show_last_update_time"
+            tools:ignore="TouchTargetSizeCheck" />
 
         <LinearLayout
             android:id="@+id/ll_fixed_width"
@@ -164,17 +211,6 @@
 
         </LinearLayout>
 
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/ll_sort"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        app:layout_constraintLeft_toRightOf="@+id/ll_layout"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/sw_fixed_width_mode">
-
         <io.legado.app.ui.widget.text.AccentTextView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -188,37 +224,43 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_0"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_0"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_1"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_2"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_3"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_4"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_4"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <RadioButton
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_sort_5"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_5"
@@ -228,4 +270,4 @@
 
     </LinearLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

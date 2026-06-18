@@ -18,6 +18,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogBookshelfConfigBinding
+import io.legado.app.databinding.DialogBottomNavConfigBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogImageBlurringBinding
 import io.legado.app.help.LauncherIconHelp
@@ -219,6 +220,8 @@ class ThemeConfigFragment : PreferenceFragment(),
 
             PreferKey.bookshelfLayout -> configBookshelf()
 
+            "bottomNavConfig" -> configBottomNav()
+
             PreferKey.sourceEditMaxLine -> {
                 showNumberPicker(
                     requireContext(),
@@ -381,12 +384,92 @@ class ThemeConfigFragment : PreferenceFragment(),
     }
 
     @SuppressLint("InflateParams")
+    private fun configBottomNav() {
+        alert(titleResource = R.string.bottom_nav_config) {
+            val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
+            fun applyValues(height: Int, icon: Int, label: Int) {
+                binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
+                binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
+                binding.tvHeightValue.text = "${height}dp"
+                binding.tvIconValue.text = "${icon}dp"
+                when (label) {
+                    1 -> binding.rbLabelLabeled.isChecked = true
+                    2 -> binding.rbLabelSelected.isChecked = true
+                    3 -> binding.rbLabelAuto.isChecked = true
+                    else -> binding.rbLabelUnlabeled.isChecked = true
+                }
+            }
+            binding.apply {
+                applyValues(
+                    AppConfig.bottomBarHeight,
+                    AppConfig.bottomBarIconSize,
+                    AppConfig.bottomBarLabelMode
+                )
+                sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                    override fun onProgressChanged(
+                        seekBar: SeekBar,
+                        progress: Int,
+                        fromUser: Boolean
+                    ) {
+                        tvHeightValue.text = "${progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN}dp"
+                    }
+                })
+                sbIcon.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                    override fun onProgressChanged(
+                        seekBar: SeekBar,
+                        progress: Int,
+                        fromUser: Boolean
+                    ) {
+                        tvIconValue.text = "${progress + AppConfig.BOTTOM_BAR_ICON_MIN}dp"
+                    }
+                })
+                tvReset.setOnClickListener {
+                    applyValues(
+                        AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
+                        AppConfig.BOTTOM_BAR_ICON_DEFAULT,
+                        AppConfig.BOTTOM_BAR_LABEL_DEFAULT
+                    )
+                }
+            }
+            customView { binding.root }
+            okButton {
+                val newHeight = binding.sbHeight.progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN
+                val newIcon = binding.sbIcon.progress + AppConfig.BOTTOM_BAR_ICON_MIN
+                val newLabel = when (binding.rgLabelMode.checkedRadioButtonId) {
+                    R.id.rb_label_labeled -> 1
+                    R.id.rb_label_selected -> 2
+                    R.id.rb_label_auto -> 3
+                    else -> 0
+                }
+                var changed = false
+                if (AppConfig.bottomBarHeight != newHeight) {
+                    AppConfig.bottomBarHeight = newHeight
+                    changed = true
+                }
+                if (AppConfig.bottomBarIconSize != newIcon) {
+                    AppConfig.bottomBarIconSize = newIcon
+                    changed = true
+                }
+                if (AppConfig.bottomBarLabelMode != newLabel) {
+                    AppConfig.bottomBarLabelMode = newLabel
+                    changed = true
+                }
+                if (changed) {
+                    recreateActivities()
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    @SuppressLint("InflateParams")
     fun configBookshelf() {
         alert(titleResource = R.string.bookshelf_layout) {
             var bookshelfLayout = AppConfig.bookshelfLayout
             var bookshelfSort = AppConfig.bookshelfSort
             var fixedWidthMode = AppConfig.bookshelfFixedWidthMode
             val gridWidth = AppConfig.bookshelfGridWidth
+            var introLines = AppConfig.bookshelfListIntroLines
             val alertBinding =
                 DialogBookshelfConfigBinding.inflate(layoutInflater)
                     .apply {
@@ -404,17 +487,44 @@ class ThemeConfigFragment : PreferenceFragment(),
                         spGroupStyle.setSelection(AppConfig.bookGroupStyle)
                         swShowUnread.isChecked = AppConfig.showUnread
                         swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
-                        swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
-                        swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
+                        swShowGroupCount.isChecked = AppConfig.bookshelfShowGroupCount
+                        swShowKind.isChecked = AppConfig.bookshelfListShowKind
+                        swShowIntro.isChecked = AppConfig.bookshelfListShowIntro
+                        tvIntroLinesValue.text = introLines.toString()
+                        llIntroLines.alpha = if (swShowIntro.isChecked) 1f else 0.4f
+                        swShowIntro.setOnCheckedChangeListener { _, isChecked ->
+                            llIntroLines.alpha = if (isChecked) 1f else 0.4f
+                        }
+                        tvIntroLinesMinus.setOnClickListener {
+                            if (introLines > 1) {
+                                introLines--
+                                tvIntroLinesValue.text = introLines.toString()
+                            }
+                        }
+                        tvIntroLinesPlus.setOnClickListener {
+                            if (introLines < 5) {
+                                introLines++
+                                tvIntroLinesValue.text = introLines.toString()
+                            }
+                        }
                         swFixedWidthMode.isChecked = fixedWidthMode
                         sbColumnCount.progress = bookshelfLayout
                         tvColumnValue.text =
-                            if (bookshelfLayout == 0) getString(R.string.layout_list) else bookshelfLayout.toString()
+                            if (sbColumnCount.progress <= 1) getString(R.string.layout_list) else sbColumnCount.progress.toString()
                         etGridWidth.setText(gridWidth.toString())
                         llColumnCount.visibility =
                             if (fixedWidthMode) View.GONE else View.VISIBLE
                         llFixedWidth.visibility =
                             if (fixedWidthMode) View.VISIBLE else View.GONE
+                        val updateListOnlyVisibility = {
+                            val isList = !swFixedWidthMode.isChecked && sbColumnCount.progress <= 1
+                            val v = if (isList) View.VISIBLE else View.GONE
+                            swShowKind.visibility = v
+                            swShowIntro.visibility = v
+                            llIntroLines.visibility = v
+                            swShowLastUpdateTime.visibility = v
+                        }
+                        updateListOnlyVisibility()
                         sbColumnCount.setOnSeekBarChangeListener(object :
                             SeekBar.OnSeekBarChangeListener {
                             override fun onProgressChanged(
@@ -422,8 +532,14 @@ class ThemeConfigFragment : PreferenceFragment(),
                                 progress: Int,
                                 fromUser: Boolean
                             ) {
+                                var p = progress
+                                if (p < 1) {
+                                    p = 1
+                                    seekBar?.progress = 1
+                                }
                                 tvColumnValue.text =
-                                    if (progress == 0) getString(R.string.layout_list) else progress.toString()
+                                    if (p <= 1) getString(R.string.layout_list) else p.toString()
+                                updateListOnlyVisibility()
                             }
 
                             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -435,6 +551,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                                 if (isChecked) View.GONE else View.VISIBLE
                             llFixedWidth.visibility =
                                 if (isChecked) View.VISIBLE else View.GONE
+                            updateListOnlyVisibility()
                         }
                         rgSort.checkByIndex(bookshelfSort)
                     }
@@ -455,18 +572,27 @@ class ThemeConfigFragment : PreferenceFragment(),
                         AppConfig.showLastUpdateTime = swShowLastUpdateTime.isChecked
                         postEvent(EventBus.BOOKSHELF_REFRESH, "")
                     }
-                    if (AppConfig.showWaitUpCount != swShowWaitUpBooks.isChecked) {
-                        AppConfig.showWaitUpCount = swShowWaitUpBooks.isChecked
+                    if (AppConfig.bookshelfShowGroupCount != swShowGroupCount.isChecked) {
+                        AppConfig.bookshelfShowGroupCount = swShowGroupCount.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
                     }
-                    if (AppConfig.showBookshelfFastScroller != swShowBookshelfFastScroller.isChecked) {
-                        AppConfig.showBookshelfFastScroller = swShowBookshelfFastScroller.isChecked
+                    if (AppConfig.bookshelfListShowKind != swShowKind.isChecked) {
+                        AppConfig.bookshelfListShowKind = swShowKind.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.bookshelfListShowIntro != swShowIntro.isChecked) {
+                        AppConfig.bookshelfListShowIntro = swShowIntro.isChecked
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    }
+                    if (AppConfig.bookshelfListIntroLines != introLines) {
+                        AppConfig.bookshelfListIntroLines = introLines
                         postEvent(EventBus.BOOKSHELF_REFRESH, "")
                     }
                     if (bookshelfSort != rgSort.getCheckedIndex()) {
                         AppConfig.bookshelfSort = rgSort.getCheckedIndex()
                     }
-                    val newLayout = sbColumnCount.progress
-                    val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 130
+                    val newLayout = if (sbColumnCount.progress <= 1) 0 else sbColumnCount.progress
+                    val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 120
                     if (bookshelfLayout != newLayout ||
                         AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||
                         AppConfig.bookshelfGridWidth != newGridWidth

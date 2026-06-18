@@ -14,16 +14,18 @@
 		<item>RSS</item>
 	</string-array>
 
-    <string-array name="explore_style">
-        <item>@string/explore_style_card</item>
-        <item>@string/explore_style_big_card</item>
-        <item>@string/explore_style_grid</item>
-        <item>@string/explore_style_video</item>
-    </string-array>
-
     <string-array name="group_style">
 		<item>Tab</item>
 		<item>Folder</item>
+	</string-array>
+
+	<string-array name="explore_cols">
+		<item>@string/explore_cols_one_label</item>
+		<item>2</item>
+		<item>3</item>
+		<item>4</item>
+		<item>5</item>
+		<item>6</item>
 	</string-array>
 
 	<string-array name="book_sort">

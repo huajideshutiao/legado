@@ -4,10 +4,12 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ViewNavigationBadgeBinding
 import io.legado.app.help.config.AppConfig
@@ -42,8 +44,32 @@ class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
             itemBackground = ColorDrawable(Color.TRANSPARENT)
         }
 
+        applyUserPrefs()
+
         ViewCompat.setOnApplyWindowInsetsListener(this, null)
     }
+
+    private fun applyUserPrefs() {
+        itemIconSize = dp(AppConfig.bottomBarIconSize)
+        labelVisibilityMode = when (AppConfig.bottomBarLabelMode) {
+            1 -> NavigationBarView.LABEL_VISIBILITY_LABELED
+            2 -> NavigationBarView.LABEL_VISIBILITY_SELECTED
+            3 -> NavigationBarView.LABEL_VISIBILITY_AUTO
+            else -> NavigationBarView.LABEL_VISIBILITY_UNLABELED
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        val targetHeight = dp(AppConfig.bottomBarHeight)
+        if (layoutParams != null && layoutParams.height != targetHeight) {
+            layoutParams = layoutParams.also { it.height = targetHeight }
+        }
+    }
+
+    private fun dp(value: Int): Int = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics
+    ).toInt()
 
     fun addBadgeView(index: Int): BadgeView {
         //获取底部菜单view

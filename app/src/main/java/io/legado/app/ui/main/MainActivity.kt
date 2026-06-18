@@ -47,7 +47,6 @@ import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
 import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
@@ -89,7 +88,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val adapter by lazy {
         TabFragmentPageAdapter(supportFragmentManager)
     }
-    private var onUpBooksBadgeView: BadgeView? = null
+
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upBottomMenu()
@@ -311,18 +310,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun observeLiveBus() {
         super.observeLiveBus()
-        viewModel.onUpBooksLiveData.observe(this) {
-            if (onUpBooksBadgeView == null) {
-                onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
-            }
-            onUpBooksBadgeView!!.setBadgeCount(it)
-        }
+
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
             binding.apply {
                 if (it) {
                     bottomNavigationView.menu.clear()
                     bottomNavigationView.inflateMenu(R.menu.main_bnv)
-                    onUpBooksBadgeView = null
                 }
                 upBottomMenu()
                 if (it) {

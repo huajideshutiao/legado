@@ -7,7 +7,6 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfGridBinding
-import io.legado.app.databinding.ItemBookshelfGridGroupBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.invisible
@@ -21,7 +20,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         viewType: Int
     ): RecyclerView.ViewHolder {
         return when (viewType) {
-            1 -> GroupViewHolder(ItemBookshelfGridGroupBinding.inflate(inflater, parent, false))
+            1 -> GroupViewHolder(ItemBookshelfGridBinding.inflate(inflater, parent, false))
             else -> BookViewHolder(ItemBookshelfGridBinding.inflate(inflater, parent, false))
         }
     }
@@ -104,7 +103,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
 
     }
 
-    inner class GroupViewHolder(val binding: ItemBookshelfGridGroupBinding) :
+    inner class GroupViewHolder(val binding: ItemBookshelfGridBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: BookGroup) = binding.run {

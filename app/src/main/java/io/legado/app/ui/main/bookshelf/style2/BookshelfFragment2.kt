@@ -81,7 +81,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
         val layoutManager = binding.rvBookshelf.layoutManager
-        if (spanCount == 0) {
+        if (spanCount <= 1) {
             if (layoutManager !is LinearLayoutManager) {
                 binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
             }
@@ -102,7 +102,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             activityViewModel.upToc(books)
         }
         val spanCount = getSpanCount()
-        if (spanCount == 0) {
+        if (spanCount <= 1) {
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
         } else {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
@@ -110,7 +110,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         binding.rvBookshelf.itemAnimator = null
         val adapter = booksAdapter
         if (adapter == null) {
-            val newAdapter = if (spanCount == 0) {
+            val newAdapter = if (spanCount <= 1) {
                 BooksAdapterList(requireContext(), this)
             } else {
                 BooksAdapterGrid(requireContext(), this)
@@ -143,8 +143,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         if (data != bookGroups) {
             bookGroups = data
             booksAdapter?.updateItems()
-            binding.tvEmptyMsg.isGone = getItemCount() > 0
-            binding.refreshLayout.isEnabled = enableRefresh && getItemCount() > 0
+            applyGroupState()
         }
     }
 
@@ -153,21 +152,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     private fun initBooksData() {
-        if (groupId == BookGroup.IdRoot) {
-            if (isAdded) {
-                binding.titleBar.title = getString(R.string.bookshelf)
-                binding.refreshLayout.isEnabled = true
-                enableRefresh = true
-            }
-        } else {
-            bookGroups.firstOrNull {
-                groupId == it.groupId
-            }?.let {
-                binding.titleBar.title = "${getString(R.string.bookshelf)}(${it.groupName})"
-                binding.refreshLayout.isEnabled = it.enableRefresh
-                enableRefresh = it.enableRefresh
-            }
-        }
+        applyGroupState()
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             activityViewModel.observeGroupBooks(
@@ -177,11 +162,24 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             ).collect { list ->
                 books = list
                 booksAdapter?.updateItems()
-                binding.tvEmptyMsg.isGone = getItemCount() > 0
-                binding.refreshLayout.isEnabled = enableRefresh && getItemCount() > 0
+                applyGroupState()
                 delay(100)
             }
         }
+    }
+
+    private fun applyGroupState() {
+        if (!isAdded) return
+        val group = bookGroups.find { it.groupId == groupId }
+        enableRefresh = group?.enableRefresh ?: true
+        val baseTitle = group?.groupName ?: getString(R.string.bookshelf)
+        binding.titleBar.title = if (AppConfig.bookshelfShowGroupCount) {
+            "$baseTitle (${books.size})"
+        } else {
+            baseTitle
+        }
+        binding.tvEmptyMsg.isGone = getItemCount() > 0
+        binding.refreshLayout.isEnabled = enableRefresh && getItemCount() > 0
     }
 
     private fun sortBooks(list: List<Book>): List<Book> =
@@ -269,6 +267,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             booksAdapter?.notifyDataSetChanged()
+            applyGroupState()
         }
     }
 }

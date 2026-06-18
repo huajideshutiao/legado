@@ -11,6 +11,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
 import com.google.android.material.tabs.TabLayout
 import io.legado.app.R
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
@@ -23,6 +24,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.utils.isCreated
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -124,12 +126,29 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         gotoTop()
     }
 
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
+            refreshTabTitles()
+        }
+    }
+
+    private fun tabTitle(group: BookGroup, count: Int?): CharSequence {
+        if (!AppConfig.bookshelfShowGroupCount) return group.groupName
+        return "${group.groupName}(${count ?: ".."})"
+    }
+
+    private fun refreshTabTitles() {
+        bookGroups.forEachIndexed { index, group ->
+            tabLayout.getTabAt(index)?.text = tabTitle(group, groupBookCountMap[group.groupId])
+        }
+    }
+
     fun updateTabTitle(groupId: Long, count: Int) {
         val groupIndex = bookGroups.indexOfFirst { it.groupId == groupId }
         if (groupIndex != -1) {
-            val group = bookGroups[groupIndex]
             groupBookCountMap[groupId] = count
-            tabLayout.getTabAt(groupIndex)?.text = "${group.groupName}($count)"
+            tabLayout.getTabAt(groupIndex)?.text = tabTitle(bookGroups[groupIndex], count)
         }
     }
 
@@ -148,8 +167,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
 
         override fun getPageTitle(position: Int): CharSequence {
             val group = bookGroups[position]
-            val count = groupBookCountMap[group.groupId]
-            return group.groupName + "(${count ?: ".."})"
+            return tabTitle(group, groupBookCountMap[group.groupId])
         }
 
         /**

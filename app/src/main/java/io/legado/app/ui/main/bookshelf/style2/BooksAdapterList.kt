@@ -55,6 +55,9 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             ivAuthor.visible()
             ivLast.visible()
             ivRead.visible()
+            tvRead.visible()
+            tvAuthor.visible()
+            tvLast.visible()
             upRefresh(this, item)
         }
 
@@ -121,11 +124,8 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             flHasNew.gone()
             ivAuthor.gone()
             ivLast.gone()
-            ivRead.gone()
             tvAuthor.gone()
             tvLast.gone()
-            tvRead.gone()
-            tvLastUpdateTime.gone()
         }
 
         fun onBind(item: BookGroup, payloads: MutableList<Any>) = binding.run {
