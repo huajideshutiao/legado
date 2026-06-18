@@ -452,7 +452,7 @@ class BookSourceActivity :
                 sortAscending,
                 sort
             ) {
-                share(it)
+                share(it, title = getString(R.string.share_selected_source))
             }
 
             R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()

@@ -10,10 +10,8 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.BookCover
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.printOnDebug
 import splitties.init.appCtx
 import java.io.File
@@ -72,14 +70,6 @@ object DefaultData {
                 .readBytes()
         )
         GSON.fromJsonArray<ThemeConfig.Config>(json).getOrNull() ?: emptyList()
-    }
-
-    val coverRule: BookCover.CoverRule by lazy {
-        val json = String(
-            appCtx.assets.open("defaultData${File.separator}coverRule.json")
-                .readBytes()
-        )
-        GSON.fromJsonObject<BookCover.CoverRule>(json).getOrThrow()
     }
 
     val dictRules: List<DictRule> by lazy {

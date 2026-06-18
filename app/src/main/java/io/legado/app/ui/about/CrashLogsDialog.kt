@@ -26,6 +26,7 @@ import io.legado.app.utils.delete
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -77,6 +78,14 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 getItemByLayoutPosition(holder.layoutPosition)?.let { item ->
                     showLogFile(item)
                 }
+            }
+            binding.root.setOnLongClickListener {
+                getItemByLayoutPosition(holder.layoutPosition)?.let { item ->
+                    item.asFile()?.let {
+                        requireContext().share(it, title = getString(R.string.share))
+                    } ?: requireContext().share(item.uri, title = getString(R.string.share))
+                }
+                true
             }
         }
 

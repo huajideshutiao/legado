@@ -18,7 +18,6 @@ import com.bumptech.glide.request.target.Target
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.CacheManager
-import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
@@ -190,7 +189,7 @@ object BookCover {
     }
 
     fun getCoverRule(): CoverRule {
-        return getConfig() ?: DefaultData.coverRule
+        return getConfig() ?: CoverRule(enable = false, searchUrl = "", coverRule = "")
     }
 
     fun getConfig(): CoverRule? {

@@ -222,7 +222,6 @@
             android:includeFontPadding="false"
             android:maxLines="3"
             android:paddingStart="2dp"
-            android:paddingTop="2dp"
             android:textColor="@color/tv_text_summary"
             android:textSize="13sp"
             android:visibility="gone"

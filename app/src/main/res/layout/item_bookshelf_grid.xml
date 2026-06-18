@@ -23,7 +23,8 @@
             android:id="@+id/iv_cover"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp"
+            android:layout_margin="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:layout_editor_absoluteX="8dp" />
 
@@ -68,7 +69,6 @@
         android:id="@+id/tv_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
         android:ellipsize="end"
         android:gravity="top|center_horizontal"
         android:includeFontPadding="false"
