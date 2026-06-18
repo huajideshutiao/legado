@@ -22,6 +22,7 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
         super.onViewCreated(view, savedInstanceState)
         listView.clipToPadding = false
         listView.applyNavigationBarPadding()
+        setDivider(null)
     }
 
     @SuppressLint("RestrictedApi")

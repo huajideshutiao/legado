@@ -138,6 +138,7 @@ object PreferKey {
     const val bookshelfListShowKind = "bookshelfListShowKind"
     const val bookshelfListShowIntro = "bookshelfListShowIntro"
     const val bookshelfListIntroLines = "bookshelfListIntroLines"
+    const val bookshelfCoverWidth = "bookshelfCoverWidth"
     const val bottomBarHeight = "bottomBarHeight"
     const val bottomBarIconSize = "bottomBarIconSize"
     const val bottomBarLabelMode = "bottomBarLabelMode"

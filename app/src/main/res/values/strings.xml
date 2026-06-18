@@ -1316,6 +1316,8 @@
     <string name="bookshelf_list_show_kind">Show category</string>
     <string name="bookshelf_list_show_intro">Show intro</string>
     <string name="bookshelf_list_intro_lines">Intro lines</string>
+    <string name="bookshelf_cover_width">Cover width</string>
+    <string name="bookshelf_cover_width_summary">Current: %s</string>
     <string name="click_book_open_read">Tap book to open reading page</string>
     <string name="click_book_open_read_summary">Tap a book in search / discovery to jump straight to the reading page</string>
     <string name="book_info_horizontal_layout">Wide book details layout</string>

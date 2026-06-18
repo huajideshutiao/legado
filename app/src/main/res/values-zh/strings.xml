@@ -1314,6 +1314,8 @@
     <string name="bookshelf_list_show_kind">显示分类</string>
     <string name="bookshelf_list_show_intro">显示简介</string>
     <string name="bookshelf_list_intro_lines">简介行数</string>
+    <string name="bookshelf_cover_width">封面宽度</string>
+    <string name="bookshelf_cover_width_summary">当前宽度：%s</string>
     <string name="click_book_open_read">点击书目直接进入阅读</string>
     <string name="click_book_open_read_summary">在搜索、发现中点击书籍直接打开阅读页，跳过详情</string>
     <string name="book_info_horizontal_layout">书目详情横向布局</string>

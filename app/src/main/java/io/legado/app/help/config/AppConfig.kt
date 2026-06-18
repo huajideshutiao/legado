@@ -150,6 +150,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.bookshelfListIntroLines, value.coerceIn(1, 3))
         }
 
+    var bookshelfCoverWidth: Int
+        get() = appCtx.getPrefInt(PreferKey.bookshelfCoverWidth, 90).coerceIn(70, 160)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookshelfCoverWidth, value.coerceIn(70, 160))
+        }
+
     const val BOTTOM_BAR_HEIGHT_MIN = 36
     const val BOTTOM_BAR_HEIGHT_MAX = 80
     const val BOTTOM_BAR_HEIGHT_DEFAULT = 50

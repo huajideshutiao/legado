@@ -10,6 +10,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.search.SearchAdapter.CallBack
+import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.upIntro
+import io.legado.app.ui.main.bookshelf.upKind
+import io.legado.app.ui.main.bookshelf.upLast
 import io.legado.app.utils.gone
 import io.legado.app.utils.toTimeAgo
 import io.legado.app.utils.visible
@@ -60,6 +64,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         item: Book,
         payloads: MutableList<Any>
     ) {
+        binding.applyCoverWidth()
         if (payloads.isEmpty()) {
             bind(binding, item)
         } else {
@@ -97,9 +102,9 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
             tvLastUpdateTime.text = item.durChapterTime.toTimeAgo()
-            tvIntro.text = item.intro
-            upKind(binding, item.getKindList())
-            upLast(binding, item.latestChapterTitle)
+            upIntro(item.intro)
+            upKind(item.getKindList())
+            upLast(item.latestChapterTitle)
             ivCover.load(
                 item.coverUrl,
                 item.name,
@@ -117,9 +122,9 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                 when (it) {
                     "name" -> tvName.text = item.name
                     "author" -> tvAuthor.text = item.author
-                    "intro" -> tvIntro.text = item.intro
-                    "kind" -> upKind(binding, item.getKindList())
-                    "last" -> upLast(binding, item.latestChapterTitle)
+                    "intro" -> upIntro(item.intro)
+                    "kind" -> upKind(item.getKindList())
+                    "last" -> upLast(item.latestChapterTitle)
                     "cover" -> ivCover.load(
                         item.coverUrl,
                         item.name,
@@ -133,25 +138,4 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun upLast(binding: ItemBookshelfListBinding, latestChapterTitle: String?) {
-        binding.run {
-            if (latestChapterTitle.isNullOrEmpty()) {
-                ivLast.gone()
-                tvLast.gone()
-            } else {
-                tvLast.text = latestChapterTitle
-                ivLast.visible()
-                tvLast.visible()
-            }
-        }
-    }
-
-    private fun upKind(binding: ItemBookshelfListBinding, kinds: List<String>) = binding.run {
-        if (kinds.isEmpty()) {
-            llKind.gone()
-        } else {
-            llKind.visible()
-            llKind.setLabels(kinds)
-        }
-    }
 }

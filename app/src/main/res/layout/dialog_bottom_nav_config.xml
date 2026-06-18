@@ -32,7 +32,7 @@
 
     </LinearLayout>
 
-    <androidx.appcompat.widget.AppCompatSeekBar
+    <io.legado.app.lib.theme.view.ThemeSeekBar
         android:id="@+id/sb_height"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -66,7 +66,7 @@
 
     </LinearLayout>
 
-    <androidx.appcompat.widget.AppCompatSeekBar
+    <io.legado.app.lib.theme.view.ThemeSeekBar
         android:id="@+id/sb_icon"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -87,28 +87,28 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <RadioButton
+        <io.legado.app.lib.theme.view.ThemeRadioButton
             android:id="@+id/rb_label_unlabeled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_unlabeled"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <RadioButton
+        <io.legado.app.lib.theme.view.ThemeRadioButton
             android:id="@+id/rb_label_labeled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_labeled"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <RadioButton
+        <io.legado.app.lib.theme.view.ThemeRadioButton
             android:id="@+id/rb_label_selected"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_selected"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <RadioButton
+        <io.legado.app.lib.theme.view.ThemeRadioButton
             android:id="@+id/rb_label_auto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -116,18 +116,5 @@
             tools:ignore="TouchTargetSizeCheck" />
 
     </RadioGroup>
-
-    <io.legado.app.ui.widget.text.AccentTextView
-        android:id="@+id/tv_reset"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:padding="6dp"
-        android:text="@string/reset"
-        android:textSize="14sp"
-        tools:ignore="TouchTargetSizeCheck" />
 
 </LinearLayout>

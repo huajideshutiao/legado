@@ -7,8 +7,11 @@ import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.upIntro
+import io.legado.app.ui.main.bookshelf.upKind
+import io.legado.app.ui.main.bookshelf.upLast
 import io.legado.app.utils.gone
-import io.legado.app.utils.visible
 
 
 class ExploreShowAdapter(context: Context, callBack: CallBack) :
@@ -20,27 +23,14 @@ class ExploreShowAdapter(context: Context, callBack: CallBack) :
 
     override fun bind(binding: ItemBookshelfListBinding, item: SearchBook) {
         binding.run {
+            applyCoverWidth()
             flHasNew.gone()
-            tvIntro.visible()
             tvName.text = item.name
             tvAuthor.text = item.author
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
-            if (item.latestChapterTitle.isNullOrEmpty()) {
-                ivLast.gone()
-                tvLast.gone()
-            } else {
-                tvLast.text = item.latestChapterTitle
-                ivLast.visible()
-                tvLast.visible()
-            }
-            tvIntro.text = item.trimIntro(context)
-            val kinds = item.getKindList()
-            if (kinds.isEmpty()) {
-                llKind.gone()
-            } else {
-                llKind.visible()
-                llKind.setLabels(kinds)
-            }
+            upLast(item.latestChapterTitle)
+            upIntro(item.trimIntro(context))
+            upKind(item.getKindList())
             ivCover.load(
                 item.coverUrl,
                 item.name,

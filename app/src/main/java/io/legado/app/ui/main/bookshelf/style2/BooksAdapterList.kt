@@ -7,10 +7,9 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfListBinding
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.upRefresh
 import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
@@ -18,9 +17,10 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
     BaseBooksAdapter<RecyclerView.ViewHolder>(context, callBack) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val binding = ItemBookshelfListBinding.inflate(inflater, parent, false)
         return when (viewType) {
-            1 -> GroupViewHolder(ItemBookshelfListBinding.inflate(inflater, parent, false))
-            else -> BookViewHolder(ItemBookshelfListBinding.inflate(inflater, parent, false))
+            1 -> GroupViewHolder(binding)
+            else -> BookViewHolder(binding)
         }
     }
 
@@ -31,11 +31,13 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
     ) {
         when (holder) {
             is BookViewHolder -> (getItem(position) as? Book)?.let {
+                holder.binding.applyCoverWidth()
                 holder.registerListener(it)
                 holder.onBind(it, payloads)
             }
 
             is GroupViewHolder -> (getItem(position) as? BookGroup)?.let {
+                holder.binding.applyCoverWidth()
                 holder.registerListener(it)
                 holder.onBind(it, payloads)
             }
@@ -58,7 +60,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.visible()
             tvAuthor.visible()
             tvLast.visible()
-            upRefresh(this, item)
+            upRefresh(item, callBack.isUpdate(item.bookUrl))
         }
 
         fun onBind(item: Book, payloads: MutableList<Any>) = binding.run {
@@ -82,7 +84,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                                 inBookshelf = true
                             )
 
-                            "refresh" -> upRefresh(this, item)
+                            "refresh" -> upRefresh(item, callBack.isUpdate(item.bookUrl))
                         }
                     }
                 }
@@ -95,21 +97,6 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             }
             binding.root.onLongClick {
                 callBack.onItemLongClick(item)
-            }
-        }
-
-        private fun upRefresh(binding: ItemBookshelfListBinding, item: Book) {
-            if (!item.isLocal && callBack.isUpdate(item.bookUrl)) {
-                binding.bvUnread.invisible()
-                binding.rlLoading.visible()
-            } else {
-                binding.rlLoading.gone()
-                if (AppConfig.showUnread) {
-                    binding.bvUnread.setHighlight(item.lastCheckCount > 0)
-                    binding.bvUnread.setBadgeCount(item.getUnreadChapterNum())
-                } else {
-                    binding.bvUnread.invisible()
-                }
             }
         }
 

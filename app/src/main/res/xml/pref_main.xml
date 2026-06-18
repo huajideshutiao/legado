@@ -64,6 +64,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:icon="@drawable/ic_filter_inset"
+            android:key="sourceFilterRuleManage"
+            android:title="@string/source_filter_rule"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_cfg_source"
             android:key="txtTocRuleManage"
             android:title="@string/txt_toc_rule"
@@ -79,12 +85,6 @@
             android:icon="@drawable/ic_import"
             android:key="ruleSubManage"
             android:title="@string/rule_subscription"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:icon="@drawable/ic_filter_inset"
-            android:key="sourceFilterRuleManage"
-            android:title="@string/source_filter_rule"
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 

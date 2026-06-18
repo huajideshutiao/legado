@@ -8,11 +8,12 @@ import androidx.lifecycle.Lifecycle
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
-import io.legado.app.utils.toTimeAgo
+import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.upIntro
+import io.legado.app.ui.main.bookshelf.upKind
+import io.legado.app.ui.main.bookshelf.upLastUpdateTime
+import io.legado.app.ui.main.bookshelf.upRefresh
 import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
@@ -33,6 +34,7 @@ class BooksAdapterList(
         item: Book,
         payloads: MutableList<Any>
     ) = binding.run {
+        applyCoverWidth()
         if (payloads.isEmpty()) {
             tvName.text = item.name
             tvAuthor.text = item.author
@@ -43,9 +45,9 @@ class BooksAdapterList(
             ivLast.visible()
             tvLast.visible()
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
-            upRefresh(binding, item)
-            upLastUpdateTime(binding, item)
-            upKindAndIntro(binding, item)
+            upRefresh(item, callBack.isUpdate(item.bookUrl))
+            upLastUpdateTime(item)
+            upKindAndIntro(item)
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
@@ -66,57 +68,21 @@ class BooksAdapterList(
                             true
                         )
 
-                        "refresh" -> upRefresh(binding, item)
-                        "lastUpdateTime" -> upLastUpdateTime(binding, item)
+                        "refresh" -> upRefresh(item, callBack.isUpdate(item.bookUrl))
+                        "lastUpdateTime" -> upLastUpdateTime(item)
                     }
                 }
             }
         }
     }
 
-    private fun upRefresh(binding: ItemBookshelfListBinding, item: Book) {
-        if (!item.isLocal && callBack.isUpdate(item.bookUrl)) {
-            binding.bvUnread.invisible()
-            binding.rlLoading.visible()
-        } else {
-            binding.rlLoading.gone()
-            if (AppConfig.showUnread) {
-                binding.bvUnread.setHighlight(item.lastCheckCount > 0)
-                binding.bvUnread.setBadgeCount(item.getUnreadChapterNum())
-            } else {
-                binding.bvUnread.invisible()
-            }
-        }
-    }
-
-    private fun upLastUpdateTime(binding: ItemBookshelfListBinding, item: Book) {
-        if (AppConfig.showLastUpdateTime && !item.isLocal) {
-            val time = item.latestChapterTime.toTimeAgo()
-            if (binding.tvLastUpdateTime.text != time) {
-                binding.tvLastUpdateTime.text = time
-            }
-            binding.tvLastUpdateTime.visible()
-        } else {
-            binding.tvLastUpdateTime.gone()
-        }
-    }
-
-    private fun upKindAndIntro(binding: ItemBookshelfListBinding, item: Book) {
-        val kinds = item.getKindList()
-        if (AppConfig.bookshelfListShowKind && kinds.isNotEmpty()) {
-            binding.llKind.setLabels(kinds)
-            binding.llKind.visible()
-        } else {
-            binding.llKind.gone()
-        }
-        val intro = item.getDisplayIntro()
-        if (AppConfig.bookshelfListShowIntro && !intro.isNullOrBlank()) {
-            binding.tvIntro.maxLines = AppConfig.bookshelfListIntroLines
-            binding.tvIntro.text = intro
-            binding.tvIntro.visible()
-        } else {
-            binding.tvIntro.gone()
-        }
+    private fun ItemBookshelfListBinding.upKindAndIntro(item: Book) {
+        upKind(item.getKindList(), AppConfig.bookshelfListShowKind)
+        upIntro(
+            item.getDisplayIntro(),
+            maxLines = AppConfig.bookshelfListIntroLines,
+            show = AppConfig.bookshelfListShowIntro,
+        )
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfListBinding) {

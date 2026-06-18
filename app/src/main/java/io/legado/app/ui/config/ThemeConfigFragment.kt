@@ -4,12 +4,9 @@ import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.widget.SeekBar
-import androidx.core.view.MenuProvider
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.indices
 import androidx.preference.Preference
 import io.legado.app.R
@@ -27,6 +24,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference
@@ -39,7 +37,6 @@ import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.checkByIndex
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getCheckedIndex
@@ -60,8 +57,7 @@ import java.io.FileOutputStream
 
 @Suppress("SameParameterValue")
 class ThemeConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener,
-    MenuProvider {
+    SharedPreferences.OnSharedPreferenceChangeListener {
 
     private val requestCodeBgLight = 121
     private val requestCodeBgDark = 122
@@ -83,11 +79,12 @@ class ThemeConfigFragment : PreferenceFragment(),
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_theme)
-        upPreferenceSummary(PreferKey.bgImage, getPrefString(PreferKey.bgImage))
-        upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
-        upPreferenceSummary(PreferKey.barElevation, AppConfig.elevation.toString())
+        upPreferenceSummary(PreferKey.bgImage)
+        upPreferenceSummary(PreferKey.bgImageN)
+        upPreferenceSummary(PreferKey.barElevation)
+        upPreferenceSummary(PreferKey.bookshelfCoverWidth)
         upPreferenceSummary(PreferKey.fontScale)
-        upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
+        upPreferenceSummary(PreferKey.sourceEditMaxLine)
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
             it.onSaveColor = { color ->
                 if (!ColorUtils.isColorLight(color)) {
@@ -114,7 +111,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         super.onViewCreated(view, savedInstanceState)
         activity?.setTitle(R.string.theme_setting)
         listView.setEdgeEffectColor(primaryColor)
-        activity?.addMenuProvider(this, viewLifecycleOwner)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -127,21 +123,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
     }
 
-    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-        menuInflater.inflate(R.menu.theme_config, menu)
-        menu.applyTint(requireContext())
-    }
-
-    override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-        when (menuItem.itemId) {
-            R.id.menu_theme_mode -> {
-                AppConfig.isNightTheme = !AppConfig.isNightTheme
-                ThemeConfig.applyDayNight(requireContext())
-                return true
-            }
-        }
-        return false
-    }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         sharedPreferences ?: return
@@ -150,29 +131,26 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.cPrimary,
             PreferKey.cAccent,
             PreferKey.cBackground,
-            PreferKey.cBBackground -> {
-                upTheme(false)
-            }
+            PreferKey.cBBackground -> upTheme(false)
 
             PreferKey.cNPrimary,
             PreferKey.cNAccent,
             PreferKey.cNBackground,
-            PreferKey.cNBBackground -> {
-                upTheme(true)
-            }
+            PreferKey.cNBBackground -> upTheme(true)
 
             PreferKey.bgImage,
-            PreferKey.bgImageN -> {
-                upPreferenceSummary(key, getPrefString(key))
+            PreferKey.bgImageN,
+            PreferKey.sourceEditMaxLine,
+            PreferKey.bookshelfCoverWidth -> upPreferenceSummary(key)
+
+            PreferKey.barElevation,
+            PreferKey.fontScale -> {
+                upPreferenceSummary(key)
+                recreateActivities()
             }
 
             PreferKey.showDiscovery -> postEvent(EventBus.NOTIFY_MAIN, true)
-
-            PreferKey.sourceEditMaxLine -> {
-                upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
-            }
         }
-
     }
 
     @SuppressLint("PrivateResource")
@@ -184,11 +162,9 @@ class ThemeConfigFragment : PreferenceFragment(),
                 max = 32, min = 0, value = AppConfig.elevation,
                 neutralButton = R.string.btn_default_s to {
                     AppConfig.elevation = AppConst.sysElevation
-                    recreateActivities()
                 }
             ) {
                 AppConfig.elevation = it
-                recreateActivities()
             }
 
             PreferKey.fontScale -> showNumberPicker(
@@ -197,11 +173,9 @@ class ThemeConfigFragment : PreferenceFragment(),
                 max = 16, min = 8, value = 10,
                 neutralButton = R.string.btn_default_s to {
                     putPrefInt(PreferKey.fontScale, 0)
-                    recreateActivities()
                 }
             ) {
                 putPrefInt(PreferKey.fontScale, it)
-                recreateActivities()
             }
 
             PreferKey.bgImage -> selectBgAction(false)
@@ -221,6 +195,19 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bookshelfLayout -> configBookshelf()
 
             "bottomNavConfig" -> configBottomNav()
+
+            PreferKey.bookshelfCoverWidth -> showNumberPicker(
+                requireContext(),
+                titleResId = R.string.bookshelf_cover_width,
+                max = 160, min = 70, value = AppConfig.bookshelfCoverWidth,
+                neutralButton = R.string.btn_default_s to {
+                    AppConfig.bookshelfCoverWidth = 90
+                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                }
+            ) {
+                AppConfig.bookshelfCoverWidth = it
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            }
 
             PreferKey.sourceEditMaxLine -> {
                 showNumberPicker(
@@ -341,8 +328,15 @@ class ThemeConfigFragment : PreferenceFragment(),
     private fun upPreferenceSummary(preferenceKey: String, value: String? = null) {
         val preference = findPreference<Preference>(preferenceKey) ?: return
         when (preferenceKey) {
-            PreferKey.barElevation -> preference.summary =
-                getString(R.string.bar_elevation_s, value)
+            PreferKey.barElevation -> {
+                val elevation = value ?: AppConfig.elevation.toString()
+                preference.summary = getString(R.string.bar_elevation_s, elevation)
+            }
+
+            PreferKey.bookshelfCoverWidth -> {
+                val width = value ?: "${AppConfig.bookshelfCoverWidth}dp"
+                preference.summary = getString(R.string.bookshelf_cover_width_summary, width)
+            }
 
             PreferKey.fontScale -> {
                 val fontScale = AppContextWrapper.getFontScale(requireContext())
@@ -350,14 +344,19 @@ class ThemeConfigFragment : PreferenceFragment(),
             }
 
             PreferKey.bgImage,
-            PreferKey.bgImageN -> preference.summary = if (value.isNullOrBlank()) {
-                getString(R.string.select_image)
-            } else {
-                value
+            PreferKey.bgImageN -> {
+                val bgImage = value ?: getPrefString(preferenceKey)
+                preference.summary = if (bgImage.isNullOrBlank()) {
+                    getString(R.string.select_image)
+                } else {
+                    bgImage
+                }
             }
 
-            PreferKey.sourceEditMaxLine -> preference.summary =
-                getString(R.string.source_edit_max_line_summary, value)
+            PreferKey.sourceEditMaxLine -> {
+                val maxLine = value ?: AppConfig.sourceEditMaxLine.toString()
+                preference.summary = getString(R.string.source_edit_max_line_summary, maxLine)
+            }
 
             else -> preference.summary = value
         }
@@ -385,52 +384,45 @@ class ThemeConfigFragment : PreferenceFragment(),
 
     @SuppressLint("InflateParams")
     private fun configBottomNav() {
+        val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
+        fun applyValues(height: Int, icon: Int, label: Int) {
+            binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
+            binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
+            binding.tvHeightValue.text = "${height}dp"
+            binding.tvIconValue.text = "${icon}dp"
+            when (label) {
+                1 -> binding.rbLabelLabeled.isChecked = true
+                2 -> binding.rbLabelSelected.isChecked = true
+                3 -> binding.rbLabelAuto.isChecked = true
+                else -> binding.rbLabelUnlabeled.isChecked = true
+            }
+        }
+        binding.apply {
+            applyValues(
+                AppConfig.bottomBarHeight,
+                AppConfig.bottomBarIconSize,
+                AppConfig.bottomBarLabelMode
+            )
+            sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    tvHeightValue.text = "${progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN}dp"
+                }
+            })
+            sbIcon.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    tvIconValue.text = "${progress + AppConfig.BOTTOM_BAR_ICON_MIN}dp"
+                }
+            })
+        }
         alert(titleResource = R.string.bottom_nav_config) {
-            val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
-            fun applyValues(height: Int, icon: Int, label: Int) {
-                binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
-                binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
-                binding.tvHeightValue.text = "${height}dp"
-                binding.tvIconValue.text = "${icon}dp"
-                when (label) {
-                    1 -> binding.rbLabelLabeled.isChecked = true
-                    2 -> binding.rbLabelSelected.isChecked = true
-                    3 -> binding.rbLabelAuto.isChecked = true
-                    else -> binding.rbLabelUnlabeled.isChecked = true
-                }
-            }
-            binding.apply {
-                applyValues(
-                    AppConfig.bottomBarHeight,
-                    AppConfig.bottomBarIconSize,
-                    AppConfig.bottomBarLabelMode
-                )
-                sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar,
-                        progress: Int,
-                        fromUser: Boolean
-                    ) {
-                        tvHeightValue.text = "${progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN}dp"
-                    }
-                })
-                sbIcon.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar,
-                        progress: Int,
-                        fromUser: Boolean
-                    ) {
-                        tvIconValue.text = "${progress + AppConfig.BOTTOM_BAR_ICON_MIN}dp"
-                    }
-                })
-                tvReset.setOnClickListener {
-                    applyValues(
-                        AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
-                        AppConfig.BOTTOM_BAR_ICON_DEFAULT,
-                        AppConfig.BOTTOM_BAR_LABEL_DEFAULT
-                    )
-                }
-            }
             customView { binding.root }
             okButton {
                 val newHeight = binding.sbHeight.progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN
@@ -458,7 +450,16 @@ class ThemeConfigFragment : PreferenceFragment(),
                     recreateActivities()
                 }
             }
+            neutralButton(R.string.reset)
             cancelButton()
+        }.apply {
+            getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                applyValues(
+                    AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
+                    AppConfig.BOTTOM_BAR_ICON_DEFAULT,
+                    AppConfig.BOTTOM_BAR_LABEL_DEFAULT
+                )
+            }
         }
     }
 
