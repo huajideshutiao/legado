@@ -62,6 +62,8 @@ object RhinoScriptEngine : AbstractScriptEngine(), Compilable {
     private val indexedProps: MutableMap<Any, Any?> = HashMap()
 
     fun eval(js: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
+        // 空字符串早返回，避免不必要的编译执行开销
+        if (js.isBlank()) return null
         val bindings = ScriptBindings().apply(bindingsConfig)
         return eval(js, bindings)
     }

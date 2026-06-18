@@ -780,6 +780,8 @@ class AnalyzeRule(
      * 执行JS
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
+        // 空字符串早返回，避免不必要的编译执行开销
+        if (jsStr.isBlank()) return null
         val bindings = buildScriptBindings { bindings ->
             variables?.forEach { (k, v) -> bindings[k.key] = v }
             bindings["java"] = this

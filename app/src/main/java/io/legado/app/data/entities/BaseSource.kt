@@ -273,6 +273,8 @@ interface BaseSource : JsExtensions {
      */
     @Throws(Exception::class)
     fun evalJS(jsStr: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
+        // 空字符串早返回，避免不必要的编译执行开销
+        if (jsStr.isBlank()) return null
         val bindings = buildScriptBindings { bindings ->
             bindings["java"] = this
             bindings["source"] = this
