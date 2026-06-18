@@ -30,7 +30,6 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.flexbox.FlexWrap
@@ -58,7 +57,6 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
@@ -92,7 +90,6 @@ import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.ui.widget.text.IntroButtonSpan
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
@@ -490,8 +487,8 @@ class BookInfoActivity :
 
     private fun showCover(book: Book) = binding.run {
         val coverUrl = book.getDisplayCover()
-        ivCover.coverRatio = if (book.isVideo) CoverImageView.CoverRatio.VIDEO
-        else CoverImageView.CoverRatio.NOVEL
+        ivCover.coverRatio = if (book.isVideo) BookCover.CoverRatio.VIDEO
+        else BookCover.CoverRatio.NOVEL
         ivCover.load(
             coverUrl,
             book.name,
@@ -501,13 +498,17 @@ class BookInfoActivity :
             inBookshelf = viewModel.inBookshelf
         )
         if (!AppConfig.isEInkMode && bgBook.isVisible) {
+            // seed 与 ivCover 的默认封面 seed (name) 对齐,
+            // BookInfoBgTransformation 经 extraTransformations 并入,
+            // 失败回退会同时套用 blur+渐变,且与前景挑到同一张默认图。
             BookCover.loadBlur(
                 Glide.with(this@BookInfoActivity),
                 coverUrl,
                 sourceOrigin = book.origin,
-                inBookshelf = viewModel.inBookshelf
-            ).transform(CenterCrop(), BlurTransformation(), BookInfoBgTransformation())
-                .placeholder(bgBook.drawable).into(bgBook)
+                inBookshelf = viewModel.inBookshelf,
+                seed = book.name,
+                extraTransformations = listOf(BookInfoBgTransformation()),
+            ).placeholder(bgBook.drawable).into(bgBook)
         }
     }
 

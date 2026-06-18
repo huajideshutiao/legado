@@ -82,7 +82,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bgImage)
         upPreferenceSummary(PreferKey.bgImageN)
         upPreferenceSummary(PreferKey.barElevation)
-        upPreferenceSummary(PreferKey.bookshelfCoverWidth)
         upPreferenceSummary(PreferKey.fontScale)
         upPreferenceSummary(PreferKey.sourceEditMaxLine)
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
@@ -140,8 +139,7 @@ class ThemeConfigFragment : PreferenceFragment(),
 
             PreferKey.bgImage,
             PreferKey.bgImageN,
-            PreferKey.sourceEditMaxLine,
-            PreferKey.bookshelfCoverWidth -> upPreferenceSummary(key)
+            PreferKey.sourceEditMaxLine -> upPreferenceSummary(key)
 
             PreferKey.barElevation,
             PreferKey.fontScale -> {
@@ -195,19 +193,6 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bookshelfLayout -> configBookshelf()
 
             "bottomNavConfig" -> configBottomNav()
-
-            PreferKey.bookshelfCoverWidth -> showNumberPicker(
-                requireContext(),
-                titleResId = R.string.bookshelf_cover_width,
-                max = 160, min = 70, value = AppConfig.bookshelfCoverWidth,
-                neutralButton = R.string.btn_default_s to {
-                    AppConfig.bookshelfCoverWidth = 90
-                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                }
-            ) {
-                AppConfig.bookshelfCoverWidth = it
-                postEvent(EventBus.BOOKSHELF_REFRESH, "")
-            }
 
             PreferKey.sourceEditMaxLine -> {
                 showNumberPicker(
@@ -333,11 +318,6 @@ class ThemeConfigFragment : PreferenceFragment(),
                 preference.summary = getString(R.string.bar_elevation_s, elevation)
             }
 
-            PreferKey.bookshelfCoverWidth -> {
-                val width = value ?: "${AppConfig.bookshelfCoverWidth}dp"
-                preference.summary = getString(R.string.bookshelf_cover_width_summary, width)
-            }
-
             PreferKey.fontScale -> {
                 val fontScale = AppContextWrapper.getFontScale(requireContext())
                 preference.summary = getString(R.string.font_scale_summary, fontScale)
@@ -385,7 +365,8 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("InflateParams")
     private fun configBottomNav() {
         val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
-        fun applyValues(height: Int, icon: Int, label: Int) {
+        fun applyValues(height: Int, icon: Int, label: Int, showDiscovery: Boolean) {
+            binding.swShowDiscovery.isChecked = showDiscovery
             binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
             binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
             binding.tvHeightValue.text = "${height}dp"
@@ -401,7 +382,8 @@ class ThemeConfigFragment : PreferenceFragment(),
             applyValues(
                 AppConfig.bottomBarHeight,
                 AppConfig.bottomBarIconSize,
-                AppConfig.bottomBarLabelMode
+                AppConfig.bottomBarLabelMode,
+                AppConfig.showDiscovery
             )
             sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
                 override fun onProgressChanged(
@@ -433,7 +415,11 @@ class ThemeConfigFragment : PreferenceFragment(),
                     R.id.rb_label_auto -> 3
                     else -> 0
                 }
+                val newShowDiscovery = binding.swShowDiscovery.isChecked
                 var changed = false
+                if (AppConfig.showDiscovery != newShowDiscovery) {
+                    AppConfig.showDiscovery = newShowDiscovery
+                }
                 if (AppConfig.bottomBarHeight != newHeight) {
                     AppConfig.bottomBarHeight = newHeight
                     changed = true
@@ -457,7 +443,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                 applyValues(
                     AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
                     AppConfig.BOTTOM_BAR_ICON_DEFAULT,
-                    AppConfig.BOTTOM_BAR_LABEL_DEFAULT
+                    AppConfig.BOTTOM_BAR_LABEL_DEFAULT,
+                    true
                 )
             }
         }

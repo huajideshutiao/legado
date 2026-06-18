@@ -18,12 +18,6 @@
         android:title="@string/theme_list"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="showDiscovery"
-        android:title="@string/show_discovery"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="bookshelf"
         android:key="defaultHomePage"
@@ -58,12 +52,6 @@
     <io.legado.app.lib.prefs.Preference
         android:key="bookshelfLayout"
         android:title="@string/bookshelf_layout"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:key="bookshelfCoverWidth"
-        android:summary="@string/bookshelf_cover_width_summary"
-        android:title="@string/bookshelf_cover_width"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference

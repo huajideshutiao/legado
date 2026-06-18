@@ -760,6 +760,7 @@
     <string name="contributors_summary">gedoor、Invinciblelee 和 Xwite 等，详情请在 GitHub 中查看</string>
     <string name="clear_cache_summary">清除已下载书籍和字体缓存</string>
     <string name="default_cover">默认封面</string>
+    <string name="default_cover_count">已选 %1$d 张</string>
     <string name="restore_ignore">恢复忽略列表</string>
     <string name="restore_ignore_summary">恢复时忽略一些内容不恢复，方便不同手机配置不同</string>
     <string name="read_config">阅读界面设置</string>
@@ -1280,7 +1281,7 @@
     <string name="book_type_comic">漫画</string>
     <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危API会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
     <string name="resolution">分辨率</string>
-    <string name="dev_feat_summary">启用一些实验性特性，比如视频封面16：9，点击直接进入阅读页</string>
+    <string name="dev_feat_summary">启用一些实验性特性，比如视频封面16：9，点击视频书籍直接播放</string>
     <string name="source_filter_rule">屏蔽规则</string>
     <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
     <string name="source_filter_rule_name">名称</string>
@@ -1314,10 +1315,10 @@
     <string name="bookshelf_list_show_kind">显示分类</string>
     <string name="bookshelf_list_show_intro">显示简介</string>
     <string name="bookshelf_list_intro_lines">简介行数</string>
-    <string name="bookshelf_cover_width">封面宽度</string>
+    <string name="bookshelf_cover_width">列表模式下封面宽度</string>
     <string name="bookshelf_cover_width_summary">当前宽度：%s</string>
-    <string name="click_book_open_read">点击书目直接进入阅读</string>
-    <string name="click_book_open_read_summary">在搜索、发现中点击书籍直接打开阅读页，跳过详情</string>
+    <string name="click_book_open_read">点击视频书籍直接播放</string>
+    <string name="click_book_open_read_summary">在搜索、发现中点击视频书籍直接打开播放页，跳过详情</string>
     <string name="book_info_horizontal_layout">书目详情横向布局</string>
     <string name="book_info_horizontal_layout_summary">书籍详情页将封面与信息并排显示</string>
     <string name="bookshelf_show_group_count">分组显示书籍数</string>

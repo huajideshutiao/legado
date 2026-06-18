@@ -40,10 +40,6 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
                 dismissAllowingStateLoss()
             }
         }
-        binding.tvFooterLeft.onClick {
-            CacheManager.delete(coverRuleConfigKey)
-            dismissAllowingStateLoss()
-        }
     }
 
     private fun initData() {

@@ -331,10 +331,18 @@ class AudioPlayActivity :
 
     private fun updateCover(url: String) {
         val glide = Glide.with(this)
-        BookCover.load(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-            .placeholder(binding.ivCover.drawable).into(binding.ivCover)
-        BookCover.loadBlur(glide, url, sourceOrigin = AudioPlay.bookSource?.bookSourceUrl)
-            .into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
+        // 前景圆形封面与背景模糊封面共用同一 seed,失败回退到默认图集时会挑同一张。
+        val seed = AudioPlay.book?.name
+        BookCover.load(
+            glide, url,
+            sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
+            seed = seed,
+        ).placeholder(binding.ivCover.drawable).into(binding.ivCover)
+        BookCover.loadBlur(
+            glide, url,
+            sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
+            seed = seed,
+        ).into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
                 override fun onResourceCleared(p0: Drawable?) {}
                 override fun onLoadFailed(p0: Drawable?) {}
                 override fun onResourceReady(p0: Drawable, p1: Transition<in Drawable>?) {

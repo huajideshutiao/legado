@@ -271,12 +271,26 @@ fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
  * 根据目标宽高裁剪图片 (Center Crop)
  */
 fun Bitmap.centerCrop(width: Int, height: Int): Bitmap {
+    return cropTo(width, height, alignY = 0.5f)
+}
+
+/**
+ * 顶部对齐裁剪 (Top Crop) -- 视频封面用,保留顶部信息,底部信息被裁掉。
+ */
+fun Bitmap.topCrop(width: Int, height: Int): Bitmap {
+    return cropTo(width, height, alignY = 0f)
+}
+
+/**
+ * @param alignY 0f=顶部对齐,0.5f=居中,1f=底部对齐
+ */
+private fun Bitmap.cropTo(width: Int, height: Int, alignY: Float): Bitmap {
     if (this.width == width && this.height == height) return this
     val result = createBitmap(width, height, config ?: Config.ARGB_8888)
     val canvas = Canvas(result)
     val scale = max(width.toFloat() / this.width, height.toFloat() / this.height)
     val dx = (width - this.width * scale) / 2f
-    val dy = (height - this.height * scale) / 2f
+    val dy = (height - this.height * scale) * alignY
     val matrix = Matrix()
     matrix.setScale(scale, scale)
     matrix.postTranslate(dx, dy)

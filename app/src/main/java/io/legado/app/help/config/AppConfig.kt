@@ -288,8 +288,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
-    val showDiscovery: Boolean
+    var showDiscovery: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showDiscovery, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showDiscovery, value)
+        }
 
     val autoRefreshBook: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.autoRefresh)

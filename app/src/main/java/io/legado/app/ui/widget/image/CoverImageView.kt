@@ -37,12 +37,7 @@ class CoverImageView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : AppCompatImageView(context, attrs) {
 
-    enum class CoverRatio(val widthRatio: Int, val heightRatio: Int) {
-        NOVEL(3, 4),
-        VIDEO(16, 9)
-    }
-
-    var coverRatio: CoverRatio = CoverRatio.NOVEL
+    var coverRatio: BookCover.CoverRatio = BookCover.CoverRatio.NOVEL
         set(value) {
             if (field != value) {
                 field = value
@@ -62,8 +57,8 @@ class CoverImageView @JvmOverloads constructor(
         attrs?.let {
             context.withStyledAttributes(it, R.styleable.CoverImageView) {
                 coverRatio = when (getInt(R.styleable.CoverImageView_coverRatio, 1)) {
-                    2 -> CoverRatio.VIDEO
-                    else -> CoverRatio.NOVEL
+                    2 -> BookCover.CoverRatio.VIDEO
+                    else -> BookCover.CoverRatio.NOVEL
                 }
             }
         }
@@ -250,7 +245,12 @@ class CoverImageView @JvmOverloads constructor(
      */
     private fun showDefaultCover() {
         scaleType = ScaleType.FIT_XY
-        setImageDrawable(BookCover.newDefaultDrawable())
+        setImageDrawable(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
+    }
+
+    // 默认封面按"书名"稳定选图;无书名时回落到 path,再无则随机。
+    private fun defaultCoverSeed(): String? {
+        return name?.takeIf { it.isNotBlank() } ?: bitmapPath
     }
 
     fun load(
@@ -288,10 +288,12 @@ class CoverImageView @JvmOverloads constructor(
                 loadOnlyWifi,
                 sourceOrigin,
                 inBookshelf,
-                onLoadFinish
+                seed = defaultCoverSeed(),
+                ratio = coverRatio,
+                onLoadFinish = onLoadFinish,
             )
                 .addListener(glideListener)
-                .placeholder(BookCover.newDefaultDrawable())
+                .placeholder(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
                 .into(this)
             Unit
         }

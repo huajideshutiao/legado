@@ -10,16 +10,18 @@
 
     <TextView
         android:id="@+id/textView"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:layout_weight="1"
+        android:layout_marginEnd="8dp"
         android:gravity="center_vertical"
         tools:text="标签" />
 
     <androidx.appcompat.widget.AppCompatSpinner
         android:id="@+id/spinner"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:dropDownWidth="wrap_content"
         android:layerType="software"
         tools:ignore="TouchTargetSizeCheck" />
 

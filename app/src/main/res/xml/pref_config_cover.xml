@@ -2,6 +2,12 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <io.legado.app.lib.prefs.Preference
+        android:key="bookshelfCoverWidth"
+        android:summary="@string/bookshelf_cover_width_summary"
+        android:title="@string/bookshelf_cover_width"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:key="loadCoverOnlyWifi"
         android:defaultValue="false"

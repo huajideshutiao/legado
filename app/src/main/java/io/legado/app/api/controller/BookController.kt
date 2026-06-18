@@ -1,7 +1,6 @@
 package io.legado.app.api.controller
 
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
 import androidx.core.graphics.drawable.toBitmap
 import com.bumptech.glide.Glide
 import io.legado.app.api.ReturnData
@@ -31,7 +30,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
-import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 object BookController {
@@ -39,7 +37,7 @@ object BookController {
     private lateinit var book: Book
     private var bookSource: BookSource? = null
     private var bookUrl: String = ""
-    private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
+    private var defaultCoverBitmap: Bitmap? = null
 
     /*
     * 分组号及名称
@@ -85,14 +83,18 @@ object BookController {
             returnData.setData(ftBitmap.get(3, TimeUnit.SECONDS))
         } catch (e: Exception) {
             try {
-                val defaultBitmap = defaultCoverCache.getOrPut(BookCover.defaultDrawable) {
+                val cached = defaultCoverBitmap
+                val defaultBitmap = if (cached != null && !cached.isRecycled) {
+                    cached
+                } else {
                     Glide.with(appCtx)
                         .asBitmap()
-                        .load(BookCover.defaultDrawable.toBitmap())
+                        .load(BookCover.newDefaultDrawable().toBitmap())
                         .override(84, 112)
                         .centerCrop()
                         .submit()
                         .get()
+                        .also { defaultCoverBitmap = it }
                 }
                 returnData.setData(defaultBitmap)
             } catch (e: Exception) {

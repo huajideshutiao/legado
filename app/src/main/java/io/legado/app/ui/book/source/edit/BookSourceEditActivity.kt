@@ -84,8 +84,12 @@ class BookSourceEditActivity :
         )
     }
     private val exploreColsSelections: List<Pair<String, String?>> by lazy {
-        resources.getStringArray(R.array.explore_cols)
-            .mapIndexed { i, label -> label to (i + 1).toString() }
+        val list = mutableListOf<Pair<String, String?>>()
+        list.add(getString(R.string.explore_cols_one_label) to "0")
+        for (i in 2..6) {
+            list.add("$i 列" to i.toString())
+        }
+        list
     }
     private val imageStyleSelections by lazy {
         listOf(
@@ -380,7 +384,7 @@ class BookSourceEditActivity :
             add(
                 EditEntity(
                     "exploreCols",
-                    BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(1, 6).toString(),
+                    BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(0, 6).toString(),
                     R.string.explore_cols,
                     EditEntity.ViewType.spinner,
                     exploreColsSelections,
@@ -543,12 +547,12 @@ class BookSourceEditActivity :
             }
         }
         var exploreVideo = false
-        var exploreCols = 1
+        var exploreCols = 0
         exploreEntities.forEach {
             when (it.key) {
                 "enabledExplore" -> source.enabledExplore = it.boolValue
                 "exploreItemStyle" -> exploreVideo = it.intValue != 0
-                "exploreCols" -> exploreCols = it.intValue.coerceIn(1, 6)
+                "exploreCols" -> exploreCols = it.intValue.coerceIn(0, 6)
                 "exploreUrl" -> source.exploreUrl = it.text
                 "bookList" -> exploreRule.bookList = it.text
                 "name" -> exploreRule.name = it.text

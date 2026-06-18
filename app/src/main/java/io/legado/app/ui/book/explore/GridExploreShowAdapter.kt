@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfGridBinding
-import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.model.BookCover
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -24,7 +24,7 @@ class GridExploreShowAdapter(context: Context, callBack: CallBack) :
         binding.run {
             bvUnread.gone()
             rlLoading.gone()
-            ivCover.coverRatio = CoverImageView.CoverRatio.NOVEL
+            ivCover.coverRatio = BookCover.CoverRatio.NOVEL
             tvName.text = item.name
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             if (item.coverUrl.isNullOrBlank()) ivCover.gone()

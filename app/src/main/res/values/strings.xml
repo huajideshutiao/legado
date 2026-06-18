@@ -762,6 +762,7 @@
     <string name="contributors_summary">gedoor,Invinciblelee,Xwite etc. Checking in github for details</string>
     <string name="clear_cache_summary">Clear the cache of the downloaded books and fonts</string>
     <string name="default_cover">Default cover</string>
+    <string name="default_cover_count">%1$d images</string>
     <string name="restore_ignore">Bypass list</string>
     <string name="restore_ignore_summary">Ignore some contents while restoring</string>
     <string name="read_config">Reading interface settings</string>
@@ -1281,7 +1282,7 @@
     <string name="book_type_novel">Novel</string>
     <string name="book_type_comic">Comic</string>
     <string name="enable_dangerous_api_confirm">Warning: Allowing unknown sources to use dangerous APIs can cause unpredictable results. In the worst case, it may lead to app data being cleared or leaked, and locally accessible files being exposed. Please make sure you have audited the code and trust the source, otherwise do not enable this.</string>
-    <string name="dev_feat_summary">Enable some experimental features, such as 16:9 video thumbnails and direct access to the reading page with a click</string>
+    <string name="dev_feat_summary">Enable some experimental features, such as 16:9 video thumbnails and directly play video books</string>
     <string name="source_filter_rule">Block rules</string>
     <string name="source_filter_rule_empty">No rules. Tap + to add.</string>
     <string name="source_filter_rule_name">Name</string>
@@ -1316,10 +1317,10 @@
     <string name="bookshelf_list_show_kind">Show category</string>
     <string name="bookshelf_list_show_intro">Show intro</string>
     <string name="bookshelf_list_intro_lines">Intro lines</string>
-    <string name="bookshelf_cover_width">Cover width</string>
+    <string name="bookshelf_cover_width">Cover width in list mode</string>
     <string name="bookshelf_cover_width_summary">Current: %s</string>
-    <string name="click_book_open_read">Tap book to open reading page</string>
-    <string name="click_book_open_read_summary">Tap a book in search / discovery to jump straight to the reading page</string>
+    <string name="click_book_open_read">Directly play video books</string>
+    <string name="click_book_open_read_summary">Click video books in search/discovery to play directly, skipping details</string>
     <string name="book_info_horizontal_layout">Wide book details layout</string>
     <string name="book_info_horizontal_layout_summary">Place the cover on the left and book info on the right in the details page</string>
     <string name="bookshelf_show_group_count">Show book count on groups</string>
