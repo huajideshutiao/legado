@@ -4,19 +4,19 @@ import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
-import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
-import io.legado.app.databinding.ItemSearchBinding
+import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.search.SearchAdapter.CallBack
 import io.legado.app.utils.gone
+import io.legado.app.utils.toTimeAgo
 import io.legado.app.utils.visible
 
 
 class BookAdapter(context: Context, val callBack: CallBack) :
-    DiffRecyclerAdapter<Book, ItemSearchBinding>(context) {
+    DiffRecyclerAdapter<Book, ItemBookshelfListBinding>(context) {
 
     override val diffItemCallback: DiffUtil.ItemCallback<Book>
         get() = object : DiffUtil.ItemCallback<Book>() {
@@ -50,13 +50,13 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             }
         }
 
-    override fun getViewBinding(parent: ViewGroup): ItemSearchBinding {
-        return ItemSearchBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemBookshelfListBinding {
+        return ItemBookshelfListBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemSearchBinding,
+        binding: ItemBookshelfListBinding,
         item: Book,
         payloads: MutableList<Any>
     ) {
@@ -70,7 +70,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
+    override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfListBinding) {
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
@@ -86,13 +86,20 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun bind(binding: ItemSearchBinding, item: Book) {
+    private fun bind(binding: ItemBookshelfListBinding, item: Book) {
         binding.run {
+            flHasNew.gone()
+            ivRead.visible()
+            tvRead.visible()
+            tvIntro.visible()
+            tvLastUpdateTime.visible()
             tvName.text = item.name
-            tvAuthor.text = context.getString(R.string.author_show, item.author)
-            tvIntroduce.text = context.getString(R.string.intro_show, item.intro)
+            tvAuthor.text = item.author
+            tvRead.text = item.durChapterTitle
+            tvLastUpdateTime.text = item.durChapterTime.toTimeAgo()
+            tvIntro.text = item.intro
             upKind(binding, item.getKindList())
-            upLasted(binding, item.latestChapterTitle)
+            upLast(binding, item.latestChapterTitle)
             ivCover.load(
                 item.coverUrl,
                 item.name,
@@ -104,19 +111,15 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun bindChange(binding: ItemSearchBinding, item: Book, bundle: Bundle) {
+    private fun bindChange(binding: ItemBookshelfListBinding, item: Book, bundle: Bundle) {
         binding.run {
             bundle.keySet().forEach {
                 when (it) {
                     "name" -> tvName.text = item.name
-                    "author" -> tvAuthor.text =
-                        context.getString(R.string.author_show, item.author)
-
-                    "intro" -> tvIntroduce.text =
-                        context.getString(R.string.intro_show, item.intro)
-
+                    "author" -> tvAuthor.text = item.author
+                    "intro" -> tvIntro.text = item.intro
                     "kind" -> upKind(binding, item.getKindList())
-                    "last" -> upLasted(binding, item.latestChapterTitle)
+                    "last" -> upLast(binding, item.latestChapterTitle)
                     "cover" -> ivCover.load(
                         item.coverUrl,
                         item.name,
@@ -130,19 +133,20 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun upLasted(binding: ItemSearchBinding, latestChapterTitle: String?) {
+    private fun upLast(binding: ItemBookshelfListBinding, latestChapterTitle: String?) {
         binding.run {
             if (latestChapterTitle.isNullOrEmpty()) {
-                tvLasted.gone()
+                ivLast.gone()
+                tvLast.gone()
             } else {
-                tvLasted.text =
-                    context.getString(R.string.lasted_show, latestChapterTitle)
-                tvLasted.visible()
+                tvLast.text = latestChapterTitle
+                ivLast.visible()
+                tvLast.visible()
             }
         }
     }
 
-    private fun upKind(binding: ItemSearchBinding, kinds: List<String>) = binding.run {
+    private fun upKind(binding: ItemBookshelfListBinding, kinds: List<String>) = binding.run {
         if (kinds.isEmpty()) {
             llKind.gone()
         } else {

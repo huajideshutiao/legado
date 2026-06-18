@@ -77,9 +77,15 @@ class BookSourceEditActivity :
         val labels = resources.getStringArray(R.array.book_type)
         labels.mapIndexed { index, label -> label to index.toString() }
     }
-    private val exploreStyleSelections by lazy {
-        val labels = resources.getStringArray(R.array.explore_style)
-        labels.mapIndexed { index, label -> label to index.toString() }
+    private val exploreItemStyleSelections: List<Pair<String, String?>> by lazy {
+        listOf(
+            getString(R.string.explore_style_normal) to "0",
+            getString(R.string.explore_style_video) to "1",
+        )
+    }
+    private val exploreColsSelections: List<Pair<String, String?>> by lazy {
+        resources.getStringArray(R.array.explore_cols)
+            .mapIndexed { i, label -> label to (i + 1).toString() }
     }
     private val imageStyleSelections by lazy {
         listOf(
@@ -363,11 +369,21 @@ class BookSourceEditActivity :
             )
             add(
                 EditEntity(
-                    "exploreStyle",
-                    bs.exploreStyle.coerceIn(0, 3).toString(),
+                    "exploreItemStyle",
+                    if (BookSource.exploreStyleIsVideo(bs.exploreStyle)) "1" else "0",
                     R.string.explore_style,
                     EditEntity.ViewType.spinner,
-                    exploreStyleSelections,
+                    exploreItemStyleSelections,
+                    span = 1
+                )
+            )
+            add(
+                EditEntity(
+                    "exploreCols",
+                    BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(1, 6).toString(),
+                    R.string.explore_cols,
+                    EditEntity.ViewType.spinner,
+                    exploreColsSelections,
                     span = 1
                 )
             )
@@ -526,10 +542,13 @@ class BookSourceEditActivity :
                 "hasMoreRule" -> searchRule.hasMoreRule = it.text
             }
         }
+        var exploreVideo = false
+        var exploreCols = 1
         exploreEntities.forEach {
             when (it.key) {
                 "enabledExplore" -> source.enabledExplore = it.boolValue
-                "exploreStyle" -> source.exploreStyle = it.intValue.coerceIn(0, 3)
+                "exploreItemStyle" -> exploreVideo = it.intValue != 0
+                "exploreCols" -> exploreCols = it.intValue.coerceIn(1, 6)
                 "exploreUrl" -> source.exploreUrl = it.text
                 "bookList" -> exploreRule.bookList = it.text
                 "name" -> exploreRule.name = it.text
@@ -543,6 +562,8 @@ class BookSourceEditActivity :
                 "hasMoreRule" -> exploreRule.hasMoreRule = it.text
             }
         }
+        source.exploreStyle = (if (exploreVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
+            (exploreCols and BookSource.EXPLORE_STYLE_COLS_MASK)
         infoEntities.forEach {
             when (it.key) {
                 "init" -> bookInfoRule.init = it.text

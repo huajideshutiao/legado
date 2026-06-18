@@ -96,6 +96,20 @@ fun String.splitNotBlank(regex: Regex, limit: Int = 0): Array<String> = run {
     this.split(regex, limit).map { it.trim() }.filterNot { it.isBlank() }.toTypedArray()
 }
 
+/**
+ * 提取分类的纯文本：去掉 "::url" 后缀和 "group:" 前缀。
+ * 例: "玄幻:都市::http://x" -> "都市", "玄幻" -> "玄幻", "100万字" -> "100万字"。
+ */
+fun String.pureKindText(): String {
+    val tagContent = substringBefore("::").trim()
+    val parts = tagContent.split(":", limit = 2)
+    return if (parts.size > 1 && parts.all { it.isNotBlank() }) {
+        parts[1].trim()
+    } else {
+        tagContent
+    }
+}
+
 @SuppressLint("ObsoleteSdkInt")
 fun String.cnCompare(other: String): Int {
     return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {

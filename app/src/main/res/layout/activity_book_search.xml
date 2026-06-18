@@ -35,7 +35,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            tools:listitem="@layout/item_search" />
+            tools:listitem="@layout/item_bookshelf_list" />
 
     </io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout>
 
@@ -69,7 +69,7 @@
                 android:id="@+id/rv_bookshelf_search"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                tools:listitem="@layout/item_search" />
+                tools:listitem="@layout/item_bookshelf_list" />
 
         </FrameLayout>
 

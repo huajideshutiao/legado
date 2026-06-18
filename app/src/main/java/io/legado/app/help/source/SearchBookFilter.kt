@@ -50,10 +50,11 @@ object SearchBookFilter {
         reload()
     }
 
-    fun apply(books: List<SearchBook>): List<SearchBook> {
+    fun apply(books: List<SearchBook>): Pair<List<SearchBook>, Int> {
         val snap = ensure()
-        if (snap.isEmpty) return books
-        return books.filterNot { it.matchesAnyRule(snap) }
+        if (snap.isEmpty) return books to 0
+        val result = books.filterNot { it.matchesAnyRule(snap) }
+        return result to (books.size - result.size)
     }
 
     private fun SearchBook.matchesAnyRule(snap: Snapshot): Boolean {

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="wrap_content">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/tool_bar"
@@ -16,8 +16,9 @@
     <ScrollView
         android:id="@+id/scroll_view"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="wrap_content"
         android:fillViewport="true"
+        app:layout_constrainedHeight="true"
         app:layout_constraintBottom_toTopOf="@+id/ll_bottom_bar"
         app:layout_constraintTop_toBottomOf="@+id/tool_bar">
 
@@ -27,30 +28,30 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp">
 
-            <com.google.android.material.textfield.TextInputLayout
+            <io.legado.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="@string/source_filter_rule_name">
 
-                <com.google.android.material.textfield.TextInputEditText
+                <io.legado.app.lib.theme.view.ThemeEditText
                     android:id="@+id/et_name"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="1" />
-            </com.google.android.material.textfield.TextInputLayout>
+            </io.legado.app.ui.widget.text.TextInputLayout>
 
-            <com.google.android.material.textfield.TextInputLayout
+            <io.legado.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:hint="@string/source_filter_rule_pattern">
 
-                <com.google.android.material.textfield.TextInputEditText
+                <io.legado.app.lib.theme.view.ThemeEditText
                     android:id="@+id/et_pattern"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="2" />
-            </com.google.android.material.textfield.TextInputLayout>
+            </io.legado.app.ui.widget.text.TextInputLayout>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -66,7 +67,7 @@
                 android:layout_marginTop="4dp"
                 android:columnCount="3">
 
-                <androidx.appcompat.widget.AppCompatCheckBox
+                <io.legado.app.lib.theme.view.ThemeCheckBox
                     android:id="@+id/cb_field_name"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -74,7 +75,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_name" />
 
-                <androidx.appcompat.widget.AppCompatCheckBox
+                <io.legado.app.lib.theme.view.ThemeCheckBox
                     android:id="@+id/cb_field_author"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -82,7 +83,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_author" />
 
-                <androidx.appcompat.widget.AppCompatCheckBox
+                <io.legado.app.lib.theme.view.ThemeCheckBox
                     android:id="@+id/cb_field_intro"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -90,7 +91,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_intro" />
 
-                <androidx.appcompat.widget.AppCompatCheckBox
+                <io.legado.app.lib.theme.view.ThemeCheckBox
                     android:id="@+id/cb_field_kind"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -98,7 +99,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_kind" />
 
-                <androidx.appcompat.widget.AppCompatCheckBox
+                <io.legado.app.lib.theme.view.ThemeCheckBox
                     android:id="@+id/cb_field_word_count"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -185,7 +186,8 @@
         android:orientation="horizontal"
         android:paddingLeft="10dp"
         android:paddingRight="10dp"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/scroll_view">
 
         <Space
             android:layout_width="0dp"

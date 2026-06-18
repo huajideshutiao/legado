@@ -5,20 +5,19 @@ import android.os.Bundle
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
-import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.ItemSearchBinding
+import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
 
 class SearchAdapter(context: Context, val callBack: CallBack) :
-    DiffRecyclerAdapter<SearchBook, ItemSearchBinding>(context) {
+    DiffRecyclerAdapter<SearchBook, ItemBookshelfListBinding>(context) {
 
     override val keepScrollPosition = true
 
@@ -53,13 +52,13 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
 
         }
 
-    override fun getViewBinding(parent: ViewGroup): ItemSearchBinding {
-        return ItemSearchBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemBookshelfListBinding {
+        return ItemBookshelfListBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemSearchBinding,
+        binding: ItemBookshelfListBinding,
         item: SearchBook,
         payloads: MutableList<Any>
     ) {
@@ -73,7 +72,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
+    override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfListBinding) {
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
                 callBack.showBookInfo(it.apply {
@@ -91,14 +90,16 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun bind(binding: ItemSearchBinding, searchBook: SearchBook) {
+    private fun bind(binding: ItemBookshelfListBinding, searchBook: SearchBook) {
         binding.run {
+            flHasNew.gone()
+            tvIntro.visible()
             tvName.text = searchBook.name
-            tvAuthor.text = context.getString(R.string.author_show, searchBook.author)
+            tvAuthor.text = searchBook.author
             ivInBookshelf.isVisible = callBack.isInBookshelf(searchBook)
             bvOriginCount.setBadgeCount(searchBook.origins.size)
-            upLasted(binding, searchBook.latestChapterTitle)
-            tvIntroduce.text = searchBook.trimIntro(context)
+            upLast(binding, searchBook.latestChapterTitle)
+            tvIntro.text = searchBook.trimIntro(context)
             upKind(binding, searchBook.getKindList())
             ivCover.load(
                 searchBook.coverUrl,
@@ -111,13 +112,17 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun bindChange(binding: ItemSearchBinding, searchBook: SearchBook, bundle: Bundle) {
+    private fun bindChange(
+        binding: ItemBookshelfListBinding,
+        searchBook: SearchBook,
+        bundle: Bundle
+    ) {
         binding.run {
             bundle.keySet().forEach {
                 when (it) {
                     "origins" -> bvOriginCount.setBadgeCount(searchBook.origins.size)
-                    "last" -> upLasted(binding, searchBook.latestChapterTitle)
-                    "intro" -> tvIntroduce.text = searchBook.trimIntro(context)
+                    "last" -> upLast(binding, searchBook.latestChapterTitle)
+                    "intro" -> tvIntro.text = searchBook.trimIntro(context)
                     "kind" -> upKind(binding, searchBook.getKindList())
                     "isInBookshelf" -> ivInBookshelf.isVisible = callBack.isInBookshelf(searchBook)
                     "cover" -> ivCover.load(
@@ -133,19 +138,20 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun upLasted(binding: ItemSearchBinding, latestChapterTitle: String?) {
+    private fun upLast(binding: ItemBookshelfListBinding, latestChapterTitle: String?) {
         binding.run {
             if (latestChapterTitle.isNullOrEmpty()) {
-                tvLasted.gone()
+                ivLast.gone()
+                tvLast.gone()
             } else {
-                tvLasted.text =
-                    context.getString(R.string.lasted_show, latestChapterTitle)
-                tvLasted.visible()
+                tvLast.text = latestChapterTitle
+                ivLast.visible()
+                tvLast.visible()
             }
         }
     }
 
-    private fun upKind(binding: ItemSearchBinding, kinds: List<String>) = binding.run {
+    private fun upKind(binding: ItemBookshelfListBinding, kinds: List<String>) = binding.run {
         if (kinds.isEmpty()) {
             llKind.gone()
         } else {

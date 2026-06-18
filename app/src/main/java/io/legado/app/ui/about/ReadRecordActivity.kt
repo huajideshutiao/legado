@@ -41,6 +41,7 @@ import io.legado.app.utils.putInt
 import io.legado.app.utils.spToPx
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -592,11 +593,15 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 formatDuring(dayTime),
                 formatDuring(totalTime)
             )
+            ivRead.visible()
+            tvRead.visible()
             tvLast.text = when {
                 item.lastRead > 0 -> dateFormat.format(item.lastRead * 1000L)
                 book != null && book.durChapterTime > 0 -> dateFormat.format(book.durChapterTime / 1000L * 1000L)
                 else -> ""
             }
+            ivLast.visible()
+            tvLast.visible()
             tvLastUpdateTime.text = ""
             flHasNew.visibility = View.GONE
             ivCover.load(

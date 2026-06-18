@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -34,6 +35,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
     var hasMore = true
     val searchOptions = mutableListOf<ExploreOption>()
     private var searchID = 0L
+    private var filteredCount = 0
     private val searchModel = SearchModel(viewModelScope, object : SearchModel.CallBack {
 
         override fun getSearchScope(): SearchScope {
@@ -41,6 +43,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
 
         override fun onSearchStart() {
+            filteredCount = 0
             isSearchLiveData.postValue(true)
         }
 
@@ -52,6 +55,18 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
             this@SearchViewModel.hasMore = hasMore
             isSearchLiveData.postValue(false)
             searchFinishLiveData.postValue(isEmpty)
+            if (filteredCount > 0) {
+                context.toastOnUi(
+                    context.getString(
+                        R.string.source_filter_rule_filtered_count,
+                        filteredCount
+                    )
+                )
+            }
+        }
+
+        override fun onFiltered(count: Int) {
+            filteredCount += count
         }
 
         override fun onSearchCancel(exception: Throwable?) {

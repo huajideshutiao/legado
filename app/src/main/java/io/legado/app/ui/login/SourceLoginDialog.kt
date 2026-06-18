@@ -56,13 +56,20 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
         val loginUi = source.loginUi()
         try {
             loginUi?.forEachIndexed { index, rowUi ->
+                val defaultStyle =
+                    if (rowUi.type == RowUi.Type.text || rowUi.type == RowUi.Type.password) {
+                        FlexChildStyle(cols = 1)
+                    } else {
+                        FlexChildStyle.defaultStyle2
+                    }
+                val rowStyle = rowUi.style(defaultStyle)
                 val view = when (rowUi.type) {
                     RowUi.Type.text -> ItemSourceEditBinding.inflate(
                         layoutInflater,
                         binding.flexbox,
                         false
                     ).apply {
-                        rowUi.style(FlexChildStyle(cols = 1)).apply(root)
+                        rowStyle.apply(root)
                         textInputLayout.hint = rowUi.name
                         editText.setText(loginInfo?.get(rowUi.name))
                         editText.setAutofillHints("username")
@@ -73,7 +80,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        rowUi.style(FlexChildStyle(cols = 1)).apply(root)
+                        rowStyle.apply(root)
                         textInputLayout.hint = rowUi.name
                         editText.inputType =
                             InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
@@ -86,7 +93,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        rowUi.style().apply(root)
+                        rowStyle.apply(root)
                         textView.text = rowUi.name
                         val chars = rowUi.chars ?: emptyList()
                         val adapter = ArrayAdapter(
@@ -122,7 +129,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        rowUi.style().apply(root)
+                        rowStyle.apply(root)
                         swt.text = rowUi.name
                         swt.isChecked = loginInfo?.get(rowUi.name) == "true"
                         swt.setOnUserCheckedChangeListener {
@@ -135,7 +142,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         binding.flexbox,
                         false
                     ).apply {
-                        rowUi.style().apply(root)
+                        rowStyle.apply(root)
                         textView.text = rowUi.name
                         textView.setPadding(16.dpToPx())
                         root.onClick {
@@ -144,11 +151,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }.root
                 }
                 view.id = index + 1000
-                view.minimumHeight = 60.dpToPx()
+                view.minimumHeight = 60.dpToPx() * rowStyle.rows.coerceAtLeast(1)
                 binding.flexbox.addView(view)
             }
-        } catch (e: NullPointerException) {
-            AppLog.put("登录UI JSON 数据错误", e, true)
+        } catch (e: Exception) {
+            AppLog.put("登录UI 构建失败", e, true)
         }
         binding.toolBar.inflateMenu(R.menu.source_login)
         binding.toolBar.menu.applyTint(requireContext())

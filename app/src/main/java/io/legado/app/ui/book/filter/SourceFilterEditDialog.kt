@@ -34,8 +34,6 @@ class SourceFilterEditDialog() : BaseDialogFragment(R.layout.dialog_source_filte
         }
     }
 
-    override val isFullHeight: Boolean = true
-
     private val binding by viewBinding(DialogSourceFilterEditBinding::bind)
     private val checkBoxes = linkedMapOf<SourceFilterRule.Field, AppCompatCheckBox>()
     private var scope: String = ""

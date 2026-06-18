@@ -5,7 +5,6 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import java.util.LinkedList
-import java.util.regex.Pattern
 
 @Suppress("RegExpRedundantEscape")
 object HtmlFormatter {
@@ -15,13 +14,15 @@ object HtmlFormatter {
     private val wrapHtmlRegex = "</?(?:div|p|br|hr|h\\d|article|dd|dl)[^>]*>".toRegex()
     private val commentRegex = "<!--[^>]*-->".toRegex() //注释
     private val otherHtmlRegex = "</?[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
-    val formatImagePattern = Pattern.compile(
-        "<img[^>]*\\ssrc\\s*=\\s*['\"]([^'\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})['\"][^>]*>|<img[^>]*\\s(?:data-src|src)\\s*=\\s*['\"]([^'\">]+)['\"][^>]*>|<img[^>]*\\sdata-[^=>]*=\\s*['\"]([^'\">]*)['\"][^>]*>",
-        Pattern.CASE_INSENSITIVE
-    )
+
+    // 与 otherHtmlRegex 同，但放行 <button>/<img>（含其闭合形式）
+    private val otherHtmlRegexKeepRich =
+        "</?(?!(?:button|img)\\b)[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     private val indent1Regex = "\\s*\\n+\\s*".toRegex()
     private val indent2Regex = "^[\\n\\s]+".toRegex()
     private val lastRegex = "[\\n\\s]+$".toRegex()
+
+    fun formatKeepRichTags(html: String?): String = format(html, otherHtmlRegexKeepRich)
 
     fun format(html: String?, otherRegex: Regex = otherHtmlRegex): String {
         html ?: return ""
