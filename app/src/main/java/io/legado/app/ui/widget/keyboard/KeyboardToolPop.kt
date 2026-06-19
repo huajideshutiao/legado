@@ -12,7 +12,6 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
@@ -20,8 +19,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.PopupKeyboardToolBinding
-import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.activity
@@ -46,7 +43,7 @@ class KeyboardToolPop @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr),
     ViewTreeObserver.OnGlobalLayoutListener {
 
-    private val helpChar = "❓"
+    private val helpChar = "⚙️"
     private lateinit var callBack: CallBack
 
     private val binding = PopupKeyboardToolBinding.inflate(LayoutInflater.from(context), this, true)
@@ -132,6 +129,18 @@ class KeyboardToolPop @JvmOverloads constructor(
         binding.recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
+                textView.text = helpChar
+                root.setOnClickListener {
+                    activity?.showDialogFragment<KeyboardAssistsConfig>()
+                }
+                root.setOnLongClickListener {
+                    toggleFindReplace()
+                    true
+                }
+            }
+        }
+        adapter.addHeaderView {
+            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
                 textView.text = "↩️"
                 root.setOnClickListener { callBack.undo() }
             }
@@ -140,18 +149,6 @@ class KeyboardToolPop @JvmOverloads constructor(
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
                 textView.text = "↪️"
                 root.setOnClickListener { callBack.redo() }
-            }
-        }
-        adapter.addHeaderView {
-            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
-                textView.text = helpChar
-                root.setOnClickListener {
-                    helpAlert()
-                }
-                root.setOnLongClickListener {
-                    toggleFindReplace()
-                    true
-                }
             }
         }
         initFindReplace()
@@ -264,20 +261,6 @@ class KeyboardToolPop @JvmOverloads constructor(
         }
     }
 
-    private fun helpAlert() {
-        val ctx = activity ?: context ?: return
-        val items = buildList {
-            add(SelectItem(ctx.getString(R.string.assists_key_config), "keyConfig"))
-            addAll(callBack.helpActions())
-        }
-        ctx.selector(ctx.getString(R.string.help), items) { _, selectItem, _ ->
-            when (selectItem.value) {
-                "keyConfig" -> activity?.showDialogFragment<KeyboardAssistsConfig>()
-                else -> callBack.onHelpActionSelect(selectItem.value)
-            }
-        }
-    }
-
     inner class Adapter(context: Context) :
         RecyclerAdapter<KeyboardAssist, ItemFilletTextBinding>(context) {
 
@@ -308,8 +291,6 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     interface CallBack {
-        fun helpActions(): List<SelectItem<String>> = arrayListOf()
-        fun onHelpActionSelect(action: String)
         fun sendText(text: String)
         fun getActiveCodeView(): io.legado.app.ui.widget.code.CodeView?
         fun undo()

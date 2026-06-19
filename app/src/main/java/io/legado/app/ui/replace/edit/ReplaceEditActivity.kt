@@ -11,7 +11,6 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.ActivityReplaceEditBinding
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.utils.GSON
@@ -120,15 +119,19 @@ class ReplaceEditActivity :
         return replaceRule
     }
 
-    override fun helpActions(): List<SelectItem<String>> {
-        return arrayListOf(
-            SelectItem("正则教程", "regexHelp")
-        )
+    override fun getActiveCodeView(): CodeView? = null
+
+    override fun undo() {
+        val view = window?.decorView?.findFocus()
+        if (view is EditText) {
+            view.onTextContextMenuItem(android.R.id.undo)
+        }
     }
 
-    override fun onHelpActionSelect(action: String) {
-        when (action) {
-            "regexHelp" -> showHelp("regexHelp")
+    override fun redo() {
+        val view = window?.decorView?.findFocus()
+        if (view is EditText) {
+            view.onTextContextMenuItem(android.R.id.redo)
         }
     }
 
@@ -150,21 +153,6 @@ class ReplaceEditActivity :
             } else {
                 edit.replace(start, end, text)
             }
-        }
-    }
-    override fun getActiveCodeView(): CodeView? = null
-
-    override fun undo() {
-        val view = window?.decorView?.findFocus()
-        if (view is EditText) {
-            view.onTextContextMenuItem(android.R.id.undo)
-        }
-    }
-
-    override fun redo() {
-        val view = window?.decorView?.findFocus()
-        if (view is EditText) {
-            view.onTextContextMenuItem(android.R.id.redo)
         }
     }
 

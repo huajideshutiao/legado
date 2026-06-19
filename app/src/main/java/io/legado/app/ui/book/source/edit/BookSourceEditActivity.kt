@@ -5,13 +5,11 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.google.android.material.tabs.TabLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookSourceType
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.BookInfoRule
@@ -23,28 +21,22 @@ import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.databinding.ActivityBookSourceEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.onCancelled
 import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
-import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.code.CodeView
-import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.recycler.NoChildScrollGridLayoutManager
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
-import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
@@ -53,9 +45,6 @@ import io.legado.app.utils.share
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
 
 class BookSourceEditActivity :
@@ -98,15 +87,6 @@ class BookSourceEditActivity :
             Book.imgStyleText to Book.imgStyleText,
             Book.imgStyleSingle to Book.imgStyleSingle
         )
-    }
-    private val selectDoc = registerHandleFile { result ->
-        result.uri?.let { uri ->
-            if (uri.isContentScheme()) {
-                sendText(uri.toString())
-            } else {
-                sendText(uri.path.toString())
-            }
-        }
     }
 
     private var lastActiveCodeView: CodeView? = null
@@ -152,9 +132,12 @@ class BookSourceEditActivity :
             R.id.menu_clear_cookie -> viewModel.clearCookie(getSource().bookSourceUrl)
             R.id.menu_copy_source -> sendToClip(GSON.toJson(getSource()))
             R.id.menu_paste_source -> viewModel.pasteSource { upSourceView(it) }
+            R.id.menu_auto_indent -> getActiveCodeView()?.reFormat()
             R.id.menu_share_str -> share(GSON.toJson(getSource()))
 
-            R.id.menu_help -> showHelp("ruleHelp")
+            R.id.menu_rule_help -> showHelp("ruleHelp")
+            R.id.menu_js_help -> showHelp("jsHelp")
+            R.id.menu_regex_help -> showHelp("regexHelp")
             R.id.menu_login -> viewModel.save(getSource()) { source ->
                 source.showLoginDialog(this)
             }
@@ -644,49 +627,10 @@ class BookSourceEditActivity :
         return source
     }
 
-    private fun alertGroups() {
-        lifecycleScope.launch {
-            val groups = withContext(IO) {
-                appDb.bookSourceDao.allGroups()
-            }
-            selector(groups) { _, s, _ ->
-                sendText(s)
-            }
-        }
-    }
-
-    override fun helpActions(): List<SelectItem<String>> {
-        val helpActions = arrayListOf(
-            SelectItem("插入URL参数", "urlOption"),
-            SelectItem("书源教程", "ruleHelp"),
-            SelectItem("js教程", "jsHelp"),
-            SelectItem("正则教程", "regexHelp"),
-        )
-        val view = window.decorView.findFocus()
-        if (view is EditText) {
-            when (view.getTag(R.id.tag)) {
-                "bookSourceGroup" -> {
-                    helpActions.add(
-                        SelectItem("插入分组", "addGroup")
-                    )
-                }
-
-                else -> {
-                    helpActions.add(
-                        SelectItem("选择文件", "selectFile")
-                    )
-                }
-            }
-        }
-        return helpActions
-    }
-
     override fun getActiveCodeView(): CodeView? {
         val view = window.decorView.findFocus()
             ?: io.legado.app.help.LifecycleHelp.currentActivity?.window?.decorView?.findFocus()
-        if (view is CodeView) {
-            lastActiveCodeView = view
-        }
+        if (view is CodeView) lastActiveCodeView = view
         return lastActiveCodeView
     }
 
@@ -696,19 +640,6 @@ class BookSourceEditActivity :
 
     override fun redo() {
         getActiveCodeView()?.redo()
-    }
-
-    override fun onHelpActionSelect(action: String) {
-        when (action) {
-            "addGroup" -> alertGroups()
-            "urlOption" -> UrlOptionDialog.show(supportFragmentManager) { sendText(it) }
-            "ruleHelp" -> showHelp("ruleHelp")
-            "jsHelp" -> showHelp("jsHelp")
-            "regexHelp" -> showHelp("regexHelp")
-            "selectFile" -> selectDoc.launch {
-                mode = HandleFileContract.FILE
-            }
-        }
     }
 
     private fun bookSourceTypeToIndex(type: Int): Int = when (type) {
@@ -739,7 +670,7 @@ class BookSourceEditActivity :
             val start = view.selectionStart
             val end = view.selectionEnd
             val edit = view.editableText//获取EditText的文字
-            if (start < 0 || start >= edit.length) {
+            if ((start < 0) || (start >= edit.length)) {
                 edit.append(text)
             } else if (start > end) {
                 edit.replace(end, start, text)

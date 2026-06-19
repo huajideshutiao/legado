@@ -61,6 +61,18 @@
     <item
         android:id="@+id/menu_help"
         android:title="@string/help"
-        app:showAsAction="never" />
+        app:showAsAction="never">
+        <menu>
+            <item
+                android:id="@+id/menu_rule_help"
+                android:title="书源教程" />
+            <item
+                android:id="@+id/menu_js_help"
+                android:title="JS 教程" />
+            <item
+                android:id="@+id/menu_regex_help"
+                android:title="正则教程" />
+        </menu>
+    </item>
 
 </menu>
