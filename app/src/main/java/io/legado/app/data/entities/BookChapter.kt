@@ -18,6 +18,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.replace
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
@@ -139,7 +140,7 @@ data class BookChapter(
     fun getAbsoluteURL(book: Book): String {
         //二级目录解析的卷链接为空 返回目录页的链接
         if (url.startsWith(title) && isVolume) return book.tocUrl
-        if (url.startsWith("data:")) return url
+        if (url.isDataUrl()) return url
         val urlMatcher = AnalyzeUrl.paramPattern.matcher(url)
         val urlBefore = if (urlMatcher.find()) url.substring(0, urlMatcher.start()) else url
         val urlAbsoluteBefore = NetworkUtils.getAbsoluteURL(book.tocUrl, urlBefore)

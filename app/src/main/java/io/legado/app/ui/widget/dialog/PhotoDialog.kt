@@ -28,6 +28,7 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
+import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -93,11 +94,13 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
         execute {
             when {
-                src.startsWith("data:") -> {
-                    val pos = src.indexOf(";base64,")
-                    if (pos == -1) null
-                    else decodeBytes(Base64.decode(src.substring(pos + 8), Base64.DEFAULT), w, h)
-                }
+                src.startsWith("data:image/svg+xml;base64,") -> decodeBytes(
+                    Base64.decode(
+                        src.substring(
+                            26
+                        ), Base64.DEFAULT
+                    ), w, h
+                )
 
                 book != null -> {
                     val file = BookHelp.getImage(book, src)

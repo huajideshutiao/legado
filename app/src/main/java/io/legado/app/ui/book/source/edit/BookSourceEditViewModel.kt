@@ -30,7 +30,6 @@ import kotlinx.coroutines.Dispatchers
 
 
 class BookSourceEditViewModel(application: Application) : BaseViewModel(application) {
-    var autoComplete = false
     var bookSource: BookSource? = null
 
     fun initData(intent: Intent, onFinally: () -> Unit) {

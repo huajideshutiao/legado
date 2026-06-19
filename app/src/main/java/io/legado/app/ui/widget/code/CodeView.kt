@@ -983,6 +983,46 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun getTextWithoutTrailingSpace() = PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
 
+    fun undo() {
+        onTextContextMenuItem(android.R.id.undo)
+    }
+
+    fun redo() {
+        onTextContextMenuItem(android.R.id.redo)
+    }
+
+    fun reFormat() {
+        val oldText = editableText.toString()
+        val lines = oldText.split("\n")
+        val newText = StringBuilder()
+        var indentLevel = 0
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                newText.append("\n")
+                continue
+            }
+            if (trimmed.startsWith("}") || trimmed.startsWith("]") || trimmed.startsWith(")")) {
+                indentLevel = maxOf(0, indentLevel - 1)
+            }
+            newText.append("    ".repeat(indentLevel)).append(trimmed).append("\n")
+            val openCount = trimmed.count { it == '{' || it == '[' || it == '(' }
+            val closeCount = trimmed.count { it == '}' || it == ']' || it == ')' }
+            indentLevel += (openCount - closeCount)
+            indentLevel = maxOf(0, indentLevel)
+        }
+        if (newText.isNotEmpty() && oldText.isNotEmpty()) {
+            newText.setLength(newText.length - 1)
+        }
+        val formatted = newText.toString()
+        if (formatted != oldText) {
+            val start = selectionStart
+            val end = selectionEnd
+            editableText.replace(0, editableText.length, formatted)
+            setSelection(minOf(start, editableText.length), minOf(end, editableText.length))
+        }
+    }
+
     fun reHighlightSyntax() = highlightSyntax(editableText)
 
     fun reHighlightErrors() = highlightErrorLines(editableText)

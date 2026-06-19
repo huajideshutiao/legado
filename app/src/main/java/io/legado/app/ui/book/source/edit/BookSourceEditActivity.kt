@@ -132,7 +132,6 @@ class BookSourceEditActivity :
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = getSource().hasLogin() == true
-        menu.findItem(R.id.menu_auto_complete)?.isChecked = viewModel.autoComplete
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -151,7 +150,6 @@ class BookSourceEditActivity :
             }
 
             R.id.menu_clear_cookie -> viewModel.clearCookie(getSource().bookSourceUrl)
-            R.id.menu_auto_complete -> viewModel.autoComplete = !viewModel.autoComplete
             R.id.menu_copy_source -> sendToClip(GSON.toJson(getSource()))
             R.id.menu_paste_source -> viewModel.pasteSource { upSourceView(it) }
             R.id.menu_share_str -> share(GSON.toJson(getSource()))
@@ -685,10 +683,19 @@ class BookSourceEditActivity :
 
     override fun getActiveCodeView(): CodeView? {
         val view = window.decorView.findFocus()
+            ?: io.legado.app.help.LifecycleHelp.currentActivity?.window?.decorView?.findFocus()
         if (view is CodeView) {
             lastActiveCodeView = view
         }
         return lastActiveCodeView
+    }
+
+    override fun undo() {
+        getActiveCodeView()?.undo()
+    }
+
+    override fun redo() {
+        getActiveCodeView()?.redo()
     }
 
     override fun onHelpActionSelect(action: String) {
@@ -724,7 +731,10 @@ class BookSourceEditActivity :
 
     override fun sendText(text: String) {
         if (text.isBlank()) return
-        val view = window.decorView.findFocus()
+        var view = window.decorView.findFocus()
+        if (view == null) {
+            view = io.legado.app.help.LifecycleHelp.currentActivity?.window?.decorView?.findFocus()
+        }
         if (view is EditText) {
             val start = view.selectionStart
             val end = view.selectionEnd

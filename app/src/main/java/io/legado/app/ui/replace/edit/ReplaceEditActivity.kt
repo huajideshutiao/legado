@@ -134,7 +134,10 @@ class ReplaceEditActivity :
 
     override fun sendText(text: String) {
         if (text.isBlank()) return
-        val view = window?.decorView?.findFocus()
+        var view = window?.decorView?.findFocus()
+        if (view == null) {
+            view = io.legado.app.help.LifecycleHelp.currentActivity?.window?.decorView?.findFocus()
+        }
         if (view is EditText) {
             val start = view.selectionStart
             val end = view.selectionEnd
@@ -150,5 +153,19 @@ class ReplaceEditActivity :
         }
     }
     override fun getActiveCodeView(): CodeView? = null
+
+    override fun undo() {
+        val view = window?.decorView?.findFocus()
+        if (view is EditText) {
+            view.onTextContextMenuItem(android.R.id.undo)
+        }
+    }
+
+    override fun redo() {
+        val view = window?.decorView?.findFocus()
+        if (view is EditText) {
+            view.onTextContextMenuItem(android.R.id.redo)
+        }
+    }
 
 }

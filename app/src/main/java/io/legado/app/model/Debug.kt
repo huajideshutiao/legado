@@ -17,6 +17,7 @@ import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -120,7 +121,7 @@ object Debug {
         debugSource = bookSource.bookSourceUrl
         startTime = System.currentTimeMillis()
         when {
-            key.isAbsUrl() -> {
+            key.isAbsUrl() || key.isDataUrl() -> {
                 val book = Book()
                 book.origin = bookSource.bookSourceUrl
                 book.bookUrl = key

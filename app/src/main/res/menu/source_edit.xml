@@ -32,12 +32,6 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/menu_auto_complete"
-        android:checkable="true"
-        android:title="@string/auto_complete"
-        app:showAsAction="never" />
-
-    <item
         android:id="@+id/menu_copy_source"
         android:title="@string/copy_source"
         app:showAsAction="never" />
@@ -45,6 +39,11 @@
     <item
         android:id="@+id/menu_paste_source"
         android:title="@string/paste_source"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_auto_indent"
+        android:title="@string/auto_indent"
         app:showAsAction="never" />
 
     <item

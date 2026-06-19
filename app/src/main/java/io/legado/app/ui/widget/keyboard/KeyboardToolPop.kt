@@ -132,6 +132,18 @@ class KeyboardToolPop @JvmOverloads constructor(
         binding.recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
+                textView.text = "↩️"
+                root.setOnClickListener { callBack.undo() }
+            }
+        }
+        adapter.addHeaderView {
+            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
+                textView.text = "↪️"
+                root.setOnClickListener { callBack.redo() }
+            }
+        }
+        adapter.addHeaderView {
+            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
                 textView.text = helpChar
                 root.setOnClickListener {
                     helpAlert()
@@ -300,6 +312,8 @@ class KeyboardToolPop @JvmOverloads constructor(
         fun onHelpActionSelect(action: String)
         fun sendText(text: String)
         fun getActiveCodeView(): io.legado.app.ui.widget.code.CodeView?
+        fun undo()
+        fun redo()
     }
 
 }

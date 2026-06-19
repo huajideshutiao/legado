@@ -991,23 +991,16 @@ interface JsExtensions : JsEncodeUtils {
      * 输出对象类型
      */
     fun logType(any: Any?) {
-        if (any == null) {
-            log("null")
-        } else {
-            log(any.javaClass.name)
-        }
+        if (any == null) log("null")
+        else log(any.javaClass.name)
     }
 
     /**
      * 生成UUID
      */
-    fun randomUUID(): String {
-        return UUID.randomUUID().toString()
-    }
+    fun randomUUID() = UUID.randomUUID().toString()
 
-    fun androidId(): String {
-        return AppConst.androidId
-    }
+    fun androidId() = AppConst.androidId
 
     fun openUrl(url: String) {
         openUrl(url, null)

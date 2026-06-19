@@ -23,6 +23,7 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.encodeURI
+import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isXml
 import io.legado.app.utils.printOnDebug
 import org.jsoup.Jsoup
@@ -268,7 +269,7 @@ class EpubFile(var book: Book) {
         }
         bodyElement.select("img").forEach {
             val src = it.attr("src").trim()
-            if (src.startsWith("data:", ignoreCase = true)) {
+            if (src.isDataUrl()) {
                 it.attr("src", src)
             } else {
                 val encodedSrc = src.encodeURI()

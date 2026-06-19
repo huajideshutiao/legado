@@ -10,7 +10,6 @@ import android.text.Editable
 import androidx.core.net.toUri
 import cn.hutool.core.net.URLEncodeUtil
 import io.legado.app.constant.AppPattern
-import io.legado.app.constant.AppPattern.dataUriRegex
 import java.io.File
 import java.lang.Character.codePointCount
 import java.lang.Character.offsetByCodePoints
@@ -42,9 +41,7 @@ fun String?.isAbsUrl() =
     } ?: false
 
 fun String?.isDataUrl() =
-    this?.let {
-        dataUriRegex.matches(it)
-    } ?: false
+    this?.startsWith("data:") ?: false
 
 fun String?.isJson(): Boolean =
     this?.run {

@@ -89,7 +89,7 @@ java.getElements(ruleStr: String)
 
 * 重新获取目录url
 
-> 只能在刷新目录之前使用,有些书源目录url会变
+> 本质为重新获取书籍详情
 
 ```js
 java.refreshTocUrl()
@@ -102,8 +102,8 @@ java.put(key, value)
 ```
 
 * 通知 UI 刷新；target 大小写不敏感，可选: `login` / `explore` / `book`
-  分别对应：登录界面 / 发现分类 / 简介。
-  事件不粘滞，调用时未活跃的界面不会响应。
+  分别对应：登录界面 / 发现分类 / 书籍简介界面。
+  调用时对应界面未活跃则无效果
 
 ```js
 java.refreshUi("book")

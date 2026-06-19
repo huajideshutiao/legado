@@ -51,6 +51,7 @@ import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
+import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isXml
 import kotlinx.coroutines.runBlocking
@@ -234,7 +235,7 @@ class AnalyzeUrl(
                 urlOptionEnd = urlMatcher.end()
             }
         }
-        url = if (urlNoOption.startsWith("data:")) urlNoOption
+        url = if (urlNoOption.isDataUrl()) urlNoOption
         else NetworkUtils.getAbsoluteURL(baseUrl, urlNoOption)
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
@@ -481,7 +482,7 @@ class AnalyzeUrl(
     fun getResponse(): Response = runBlocking(coroutineContext) { getResponseAwait() }
 
     private fun getByteArrayIfDataUri(): ByteArray? {
-        if (!url.startsWith("data:")) return null
+        if (!url.isDataUrl()) return null
         val pos = urlNoQuery.indexOf(";base64,")
         return if (pos != -1) Base64.decode(urlNoQuery.substring(pos + 8), Base64.DEFAULT)
         else ByteArray(0)
