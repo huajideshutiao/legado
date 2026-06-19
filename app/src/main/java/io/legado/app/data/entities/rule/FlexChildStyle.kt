@@ -30,7 +30,11 @@ data class FlexChildStyle(
         val lp = view.layoutParams as? GridLayout.LayoutParams ?: return
         lp.width = 0
         val span = BASE_COLUMN_COUNT / resolveCols()
-        // weight 为 1f 则平分控件，为 span 则保持目的宽度
+        // 第三个参数 weight 决定同一行多个格子的宽度分配方式：
+        //   传 1f       —— 同行所有格子等宽均分，cols 写多少都一样
+        //   传 span     —— 每个格子严格按 cols 比例占父宽（cols=4 占 1/4、cols=2 占 1/2），
+        //                  同行 cols 加起来不足 12 列时，右侧自然留白
+        // 当前选 span，是为了保留作者写的目标宽度
         lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, span, span.toFloat())
         val rowSpan = rows.coerceAtLeast(1)
         lp.rowSpec = GridLayout.spec(GridLayout.UNDEFINED, rowSpan, GridLayout.FILL)

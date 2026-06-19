@@ -10,10 +10,7 @@ import android.widget.GridLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.children
-import androidx.core.view.isEmpty
 import androidx.core.view.isGone
-import androidx.core.view.isNotEmpty
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.recyclerview.widget.RecyclerView
 import com.script.rhino.runScriptWithContext
@@ -34,6 +31,7 @@ import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.activity
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.removeLastElement
 import io.legado.app.utils.showDialogFragment
@@ -115,7 +113,8 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         Coroutine.async(callBack.scope) {
             bookSource.exploreKinds()
         }.onSuccess { kindList ->
-            if (binding.flexbox.isEmpty()) {
+            // flexbox 内置一个 xml 静态的列宽锚定 Space，childCount<=1 表示还没填分类
+            if (binding.flexbox.childCount <= 1) {
                 upKindList(binding.flexbox, bookSource, kindList)
             }
 
@@ -351,7 +350,9 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 grid.addView(tv)
                 tv.text = kind.title
 
-                kind.style().apply(tv)
+                val style = kind.style()
+                style.apply(tv)
+                tv.minimumHeight = 40.dpToPx() * style.rows.coerceAtLeast(1)
 
                 tv.setOnClickListener {
                     when {
@@ -387,9 +388,12 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
     @Synchronized
     private fun recyclerGrid(grid: GridLayout) {
-        if (grid.isNotEmpty()) {
-            recycler.addAll(grid.children)
-            grid.removeAllViews()
+        // grid 内首项是 xml 静态放置的列宽锚定 Space，跳过；其余 cell 回收复用
+        for (i in grid.childCount - 1 downTo 1) {
+            recycler.add(grid.getChildAt(i))
+        }
+        if (grid.childCount > 1) {
+            grid.removeViews(1, grid.childCount - 1)
         }
     }
 
