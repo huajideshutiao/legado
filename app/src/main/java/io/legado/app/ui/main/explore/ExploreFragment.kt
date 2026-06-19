@@ -106,6 +106,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         observeEvent<String>(EventBus.UP_EXPLORE_PINNED) {
             upPinned(it)
         }
+        observeEvent<Boolean>(EventBus.REFRESH_EXPLORE) {
+            adapter.refreshCurrentExpanded()
+        }
     }
 
     @SuppressLint("SetTextI18n")

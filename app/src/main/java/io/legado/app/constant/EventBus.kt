@@ -39,4 +39,7 @@ object EventBus {
     const val UP_MANGA_CONFIG = "upMangaConfig"
     const val PLAY_MODE_CHANGED = "playModeChanged"
     const val UP_EXPLORE_PINNED = "upExplorePinned"
+    const val REFRESH_LOGIN_UI = "refreshLoginUi"
+    const val REFRESH_EXPLORE = "refreshExplore"
+    const val REFRESH_BOOK_INFO = "refreshBookInfo"
 }

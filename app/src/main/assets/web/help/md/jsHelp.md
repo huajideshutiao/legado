@@ -87,12 +87,11 @@ java.getElement(ruleStr: String)
 java.getElements(ruleStr: String)
 ```
 
-* 重新搜索书籍/重新获取目录url
+* 重新获取目录url
 
-> 只能在刷新目录之前使用,有些书源书籍地址和目录url会变
+> 只能在刷新目录之前使用,有些书源目录url会变
 
 ```js
-java.reGetBook()
 java.refreshTocUrl()
 ```
 * 变量存取
@@ -100,6 +99,14 @@ java.refreshTocUrl()
 ```js
 java.get(key)
 java.put(key, value)
+```
+
+* 通知 UI 刷新；target 大小写不敏感，可选: `login` / `explore` / `book`
+  分别对应：登录界面 / 发现分类 / 简介。
+  事件不粘滞，调用时未活跃的界面不会响应。
+
+```js
+java.refreshUi("book")
 ```
 
 ### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数

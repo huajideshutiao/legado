@@ -426,6 +426,20 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         return true
     }
 
+    /**
+     * 刷新当前展开的发现项（由 java.refresh("explore") 触发）
+     */
+    fun refreshCurrentExpanded() {
+        val pos = exIndex
+        if (pos < 0) return
+        val source = getItem(pos) ?: return
+        Coroutine.async(callBack.scope) {
+            source.clearExploreKindsCache()
+        }.onSuccess {
+            notifyItemChanged(pos + getHeaderCount(), PAYLOAD_REFRESH)
+        }
+    }
+
     private fun showMenu(view: View, position: Int) {
         val source = getItem(position) ?: return
         val popupMenu = PopupMenu(context, view)

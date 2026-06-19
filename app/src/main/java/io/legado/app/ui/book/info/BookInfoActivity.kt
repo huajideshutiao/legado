@@ -37,6 +37,7 @@ import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.Theme
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -101,6 +102,7 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLightStatusBar
@@ -316,6 +318,9 @@ class BookInfoActivity :
             if (it == "selectBooksDir") localBookTreeSelect.launch {
                 title = getString(R.string.select_book_folder)
             }
+        }
+        observeEvent<Boolean>(EventBus.REFRESH_BOOK_INFO) {
+            refreshBook()
         }
     }
 

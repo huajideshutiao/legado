@@ -11,6 +11,7 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
@@ -27,6 +28,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
@@ -48,12 +50,43 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
     private val source by lazy { (IntentData.source as? BaseSource) }
     private val book by lazy { IntentData.book }
     private val chapter by lazy { IntentData.chapter }
+    private var loginUi: List<RowUi>? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = source ?: return
         binding.toolBar.title = getString(R.string.login_source, source.getTag())
+        buildLoginUi(source)
+        binding.toolBar.inflateMenu(R.menu.source_login)
+        binding.toolBar.menu.applyTint(requireContext())
+        binding.toolBar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.menu_ok -> login(source, getLoginData())
+
+                R.id.menu_show_login_header -> source.getLoginHeader()?.let { loginHeader ->
+                    alert {
+                        setTitle(R.string.login_header)
+                        setMessage(loginHeader)
+                        positiveButton(R.string.copy_text) {
+                            appCtx.sendToClip(loginHeader)
+                        }
+                    }
+                } ?: toastOnUi("没有请求头！")
+
+                R.id.menu_del_login_header -> source.removeLoginHeader()
+                R.id.menu_log -> showDialogFragment<AppLogDialog>()
+            }
+            return@setOnMenuItemClickListener true
+        }
+        observeEvent<Boolean>(EventBus.REFRESH_LOGIN_UI) {
+            this.source?.let { buildLoginUi(it) }
+        }
+    }
+
+    private fun buildLoginUi(source: BaseSource) {
+        binding.flexbox.removeAllViews()
         val loginInfo = source.getLoginInfoMap()
         val loginUi = source.loginUi()
+        this.loginUi = loginUi
         try {
             loginUi?.forEachIndexed { index, rowUi ->
                 val defaultStyle =
@@ -117,7 +150,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                                 ) {
                                     if (position == selectedPosition) return
                                     selectedPosition = position
-                                    handleButtonClick(source, rowUi, loginUi)
+                                    handleButtonClick(source, rowUi)
                                 }
 
                                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -133,7 +166,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         swt.text = rowUi.name
                         swt.isChecked = loginInfo?.get(rowUi.name) == "true"
                         swt.setOnUserCheckedChangeListener {
-                            handleButtonClick(source, rowUi, loginUi)
+                            handleButtonClick(source, rowUi)
                         }
                     }.root
 
@@ -146,7 +179,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         textView.text = rowUi.name
                         textView.setPadding(16.dpToPx())
                         root.onClick {
-                            handleButtonClick(source, rowUi, loginUi)
+                            handleButtonClick(source, rowUi)
                         }
                     }.root
                 }
@@ -157,37 +190,9 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
         } catch (e: Exception) {
             AppLog.put("登录UI 构建失败", e, true)
         }
-        binding.toolBar.inflateMenu(R.menu.source_login)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.menu_ok -> {
-                    val loginData = getLoginData(loginUi)
-                    login(source, loginData)
-                }
-
-                R.id.menu_show_login_header -> source.getLoginHeader()?.let { loginHeader ->
-                    alert {
-                        setTitle(R.string.login_header)
-                        setMessage(loginHeader)
-                        positiveButton(R.string.copy_text) {
-                            appCtx.sendToClip(loginHeader)
-                        }
-                    }
-                } ?: toastOnUi("没有请求头！")
-
-                R.id.menu_del_login_header -> source.removeLoginHeader()
-                R.id.menu_log -> showDialogFragment<AppLogDialog>()
-            }
-            return@setOnMenuItemClickListener true
-        }
     }
 
-    private fun handleButtonClick(
-        source: BaseSource,
-        rowUi: RowUi,
-        loginUi: List<RowUi>
-    ) {
+    private fun handleButtonClick(source: BaseSource, rowUi: RowUi) {
         lifecycleScope.launch(IO) {
             if (rowUi.action.isAbsUrl()) {
                 context?.openUrl(rowUi.action!!)
@@ -197,7 +202,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 kotlin.runCatching {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
-                            put("result", getLoginData(loginUi))
+                            put("result", getLoginData())
                             put("book", book)
                             put("chapter", chapter)
                         }
@@ -210,7 +215,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
         }
     }
 
-    private fun getLoginData(loginUi: List<RowUi>?): HashMap<String, String> {
+    private fun getLoginData(): HashMap<String, String> {
         val loginData = hashMapOf<String, String>()
         loginUi?.forEachIndexed { index, rowUi ->
             when (rowUi.type) {
