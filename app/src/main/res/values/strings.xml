@@ -1082,6 +1082,8 @@
     <string name="rule_reply_list_url">Reply list URL(replyListUrl)</string>
     <string name="rule_vote_up">Like rule(voteUpRule)</string>
     <string name="rule_vote_down">Dislike rule(voteDownRule)</string>
+    <string name="rule_vote_up_selected">Liked state rule(voteUpSelectedRule)</string>
+    <string name="rule_vote_down_selected">Disliked state rule(voteDownSelectedRule)</string>
     <string name="rule_reply">Reply rule(replyRule)</string>
     <string name="rule_delete_review">Delete rule(deleteRule)</string>
     <string name="enable_review">Enable paragraph review</string>

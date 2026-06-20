@@ -18,4 +18,6 @@ data class Review(
     var voteUpCount: Int = 0,
     var replyCount: Int = 0,
     var images: List<String> = emptyList(),
+    var voted: Boolean = false,        // 当前用户是否已点赞，由 voteUpSelectedRule 解析
+    var votedDown: Boolean = false,    // 当前用户是否已点踩，由 voteDownSelectedRule 解析
 ) : Parcelable

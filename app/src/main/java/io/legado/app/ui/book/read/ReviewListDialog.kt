@@ -311,6 +311,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         b.tvPostTime.text = item.postTime.orEmpty()
         b.tvExtra.text = item.extra.orEmpty()
         adapter.captureDefaultVoteColors(b.tvVoteCount.textColors)
+        adapter.seedVoteFromItem(item)
         adapter.renderVoteState(b, item)
         ImageLoader.load(requireContext(), item.avatar)
             .placeholder(R.drawable.ic_bottom_person)
@@ -364,6 +365,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         private val expanded = HashSet<String>()
         private val voted = HashSet<String>()
         private val votedDown = HashSet<String>()
+        // 已用书源初始状态种子过的 id；保证用户点击翻转后，再次 convert 不会被 item 旧值回灌覆盖
+        private val voteSeeded = HashSet<String>()
 
         private val voteUpColor = ContextCompat.getColor(context, R.color.review_voted)
         private var defaultVoteCountColors: ColorStateList? = null
@@ -373,6 +376,22 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         /** 父项 binding 也用这套色；首次进来时由父项捕获到默认 textColors */
         fun captureDefaultVoteColors(colors: ColorStateList) {
             if (defaultVoteCountColors == null) defaultVoteCountColors = colors
+        }
+
+        /**
+         * 把书源返回的 voted/votedDown 初始态首次灌入本地集合；同一 id 只灌一次。
+         * 书源解析的 voteUpCount 一般是页面上的总数（已含当前用户的点赞），
+         * 而 renderVoteState 按 voteUpCount + (isVoted?1:0) 显示，
+         * 所以这里把 item.voteUpCount 抹去"自己那 1 票"，让基数永远是"不含自己"。
+         */
+        fun seedVoteFromItem(item: Review) {
+            val id = item.id ?: return
+            if (!voteSeeded.add(id)) return
+            if (item.voted) {
+                voted.add(id)
+                if (item.voteUpCount > 0) item.voteUpCount -= 1
+            }
+            if (item.votedDown) votedDown.add(id)
         }
 
         fun toggleVoteUp(id: String): Boolean {
@@ -418,6 +437,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 renderVoteState(binding, item)
                 return
             }
+            seedVoteFromItem(item)
             binding.run {
                 tvName.text = item.name.orEmpty()
                 tvContent.text = item.content

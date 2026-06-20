@@ -90,6 +90,8 @@ object BookReview {
         val extraRule = analyzeRule.splitSourceRule(reviewRule.extraRule)
         val imagesRule = analyzeRule.splitSourceRule(reviewRule.imagesRule)
         val voteUpCountRule = analyzeRule.splitSourceRule(reviewRule.voteUpCountRule)
+        val voteUpSelectedRule = analyzeRule.splitSourceRule(reviewRule.voteUpSelectedRule)
+        val voteDownSelectedRule = analyzeRule.splitSourceRule(reviewRule.voteDownSelectedRule)
         val replyCountRule = analyzeRule.splitSourceRule(reviewRule.replyCountRule)
         val idRule = analyzeRule.splitSourceRule(reviewRule.reviewIdRule)
         for ((index, item) in elements.withIndex()) {
@@ -128,6 +130,20 @@ object BookReview {
             Debug.log(bookSource.bookSourceUrl, "└$voteUpStr", log)
             val voteUpCount = voteUpStr.toIntOrNull() ?: 0
 
+            // 已点赞/已点踩：规则未配置则视为 false，结果按 Boolean 解析（沿用 WebBook.parseBoolean）
+            val voted = if (reviewRule.voteUpSelectedRule.isNullOrBlank()) false else {
+                Debug.log(bookSource.bookSourceUrl, "┌判断是否已点赞", log)
+                val raw = analyzeRule.getString(voteUpSelectedRule)
+                Debug.log(bookSource.bookSourceUrl, "└$raw", log)
+                WebBook.parseBoolean(raw)
+            }
+            val votedDown = if (reviewRule.voteDownSelectedRule.isNullOrBlank()) false else {
+                Debug.log(bookSource.bookSourceUrl, "┌判断是否已点踩", log)
+                val raw = analyzeRule.getString(voteDownSelectedRule)
+                Debug.log(bookSource.bookSourceUrl, "└$raw", log)
+                WebBook.parseBoolean(raw)
+            }
+
             Debug.log(bookSource.bookSourceUrl, "┌获取回复数", log)
             val replyCountStr = analyzeRule.getString(replyCountRule)
             Debug.log(bookSource.bookSourceUrl, "└$replyCountStr", log)
@@ -148,7 +164,9 @@ object BookReview {
                     extra = extra,
                     voteUpCount = voteUpCount,
                     replyCount = replyCount,
-                    images = images
+                    images = images,
+                    voted = voted,
+                    votedDown = votedDown
                 )
             )
         }

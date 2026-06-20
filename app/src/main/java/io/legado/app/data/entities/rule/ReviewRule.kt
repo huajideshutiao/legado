@@ -18,6 +18,8 @@ data class ReviewRule(
     var extraRule: String? = null,          // 段评附加信息（楼层/等级/地区等，单行小字）
     var imagesRule: String? = null,         // 段评图片列表（多图URL列表）
     var voteUpCountRule: String? = null,    // 点赞数
+    var voteUpSelectedRule: String? = null, // 是否已点赞（当前登录用户），结果按 Boolean 解析
+    var voteDownSelectedRule: String? = null, // 是否已点踩（当前登录用户），结果按 Boolean 解析
     var replyCountRule: String? = null,     // 一级回复数
     var totalCountRule: String? = null,     // 段评总数规则（请求级，result 为整页响应 body），用于列表头部"全部评论·N"
     var replyListUrl: String? = null,       // 回复列表URL规则（JS），变量：paragraphIndex / reviewId，返回回复列表 URL，仅在用户查看回复时执行

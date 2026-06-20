@@ -1079,6 +1079,8 @@
     <string name="rule_reply_list_url">回复列表URL（replyListUrl）</string>
     <string name="rule_vote_up">点赞规则（voteUpRule）</string>
     <string name="rule_vote_down">点踩规则（voteDownRule）</string>
+    <string name="rule_vote_up_selected">是否已点赞规则（voteUpSelectedRule）</string>
+    <string name="rule_vote_down_selected">是否已点踩规则（voteDownSelectedRule）</string>
     <string name="rule_reply">回复评论规则（replyRule）</string>
     <string name="rule_delete_review">删除规则（deleteRule）</string>
     <string name="enable_review">启用段评</string>

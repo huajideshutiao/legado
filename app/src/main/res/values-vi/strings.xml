@@ -1024,6 +1024,8 @@
     <string name="rule_reply_list_url">URL danh sách trả lời (replyListUrl)</string>
     <string name="rule_vote_up">Quy tắc thích (voteUpRule)</string>
     <string name="rule_vote_down">Quy tắc không thích (voteDownRule)</string>
+    <string name="rule_vote_up_selected">Quy tắc trạng thái đã thích (voteUpSelectedRule)</string>
+    <string name="rule_vote_down_selected">Quy tắc trạng thái đã không thích (voteDownSelectedRule)</string>
     <string name="rule_reply">Quy tắc trả lời (replyRule)</string>
     <string name="rule_delete_review">Quy tắc xóa (deleteRule)</string>
     <string name="tag_explore_enabled">Cờ: đã bật khám phá</string>

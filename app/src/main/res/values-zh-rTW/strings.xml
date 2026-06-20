@@ -1036,6 +1036,8 @@
     <string name="rule_reply_list_url">回復列表URL（replyListUrl）</string>
     <string name="rule_vote_up">按讚規則（voteUpRule）</string>
     <string name="rule_vote_down">點踩規則（voteDownRule）</string>
+    <string name="rule_vote_up_selected">是否已按讚規則（voteUpSelectedRule）</string>
+    <string name="rule_vote_down_selected">是否已點踩規則（voteDownSelectedRule）</string>
     <string name="rule_reply">回復評論規則（replyRule）</string>
     <string name="rule_delete_review">刪除規則（deleteRule）</string>
     <string name="tag_explore_enabled">標誌：發現已啟用</string>

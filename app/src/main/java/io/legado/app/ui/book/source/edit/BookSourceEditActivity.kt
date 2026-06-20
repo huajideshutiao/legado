@@ -471,6 +471,8 @@ class BookSourceEditActivity :
             add(EditEntity("extraRule", rr.extraRule, R.string.rule_review_extra))
             add(EditEntity("imagesRule", rr.imagesRule, R.string.rule_review_images))
             add(EditEntity("voteUpCountRule", rr.voteUpCountRule, R.string.rule_vote_up_count))
+            add(EditEntity("voteUpSelectedRule", rr.voteUpSelectedRule, R.string.rule_vote_up_selected))
+            add(EditEntity("voteDownSelectedRule", rr.voteDownSelectedRule, R.string.rule_vote_down_selected))
             add(EditEntity("replyCountRule", rr.replyCountRule, R.string.rule_reply_count))
             add(EditEntity("replyListUrl", rr.replyListUrl, R.string.rule_reply_list_url))
             add(EditEntity("voteUpRule", rr.voteUpRule, R.string.rule_vote_up))
@@ -610,6 +612,8 @@ class BookSourceEditActivity :
                 "extraRule" -> reviewRule.extraRule = it.text
                 "imagesRule" -> reviewRule.imagesRule = it.text
                 "voteUpCountRule" -> reviewRule.voteUpCountRule = it.text
+                "voteUpSelectedRule" -> reviewRule.voteUpSelectedRule = it.text
+                "voteDownSelectedRule" -> reviewRule.voteDownSelectedRule = it.text
                 "replyCountRule" -> reviewRule.replyCountRule = it.text
                 "replyListUrl" -> reviewRule.replyListUrl = it.text
                 "voteUpRule" -> reviewRule.voteUpRule = it.text
