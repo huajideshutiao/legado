@@ -12,6 +12,7 @@
         android:id="@+id/menu_ok"
         android:icon="@drawable/ic_check"
         android:title="@string/ok"
+        android:visible="false"
         app:showAsAction="always" />
 
     <item

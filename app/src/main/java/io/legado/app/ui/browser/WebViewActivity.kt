@@ -63,6 +63,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             } else {
                 binding.webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
             }
+            invalidateOptionsMenu()
         }
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) {
@@ -91,6 +92,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         if (viewModel.sourceOrigin.isNotEmpty()) {
             menu.findItem(R.id.menu_disable_source)?.isVisible = true
             menu.findItem(R.id.menu_delete_source)?.isVisible = true
+        }
+        if (viewModel.isLogin || viewModel.sourceVerificationEnable) {
+            menu.findItem(R.id.menu_ok)?.isVisible = true
         }
         return super.onPrepareOptionsMenu(menu)
     }
