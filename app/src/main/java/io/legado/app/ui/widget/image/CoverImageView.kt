@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Picture
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
@@ -87,6 +88,16 @@ class CoverImageView @JvmOverloads constructor(
         }
     }
 
+    // 默认封面文字缓存:onDraw 命中时跳过 toStringArray/fontMetrics/N*2 drawText 的 Java 端准备
+    private var cachedPicture: Picture? = null
+    private var cachedName: String? = null
+    private var cachedAuthor: String? = null
+    private var cachedWidth: Float = 0f
+    private var cachedHeight: Float = 0f
+    private var cachedAccent: Int = 0
+    private var cachedDrawName: Boolean = false
+    private var cachedDrawAuthor: Boolean = false
+
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         viewWidth = width.toFloat()
@@ -132,6 +143,39 @@ class CoverImageView @JvmOverloads constructor(
     }
 
     private fun drawNameAuthor(canvas: Canvas) {
+        if (viewWidth <= 0f || viewHeight <= 0f) return
+        val curAccent = context.accentColor
+        val curDrawName = BookCover.drawBookName
+        val curDrawAuthor = BookCover.drawBookAuthor
+        val cached = cachedPicture
+        if (cached != null
+            && cachedName == name
+            && cachedAuthor == author
+            && cachedWidth == viewWidth
+            && cachedHeight == viewHeight
+            && cachedAccent == curAccent
+            && cachedDrawName == curDrawName
+            && cachedDrawAuthor == curDrawAuthor
+        ) {
+            canvas.drawPicture(cached)
+            return
+        }
+        val picture = Picture()
+        val recordCanvas = picture.beginRecording(viewWidth.toInt(), viewHeight.toInt())
+        recordNameAuthor(recordCanvas)
+        picture.endRecording()
+        canvas.drawPicture(picture)
+        cachedPicture = picture
+        cachedName = name
+        cachedAuthor = author
+        cachedWidth = viewWidth
+        cachedHeight = viewHeight
+        cachedAccent = curAccent
+        cachedDrawName = curDrawName
+        cachedDrawAuthor = curDrawAuthor
+    }
+
+    private fun recordNameAuthor(canvas: Canvas) {
         val nameArr = if (BookCover.drawBookName) name?.toStringArray() else null
         val authorArr = if (BookCover.drawBookAuthor) author?.toStringArray() else null
         if (nameArr.isNullOrEmpty() && authorArr.isNullOrEmpty()) return

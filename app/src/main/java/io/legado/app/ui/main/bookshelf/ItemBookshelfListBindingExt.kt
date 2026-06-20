@@ -13,7 +13,12 @@ import io.legado.app.utils.toTimeAgo
 import io.legado.app.utils.visible
 
 fun ItemBookshelfListBinding.applyCoverWidth() {
-    ivCover.updateLayoutParams { width = AppConfig.bookshelfCoverWidth.dpToPx() }
+    val coverWidth = AppConfig.bookshelfCoverWidth.dpToPx()
+    // 封面宽度只随全局配置变化,绝大多数 bind 宽度未变;
+    // 不判等就会每次 onBind 都触发一次无谓的 requestLayout
+    if (ivCover.layoutParams.width != coverWidth) {
+        ivCover.updateLayoutParams { width = coverWidth }
+    }
 }
 
 fun ItemBookshelfListBinding.upKind(kinds: List<String>?, show: Boolean = true) {
