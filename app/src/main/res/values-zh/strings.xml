@@ -358,7 +358,7 @@
     <string name="faq">常见问题</string>
     <string name="pt_show_all_find">显示所有发现</string>
     <string name="ps_show_all_find">关闭则只显示勾选源的发现</string>
-    <string name="force_refresh_book">刷新详情</string>
+    <string name="force_refresh_book">强制更新书籍</string>
     <string name="force_refresh_busy">正在刷新中, 请稍后再试</string>
     <string name="update_toc">更新目录</string>
     <string name="txt_toc_rule">TXT 目录规则</string>

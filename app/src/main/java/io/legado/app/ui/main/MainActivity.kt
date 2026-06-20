@@ -126,7 +126,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onStop() {
         super.onStop()
         viewModel.isActivityVisible = false
-        viewModel.updateUpdateNotification()
+        if (isFinishing) {
+            // 退出应用时取消刷新任务, 避免弹出通知
+            viewModel.cancelRefreshJobs()
+        } else {
+            viewModel.updateUpdateNotification()
+        }
     }
 
     override fun onPostCreate(savedInstanceState: Bundle?) {

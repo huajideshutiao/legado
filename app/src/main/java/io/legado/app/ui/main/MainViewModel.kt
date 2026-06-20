@@ -166,6 +166,23 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
     }
 
+    /**
+     * 取消刷新/更新目录任务, 用于退出应用时清理, 避免弹出通知
+     */
+    fun cancelRefreshJobs() {
+        upTocJob?.cancel()
+        refreshJob?.cancel()
+        synchronized(waitLock) {
+            waitUpTocBooks.clear()
+        }
+        onUpTocBooks.clear()
+        upTocTotal.set(0)
+        upTocCount.set(0)
+        refreshTotal.set(0)
+        refreshCount.set(0)
+        context.stopService<UpdateBookService>()
+    }
+
     @Synchronized
     fun updateUpdateNotification() {
         val upTocActive = upTocJob?.isActive == true
@@ -248,7 +265,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             refreshTotal.set(urls.size)
             refreshCount.set(0)
             updateUpdateNotification()
-            refreshBookInfo(urls)
+            refreshBook(urls)
         }
     }
 
@@ -258,7 +275,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
      * 期间用户可能修改进度/分组等, 必须执行时从 DB 重查最新值,
      * 否则 sync(oldBook) 拷回的是入队时的旧快照, update 会冲掉用户的并发修改.
      */
-    private suspend fun refreshBookInfo(bookUrls: List<String>) {
+    private suspend fun refreshBook(bookUrls: List<String>) {
         upPool()
         bookUrls.asFlow()
             .onEachParallel(threadCount) { bookUrl ->
@@ -267,13 +284,23 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 runCatching {
                     val oldBook = book.copy()
                     WebBook.getBookInfoAwait(source, book)
+                    val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
                     book.sync(oldBook)
                     book.removeType(BookType.updateError)
-                    appDb.bookDao.update(book)
-                    postEvent(EventBus.UP_BOOKSHELF, bookUrl)
+                    if (book.bookUrl == bookUrl) {
+                        appDb.bookDao.update(book)
+                    } else {
+                        appDb.bookDao.replace(oldBook, book)
+                        BookHelp.updateCacheFolder(oldBook, book)
+                    }
+                    appDb.bookChapterDao.delByBook(bookUrl)
+                    appDb.bookChapterDao.insert(*toc.toTypedArray())
+                    ReadBook.onChapterListUpdated(book)
+                    addDownload(source, book)
+                    postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 }.onFailure {
                     currentCoroutineContext().ensureActive()
-                    AppLog.put("${book.name} 刷新书籍信息失败\n${it.localizedMessage}", it)
+                    AppLog.put("${book.name} 强制刷新失败\n${it.localizedMessage}", it)
                 }
                 refreshCount.incrementAndGet()
                 updateUpdateNotification()
@@ -283,7 +310,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 onRefreshJobCompleted()
                 updateUpdateNotification()
             }.catch {
-                AppLog.put("刷新书籍信息出错\n${it.localizedMessage}", it)
+                AppLog.put("强制刷新书籍出错\n${it.localizedMessage}", it)
             }.collect()
     }
 
@@ -385,7 +412,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
 
     /**
-     * 使用书源缓存的两类 job (updateToc / refreshBookInfo) 都空闲时才清,
+     * 使用书源缓存的两类 job (updateToc / refreshBook) 都空闲时才清,
      * 任一仍在跑就保留以提升命中率.
      */
     private fun tryEvictBookSourceCache() {
