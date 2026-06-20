@@ -99,7 +99,8 @@ object BookInfo {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取字数")
             try {
-                wordCountFormat(analyzeRule.getString(infoRule.wordCount)).let {
+                analyzeRule.getStringList(infoRule.wordCount)
+                    ?.joinToString(",") { wordCountFormat(it) }.let {
                     book.wordCount = it
                     Debug.log(bookSource.bookSourceUrl, "└${it}")
                 }

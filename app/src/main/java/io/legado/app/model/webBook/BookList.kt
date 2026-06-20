@@ -240,7 +240,8 @@ object BookList {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取字数", log)
             try {
-                searchBook.wordCount = wordCountFormat(analyzeRule.getString(ruleWordCount))
+                searchBook.wordCount = analyzeRule.getStringList(ruleWordCount)
+                    ?.joinToString(",") { wordCountFormat(it) }
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()

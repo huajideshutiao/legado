@@ -75,7 +75,9 @@ interface BaseBook : RuleDataInterface {
     fun getKindList(): List<String> {
         val kindList = arrayListOf<String>()
         wordCount?.let {
-            if (it.isNotBlank()) kindList.add(it)
+            it.splitNotBlank(",", "\n").forEach { raw ->
+                if (raw.isNotBlank()) kindList.add(raw)
+            }
         }
         kind?.let {
             it.splitNotBlank(",", "\n").forEach { raw ->
