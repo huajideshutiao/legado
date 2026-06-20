@@ -11,9 +11,9 @@
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/menu_update_toc"
+        android:id="@+id/menu_refresh_book"
         android:icon="@drawable/ic_refresh_black_24dp"
-        android:title="@string/update_toc"
+        android:title="@string/force_refresh_book"
         app:showAsAction="never" />
 
     <item

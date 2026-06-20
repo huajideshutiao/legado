@@ -1,9 +1,11 @@
 package io.legado.app.ui.main
 
 import android.app.Application
+import androidx.collection.LruCache
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -29,6 +31,7 @@ import io.legado.app.service.CacheBookService
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -36,6 +39,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
@@ -59,7 +63,22 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
 
     private var upTocJob: Job? = null
+    private var refreshJob: Job? = null
     private var cacheBookJob: Job? = null
+
+    /**
+     * 更新目录/刷新书籍信息时缓存最近用过的书源, 避免每本书都走 DB.
+     * LruCache 内部 synchronized, 配合 onEachParallel 并发安全.
+     * 大小 16: 一次自动更新批次里活跃书源数通常远少于该上限.
+     */
+    private val bookSourceCache = LruCache<String, BookSource>(16)
+
+    private fun getBookSource(origin: String): BookSource? {
+        bookSourceCache.get(origin)?.let { return it }
+        val source = appDb.bookSourceDao.getBookSource(origin) ?: return null
+        bookSourceCache.put(origin, source)
+        return source
+    }
     val booksListRecycledViewPool = RecycledViewPool().apply {
         setMaxRecycledViews(0, 30)
     }
@@ -90,7 +109,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun upPool() {
         threadCount = AppConfig.threadCount
-        if (upTocJob?.isActive == true || cacheBookJob?.isActive == true) {
+        if (upTocJob?.isActive == true || refreshJob?.isActive == true || cacheBookJob?.isActive == true) {
             return
         }
         val newPoolSize = min(threadCount, AppConst.MAX_THREAD)
@@ -117,6 +136,52 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             }
             addToWaitUp(urls)
         }
+    }
+
+    /**
+     * 强制刷新书籍信息, 无视 canUpdate 属性 (用于菜单项)
+     */
+    fun forceRefresh(books: List<Book>) {
+        if (books.isEmpty()) return
+        if (upTocJob?.isActive == true || refreshJob?.isActive == true) {
+            context.toastOnUi(R.string.force_refresh_busy)
+            return
+        }
+        refreshJob = viewModelScope.launch(Dispatchers.Default) {
+            val urls = books.filterNot { it.isLocal }.map { it.bookUrl }
+            if (urls.isEmpty()) return@launch
+            refreshBookInfo(urls)
+        }
+    }
+
+    /**
+     * 并发刷新书籍信息.
+     * 入参是 bookUrl 而非 Book: onEachParallel 限流后排书可能等较久,
+     * 期间用户可能修改进度/分组等, 必须执行时从 DB 重查最新值,
+     * 否则 sync(oldBook) 拷回的是入队时的旧快照, update 会冲掉用户的并发修改.
+     */
+    private suspend fun refreshBookInfo(bookUrls: List<String>) {
+        upPool()
+        bookUrls.asFlow()
+            .onEachParallel(threadCount) { bookUrl ->
+                val book = appDb.bookDao.getBook(bookUrl) ?: return@onEachParallel
+                val source = getBookSource(book.origin) ?: return@onEachParallel
+                runCatching {
+                    val oldBook = book.copy()
+                    WebBook.getBookInfoAwait(source, book)
+                    book.sync(oldBook)
+                    book.removeType(BookType.updateError)
+                    appDb.bookDao.update(book)
+                    postEvent(EventBus.UP_BOOKSHELF, bookUrl)
+                }.onFailure {
+                    currentCoroutineContext().ensureActive()
+                    AppLog.put("${book.name} 刷新书籍信息失败\n${it.localizedMessage}", it)
+                }
+            }.onCompletion {
+                onRefreshJobCompleted()
+            }.catch {
+                AppLog.put("刷新书籍信息出错\n${it.localizedMessage}", it)
+            }.collect()
     }
 
     /**
@@ -172,7 +237,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 }
             }
         }
-        if (upTocJob == null) {
+        if (upTocJob == null && refreshJob?.isActive != true) {
             startUpTocJob()
         }
     }
@@ -196,10 +261,35 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         upTocJob = null
         if (!waitUpTocBooksEmpty()) {
             startUpTocJob()
+        } else {
+            tryEvictBookSourceCache()
         }
     }
 
+    @Synchronized
+    private fun onRefreshJobCompleted() {
+        refreshJob = null
+        if (upTocJob == null) {
+            if (!waitUpTocBooksEmpty()) {
+                startUpTocJob()
+            } else {
+                tryEvictBookSourceCache()
+            }
+        }
+    }
+
+    /**
+     * 使用书源缓存的两类 job (updateToc / refreshBookInfo) 都空闲时才清,
+     * 任一仍在跑就保留以提升命中率.
+     */
+    private fun tryEvictBookSourceCache() {
+        if (upTocJob?.isActive == true) return
+        if (refreshJob?.isActive == true) return
+        bookSourceCache.evictAll()
+    }
+
     private fun startUpTocJob() {
+        if (refreshJob?.isActive == true) return
         upPool()
         upTocJob = viewModelScope.launch(upTocPool) {
             flow {
@@ -226,7 +316,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     private suspend fun updateToc(bookUrl: String) {
         val book = appDb.bookDao.getBook(bookUrl) ?: return
-        val source = appDb.bookSourceDao.getBookSource(book.origin)
+        val source = getBookSource(book.origin)
         if (source == null) {
             if (!book.isUpError) {
                 book.addType(BookType.updateError)

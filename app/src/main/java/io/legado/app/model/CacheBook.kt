@@ -47,6 +47,7 @@ object CacheBook {
 
     @Synchronized
     fun getOrCreate(bookUrl: String): CacheBookModel? {
+        cacheBookMap[bookUrl]?.let { return it }
         val book = appDb.bookDao.getBook(bookUrl) ?: return null
         val bookSource = appDb.bookSourceDao.getBookSource(book.origin) ?: return null
         return getOrCreate(bookSource, book)
