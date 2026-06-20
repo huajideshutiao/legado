@@ -126,19 +126,22 @@ class CacheBookService : BaseService() {
                             WebBook.getBookInfoAwait(cacheBook.bookSource, book)
                         }.onFailure {
                             removeDownload(bookUrl)
+                            book.lastCheckTime = System.currentTimeMillis()
+                            book.update()
                             val msg = "《$name》目录为空且加载详情页失败\n${it.localizedMessage}"
-                            AppLog.put(msg, it, true)
+                            AppLog.put(msg, it, false)
                             return@execute
                         }
                     }
                     WebBook.getChapterListAwait(cacheBook.bookSource, book).onFailure {
                         if (book.totalChapterNum > 0) {
                             book.totalChapterNum = 0
-                            book.update()
                         }
+                        book.lastCheckTime = System.currentTimeMillis()
+                        book.update()
                         removeDownload(bookUrl)
                         val msg = "《$name》目录为空且加载目录失败\n${it.localizedMessage}"
-                        AppLog.put(msg, it, true)
+                        AppLog.put(msg, it, false)
                         return@execute
                     }.getOrNull()?.let { toc ->
                         appDb.bookChapterDao.insert(*toc.toTypedArray())

@@ -464,12 +464,21 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
         kotlin.runCatching {
             val oldBook = book.copy()
-            if (book.tocUrl.isBlank()) {
+            var tocResult = if (book.tocUrl.isBlank()) {
                 WebBook.getBookInfoAwait(source, book)
+                WebBook.getChapterListAwait(source, book)
             } else {
                 WebBook.runPreUpdateJs(source, book)
+                WebBook.getChapterListAwait(source, book)
             }
-            val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
+
+            // 失败回退逻辑：如果带 tocUrl 刷新失败，尝试从详情页重新开始
+            if (tocResult.isFailure && book.tocUrl.isNotBlank()) {
+                WebBook.getBookInfoAwait(source, book)
+                tocResult = WebBook.getChapterListAwait(source, book)
+            }
+
+            val toc = tocResult.getOrThrow()
             book.sync(oldBook)
             book.removeType(BookType.updateError)
             if (book.bookUrl == bookUrl) {
@@ -488,6 +497,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             //这里可能因为时间太长书籍信息已经更改,所以重新获取
             appDb.bookDao.getBook(book.bookUrl)?.let { book ->
                 book.addType(BookType.updateError)
+                book.lastCheckTime = System.currentTimeMillis()
                 appDb.bookDao.update(book)
             }
         }
