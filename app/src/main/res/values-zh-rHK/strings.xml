@@ -1138,7 +1138,6 @@
     <string name="export_md">导出(MD)</string>
     <string name="change_source_delay">换源间隔</string>
     <string name="change_source_progress">" 結果 %1$d, 當前進度 %2$d / %3$d: %4$s"</string>
-    <string name="open_book_info_by_click_title">点击书名打开详情</string>
     <string name="export_wait">等待导出</string>
     <string name="sync_book_progress_success">進度同步成功</string>
     <string name="default_home_page">默认主页</string>

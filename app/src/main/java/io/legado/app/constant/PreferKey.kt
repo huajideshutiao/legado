@@ -132,7 +132,6 @@ object PreferKey {
     const val onlyLatestBackup = "onlyLatestBackup"
     const val shrinkDatabase = "shrinkDatabase"
     const val batchChangeSourceDelay = "batchChangeSourceDelay"
-    const val openBookInfoByClickTitle = "openBookInfoByClickTitle"
     const val defaultHomePage = "defaultHomePage"
     const val showBookshelfFastScroller = "showBookshelfFastScroller"
     const val bookshelfListShowKind = "bookshelfListShowKind"

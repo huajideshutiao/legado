@@ -234,8 +234,6 @@ class BookshelfManageActivity :
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         this.menu = menu
-        menu.findItem(R.id.menu_open_book_info_by_click_title)?.isChecked =
-            AppConfig.openBookInfoByClickTitle
         upMenu()
         return super.onPrepareOptionsMenu(menu)
     }
@@ -377,10 +375,6 @@ class BookshelfManageActivity :
             R.id.menu_filter_type_comic -> setBookTypeFilter(2)
             R.id.menu_filter_type_audio -> setBookTypeFilter(3)
             R.id.menu_filter_type_video -> setBookTypeFilter(4)
-            R.id.menu_open_book_info_by_click_title -> {
-                AppConfig.openBookInfoByClickTitle = !item.isChecked
-                adapter.notifyItemRangeChanged(0, adapter.itemCount)
-            }
 
             R.id.menu_export_all_use_book_source -> viewModel.saveAllUseBookSourceToFile { file ->
                 exportDir.launch {

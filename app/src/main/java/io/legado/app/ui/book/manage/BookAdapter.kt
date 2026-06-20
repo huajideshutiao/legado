@@ -14,7 +14,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemArrangeBookBinding
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfig
 import io.legado.app.model.CacheBook
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -52,6 +51,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         payloads: MutableList<Any>
     ) {
         binding.apply {
+            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             tvName.text = item.name
             tvAuthor.text = item.author
             tvAuthor.visibility = if (item.author.isEmpty()) View.GONE else View.VISIBLE
@@ -102,12 +102,11 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                     callBack.upSelectCount()
                 }
             }
-            if (AppConfig.openBookInfoByClickTitle) {
-                tvName.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let {
-                        callBack.openBook(it)
-                    }
+            root.setOnLongClickListener {
+                getItem(holder.layoutPosition)?.let {
+                    callBack.openBook(it)
                 }
+                true
             }
             tvDelete.setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
