@@ -250,7 +250,15 @@ data class Book(
     fun saveRead() {
         lastCheckCount = 0
         durChapterTime = System.currentTimeMillis()
-        appDb.bookDao.update(this)
+        // 仅 PATCH 进度字段; 避免阅读/播放界面退出时整行 update 冲掉
+        // 后台 updateToc/refreshBookInfo 写入的最新元数据 (name/intro/cover/totalChapterNum 等)
+        appDb.bookDao.updateProgress(
+            bookUrl,
+            durChapterIndex,
+            durChapterPos,
+            durChapterTime,
+            durChapterTitle
+        )
         ReadTimeRecorder.flushAll()
     }
 

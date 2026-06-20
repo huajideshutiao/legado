@@ -157,6 +157,27 @@ interface BookDao {
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)
 
+    /**
+     * 仅 PATCH 进度字段, 避免阅读/播放界面退出时的整行 update 冲掉后台
+     * updateToc/refreshBookInfo 写入的最新元数据.
+     */
+    @Query(
+        """update books set
+            durChapterIndex = :durChapterIndex,
+            durChapterPos = :durChapterPos,
+            durChapterTime = :durChapterTime,
+            durChapterTitle = :durChapterTitle,
+            lastCheckCount = 0
+            where bookUrl = :bookUrl"""
+    )
+    fun updateProgress(
+        bookUrl: String,
+        durChapterIndex: Int,
+        durChapterPos: Int,
+        durChapterTime: Long,
+        durChapterTitle: String?
+    )
+
     @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
     fun upGroup(oldGroupId: Long, newGroupId: Long)
 
