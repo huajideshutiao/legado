@@ -429,7 +429,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             }
         }
         menu.findItem(R.id.menu_review)?.isVisible =
-            viewModel.curBookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
+            viewModel.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
         return super.onPrepareOptionsMenu(menu)
     }
 

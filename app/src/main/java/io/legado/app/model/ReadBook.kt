@@ -157,7 +157,7 @@ object ReadBook : CoroutineScope by MainScope() {
             appDb.bookSourceDao.getBookSource(book.origin)?.let {
                 bookSource = it
                 if (book.config.imageStyle.isNullOrBlank()) {
-                    var imageStyle = it.getContentRule().imageStyle
+                    var imageStyle = it.contentRule.imageStyle
                     if (imageStyle.isNullOrBlank() && (book.isImage || book.isPdf)) {
                         imageStyle = Book.imgStyleFull
                     }
@@ -836,7 +836,8 @@ object ReadBook : CoroutineScope by MainScope() {
     ): Deferred<Map<Int, Int>?>? {
         val source = bookSource ?: return null
         if (!source.enabledReview) return null
-        val rule = source.ruleReview ?: return null
+        if (source.ruleReview.isNullOrEmpty()) return null
+        val rule = source.reviewRule
         if (rule.reviewUrl.isNullOrBlank()) return null
         if (rule.reviewCountRule.isNullOrBlank()) return null
         reviewCountDeferred[chapter.index]?.let { return it }

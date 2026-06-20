@@ -84,7 +84,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
 
     @SuppressLint("SetTextI18n")
     private fun initHelpView() {
-        viewModel.bookSource?.ruleSearch?.checkKeyWord?.let {
+        viewModel.bookSource?.searchRule?.checkKeyWord?.let {
             if (it.isNotBlank()) {
                 binding.textMy.text = it
             }

@@ -755,7 +755,7 @@ class AudioPlayService : BaseService(), Player.Listener {
      */
     private fun loadCoverUrl(bookSource: BookSource, book: Book, chapter: BookChapter) {
         execute {
-            val musicCover = bookSource.getContentRule().musicCover
+            val musicCover = bookSource.contentRule.musicCover
             AudioPlay.durCoverUrl = if (!musicCover.isNullOrBlank()) {
                 val rule = AnalyzeRule(book, bookSource).apply {
                     coroutineContext = currentCoroutineContext()
@@ -780,7 +780,7 @@ class AudioPlayService : BaseService(), Player.Listener {
         chapter: BookChapter
     ): Coroutine<List<Pair<Int, String>>> {
         return execute {
-            val lrcRule = bookSource.getContentRule().lrcRule
+            val lrcRule = bookSource.contentRule.lrcRule
             if (lrcRule.isNullOrBlank()) return@execute emptyList()
             val rule = AnalyzeRule(book, bookSource).apply {
                 coroutineContext = currentCoroutineContext()

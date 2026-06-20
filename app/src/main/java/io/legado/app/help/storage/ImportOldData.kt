@@ -209,7 +209,7 @@ object ImportOldData {
             if (exploreUrl.isNullOrBlank()) {
                 enabledExplore = false
             }
-            ruleSearch = SearchRule(
+            searchRule = SearchRule(
                 bookList = toNewRule(jsonItem.readString("ruleSearchList")),
                 name = toNewRule(jsonItem.readString("ruleSearchName")),
                 author = toNewRule(jsonItem.readString("ruleSearchAuthor")),
@@ -219,7 +219,7 @@ object ImportOldData {
                 coverUrl = toNewRule(jsonItem.readString("ruleSearchCoverUrl")),
                 lastChapter = toNewRule(jsonItem.readString("ruleSearchLastChapter"))
             )
-            ruleExplore = ExploreRule(
+            exploreRule = ExploreRule(
                 bookList = toNewRule(jsonItem.readString("ruleFindList")),
                 name = toNewRule(jsonItem.readString("ruleFindName")),
                 author = toNewRule(jsonItem.readString("ruleFindAuthor")),
@@ -229,7 +229,7 @@ object ImportOldData {
                 coverUrl = toNewRule(jsonItem.readString("ruleFindCoverUrl")),
                 lastChapter = toNewRule(jsonItem.readString("ruleFindLastChapter"))
             )
-            ruleBookInfo = BookInfoRule(
+            bookInfoRule = BookInfoRule(
                 init = toNewRule(jsonItem.readString("ruleBookInfoInit")),
                 name = toNewRule(jsonItem.readString("ruleBookName")),
                 author = toNewRule(jsonItem.readString("ruleBookAuthor")),
@@ -239,7 +239,7 @@ object ImportOldData {
                 lastChapter = toNewRule(jsonItem.readString("ruleBookLastChapter")),
                 tocUrl = toNewRule(jsonItem.readString("ruleChapterUrl"))
             )
-            ruleToc = TocRule(
+            tocRule = TocRule(
                 chapterList = toNewRule(jsonItem.readString("ruleChapterList")),
                 chapterName = toNewRule(jsonItem.readString("ruleChapterName")),
                 chapterUrl = toNewRule(jsonItem.readString("ruleContentUrl")),
@@ -249,7 +249,7 @@ object ImportOldData {
             if (content.startsWith("$") && !content.startsWith("$.")) {
                 content = content.substring(1)
             }
-            ruleContent = ContentRule(
+            contentRule = ContentRule(
                 content = content,
                 replaceRegex = toNewRule(jsonItem.readString("ruleBookContentReplace")),
                 nextContentUrl = toNewRule(jsonItem.readString("ruleContentUrlNext"))

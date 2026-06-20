@@ -302,7 +302,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
 
         override fun interceptUrl(url: Uri): Boolean {
             val source = viewModel.curBookSource
-            val js = source?.ruleContent?.shouldOverrideUrlLoading
+            val js = source?.contentRule?.shouldOverrideUrlLoading
             if (!js.isNullOrBlank()) {
                 val t = SystemClock.uptimeMillis()
                 val result = runCatching {
@@ -340,7 +340,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
             }
-            viewModel.curBookSource?.ruleContent?.webJs?.let {
+            viewModel.curBookSource?.contentRule?.webJs?.let {
                 if (it.isNotBlank()) {
                     view.evaluateJavascript(it, null)
                 }

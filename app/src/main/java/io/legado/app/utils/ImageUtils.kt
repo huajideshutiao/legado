@@ -60,7 +60,7 @@ object ImageUtils {
         return when (source) {
             is BookSource ->
                 if (isCover) source.coverDecodeJs
-                else source.getContentRule().imageDecode
+                else source.contentRule.imageDecode
             else -> null
         }
     }

@@ -52,7 +52,7 @@ object BookInfo {
         redirectUrl: String,
         canReName: Boolean,
     ) {
-        val infoRule = bookSource.getBookInfoRule()
+        val infoRule = bookSource.bookInfoRule
         infoRule.init?.let {
             if (it.isNotBlank()) {
                 currentCoroutineContext().ensureActive()

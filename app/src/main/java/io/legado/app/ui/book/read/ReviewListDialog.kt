@@ -705,7 +705,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         ) {
             val b = book ?: return
             val source = b.getBookSource() ?: return
-            val rule = source.ruleReview ?: return
+            if (source.ruleReview.isNullOrEmpty()) return
+            val rule = source.reviewRule
             val ruleText = ruleSelector(rule)
             if (ruleText.isNullOrBlank()) {
                 context.toastOnUi("书源未配置此操作规则")

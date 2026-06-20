@@ -79,9 +79,9 @@ object BookList {
         }
         val collections: List<Any>
         val bookListRule: BookListRule = when {
-            isSearch -> bookSource.getSearchRule()
-            bookSource.getExploreRule().bookList.isNullOrBlank() -> bookSource.getSearchRule()
-            else -> bookSource.getExploreRule()
+            isSearch -> bookSource.searchRule
+            bookSource.exploreRule.bookList.isNullOrBlank() -> bookSource.searchRule
+            else -> bookSource.exploreRule
         }
         val (ruleList, reverse) = WebBook.parseRulePrefix(bookListRule.bookList)
         Debug.log(bookSource.bookSourceUrl, "┌获取书籍列表")

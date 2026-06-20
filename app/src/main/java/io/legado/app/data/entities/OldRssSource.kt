@@ -68,7 +68,7 @@ data class OldRssSource(
         bookSource.exploreUrl = sortUrl
         bookSource.exploreStyle = articleStyle
 
-        bookSource.ruleExplore = ExploreRule(
+        bookSource.exploreRule = ExploreRule(
             bookList = ruleArticles,
             name = ruleTitle,
             author = rulePubDate,
@@ -84,7 +84,7 @@ data class OldRssSource(
                 io.legado.app.utils.EscapeUtils.escapeEcmaScript(mStyle)
             }\";\ndocument.head.appendChild(style);\n" else "") + mInjectJs
 
-        bookSource.ruleContent = ContentRule(
+        bookSource.contentRule = ContentRule(
             content = ruleContent,
             webJs = webJs.ifEmpty { null },
             shouldOverrideUrlLoading = shouldOverrideUrlLoading

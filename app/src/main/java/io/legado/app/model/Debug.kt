@@ -300,8 +300,14 @@ object Debug {
         book: Book,
         bookChapter: BookChapter
     ) {
-        val rule = bookSource.ruleReview
-        if (rule == null || rule.reviewUrl.isNullOrBlank()) {
+        if (bookSource.ruleReview.isNullOrEmpty()) {
+            log(debugSource, "≡未配置段评规则,跳过")
+            log(debugSource, showTime = false)
+            lrcDebug(scope, bookSource, book, bookChapter)
+            return
+        }
+        val rule = bookSource.reviewRule
+        if (rule.reviewUrl.isNullOrBlank()) {
             log(debugSource, "≡未配置段评规则,跳过")
             log(debugSource, showTime = false)
             lrcDebug(scope, bookSource, book, bookChapter)
@@ -378,7 +384,7 @@ object Debug {
         book: Book,
         bookChapter: BookChapter
     ) {
-        val lrcRule = bookSource.getContentRule().lrcRule
+        val lrcRule = bookSource.contentRule.lrcRule
         if (lrcRule.isNullOrBlank()) {
             musicCoverDebug(scope, bookSource, book, bookChapter)
             return
@@ -418,7 +424,7 @@ object Debug {
         book: Book,
         bookChapter: BookChapter
     ) {
-        val musicCover = bookSource.getContentRule().musicCover
+        val musicCover = bookSource.contentRule.musicCover
         if (musicCover.isNullOrBlank()) {
             log(debugSource, "≡调试流程完成", state = 1000)
             return

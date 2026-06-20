@@ -48,7 +48,7 @@ class ReadRssViewModel(application: Application) : BaseReadViewModel(application
                 chapterListData.value?.get(book.durChapterIndex)
             } ?: return@execute
 
-            if (!source.ruleContent?.content.isNullOrBlank()) {
+            if (!source.contentRule.content.isNullOrBlank()) {
                 loadContent(chapter)
             } else {
                 val baseUrl = if (book.originName == "RSS") source.bookSourceUrl else book.tocUrl
@@ -92,13 +92,13 @@ class ReadRssViewModel(application: Application) : BaseReadViewModel(application
             return finish()
         }
 
-        if (!source.ruleContent?.content.isNullOrBlank()) {
+        if (!source.contentRule.content.isNullOrBlank()) {
             chapterListData.value?.get(book.durChapterIndex)?.let { loadContent(it) }
         } else finish()
     }
 
     fun clHtml(content: String): String {
-        val webJs = curBookSource?.ruleContent?.webJs
+        val webJs = curBookSource?.contentRule?.webJs
         return if (!webJs.isNullOrEmpty()) {
             """
                 <script>

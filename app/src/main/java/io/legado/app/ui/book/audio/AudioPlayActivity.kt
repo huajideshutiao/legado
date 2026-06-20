@@ -113,7 +113,7 @@ class AudioPlayActivity :
         menu.findItem(R.id.menu_login)?.isVisible = AudioPlay.bookSource?.hasLogin() == true
         menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
         menu.findItem(R.id.menu_review)?.isVisible =
-            AudioPlay.bookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
+            AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
     }
 

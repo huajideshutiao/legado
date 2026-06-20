@@ -54,7 +54,7 @@ object BookContent {
         }
         val contentList = arrayListOf<String>()
         val nextUrlList = arrayListOf(redirectUrl)
-        val contentRule = bookSource.getContentRule()
+        val contentRule = bookSource.contentRule
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)

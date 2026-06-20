@@ -323,7 +323,7 @@ class BookSourceEditActivity :
             add(EditEntity("jsLib", bs.jsLib, "jsLib"))
         }
         // 搜索
-        val sr = bs.getSearchRule()
+        val sr = bs.searchRule
         searchEntities.clear()
         searchEntities.apply {
             add(EditEntity("searchUrl", bs.searchUrl, R.string.r_search_url))
@@ -340,7 +340,7 @@ class BookSourceEditActivity :
             add(EditEntity("hasMoreRule", sr.hasMoreRule, R.string.rule_has_more))
         }
         // 发现
-        val er = bs.getExploreRule()
+        val er = bs.exploreRule
         exploreEntities.clear()
         exploreEntities.apply {
             add(
@@ -385,7 +385,7 @@ class BookSourceEditActivity :
             add(EditEntity("hasMoreRule", er.hasMoreRule, R.string.rule_has_more))
         }
         // 详情页
-        val ir = bs.getBookInfoRule()
+        val ir = bs.bookInfoRule
         infoEntities.clear()
         infoEntities.apply {
             add(EditEntity("init", ir.init, R.string.rule_book_info_init))
@@ -401,7 +401,7 @@ class BookSourceEditActivity :
             add(EditEntity("downloadUrls", ir.downloadUrls, R.string.download_url_rule))
         }
         // 目录页
-        val tr = bs.getTocRule()
+        val tr = bs.tocRule
         tocEntities.clear()
         tocEntities.apply {
             add(EditEntity("preUpdateJs", tr.preUpdateJs, R.string.pre_update_js))
@@ -416,7 +416,7 @@ class BookSourceEditActivity :
             add(EditEntity("nextTocUrl", tr.nextTocUrl, R.string.rule_next_toc_url))
         }
         // 正文页
-        val cr = bs.getContentRule()
+        val cr = bs.contentRule
         contentEntities.clear()
         contentEntities.apply {
             add(EditEntity("content", cr.content, R.string.rule_book_content))
@@ -447,7 +447,7 @@ class BookSourceEditActivity :
             add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
         }
         // 段评
-        val rr = bs.getReviewRule()
+        val rr = bs.reviewRule
         reviewEntities.clear()
         reviewEntities.apply {
             add(
@@ -618,12 +618,12 @@ class BookSourceEditActivity :
                 "deleteRule" -> reviewRule.deleteRule = it.text
             }
         }
-        source.ruleSearch = searchRule
-        source.ruleExplore = exploreRule
-        source.ruleBookInfo = bookInfoRule
-        source.ruleToc = tocRule
-        source.ruleContent = contentRule
-        source.ruleReview = reviewRule
+        source.searchRule = searchRule
+        source.exploreRule = exploreRule
+        source.bookInfoRule = bookInfoRule
+        source.tocRule = tocRule
+        source.contentRule = contentRule
+        source.reviewRule = reviewRule
         return source
     }
 

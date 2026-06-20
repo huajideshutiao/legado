@@ -43,7 +43,7 @@ object BookChapterList {
         val chapterList = ArrayList<BookChapter>()
         Debug.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
         Debug.log(bookSource.bookSourceUrl, body, state = 30)
-        val tocRule = bookSource.getTocRule()
+        val tocRule = bookSource.tocRule
         val nextUrlList = arrayListOf(redirectUrl)
         val (listRule, reverse) = WebBook.parseRulePrefix(tocRule.chapterList)
         var chapterData =
@@ -113,7 +113,7 @@ object BookChapterList {
     }
 
     suspend fun updateBook(bookSource: BookSource, book: Book, chapterList: List<BookChapter>): List<BookChapter> {
-        val tocRule = bookSource.getTocRule()
+        val tocRule = bookSource.tocRule
         currentCoroutineContext().ensureActive()
         //去重
         val lh = LinkedHashSet(chapterList)

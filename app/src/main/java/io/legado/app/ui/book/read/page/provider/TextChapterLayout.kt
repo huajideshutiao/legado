@@ -327,7 +327,7 @@ class TextChapterLayout(
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
         // 当前书源启用段评 + 配了 reviewCountRule 才追加 ▨ 占位符
         val enableReview = ReadBook.bookSource?.let {
-            it.enabledReview && !it.ruleReview?.reviewCountRule.isNullOrBlank()
+            it.enabledReview && !it.reviewRule.reviewCountRule.isNullOrBlank()
         } == true
 
         if (titleMode != 2 || contents.isEmpty()) {

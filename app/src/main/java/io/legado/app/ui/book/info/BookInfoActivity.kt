@@ -230,7 +230,7 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_download_local)?.isVisible =
             book?.origin?.startsWith(BookType.webDavTag) == true
         menu.findItem(R.id.menu_review)?.isVisible =
-            viewModel.curBookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
+            viewModel.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
         return super.onMenuOpened(featureId, menu)
     }
 

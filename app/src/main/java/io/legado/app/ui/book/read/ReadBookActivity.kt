@@ -920,7 +920,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 Coroutine.async(lifecycleScope) {
                     val source =
                         ReadBook.bookSource ?: throw NoStackTraceException("no book source")
-                    val payAction = source.getContentRule().payAction
+                    val payAction = source.contentRule.payAction
                     if (payAction.isNullOrBlank()) {
                         throw NoStackTraceException("no pay action")
                     }
@@ -1411,7 +1411,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             menu.findItem(R.id.menu_same_title_removed)?.isChecked =
                 ReadBook.curTextChapter?.sameTitleRemoved == true
             menu.findItem(R.id.menu_review)?.isVisible =
-                ReadBook.bookSource?.ruleReview?.reviewUrl.isNullOrBlank() == false
+                ReadBook.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
         }
 
         /**

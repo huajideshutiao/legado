@@ -148,7 +148,7 @@ object WebBook {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
             }
-            val tocRule = bookSource.getTocRule()
+            val tocRule = bookSource.tocRule
             val isSingleChapter = tocRule.chapterList.isNullOrBlank()
             if (isSingleChapter) {
                 Debug.log(bookSource.bookSourceUrl, "⇒目录规则为空,作为单章节书籍处理")
@@ -200,7 +200,7 @@ object WebBook {
         nextChapterUrl: String? = null,
         needSave: Boolean = true
     ): String {
-        if (bookSource.getContentRule().content.isNullOrEmpty()) {
+        if (bookSource.contentRule.content.isNullOrEmpty()) {
             Debug.log(bookSource.bookSourceUrl, "⇒正文规则为空,使用章节链接:${bookChapter.url}")
             return bookChapter.url
         }
@@ -297,8 +297,10 @@ object WebBook {
         urlRuleSelector: (io.legado.app.data.entities.rule.ReviewRule) -> Pair<String?, String>,
         variables: Map<AppConst.JsVarName, Any>,
     ): Result<ReviewPage> = runCatching {
-        val reviewRule = bookSource.ruleReview
-            ?: throw NoStackTraceException("书源未配置段评规则")
+        if (bookSource.ruleReview.isNullOrEmpty()) {
+            throw NoStackTraceException("书源未配置段评规则")
+        }
+        val reviewRule = bookSource.reviewRule
         val (rawUrl, missingMsg) = urlRuleSelector(reviewRule)
         if (rawUrl.isNullOrBlank()) throw NoStackTraceException(missingMsg)
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
@@ -335,8 +337,10 @@ object WebBook {
         book: Book,
         bookChapter: BookChapter,
     ): Result<Map<Int, Int>> = runCatching {
-        val reviewRule = bookSource.ruleReview
-            ?: throw NoStackTraceException("书源未配置段评规则")
+        if (bookSource.ruleReview.isNullOrEmpty()) {
+            throw NoStackTraceException("书源未配置段评规则")
+        }
+        val reviewRule = bookSource.reviewRule
         val countRule = reviewRule.reviewCountRule
             ?: return@runCatching emptyMap<Int, Int>()
         val analyzeRule = AnalyzeRule(book, bookSource).apply {
@@ -407,7 +411,7 @@ object WebBook {
 
     suspend fun runPreUpdateJs(bookSource: BookSource, book: Book): Result<Unit> {
         return runCatching {
-            val preUpdateJs = bookSource.ruleToc?.preUpdateJs
+            val preUpdateJs = bookSource.tocRule.preUpdateJs
             if (!preUpdateJs.isNullOrBlank()) {
                 AnalyzeRule(book, bookSource, true).apply {
                     coroutineContext = currentCoroutineContext()

@@ -4,10 +4,10 @@ import android.os.Parcelable
 import android.text.TextUtils
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import androidx.room.TypeConverter
-import androidx.room.TypeConverters
+import com.google.gson.annotations.JsonAdapter
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.rule.BookInfoRule
@@ -19,11 +19,11 @@ import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.splitNotBlank
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 
 @Suppress("unused")
 @Parcelize
-@TypeConverters(BookSource.Converters::class)
 @Entity(
     tableName = "book_sources",
     indices = [(Index(value = ["bookSourceUrl"], unique = false))]
@@ -94,20 +94,56 @@ data class BookSource(
     @ColumnInfo(defaultValue = "0")
     var exploreStyle: Int = 0,
     // 发现规则
-    var ruleExplore: ExploreRule? = null,
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleExplore: String? = null,
     // 搜索url
     var searchUrl: String? = null,
     // 搜索规则
-    var ruleSearch: SearchRule? = null,
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleSearch: String? = null,
     // 书籍信息页规则
-    var ruleBookInfo: BookInfoRule? = null,
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleBookInfo: String? = null,
     // 目录页规则
-    var ruleToc: TocRule? = null,
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleToc: String? = null,
     // 正文页规则
-    var ruleContent: ContentRule? = null,
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleContent: String? = null,
     // 段评规则
-    var ruleReview: ReviewRule? = null
+    @JsonAdapter(RuleStringAdapter::class)
+    var ruleReview: String? = null
 ) : Parcelable, BaseSource {
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _searchRule: SearchRule? = null
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _exploreRule: ExploreRule? = null
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _bookInfoRule: BookInfoRule? = null
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _tocRule: TocRule? = null
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _contentRule: ContentRule? = null
+
+    @Ignore
+    @IgnoredOnParcel
+    @Transient
+    private var _reviewRule: ReviewRule? = null
 
     override fun getTag(): String {
         return bookSourceName
@@ -133,47 +169,60 @@ data class BookSource(
         return if (other is BookSource) other.bookSourceUrl == bookSourceUrl else false
     }
 
-    fun getSearchRule(): SearchRule {
-        ruleSearch?.let { return it }
-        val rule = SearchRule()
-        ruleSearch = rule
-        return rule
-    }
+    @get:Ignore
+    var searchRule: SearchRule
+        get() = _searchRule ?: parseRule(ruleSearch) { SearchRule() }.also { _searchRule = it }
+        set(value) {
+            ruleSearch = GSON.toJson(value)
+            _searchRule = value
+        }
 
-    fun getExploreRule(): ExploreRule {
-        ruleExplore?.let { return it }
-        val rule = ExploreRule()
-        ruleExplore = rule
-        return rule
-    }
+    @get:Ignore
+    var exploreRule: ExploreRule
+        get() = _exploreRule ?: parseRule(ruleExplore) { ExploreRule() }.also { _exploreRule = it }
+        set(value) {
+            ruleExplore = GSON.toJson(value)
+            _exploreRule = value
+        }
 
-    fun getBookInfoRule(): BookInfoRule {
-        ruleBookInfo?.let { return it }
-        val rule = BookInfoRule()
-        ruleBookInfo = rule
-        return rule
-    }
+    @get:Ignore
+    var bookInfoRule: BookInfoRule
+        get() = _bookInfoRule ?: parseRule(ruleBookInfo) { BookInfoRule() }.also {
+            _bookInfoRule = it
+        }
+        set(value) {
+            ruleBookInfo = GSON.toJson(value)
+            _bookInfoRule = value
+        }
 
-    fun getTocRule(): TocRule {
-        ruleToc?.let { return it }
-        val rule = TocRule()
-        ruleToc = rule
-        return rule
-    }
+    @get:Ignore
+    var tocRule: TocRule
+        get() = _tocRule ?: parseRule(ruleToc) { TocRule() }.also { _tocRule = it }
+        set(value) {
+            ruleToc = GSON.toJson(value)
+            _tocRule = value
+        }
 
-    fun getContentRule(): ContentRule {
-        ruleContent?.let { return it }
-        val rule = ContentRule()
-        ruleContent = rule
-        return rule
-    }
+    @get:Ignore
+    var contentRule: ContentRule
+        get() = _contentRule ?: parseRule(ruleContent) { ContentRule() }.also { _contentRule = it }
+        set(value) {
+            ruleContent = GSON.toJson(value)
+            _contentRule = value
+        }
 
-    fun getReviewRule(): ReviewRule {
-        ruleReview?.let { return it }
-        val rule = ReviewRule()
-        ruleReview = rule
-        return rule
-    }
+    @get:Ignore
+    var reviewRule: ReviewRule
+        get() = _reviewRule ?: parseRule(ruleReview) { ReviewRule() }.also { _reviewRule = it }
+        set(value) {
+            ruleReview = GSON.toJson(value)
+            _reviewRule = value
+        }
+
+    private inline fun <reified T> parseRule(json: String?, default: () -> T): T =
+        json?.takeIf { it.isNotEmpty() }
+            ?.let { GSON.fromJsonObject<T>(it).getOrNull() }
+            ?: default()
 
     fun getDisPlayNameGroup(): String {
         return if (bookSourceGroup.isNullOrBlank()) {
@@ -226,7 +275,7 @@ data class BookSource(
     }
 
     fun getCheckKeyword(default: String): String {
-        ruleSearch?.checkKeyWord?.let {
+        searchRule.checkKeyWord?.let {
             if (it.isNotBlank()) {
                 return it
             }
@@ -264,12 +313,12 @@ data class BookSource(
             && equal(exploreScreen, source.exploreScreen)
             && exploreStyle == source.exploreStyle
                 && equal(searchUrl, source.searchUrl)
-                && getSearchRule() == source.getSearchRule()
-                && getExploreRule() == source.getExploreRule()
-                && getBookInfoRule() == source.getBookInfoRule()
-                && getTocRule() == source.getTocRule()
-                && getContentRule() == source.getContentRule()
-            && getReviewRule() == source.getReviewRule()
+            && searchRule == source.searchRule
+            && exploreRule == source.exploreRule
+            && bookInfoRule == source.bookInfoRule
+            && tocRule == source.tocRule
+            && contentRule == source.contentRule
+            && reviewRule == source.reviewRule
     }
 
     private fun equal(a: String?, b: String?) = a == b || (a.isNullOrEmpty() && b.isNullOrEmpty())
@@ -283,57 +332,5 @@ data class BookSource(
 
         fun exploreStyleIsVideo(style: Int) = style and EXPLORE_STYLE_VIDEO_FLAG != 0
         fun exploreStyleCols(style: Int) = style and EXPLORE_STYLE_COLS_MASK
-    }
-
-    class Converters {
-
-        @TypeConverter
-        fun exploreRuleToString(exploreRule: ExploreRule?): String =
-            GSON.toJson(exploreRule)
-
-        @TypeConverter
-        fun stringToExploreRule(json: String?) =
-            GSON.fromJsonObject<ExploreRule>(json).getOrNull()
-
-        @TypeConverter
-        fun searchRuleToString(searchRule: SearchRule?): String =
-            GSON.toJson(searchRule)
-
-        @TypeConverter
-        fun stringToSearchRule(json: String?) =
-            GSON.fromJsonObject<SearchRule>(json).getOrNull()
-
-        @TypeConverter
-        fun bookInfoRuleToString(bookInfoRule: BookInfoRule?): String =
-            GSON.toJson(bookInfoRule)
-
-        @TypeConverter
-        fun stringToBookInfoRule(json: String?) =
-            GSON.fromJsonObject<BookInfoRule>(json).getOrNull()
-
-        @TypeConverter
-        fun tocRuleToString(tocRule: TocRule?): String =
-            GSON.toJson(tocRule)
-
-        @TypeConverter
-        fun stringToTocRule(json: String?) =
-            GSON.fromJsonObject<TocRule>(json).getOrNull()
-
-        @TypeConverter
-        fun contentRuleToString(contentRule: ContentRule?): String =
-            GSON.toJson(contentRule)
-
-        @TypeConverter
-        fun stringToContentRule(json: String?) =
-            GSON.fromJsonObject<ContentRule>(json).getOrNull()
-
-        @TypeConverter
-        fun stringToReviewRule(json: String?) =
-            GSON.fromJsonObject<ReviewRule>(json).getOrNull()
-
-        @TypeConverter
-        fun reviewRuleToString(reviewRule: ReviewRule?): String =
-            GSON.toJson(reviewRule)
-
     }
 }

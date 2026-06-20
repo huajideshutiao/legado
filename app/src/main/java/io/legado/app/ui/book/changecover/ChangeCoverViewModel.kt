@@ -100,7 +100,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             searchBooks.clear()
             upAdapter?.invoke()
             bookSources.clear()
-            bookSources.addAll(appDb.bookSourceDao.allEnabled.filter { !it.ruleSearch?.coverUrl.isNullOrBlank() })
+            bookSources.addAll(appDb.bookSourceDao.allEnabled.filter { !it.searchRule.coverUrl.isNullOrBlank() })
             initSearchPool()
             search()
         }
@@ -125,7 +125,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
     }
 
     private suspend fun search(source: BookSource) {
-        if (source.getSearchRule().coverUrl.isNullOrBlank()) {
+        if (source.searchRule.coverUrl.isNullOrBlank()) {
             return
         }
         val searchBook = WebBook.getBookListAwait(
