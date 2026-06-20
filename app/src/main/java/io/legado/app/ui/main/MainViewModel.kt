@@ -2,6 +2,8 @@ package io.legado.app.ui.main
 
 import android.app.Application
 import androidx.collection.LruCache
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
@@ -11,6 +13,8 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -28,9 +32,14 @@ import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
+import io.legado.app.service.UpdateBookService
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.servicePendingIntent
+import io.legado.app.utils.startService
+import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,13 +54,16 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import splitties.init.appCtx
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
 class MainViewModel(application: Application) : BaseViewModel(application) {
@@ -66,6 +78,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private var refreshJob: Job? = null
     private var cacheBookJob: Job? = null
 
+    var isActivityVisible = true
+
+    private val upTocTotal = AtomicInteger(0)
+    private val upTocCount = AtomicInteger(0)
+    private val refreshTotal = AtomicInteger(0)
+    private val refreshCount = AtomicInteger(0)
+
     /**
      * 更新目录/刷新书籍信息时缓存最近用过的书源, 避免每本书都走 DB.
      * LruCache 内部 synchronized, 配合 onEachParallel 并发安全.
@@ -74,7 +93,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private val bookSourceCache = LruCache<String, BookSource>(16)
 
     private fun getBookSource(origin: String): BookSource? {
-        bookSourceCache.get(origin)?.let { return it }
+        bookSourceCache[origin]?.let { return it }
         val source = appDb.bookSourceDao.getBookSource(origin) ?: return null
         bookSourceCache.put(origin, source)
         return source
@@ -92,6 +111,26 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private val autoUpdatedGroups = ConcurrentHashMap.newKeySet<Long>()
 
     fun markGroupAutoUpdated(groupId: Long): Boolean = autoUpdatedGroups.add(groupId)
+
+    init {
+        FlowBus.with(EventBus.STOP_UP_BOOK).onEach {
+            upTocJob?.cancel()
+            refreshJob?.cancel()
+            synchronized(waitLock) {
+                waitUpTocBooks.clear()
+            }
+            val urls = onUpTocBooks.toList()
+            onUpTocBooks.clear()
+            urls.forEach {
+                postEvent(EventBus.UP_BOOKSHELF, it)
+            }
+            upTocTotal.set(0)
+            upTocCount.set(0)
+            refreshTotal.set(0)
+            refreshCount.set(0)
+            updateUpdateNotification()
+        }.launchIn(viewModelScope)
+    }
 
     companion object {
         /** 自动更新时, 距上次检查不足该时长的书籍跳过 */
@@ -119,6 +158,48 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         poolSize = newPoolSize
         upTocPool.close()
         upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
+    }
+
+    @Synchronized
+    fun updateUpdateNotification() {
+        val upTocActive = upTocJob?.isActive == true
+        val refreshActive = refreshJob?.isActive == true
+        if ((!upTocActive && !refreshActive) || isActivityVisible) {
+            context.stopService<UpdateBookService>()
+            return
+        }
+        context.startService<UpdateBookService>()
+        val title = if (refreshActive) {
+            context.getString(R.string.force_refresh_book)
+        } else {
+            context.getString(R.string.update_toc)
+        }
+        val count = upTocCount.get() + refreshCount.get()
+        val total = upTocTotal.get() + refreshTotal.get()
+        val msg = context.getString(R.string.progress_show, "", count, total)
+
+        if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
+            val notificationBuilder =
+                NotificationCompat.Builder(context, AppConst.channelIdDownload)
+                    .setSmallIcon(R.drawable.ic_update)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setContentTitle(title)
+                    .setContentText(msg)
+                    .setProgress(total, count, total <= 0)
+                    .addAction(
+                        R.drawable.ic_stop_black_24dp,
+                        context.getString(R.string.cancel),
+                        context.servicePendingIntent<UpdateBookService>(IntentAction.stop)
+                    )
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            try {
+                NotificationManagerCompat.from(appCtx)
+                    .notify(NotificationId.UpdateBookService, notificationBuilder.build())
+            } catch (e: Exception) {
+                AppLog.put("更新通知失败\n${e.localizedMessage}", e)
+            }
+        }
     }
 
     fun isUpdate(bookUrl: String): Boolean {
@@ -150,6 +231,9 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         refreshJob = viewModelScope.launch(Dispatchers.Default) {
             val urls = books.filterNot { it.isLocal }.map { it.bookUrl }
             if (urls.isEmpty()) return@launch
+            refreshTotal.set(urls.size)
+            refreshCount.set(0)
+            updateUpdateNotification()
             refreshBookInfo(urls)
         }
     }
@@ -177,8 +261,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     currentCoroutineContext().ensureActive()
                     AppLog.put("${book.name} 刷新书籍信息失败\n${it.localizedMessage}", it)
                 }
+                refreshCount.incrementAndGet()
+                updateUpdateNotification()
             }.onCompletion {
+                refreshCount.set(0)
+                refreshTotal.set(0)
                 onRefreshJobCompleted()
+                updateUpdateNotification()
             }.catch {
                 AppLog.put("刷新书籍信息出错\n${it.localizedMessage}", it)
             }.collect()
@@ -233,10 +322,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         synchronized(waitLock) {
             urls.forEach { url ->
                 if (url !in onUpTocBooks) {
-                    waitUpTocBooks.add(url) // LinkedHashSet 自带去重
+                    if (waitUpTocBooks.add(url)) {
+                        upTocTotal.incrementAndGet()
+                    }
                 }
             }
         }
+        updateUpdateNotification()
         if (upTocJob == null && refreshJob?.isActive != true) {
             startUpTocJob()
         }
@@ -301,9 +393,14 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 postEvent(EventBus.UP_BOOKSHELF, it)
                 updateToc(it)
                 onUpTocBooks.remove(it)
+                upTocCount.incrementAndGet()
+                updateUpdateNotification()
                 postEvent(EventBus.UP_BOOKSHELF, it)
             }.onCompletion {
+                upTocCount.set(0)
+                upTocTotal.set(0)
                 onUpTocJobCompleted()
+                updateUpdateNotification()
                 if (it == null && cacheBookJob == null && !CacheBookService.isRun) {
                     //所有目录更新完再开始缓存章节
                     cacheBook()

@@ -42,4 +42,5 @@ object EventBus {
     const val REFRESH_LOGIN_UI = "refreshLoginUi"
     const val REFRESH_EXPLORE = "refreshExplore"
     const val REFRESH_BOOK_INFO = "refreshBookInfo"
+    const val STOP_UP_BOOK = "stopUpBook"
 }

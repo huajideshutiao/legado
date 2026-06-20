@@ -349,6 +349,9 @@
         <!-- 打开文件 -->
 
         <service
+            android:name=".service.UpdateBookService"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.CheckSourceService"
             android:foregroundServiceType="dataSync" />
         <service

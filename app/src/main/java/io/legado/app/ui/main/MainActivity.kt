@@ -117,6 +117,18 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.isActivityVisible = true
+        viewModel.updateUpdateNotification()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.isActivityVisible = false
+        viewModel.updateUpdateNotification()
+    }
+
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         lifecycleScope.launch {
