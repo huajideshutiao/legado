@@ -12,6 +12,13 @@
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      Live Update 资格权限 (与 Google AOSP platform-samples/user-interface/live-updates 一致).
+      不声明则系统设置内不会出现"实况通知"开关项, setRequestPromotedOngoing 形同没调.
+      Android 16.1 (API 36.1) 新增, 字符串字面量声明不依赖 compileSdk, 旧系统忽略.
+      安装方式: 添加后需要 **卸载重装** 应用以让系统刷新 per-app 通知设置, 升级安装不一定生效.
+    -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"

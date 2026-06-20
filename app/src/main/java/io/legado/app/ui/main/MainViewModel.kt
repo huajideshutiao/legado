@@ -21,6 +21,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.DefaultData
+import io.legado.app.help.NotificationHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isLocal
@@ -28,6 +29,7 @@ import io.legado.app.help.book.isUpError
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.sync
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
@@ -89,13 +91,17 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
      * 更新目录/刷新书籍信息时缓存最近用过的书源, 避免每本书都走 DB.
      * LruCache 内部 synchronized, 配合 onEachParallel 并发安全.
      * 大小 16: 一次自动更新批次里活跃书源数通常远少于该上限.
+     * 同时也缓存 "未找到" (null) 状态, 避免书源被删后重复查库.
      */
-    private val bookSourceCache = LruCache<String, BookSource>(16)
+    private val bookSourceCache = LruCache<String, SourceWrapper>(16)
+
+    private class SourceWrapper(val source: BookSource?)
 
     private fun getBookSource(origin: String): BookSource? {
-        bookSourceCache[origin]?.let { return it }
-        val source = appDb.bookSourceDao.getBookSource(origin) ?: return null
-        bookSourceCache.put(origin, source)
+        val wrapper = bookSourceCache[origin]
+        if (wrapper != null) return wrapper.source
+        val source = appDb.bookSourceDao.getBookSource(origin)
+        bookSourceCache.put(origin, SourceWrapper(source))
         return source
     }
     val booksListRecycledViewPool = RecycledViewPool().apply {
@@ -176,7 +182,9 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
         val count = upTocCount.get() + refreshCount.get()
         val total = upTocTotal.get() + refreshTotal.get()
-        val msg = context.getString(R.string.progress_show, "", count, total)
+        // progress_show 形如 "%1$s      进度 %2$d/%3$d", 第一个槽位本是书源/书名;
+        // 这里整批更新没有单本名字, 传 "" 会残留 6 个前导空格使正文与标题不对齐, 故 trim 掉。
+        val msg = context.getString(R.string.progress_show, "", count, total).trim()
 
         if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
             val notificationBuilder =
@@ -186,7 +194,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     .setOnlyAlertOnce(true)
                     .setContentTitle(title)
                     .setContentText(msg)
-                    .setProgress(total, count, total <= 0)
+                    .setLiveProgress(
+                        count,
+                        total,
+                        shortText = if (total > 0) "$count/$total" else null
+                    )
                     .addAction(
                         R.drawable.ic_stop_black_24dp,
                         context.getString(R.string.cancel),
@@ -194,8 +206,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     )
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             try {
+                val notification = notificationBuilder.build()
+                NotificationHelp.logPromotable(notification)
                 NotificationManagerCompat.from(appCtx)
-                    .notify(NotificationId.UpdateBookService, notificationBuilder.build())
+                    .notify(NotificationId.UpdateBookService, notification)
             } catch (e: Exception) {
                 AppLog.put("更新通知失败\n${e.localizedMessage}", e)
             }

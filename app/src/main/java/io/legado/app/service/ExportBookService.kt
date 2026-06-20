@@ -23,6 +23,7 @@ import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.setLiveOngoing
 import io.legado.app.lib.epublib.domain.Author
 import io.legado.app.lib.epublib.domain.Date
 import io.legado.app.lib.epublib.domain.EpubBook
@@ -158,6 +159,9 @@ class ExportBookService : BaseService() {
             .setOnlyAlertOnce(!finish)
         if (!finish) {
             notification.setOngoing(true)
+            // 导出逐本串行、进度为文本摘要而非单一确定总量, 故只请求"实时进行中"胶囊,
+            // 不挂 ProgressStyle; 若系统判定不可提升会自动降级为普通通知, 无副作用。
+            notification.setLiveOngoing()
             notification.addAction(
                 R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),

@@ -13,6 +13,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.postEvent
@@ -181,7 +182,12 @@ class CacheBookService : BaseService() {
     }
 
     private fun upCacheBookNotification() {
+        val (done, total) = CacheBook.downloadProgress
         notificationBuilder.setContentText(notificationContent)
+        notificationBuilder.setLiveProgress(
+            done, total,
+            shortText = if (total > 0) "$done/$total" else null
+        )
         val notification = notificationBuilder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)
     }
@@ -190,7 +196,12 @@ class CacheBookService : BaseService() {
      * 更新通知
      */
     override fun startForegroundNotification() {
+        val (done, total) = CacheBook.downloadProgress
         notificationBuilder.setContentText(notificationContent)
+        notificationBuilder.setLiveProgress(
+            done, total,
+            shortText = if (total > 0) "$done/$total" else null
+        )
         val notification = notificationBuilder.build()
         startForeground(NotificationId.CacheBookService, notification)
     }

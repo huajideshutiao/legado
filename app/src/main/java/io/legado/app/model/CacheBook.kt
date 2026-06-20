@@ -149,6 +149,16 @@ object CacheBook {
             return "正在下载:${onDownloadCount}|等待中:${waitCount}|失败:${errorDownloadMap.count()}|成功:${successDownloadSet.size}"
         }
 
+    /**
+     * 供通知进度条使用的 (已完成, 总数).
+     * 总数 = 成功 + 失败 + 下载中 + 等待中, 会随排队动态增长, 已完成随之逼近总数。
+     */
+    val downloadProgress: Pair<Int, Int>
+        get() {
+            val done = successDownloadSet.size + errorDownloadMap.size
+            return done to (done + onDownloadCount + waitCount)
+        }
+
     val isRun: Boolean
         get() {
             cacheBookMap.forEach {

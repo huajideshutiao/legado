@@ -360,7 +360,7 @@
     <string name="faq">FAQ</string>
     <string name="pt_show_all_find">Display all Discovery</string>
     <string name="ps_show_all_find">Display the selected origin\'s Discovery if closed</string>
-    <string name="force_refresh_book">Force refresh</string>
+    <string name="force_refresh_book">Refresh details</string>
     <string name="force_refresh_busy">Refreshing in progress, please wait</string>
     <string name="update_toc">Update chapters</string>
     <string name="txt_toc_rule">Txt Catalog Rule</string>

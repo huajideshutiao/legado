@@ -122,6 +122,8 @@ class DownloadService : BaseService() {
     }
 
     override fun startForegroundNotification() {
+        // 不接入 LiveUpdate: 实际下载进度由系统 DownloadManager 自己的通知维护 (见 startDownload),
+        // 那条通知不归本应用所有, 无法挂 ProgressStyle; 这里仅是 FGS 占位通知, 无进度可展示。
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_download)
             .setSubText(getString(R.string.action_download))

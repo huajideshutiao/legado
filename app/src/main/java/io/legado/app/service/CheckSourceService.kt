@@ -19,6 +19,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.setLiveProgress
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -111,7 +112,8 @@ class CheckSourceService : BaseService() {
             }.onStart {
                 originSize = ids.size
                 finishCount = 0
-                notificationMsg = getString(R.string.progress_show, "", 0, originSize)
+                // 初始帧无书源名, 传 "" 会残留前导空格, trim 掉使其与后续带名字的帧一样左对齐
+                notificationMsg = getString(R.string.progress_show, "", 0, originSize).trim()
                 upNotification()
             }.onEachParallel(threadCount) {
                 checkSource(it)
@@ -243,7 +245,10 @@ class CheckSourceService : BaseService() {
 
     private fun upNotification() {
         notificationBuilder.setContentText(notificationMsg)
-        notificationBuilder.setProgress(originSize, finishCount, false)
+        notificationBuilder.setLiveProgress(
+            finishCount, originSize,
+            shortText = if (originSize > 0) "$finishCount/$originSize" else null
+        )
         postEvent(EventBus.CHECK_SOURCE, notificationMsg)
         notificationManager.notify(NotificationId.CheckSourceService, notificationBuilder.build())
     }
@@ -253,7 +258,10 @@ class CheckSourceService : BaseService() {
      */
     override fun startForegroundNotification() {
         notificationBuilder.setContentText(notificationMsg)
-        notificationBuilder.setProgress(originSize, finishCount, false)
+        notificationBuilder.setLiveProgress(
+            finishCount, originSize,
+            shortText = if (originSize > 0) "$finishCount/$originSize" else null
+        )
         postEvent(EventBus.CHECK_SOURCE, notificationMsg)
         startForeground(NotificationId.CheckSourceService, notificationBuilder.build())
     }

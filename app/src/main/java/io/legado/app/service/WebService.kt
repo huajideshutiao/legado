@@ -14,6 +14,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.setLiveOngoing
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.getPrefBoolean
@@ -208,6 +209,9 @@ class WebService : BaseService() {
             getString(R.string.cancel),
             servicePendingIntent<WebService>(IntentAction.stop)
         )
+        // Web 服务为常驻运行态而非确定进度的"旅程", 故只请求实时进行中胶囊;
+        // 系统若判定不可提升会降级为普通常驻通知, 无副作用。
+        builder.setLiveOngoing()
         val notification = builder.build()
         startForeground(NotificationId.WebService, notification)
     }

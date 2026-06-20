@@ -10,6 +10,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
+import io.legado.app.help.setLiveOngoing
+import io.legado.app.help.setLiveProgress
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 
@@ -32,6 +34,9 @@ class UpdateBookService : BaseService() {
                 servicePendingIntent<UpdateBookService>(IntentAction.stop)
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // 进度由 MainViewModel 持有并实时刷写同一通知 ID, 这里的前台占位通知
+            // 先标记为实时进行中, 避免提升前后样式跳变。
+            .setLiveOngoing()
     }
 
     override fun onCreate() {
@@ -64,7 +69,10 @@ class UpdateBookService : BaseService() {
         if (NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             notificationBuilder.setContentTitle(title)
             notificationBuilder.setContentText(content)
-            notificationBuilder.setProgress(total, progress, total == 0)
+            notificationBuilder.setLiveProgress(
+                progress, total,
+                shortText = if (total > 0) "$progress/$total" else null
+            )
             try {
                 NotificationManagerCompat.from(this)
                     .notify(NotificationId.UpdateBookService, notificationBuilder.build())
