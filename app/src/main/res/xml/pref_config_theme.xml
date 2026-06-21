@@ -18,14 +18,6 @@
         android:title="@string/theme_list"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.NameListPreference
-        android:defaultValue="bookshelf"
-        android:key="defaultHomePage"
-        android:title="@string/default_home_page"
-        app:entries="@array/default_home_page"
-        app:entryValues="@array/default_home_page_value"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="bottomNavConfig"
         android:summary="@string/bottom_nav_config_summary"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><!-- 四行滑块每"列"的布局：竖向 RecyclerView 展示 4 条排行榜式条目，高度随内容自适应 -->
+<androidx.recyclerview.widget.RecyclerView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rv_page"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:nestedScrollingEnabled="false"
+    android:overScrollMode="never" />

@@ -4,6 +4,10 @@
     tools:showIn="bottom_navigation_view">
 
     <item
+        android:id="@+id/menu_home"
+        android:icon="@drawable/ic_bottom_home"
+        android:title="@string/home" />
+    <item
         android:id="@+id/menu_bookshelf"
         android:icon="@drawable/ic_bottom_books"
         android:title="@string/bookshelf" />

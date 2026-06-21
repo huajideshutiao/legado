@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/ll_title"
+    android:layout_width="match_parent"
+    android:layout_height="36dp"
+    android:background="?android:attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp">
+
+    <TextView
+        android:id="@+id/tv_section_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/primaryText"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        tools:text="标题" />
+
+    <io.legado.app.ui.widget.anima.RotateLoading
+        android:id="@+id/rl_loading"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="6dp"
+        android:visibility="gone"
+        app:loading_width="2dp" />
+
+    <TextView
+        android:id="@+id/tv_more"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="8dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp"
+        android:text="@string/home_more"
+        android:textColor="@color/tv_text_summary"
+        android:textSize="13sp" />
+
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/iv_arrow"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:contentDescription="@string/home_more"
+        android:src="@drawable/ic_arrow_right"
+        app:tint="@color/tv_text_summary" />
+
+</LinearLayout>

@@ -894,6 +894,7 @@
     <string name="hide_when_status_bar_show">Hide when status bar show</string>
     <string name="reverse_toc">Reverse toc</string>
     <string name="show_discovery">Show Discovery</string>
+    <string name="show_home">显示主页</string>
     <string name="style">Style</string>
     <string name="group_style">Group style</string>
     <string name="export_file_name">Export file name</string>
@@ -1335,4 +1336,29 @@
     <string name="explore_style_video_cols">%1$d-col video</string>
     <string name="explore_cols">Columns</string>
     <string name="explore_cols_one_label">1 (grid: list / video: large card)</string>
+    <string name="home">主页</string>
+    <string name="home_add_section">添加展示项</string>
+    <string name="home_edit_section">编辑展示项</string>
+    <string name="home_section_title">展示项标题</string>
+    <string name="home_select_source">选择书源</string>
+    <string name="home_select_category">选择发现分类</string>
+    <string name="home_pick_favorite">从收藏中选择</string>
+    <string name="current_selection">当前选择：%s</string>
+    <string name="home_no_favorite">没有收藏的发现分类</string>
+    <string name="home_style_cover_row">横向封面行</string>
+    <string name="home_style_rank_list">编号排行榜</string>
+    <string name="home_style_four_row">四行左右滑</string>
+    <string name="home_style_infinite_grid">底部无限流（仅限一个，置于末尾）</string>
+    <string name="home_style">展示样式</string>
+    <string name="home_section_delete">删除此展示项</string>
+    <string name="home_empty">还没有展示项\n点击右上角 + 添加</string>
+    <string name="home_more">更多</string>
+    <string name="home_source_no_explore">该书源没有发现分类</string>
+    <string name="home_title_empty">标题不能为空</string>
+    <string name="home_infinite_only_one">底部无限流只能添加一个</string>
+    <string name="home_section_options">展示项操作</string>
+    <string name="home_manage">管理展示项</string>
+    <string name="home_manage_empty">还没有展示项，点击右上角 + 添加</string>
+    <string name="home_manage_item_desc">%1$s · %2$s</string>
+    <string name="home_cover_video">封面使用视频比例（16:9 横版）</string>
 </resources>

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/tool_bar"
+        style="@style/Style.DialogToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:title="@string/home_add_section" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp">
+
+            <io.legado.app.ui.widget.text.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/home_section_title">
+
+                <io.legado.app.lib.theme.view.ThemeEditText
+                    android:id="@+id/et_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1" />
+
+            </io.legado.app.ui.widget.text.TextInputLayout>
+
+            <!-- 结果显示区 -->
+            <TextView
+                android:id="@+id/tv_result"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:hint="@string/home_select_source"
+                android:maxLines="2"
+                android:textColor="@color/primaryText" />
+
+            <!-- 操作按钮区 -->
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tv_pick_favorite"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="8dp"
+                    android:text="@string/home_pick_favorite"
+                    android:textColor="@color/primaryText"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tv_pick_source"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="8dp"
+                    android:text="@string/home_select_source"
+                    android:textColor="@color/primaryText"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tv_pick_category"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="8dp"
+                    android:text="@string/home_select_category"
+                    android:textColor="@color/primaryText"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <io.legado.app.ui.widget.text.AccentTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/home_style"
+                android:textSize="13sp" />
+
+            <RadioGroup
+                android:id="@+id/rg_style"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_cover_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="@string/home_style_cover_row" />
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_rank_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_style_rank_list" />
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_four_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_style_four_row" />
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_infinite_grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_style_infinite_grid" />
+
+            </RadioGroup>
+
+            <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_cover_video"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/home_cover_video" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <io.legado.app.ui.widget.text.AccentTextView xmlns:tools="http://schemas.android.com/tools"
+            android:id="@+id/btn_delete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="12dp"
+            android:padding="6dp"
+            android:text="@string/delete"
+            android:visibility="gone"
+            tools:ignore="RtlHardcoded" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/btn_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="12dp"
+            android:padding="6dp"
+            android:text="@string/cancel" />
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/btn_ok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="12dp"
+            android:padding="6dp"
+            android:text="@string/ok" />
+
+    </LinearLayout>
+
+</LinearLayout>

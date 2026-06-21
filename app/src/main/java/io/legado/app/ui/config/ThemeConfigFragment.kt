@@ -147,7 +147,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                 recreateActivities()
             }
 
-            PreferKey.showDiscovery -> postEvent(EventBus.NOTIFY_MAIN, true)
+            PreferKey.showDiscovery,
+            PreferKey.showHome -> postEvent(EventBus.NOTIFY_MAIN, true)
         }
     }
 
@@ -365,7 +366,14 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("InflateParams")
     private fun configBottomNav() {
         val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
-        fun applyValues(height: Int, icon: Int, label: Int, showDiscovery: Boolean) {
+        fun applyValues(
+            height: Int,
+            icon: Int,
+            label: Int,
+            showDiscovery: Boolean,
+            showHome: Boolean
+        ) {
+            binding.swShowHome.isChecked = showHome
             binding.swShowDiscovery.isChecked = showDiscovery
             binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
             binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
@@ -383,7 +391,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                 AppConfig.bottomBarHeight,
                 AppConfig.bottomBarIconSize,
                 AppConfig.bottomBarLabelMode,
-                AppConfig.showDiscovery
+                AppConfig.showDiscovery,
+                AppConfig.showHome
             )
             sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
                 override fun onProgressChanged(
@@ -416,7 +425,11 @@ class ThemeConfigFragment : PreferenceFragment(),
                     else -> 0
                 }
                 val newShowDiscovery = binding.swShowDiscovery.isChecked
+                val newShowHome = binding.swShowHome.isChecked
                 var changed = false
+                if (AppConfig.showHome != newShowHome) {
+                    AppConfig.showHome = newShowHome
+                }
                 if (AppConfig.showDiscovery != newShowDiscovery) {
                     AppConfig.showDiscovery = newShowDiscovery
                 }
@@ -444,6 +457,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                     AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
                     AppConfig.BOTTOM_BAR_ICON_DEFAULT,
                     AppConfig.BOTTOM_BAR_LABEL_DEFAULT,
+                    true,
                     true
                 )
             }

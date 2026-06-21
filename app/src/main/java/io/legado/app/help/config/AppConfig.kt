@@ -153,6 +153,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var showDiscovery by boolPref(PreferKey.showDiscovery, true)
 
+    var showHome by boolPref(PreferKey.showHome, true)
+
     val autoRefreshBook by boolPref(PreferKey.autoRefresh)
 
     var threadCount by intPref(PreferKey.threadCount, 16)
