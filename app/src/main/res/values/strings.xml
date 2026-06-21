@@ -487,7 +487,6 @@
     <string name="debug_source">Debug source</string>
     <string name="import_by_qr_code">Import from QR code</string>
     <string name="share_selected_source">Share selected sources</string>
-    <string name="edit_selection">Edit Selection</string>
     <string name="scan_qr_code">Scan QR code</string>
     <string name="click_on_selected_show_menu">Tap to display Menu when selected </string>
     <string name="theme">Theme</string>
