@@ -22,6 +22,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.book.explore.BaseExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.explore.GridExploreShowAdapter
@@ -112,6 +113,11 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
+        binding.refreshLayout.setColorSchemeColors(accentColor)
+        binding.refreshLayout.setOnRefreshListener {
+            binding.refreshLayout.isRefreshing = false
+            viewModel.refresh()
+        }
         binding.rvHome.layoutManager = glm
         binding.rvHome.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {

@@ -31,6 +31,11 @@ class HomeSectionAdapter(
     private val inflater = LayoutInflater.from(context)
     private val holders = LinkedHashMap<String, SectionHolder>()
 
+    companion object {
+        /** 排行榜样式仅展示前 N 名 */
+        private const val RANK_LIMIT = 5
+    }
+
     fun setSections(sections: List<HomeSection>, booksMap: Map<String, List<SearchBook>>) {
         container.removeAllViews()
         holders.clear()
@@ -124,7 +129,8 @@ class HomeSectionAdapter(
 
         fun updateBooks(books: List<SearchBook>) {
             (adapter as? CoverCardAdapter)?.setBooks(books)
-            (adapter as? RankBookAdapter)?.setBooks(books)
+            // 排行榜只展示前 5 名（数据缓存仍是完整一页，切样式不丢）
+            (adapter as? RankBookAdapter)?.setBooks(books.take(RANK_LIMIT))
             (adapter as? FourColumnAdapter)?.setBooks(books)
         }
 

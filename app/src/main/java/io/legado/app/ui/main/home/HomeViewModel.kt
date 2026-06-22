@@ -42,6 +42,11 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
 
     fun isLoading(sectionId: String) = loadingSet.contains(sectionId)
 
+    /** 下拉刷新：重新拉取所有展示项数据（无限流重置到第一页） */
+    fun refresh() {
+        sectionsLiveData.value?.forEach { loadSection(it) }
+    }
+
     private fun loadSection(section: HomeSection) {
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             loadInfinite(resetPage = true)
@@ -53,8 +58,8 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@execute
             val result = getBookListAwait(source, section.exploreUrl, 1, isSearch = false)
-            val limit = if (section.style == HomeSection.STYLE_RANK_LIST) 5 else 20
-            sectionBooksMap[section.id] = result.books.take(limit)
+            // 统一缓存完整一页，切换样式时不丢数据；排行榜仅在渲染层限 5 条
+            sectionBooksMap[section.id] = result.books
             sectionUpdated.postValue(section.id)
         }.onError {
             AppLog.put("主页展示项[${section.title}]加载失败", it)
