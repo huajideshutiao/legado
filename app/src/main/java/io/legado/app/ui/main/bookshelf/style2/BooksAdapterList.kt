@@ -49,7 +49,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
 
         fun onBind(item: Book) = binding.run {
             tvName.text = item.name
-            tvAuthor.text = item.author
+            tvAuthor.text = item.getRealAuthor()
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
@@ -72,7 +72,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                     bundle.keySet().forEach {
                         when (it) {
                             "name" -> tvName.text = item.name
-                            "author" -> tvAuthor.text = item.author
+                            "author" -> tvAuthor.text = item.getRealAuthor()
                             "dur" -> tvRead.text = item.durChapterTitle
                             "last" -> tvLast.text = item.latestChapterTitle
                             "cover" -> ivCover.load(

@@ -216,7 +216,7 @@ class HomeSectionAdapter(
         RecyclerView.ViewHolder(b.root) {
         fun bind(book: SearchBook, coverVideo: Boolean, onClick: (SearchBook, Boolean) -> Unit) {
             b.tvName.text = book.name
-            b.tvAuthor.text = book.author
+            b.tvAuthor.text = book.getRealAuthor()
             b.ivCover.coverRatio =
                 if (coverVideo) BookCover.CoverRatio.VIDEO else BookCover.CoverRatio.NOVEL
             // 必须设置固定高度以触发 CoverImageView 根据比例计算宽度，从而限制标题文字换行
@@ -253,7 +253,7 @@ class HomeSectionAdapter(
                 b.tvRank.gone()
             }
             b.tvName.text = book.name
-            b.tvAuthor.text = book.author
+            b.tvAuthor.text = book.getRealAuthor()
             // 排行榜/四行的封面是小缩略图，固定小说比例
             b.ivCover.coverRatio = BookCover.CoverRatio.NOVEL
             b.ivCover.load(book.coverUrl, book.name, book.author, false, book.origin)

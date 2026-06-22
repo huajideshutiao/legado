@@ -26,7 +26,7 @@ class ExploreShowAdapter(context: Context, callBack: CallBack) :
             applyCoverWidth()
             flHasNew.gone()
             tvName.text = item.name
-            tvAuthor.text = item.author
+            tvAuthor.text = item.getRealAuthor()
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             upLast(item.latestChapterTitle)
             upIntro(item.trimIntro(context))

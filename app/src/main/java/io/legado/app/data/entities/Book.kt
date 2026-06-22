@@ -23,7 +23,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.splitNotBlank
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import java.time.LocalDate
@@ -156,8 +155,6 @@ data class Book(
     @get:Ignore
     @IgnoredOnParcel
     val lastChapterIndex get() = totalChapterNum - 1
-
-    fun getRealAuthor() = author.splitNotBlank("\n").joinToString("\n") { it.split("::")[0] }
 
     fun getUnreadChapterNum() =
         (simulatedTotalChapterNum() - durChapterIndex + if (durChapterPos < 0) -1 else 0).coerceAtLeast(

@@ -58,7 +58,7 @@ class ChangeBookSourceAdapter(
         binding.apply {
             if (payloads.isEmpty()) {
                 tvOrigin.text = item.originName
-                tvAuthor.text = item.author
+                tvAuthor.text = item.getRealAuthor()
                 tvLast.text = item.getDisplayLastChapterTitle()
                 tvCurrentChapterWordCount.text = item.chapterWordCountText
                 tvRespondTime.text = context.getString(R.string.respondTime, item.respondTime)

@@ -98,7 +98,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         binding.run {
             flHasNew.gone()
             tvName.text = searchBook.name
-            tvAuthor.text = searchBook.author
+            tvAuthor.text = searchBook.getRealAuthor()
             ivInBookshelf.isVisible = callBack.isInBookshelf(searchBook)
             bvOriginCount.setBadgeCount(searchBook.origins.size)
             upLast(searchBook.latestChapterTitle)

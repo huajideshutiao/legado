@@ -580,7 +580,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         ) = binding.run {
             val book = bookMap[item.bookName]
             tvName.text = item.bookName
-            tvAuthor.text = book?.author.orEmpty()
+            tvAuthor.text = book?.getRealAuthor().orEmpty()
             // perDayMode 下 item.readTime 就是当行那天的时长，「总」需要查 totalTimeByBook；
             // 其它模式 item.readTime 已是全部累计，「当日」查 todayTimeByBook
             val (dayTime, totalTime) = if (sortMode == 2 && filterDay == 0) {

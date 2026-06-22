@@ -99,7 +99,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             tvIntro.visible()
             tvLastUpdateTime.visible()
             tvName.text = item.name
-            tvAuthor.text = item.author
+            tvAuthor.text = item.getRealAuthor()
             tvRead.text = item.durChapterTitle
             tvLastUpdateTime.text = item.durChapterTime.toTimeAgo()
             upIntro(item.intro)
@@ -121,7 +121,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
             bundle.keySet().forEach {
                 when (it) {
                     "name" -> tvName.text = item.name
-                    "author" -> tvAuthor.text = item.author
+                    "author" -> tvAuthor.text = item.getRealAuthor()
                     "intro" -> upIntro(item.intro)
                     "kind" -> upKind(item.getKindList())
                     "last" -> upLast(item.latestChapterTitle)

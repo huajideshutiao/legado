@@ -87,4 +87,6 @@ interface BaseBook : RuleDataInterface {
         }
         return kindList
     }
+
+    fun getRealAuthor() = author.splitNotBlank("\n").joinToString("\n") { it.split("::")[0] }
 }

@@ -37,7 +37,7 @@ class BooksAdapterList(
         applyCoverWidth()
         if (payloads.isEmpty()) {
             tvName.text = item.name
-            tvAuthor.text = item.author
+            tvAuthor.text = item.getRealAuthor()
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivRead.visible()
@@ -54,7 +54,7 @@ class BooksAdapterList(
                 bundle.keySet().forEach {
                     when (it) {
                         "name" -> tvName.text = item.name
-                        "author" -> tvAuthor.text = item.author
+                        "author" -> tvAuthor.text = item.getRealAuthor()
                         "dur" -> tvRead.text = item.durChapterTitle
                         "last" -> tvLast.text = item.latestChapterTitle
                         "cover" -> ivCover.load(

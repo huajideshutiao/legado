@@ -53,7 +53,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         binding.apply {
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             tvName.text = item.name
-            tvAuthor.text = item.author
+            tvAuthor.text = item.getRealAuthor()
             tvAuthor.visibility = if (item.author.isEmpty()) View.GONE else View.VISIBLE
             tvGroupS.text = getGroupName(item.group)
             checkbox.isChecked = selectedBooks.contains(item)
