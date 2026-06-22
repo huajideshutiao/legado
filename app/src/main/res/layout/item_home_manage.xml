@@ -35,7 +35,7 @@
             android:maxLines="1"
             android:textColor="@color/primaryText"
             android:textSize="15sp"
-            tools:text="现代言情" />
+            tools:text="标题" />
 
         <TextView
             android:id="@+id/tv_desc"
@@ -46,17 +46,17 @@
             android:maxLines="1"
             android:textColor="@color/tv_text_summary"
             android:textSize="12sp"
-            tools:text="横向滑动封面行 · 七猫小说" />
+            tools:text="描述信息" />
 
     </LinearLayout>
 
     <io.legado.app.ui.widget.text.AccentTextView
-        android:id="@+id/tv_delete"
+        android:id="@+id/tv_edit"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="?android:attr/selectableItemBackground"
         android:padding="8dp"
-        android:text="@string/delete"
-        android:textSize="14sp" />
+        android:textSize="14sp"
+        tools:text="@string/edit" />
 
 </LinearLayout>

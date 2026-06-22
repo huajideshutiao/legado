@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.data.entities.HomeSection
-import io.legado.app.databinding.ItemHomeSectionManageBinding
+import io.legado.app.databinding.ItemHomeManageBinding
 import java.util.Collections
 
 class HomeSectionManageAdapter(
@@ -35,7 +35,7 @@ class HomeSectionManageAdapter(
     override fun getItemCount() = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemHomeSectionManageBinding.inflate(inflater, parent, false))
+        VH(ItemHomeManageBinding.inflate(inflater, parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         holder.bind(items[position])
@@ -50,7 +50,7 @@ class HomeSectionManageAdapter(
         }
     )
 
-    inner class VH(private val b: ItemHomeSectionManageBinding) :
+    inner class VH(private val b: ItemHomeManageBinding) :
         RecyclerView.ViewHolder(b.root) {
 
         fun bind(section: HomeSection) {
@@ -60,8 +60,9 @@ class HomeSectionManageAdapter(
                 styleName(section.style),
                 section.sourceName
             )
+            b.tvEdit.setText(R.string.delete)
             b.root.setOnClickListener { callback.onEdit(section) }
-            b.tvDelete.setOnClickListener { callback.onDelete(section) }
+            b.tvEdit.setOnClickListener { callback.onDelete(section) }
         }
     }
 

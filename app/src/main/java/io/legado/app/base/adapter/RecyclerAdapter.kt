@@ -384,10 +384,10 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
         position: Int,
         payloads: MutableList<Any>
     ) {
-        if (!isHeader(holder.layoutPosition) && !isFooter(holder.layoutPosition)) {
+        if (!isHeader(position) && !isFooter(position)) {
             registerListener(holder, (holder.binding as VB))
             registerItemListener(holder)
-            getItemByLayoutPosition(holder.layoutPosition)?.let { item ->
+            getItemByLayoutPosition(position)?.let { item ->
                 convert(holder, holder.binding, item, payloads)
             }
         }
@@ -458,7 +458,7 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
 
     /**
      * 如果使用了事件回调,回调里不要直接使用item,会出现不更新的问题,
-     * 使用getItem(holder.layoutPosition)来获取item
+     * 使用getItemByLayoutPosition(holder.layoutPosition)来获取item
      */
     abstract fun convert(
         holder: ItemViewHolder,

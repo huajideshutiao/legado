@@ -17,10 +17,12 @@
         android:textColor="@color/tv_text_summary"
         android:textSize="18sp"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="1" />
+        tools:text="1"
+        tools:visibility="visible" />
 
     <io.legado.app.ui.widget.image.CoverImageView
         android:id="@+id/iv_cover"

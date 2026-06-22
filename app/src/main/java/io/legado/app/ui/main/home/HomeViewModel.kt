@@ -6,151 +6,191 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HomeSection
+import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.HomeSectionHelp
+import io.legado.app.help.HomeTabHelp
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 
+/**
+ * 主页外壳 ViewModel：持有所有 tab 的状态，按 tabTitle 分桶。
+ * HomeFragment 通过 viewModels() 拿外壳 VM，HomeTabFragment 通过
+ * viewModels(ownerProducer = { requireParentFragment() }) 共享同一实例，
+ * 订阅 LiveData 时按 tabTitle 过滤即可。
+ */
 class HomeViewModel(application: Application) : BaseViewModel(application) {
 
-    val sectionsLiveData = MutableLiveData<List<HomeSection>>()
-
-    /** 携带 sectionId：该展示项书籍数据已更新 */
-    val sectionUpdated = MutableLiveData<String>()
-
-    /** 携带 sectionId：该展示项加载状态变化 */
-    val sectionLoadingChanged = MutableLiveData<String>()
-
-    val sectionBooksMap = mutableMapOf<String, List<SearchBook>>()
-    val loadingSet = mutableSetOf<String>()
-
-    var infiniteSection: HomeSection? = null
-        private set
-    private val infiniteBookSet = linkedSetOf<SearchBook>()
-    private var infinitePage = 1
-    private var infiniteHasMore = true
-    private var infiniteLoading = false
-
-    /** 无限流是否还有下一页 */
-    val hasMoreInfinite get() = infiniteHasMore
-
-    fun init() {
-        val sections = HomeSectionHelp.getSections()
-        sectionsLiveData.value = sections
-        infiniteSection = sections.find { it.style == HomeSection.STYLE_INFINITE_GRID }
-        sections.forEach { loadSection(it) }
+    /** 内层状态：每个 tab 一份，Fragment 销毁不丢分页/缓存 */
+    class TabState {
+        var initialized: Boolean = false
+        val sectionBooksMap = mutableMapOf<String, List<SearchBook>>()
+        val loadingSet = mutableSetOf<String>()
+        var infiniteSection: HomeSection? = null
+        var infinitePage: Int = 1
+        var infiniteHasMore: Boolean = true
+        var infiniteLoading: Boolean = false
+        val infiniteBookSet = linkedSetOf<SearchBook>()
     }
 
-    fun isLoading(sectionId: String) = loadingSet.contains(sectionId)
+    val tabsLiveData = MutableLiveData<List<HomeTab>>()
 
-    /** 下拉刷新：重新拉取所有展示项数据（无限流重置到第一页） */
-    fun refresh() {
-        sectionsLiveData.value?.forEach { loadSection(it) }
+    /** 携带 tabTitle：该 tab 的 sections 列表已变更（顺序/增删/样式） */
+    val sectionsLiveData = MutableLiveData<String>()
+
+    /** 携带 tabTitle + sectionId：该展示项书籍数据已更新 */
+    val sectionUpdated = MutableLiveData<Pair<String, String>>()
+
+    /** 携带 tabTitle + sectionId：该展示项加载状态变化 */
+    val sectionLoadingChanged = MutableLiveData<Pair<String, String>>()
+
+    private val tabStates = mutableMapOf<String, TabState>()
+
+    fun stateOf(tabTitle: String): TabState = tabStates.getOrPut(tabTitle) { TabState() }
+
+    fun isLoading(tabTitle: String, sectionId: String) =
+        stateOf(tabTitle).loadingSet.contains(sectionId)
+
+    fun hasMoreInfinite(tabTitle: String) = stateOf(tabTitle).infiniteHasMore
+
+    fun infiniteSection(tabTitle: String) = stateOf(tabTitle).infiniteSection
+
+    fun sectionBooks(tabTitle: String, sectionId: String): List<SearchBook> =
+        stateOf(tabTitle).sectionBooksMap[sectionId] ?: emptyList()
+
+    // ─── 加载入口 ────────────────────────────────────────────────────────
+
+    fun initTabs() {
+        tabsLiveData.value = HomeTabHelp.getTabs()
     }
 
-    private fun loadSection(section: HomeSection) {
+    /** 单个 tab 首次初始化：拉取其下所有展示项。已初始化则跳过（Fragment 重建走这里） */
+    fun initTab(tabTitle: String) {
+        val state = stateOf(tabTitle)
+        if (state.initialized) return
+        state.initialized = true
+        val sections = HomeTabHelp.getSections(tabTitle)
+        state.infiniteSection = sections.find { it.style == HomeSection.STYLE_INFINITE_GRID }
+        sections.forEach { loadSection(tabTitle, it) }
+    }
+
+    fun refreshTab(tabTitle: String) {
+        HomeTabHelp.getSections(tabTitle).forEach { loadSection(tabTitle, it) }
+    }
+
+    private fun loadSection(tabTitle: String, section: HomeSection) {
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
-            loadInfinite(resetPage = true)
+            loadInfinite(tabTitle, resetPage = true)
             return
         }
-        loadingSet.add(section.id)
-        sectionLoadingChanged.postValue(section.id)
+        val state = stateOf(tabTitle)
+        state.loadingSet.add(section.id)
+        sectionLoadingChanged.postValue(tabTitle to section.id)
         execute {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@execute
             val result = getBookListAwait(source, section.exploreUrl, 1, isSearch = false)
-            // 统一缓存完整一页，切换样式时不丢数据；排行榜仅在渲染层限 5 条
-            sectionBooksMap[section.id] = result.books
-            sectionUpdated.postValue(section.id)
+            state.sectionBooksMap[section.id] = result.books
+            sectionUpdated.postValue(tabTitle to section.id)
         }.onError {
-            AppLog.put("主页展示项[${section.title}]加载失败", it)
+            AppLog.put("主页[$tabTitle]展示项[${section.title}]加载失败", it)
         }.onFinally {
-            loadingSet.remove(section.id)
-            sectionLoadingChanged.postValue(section.id)
+            state.loadingSet.remove(section.id)
+            sectionLoadingChanged.postValue(tabTitle to section.id)
         }
     }
 
-    /** 增量添加：仅追加并加载新展示项，不刷新已加载的项 */
-    fun addSection(section: HomeSection) {
-        if (section.style == HomeSection.STYLE_INFINITE_GRID) {
-            infiniteSection = section
-        }
-        sectionsLiveData.value = HomeSectionHelp.getSections()
-        loadSection(section)
-    }
-
-    /**
-     * 更新已有展示项。仅当数据源（书源 + 发现 url）变化时才重新拉取内容；
-     * 只改标题/样式/封面比例等不触发内容刷新，复用已缓存的书籍数据。
-     */
-    fun updateSection(section: HomeSection) {
-        val old = sectionsLiveData.value?.find { it.id == section.id }
-        val sourceChanged = old == null ||
-            old.sourceUrl != section.sourceUrl ||
-            old.exploreUrl != section.exploreUrl
-        // 维护无限流引用
-        when {
-            section.style == HomeSection.STYLE_INFINITE_GRID -> infiniteSection = section
-            old?.style == HomeSection.STYLE_INFINITE_GRID -> {
-                infiniteSection = null
-                infiniteBookSet.clear()
-            }
-        }
-        sectionsLiveData.value = HomeSectionHelp.getSections()
-        if (sourceChanged) {
-            if (section.style == HomeSection.STYLE_INFINITE_GRID) {
-                infiniteBookSet.clear()
-                infinitePage = 1
-                infiniteHasMore = true
-            } else {
-                sectionBooksMap.remove(section.id)
-            }
-            loadSection(section)
-        }
-    }
-
-    fun removeSection(section: HomeSection) {
-        sectionBooksMap.remove(section.id)
-        loadingSet.remove(section.id)
-        if (section.style == HomeSection.STYLE_INFINITE_GRID) {
-            infiniteSection = null
-            infiniteBookSet.clear()
-        }
-        sectionsLiveData.value = HomeSectionHelp.getSections()
-    }
-
-    /** 仅按新顺序重排，不重新拉取任何展示项的数据 */
-    fun reorderSections() {
-        sectionsLiveData.value = HomeSectionHelp.getSections()
-    }
-
-    fun loadInfinite(resetPage: Boolean = false) {
-        val section = infiniteSection ?: return
-        if (infiniteLoading) return
-        if (!resetPage && !infiniteHasMore) return
+    fun loadInfinite(tabTitle: String, resetPage: Boolean = false) {
+        val state = stateOf(tabTitle)
+        val section = state.infiniteSection ?: return
+        if (state.infiniteLoading) return
+        if (!resetPage && !state.infiniteHasMore) return
         if (resetPage) {
-            infinitePage = 1
-            infiniteBookSet.clear()
-            infiniteHasMore = true
+            state.infinitePage = 1
+            state.infiniteBookSet.clear()
+            state.infiniteHasMore = true
         }
-        infiniteLoading = true
-        loadingSet.add(section.id)
-        sectionLoadingChanged.postValue(section.id)
+        state.infiniteLoading = true
+        state.loadingSet.add(section.id)
+        sectionLoadingChanged.postValue(tabTitle to section.id)
         execute {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@execute
-            val result =
-                getBookListAwait(source, section.exploreUrl, infinitePage, isSearch = false)
-            infiniteBookSet.addAll(result.books)
-            infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
-            sectionBooksMap[section.id] = infiniteBookSet.toList()
-            infinitePage++
-            sectionUpdated.postValue(section.id)
+            val result = getBookListAwait(
+                source, section.exploreUrl, state.infinitePage, isSearch = false
+            )
+            state.infiniteBookSet.addAll(result.books)
+            state.infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
+            state.sectionBooksMap[section.id] = state.infiniteBookSet.toList()
+            state.infinitePage++
+            sectionUpdated.postValue(tabTitle to section.id)
         }.onError {
-            AppLog.put("主页无限流[${section.title}]加载失败", it)
+            AppLog.put("主页[$tabTitle]无限流[${section.title}]加载失败", it)
         }.onFinally {
-            infiniteLoading = false
-            loadingSet.remove(section.id)
-            sectionLoadingChanged.postValue(section.id)
+            state.infiniteLoading = false
+            state.loadingSet.remove(section.id)
+            sectionLoadingChanged.postValue(tabTitle to section.id)
         }
+    }
+
+    // ─── 增量变更（来自管理对话框）──────────────────────────────────────
+
+    fun addSection(tabTitle: String, section: HomeSection) {
+        val state = stateOf(tabTitle)
+        if (section.style == HomeSection.STYLE_INFINITE_GRID) {
+            state.infiniteSection = section
+        }
+        sectionsLiveData.postValue(tabTitle)
+        loadSection(tabTitle, section)
+    }
+
+    fun updateSection(tabTitle: String, section: HomeSection) {
+        val state = stateOf(tabTitle)
+        val old = HomeTabHelp.getSections(tabTitle).find { it.id == section.id }
+        val sourceChanged = old == null ||
+            old.sourceUrl != section.sourceUrl ||
+            old.exploreUrl != section.exploreUrl
+        when {
+            section.style == HomeSection.STYLE_INFINITE_GRID -> state.infiniteSection = section
+            old?.style == HomeSection.STYLE_INFINITE_GRID -> {
+                state.infiniteSection = null
+                state.infiniteBookSet.clear()
+            }
+        }
+        sectionsLiveData.postValue(tabTitle)
+        if (sourceChanged) {
+            if (section.style == HomeSection.STYLE_INFINITE_GRID) {
+                state.infiniteBookSet.clear()
+                state.infinitePage = 1
+                state.infiniteHasMore = true
+            } else {
+                state.sectionBooksMap.remove(section.id)
+            }
+            loadSection(tabTitle, section)
+        }
+    }
+
+    fun removeSection(tabTitle: String, section: HomeSection) {
+        val state = stateOf(tabTitle)
+        state.sectionBooksMap.remove(section.id)
+        state.loadingSet.remove(section.id)
+        if (section.style == HomeSection.STYLE_INFINITE_GRID) {
+            state.infiniteSection = null
+            state.infiniteBookSet.clear()
+        }
+        sectionsLiveData.postValue(tabTitle)
+    }
+
+    fun reorderSections(tabTitle: String) {
+        sectionsLiveData.postValue(tabTitle)
+    }
+
+    // ─── Tab 结构变化 ─────────────────────────────────────────────────────
+
+    /**
+     * Tab 结构变更后刷新；可选迁移/移除某 TabState 以保持已加载的分页/缓存。
+     */
+    fun onTabsChanged(rename: Pair<String, String>? = null, removed: String? = null) {
+        rename?.let { (old, new) -> tabStates.remove(old)?.let { tabStates[new] = it } }
+        removed?.let { tabStates.remove(it) }
+        tabsLiveData.value = HomeTabHelp.getTabs()
     }
 }

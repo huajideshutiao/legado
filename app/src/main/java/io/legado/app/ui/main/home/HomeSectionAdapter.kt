@@ -2,6 +2,7 @@ package io.legado.app.ui.main.home
 
 import android.content.Context
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -10,13 +11,12 @@ import io.legado.app.R
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemHomeCoverCardBinding
-import io.legado.app.databinding.ItemHomeFourPageBinding
 import io.legado.app.databinding.ItemHomeRankBookBinding
 import io.legado.app.databinding.ViewHomeSectionTitleBinding
 import io.legado.app.model.BookCover
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
 import io.legado.app.utils.visible
+import kotlin.math.abs
 
 /**
  * 主页 header 视图构建：把各展示项动态渲染进竖向 LinearLayout（header）。
@@ -117,6 +117,40 @@ class HomeSectionAdapter(
                         }
                     }
                     this.adapter = this@SectionHolder.adapter
+
+                    if (layoutManager is LinearLayoutManager && (layoutManager as LinearLayoutManager).orientation == RecyclerView.HORIZONTAL) {
+                        addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
+                            private var startX = 0f
+                            private var startY = 0f
+
+                            override fun onInterceptTouchEvent(
+                                rv: RecyclerView,
+                                e: MotionEvent
+                            ): Boolean {
+                                when (e.action) {
+                                    MotionEvent.ACTION_DOWN -> {
+                                        startX = e.x
+                                        startY = e.y
+                                        rv.parent?.requestDisallowInterceptTouchEvent(true)
+                                    }
+
+                                    MotionEvent.ACTION_MOVE -> {
+                                        val dx = abs(e.x - startX)
+                                        val dy = abs(e.y - startY)
+                                        if (dx > dy) {
+                                            rv.parent?.requestDisallowInterceptTouchEvent(true)
+                                        } else if (dy > dx) {
+                                            rv.parent?.requestDisallowInterceptTouchEvent(false)
+                                        }
+                                    }
+                                }
+                                return false
+                            }
+
+                            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {}
+                            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
+                        })
+                    }
                 }
                 root.addView(
                     rv, LinearLayout.LayoutParams(
@@ -195,8 +229,17 @@ class HomeSectionAdapter(
 
         private val columns = mutableListOf<List<SearchBook>>()
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-            FourColumnVH(ItemHomeFourPageBinding.inflate(inflater, parent, false), onClick)
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FourColumnVH {
+            val rv = RecyclerView(context).apply {
+                layoutParams = RecyclerView.LayoutParams(
+                    220.dpToPx(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                isNestedScrollingEnabled = false
+                overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+            }
+            return FourColumnVH(rv, onClick)
+        }
 
         override fun getItemCount() = columns.size
 
@@ -249,8 +292,6 @@ class HomeSectionAdapter(
                         else -> context.getColor(R.color.tv_text_summary)
                     }
                 )
-            } else {
-                b.tvRank.gone()
             }
             b.tvName.text = book.name
             b.tvAuthor.text = book.getRealAuthor()
@@ -263,21 +304,15 @@ class HomeSectionAdapter(
     }
 
     private inner class FourColumnVH(
-        val b: ItemHomeFourPageBinding,
+        val rv: RecyclerView,
         private val onClick: (SearchBook, Boolean) -> Unit
-    ) : RecyclerView.ViewHolder(b.root) {
+    ) : RecyclerView.ViewHolder(rv) {
 
         private val itemAdapter = RankBookAdapter(showRank = false, onClick = onClick)
 
         init {
-            // 列宽固定 228dp（竖屏最小宽 411dp 下约露出 1.8 列），高度随内容自适应
-            b.root.layoutParams = RecyclerView.LayoutParams(
-                228.dpToPx(),
-                RecyclerView.LayoutParams.WRAP_CONTENT
-            )
-            b.rvPage.layoutManager = LinearLayoutManager(context)
-            b.rvPage.adapter = itemAdapter
-            b.rvPage.isNestedScrollingEnabled = false
+            rv.layoutManager = LinearLayoutManager(context)
+            rv.adapter = itemAdapter
         }
 
         fun bind(books: List<SearchBook>) {

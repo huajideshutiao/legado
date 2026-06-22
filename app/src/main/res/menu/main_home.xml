@@ -8,4 +8,10 @@
         android:title="@string/home_manage"
         app:showAsAction="always" />
 
+    <item
+        android:id="@+id/menu_manage_tab"
+        android:icon="@drawable/ic_groups"
+        android:title="@string/home_tab_manage"
+        app:showAsAction="always" />
+
 </menu>

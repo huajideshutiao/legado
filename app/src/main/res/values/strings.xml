@@ -1361,4 +1361,14 @@
     <string name="home_manage_empty">还没有展示项，点击右上角 + 添加</string>
     <string name="home_manage_item_desc">%1$s · %2$s</string>
     <string name="home_cover_video">封面使用视频比例（16:9 横版）</string>
+    <string name="home_tab_manage">管理分组</string>
+    <string name="home_tab_add">添加分组</string>
+    <string name="home_tab_edit">编辑分组</string>
+    <string name="home_tab_title">分组名称</string>
+    <string name="home_tab_name_duplicate">分组名称已存在</string>
+    <string name="home_tab_section_count">%1$d 个展示项</string>
+    <string name="home_tab_empty">该分组下还没有展示项\n点击右上角 ⚙ 添加</string>
+    <string name="home_tab_delete_confirm">确认删除分组「%1$s」？</string>
+    <string name="home_tab_delete_confirm_with_sections">分组「%1$s」下还有 %2$d 个展示项，删除将一并移除，确定？</string>
+    <string name="home_manage_for_tab">管理「%1$s」的展示项</string>
 </resources>

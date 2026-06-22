@@ -14,7 +14,7 @@ import io.legado.app.help.book.addType
 abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val callBack: CallBack) :
     RecyclerAdapter<SearchBook, VB>(context) {
     override fun registerListener(holder: ItemViewHolder, binding: VB) {
-        val tmp = getItem(holder.layoutPosition)?.apply {
+        val tmp = getItemByLayoutPosition(holder.layoutPosition)?.apply {
             if (!callBack.isInBookshelf(this))
                     addType(BookType.notShelf)
             } ?: return

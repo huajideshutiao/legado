@@ -8,48 +8,60 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.databinding.DialogHomeSectionManageBinding
-import io.legado.app.help.HomeSectionHelp
+import io.legado.app.help.HomeTabHelp
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.observeEvent
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
- * 管理主页展示项：列出已添加项，支持点击编辑、删除、拖动排序，右上角 + 添加。
- * 所有变更通过 EventBus.HOME_SECTION 通知主页与本对话框同步。
+ * 管理某个分组（tabTitle）下的展示项。列表、拖序、增删全部限定在该 tab 内。
  */
-class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_manage),
-    HomeSectionEditDialog.Callback {
+class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_manage) {
 
     override val isFullHeight: Boolean = true
 
     private val binding by viewBinding(DialogHomeSectionManageBinding::bind)
 
+    private val tabTitle: String get() = arguments?.getString(ARG_TAB_TITLE).orEmpty()
+
     private val adapter by lazy {
         HomeSectionManageAdapter(requireContext(), object : HomeSectionManageAdapter.Callback {
             override fun onEdit(section: HomeSection) {
-                showDialogFragment(HomeSectionEditDialog(section))
+                showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle, section))
             }
 
             override fun onDelete(section: HomeSection) {
-                HomeSectionHelp.removeSection(section)
-                onHomeSectionChanged("delete", section)
+                HomeTabHelp.removeSection(tabTitle, section.id)
+                postEvent(
+                    EventBus.HOME_SECTION,
+                    HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, section)
+                )
+                upData()
             }
         })
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.home_manage)
+        binding.toolBar.title = getString(R.string.home_manage_for_tab, tabTitle)
         initMenu()
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         initDragSort()
         upData()
+        observeEvent<HomeSectionEvent>(EventBus.HOME_SECTION) { event ->
+            if (event.tabTitle == tabTitle && event.action != HomeSectionEvent.REORDER) {
+                upData()
+            }
+        }
     }
 
     private fun initMenu() {
@@ -57,7 +69,8 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener {
             when (it.itemId) {
-                R.id.menu_add_section -> showDialogFragment(HomeSectionEditDialog())
+                R.id.menu_add_section ->
+                    showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
             }
             true
         }
@@ -74,9 +87,11 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder
             ) {
-                // 拖动结束后按当前顺序整体持久化，并通知主页仅重排
-                HomeSectionHelp.saveOrder(adapter.getItems())
-                onHomeSectionChanged("reorder", null)
+                HomeTabHelp.saveSectionsOrder(tabTitle, adapter.getItems())
+                postEvent(
+                    EventBus.HOME_SECTION,
+                    HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
+                )
             }
         })
         touchCallback.isCanDrag = true
@@ -84,18 +99,16 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
     }
 
     private fun upData() {
-        val sections = HomeSectionHelp.getSections()
+        val sections = HomeTabHelp.getSections(tabTitle)
         adapter.setItems(sections)
         binding.tvEmpty.isVisible = sections.isEmpty()
     }
 
-    /**
-     * 编辑对话框 / 列表删除 / 拖动排序统一汇入此处：管理对话框负责刷新自身列表，
-     * 再把变更转发给主界面。reorder 时列表 UI 已即时更新，无需重建以免打断动画。
-     */
-    override fun onHomeSectionChanged(action: String, section: HomeSection?) {
-        if (action != "reorder") upData()
-        (parentFragment as? HomeSectionEditDialog.Callback)
-            ?.onHomeSectionChanged(action, section)
+    companion object {
+        private const val ARG_TAB_TITLE = "tabTitle"
+
+        fun newInstance(tabTitle: String) = HomeSectionManageDialog().apply {
+            arguments = Bundle().apply { putString(ARG_TAB_TITLE, tabTitle) }
+        }
     }
 }

@@ -12,12 +12,13 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.databinding.DialogHomeSectionEditBinding
-import io.legado.app.help.HomeSectionHelp
+import io.legado.app.help.HomeTabHelp
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.dialogs.alert
@@ -25,6 +26,7 @@ import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -37,11 +39,9 @@ import java.util.UUID
 
 class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_edit) {
 
-    constructor(section: HomeSection) : this() {
-        arguments = Bundle().apply { putParcelable("section", section) }
-    }
-
     private val binding by viewBinding(DialogHomeSectionEditBinding::bind)
+
+    private val tabTitle: String get() = arguments?.getString(ARG_TAB_TITLE).orEmpty()
 
     private var editing: HomeSection? = null
     private var pinnedExplores: List<PinnedExplore> = emptyList()
@@ -52,7 +52,7 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         @Suppress("DEPRECATION")
-        editing = arguments?.getParcelable("section")
+        editing = arguments?.getParcelable(ARG_SECTION)
         initView()
         loadData()
     }
@@ -98,13 +98,11 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
         }
     }
 
-    /** 统一刷新选择相关的 UI（匹配收藏、更新结果显示区、禁用逻辑） */
     private fun refreshSelectionUI() {
         val source = selectedSource
         val sourceName = source?.bookSourceName
         val categoryName = selectedExploreName
 
-        // 更新结果显示区：使用 "当前选择：源 · 分类" 格式
         if (sourceName == null) {
             binding.tvResult.text = ""
         } else {
@@ -117,7 +115,6 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
         }
         binding.tvPickCategory.isEnabled = source != null
 
-        // 自动填充标题
         if (binding.etTitle.text.isNullOrBlank() && !selectedExploreName.isNullOrBlank()) {
             binding.etTitle.setText(selectedExploreName)
         }
@@ -267,8 +264,9 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             R.id.rb_infinite_grid -> HomeSection.STYLE_INFINITE_GRID
             else -> HomeSection.STYLE_COVER_ROW
         }
+        // 无限流仅在当前 tab 内唯一
         if (style == HomeSection.STYLE_INFINITE_GRID) {
-            val existsOther = HomeSectionHelp.getSections().any {
+            val existsOther = HomeTabHelp.getSections(tabTitle).any {
                 it.style == HomeSection.STYLE_INFINITE_GRID && it.id != editing?.id
             }
             if (existsOther) {
@@ -285,16 +283,22 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             exploreUrl = exploreUrl,
             exploreName = selectedExploreName ?: title,
             style = style,
-            sortOrder = old?.sortOrder ?: HomeSectionHelp.getSections().size,
+            sortOrder = old?.sortOrder ?: HomeTabHelp.getSections(tabTitle).size,
             coverVideo = binding.cbCoverVideo.isChecked
         )
         lifecycleScope.launch {
             withContext(IO) {
-                if (old == null) HomeSectionHelp.addSection(section)
-                else HomeSectionHelp.updateSection(section)
+                if (old == null) HomeTabHelp.addSection(tabTitle, section)
+                else HomeTabHelp.updateSection(tabTitle, section)
             }
-            (parentFragment as? Callback)
-                ?.onHomeSectionChanged(if (old == null) "add" else "update", section)
+            postEvent(
+                EventBus.HOME_SECTION,
+                HomeSectionEvent(
+                    if (old == null) HomeSectionEvent.ADD else HomeSectionEvent.UPDATE,
+                    tabTitle,
+                    section
+                )
+            )
             dismiss()
         }
     }
@@ -303,14 +307,26 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
         val section = editing ?: return
         lifecycleScope.launch {
             withContext(IO) {
-                HomeSectionHelp.removeSection(section)
+                HomeTabHelp.removeSection(tabTitle, section.id)
             }
-            (parentFragment as? Callback)?.onHomeSectionChanged("delete", section)
+            postEvent(
+                EventBus.HOME_SECTION,
+                HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, section)
+            )
             dismiss()
         }
     }
 
-    interface Callback {
-        fun onHomeSectionChanged(action: String, section: HomeSection?)
+    companion object {
+        private const val ARG_TAB_TITLE = "tabTitle"
+        private const val ARG_SECTION = "section"
+
+        fun newInstance(tabTitle: String, section: HomeSection? = null) =
+            HomeSectionEditDialog().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_TAB_TITLE, tabTitle)
+                    section?.let { putParcelable(ARG_SECTION, it) }
+                }
+            }
     }
 }
