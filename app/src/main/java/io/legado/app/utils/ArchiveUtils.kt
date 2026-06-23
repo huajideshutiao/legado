@@ -8,7 +8,9 @@ import io.legado.app.utils.compress.LibArchiveUtils
 import splitties.init.appCtx
 import java.io.File
 
-/* 自动判断压缩文件后缀 然后再调用具体的实现 */
+/**
+ * 自动判断压缩文件后缀 然后再调用具体的实现
+ */
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 object ArchiveUtils {
 
@@ -57,15 +59,13 @@ object ArchiveUtils {
         filter: ((String) -> Boolean)? = null
     ): List<File> {
         if (archiveFileDoc.isDir) throw IllegalArgumentException("Unexpected Folder input")
-        val name = archiveFileDoc.name
-        checkAchieve(name)
-        val workPathFileDoc = getCacheFolderFileDoc(name, path)
+        checkArchive(archiveFileDoc.name)
+        val workPathFileDoc = getCacheFolderFileDoc(archiveFileDoc, path)
         val workPath = workPathFileDoc.toString()
 
         return archiveFileDoc.openReadPfd().getOrThrow().use {
             LibArchiveUtils.unArchive(it, File(workPath), filter)
         }
-
     }
 
     /* 遍历目录获取文件名 */
@@ -77,8 +77,7 @@ object ArchiveUtils {
         fileDoc: FileDoc,
         filter: ((String) -> Boolean)? = null
     ): List<String> {
-        val name = fileDoc.name
-        checkAchieve(name)
+        checkArchive(fileDoc.name)
 
         return fileDoc.openReadPfd().getOrThrow().use {
             try {
@@ -86,26 +85,25 @@ object ArchiveUtils {
             } catch (e: Exception) {
                 emptyList()
             }
-
         }
-
-
     }
 
     fun isArchive(name: String): Boolean {
         return archiveFileRegex.matches(name)
     }
 
-    private fun checkAchieve(name: String) {
+    private fun checkArchive(name: String) {
         if (!isArchive(name))
-            throw IllegalArgumentException("Unexpected file suffix: Only 7z rar zip Accepted")
+            throw IllegalArgumentException("Unexpected file suffix")
     }
 
     private fun getCacheFolderFileDoc(
-        archiveName: String,
+        archiveFileDoc: FileDoc,
         workPath: String
     ): FileDoc {
+        // 使用 URI 的 MD5 确保唯一性，避免不同路径下的同名文件冲突
+        val folderName = MD5Utils.md5Encode16(archiveFileDoc.uri.toString())
         return FileDoc.fromUri(workPath.toUri(), true)
-            .createFolderIfNotExist(MD5Utils.md5Encode16(archiveName))
+            .createFolderIfNotExist(folderName)
     }
 }
