@@ -23,11 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
 
-
 /**
  * 本地缓存
  */
-@Suppress("unused", "MemberVisibilityCanBePrivate")
 class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int) {
 
     companion object {

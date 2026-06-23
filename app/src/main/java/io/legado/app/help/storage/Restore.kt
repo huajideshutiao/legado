@@ -3,6 +3,7 @@ package io.legado.app.help.storage
 import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
 import android.net.Uri
+import androidx.core.content.edit
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.BuildConfig
 import io.legado.app.R
@@ -42,19 +43,22 @@ import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.getSharedPreferences
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.openInputStream
+import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
@@ -229,37 +233,114 @@ object Restore {
             }
         }
         //AppWebDav.downBgs()
-        appCtx.getSharedPreferences(path, "config")?.all?.let { map ->
-            val edit = appCtx.defaultSharedPreferences.edit()
+        val configMap = mutableMapOf<String, Any?>()
+        val configFile = File(path, "config.json")
+        if (configFile.exists()) {
+            val json = configFile.readText()
+            GSON.fromJsonObject<Map<String, Any?>>(json).getOrNull()?.let {
+                configMap.putAll(it)
+            }
+        } else {
+            val xmlFile = File(path, "config.xml")
+            if (xmlFile.exists()) {
+                // 兼容旧版本 XML 备份，使用 XmlPullParser 稳健解析
+                kotlin.runCatching {
+                    val factory = XmlPullParserFactory.newInstance()
+                    val parser = factory.newPullParser()
+                    parser.setInput(xmlFile.inputStream(), "UTF-8")
+                    var eventType = parser.eventType
+                    while (eventType != XmlPullParser.END_DOCUMENT) {
+                        if (eventType == XmlPullParser.START_TAG) {
+                            val tag = parser.name
+                            if (tag != "map" && tag != "xml") {
+                                val name = parser.getAttributeValue(null, "name")
+                                if (name != null) {
+                                    when (tag) {
+                                        "string" -> configMap[name] = parser.nextText()
+                                        "int" -> configMap[name] =
+                                            parser.getAttributeValue(null, "value")?.toInt()
 
-            map.forEach { (key, value) ->
-                if (BackupConfig.keyIsNotIgnore(key)) {
-                    when (key) {
-                        PreferKey.webDavPassword -> {
-                            kotlin.runCatching {
-                                aes.decryptStr(value.toString())
-                            }.getOrNull()?.let {
-                                edit.putString(key, it)
-                            } ?: let {
-                                if (appCtx.getPrefString(PreferKey.webDavPassword)
-                                        .isNullOrBlank()
-                                ) {
-                                    edit.putString(key, value.toString())
+                                        "boolean" -> configMap[name] =
+                                            parser.getAttributeValue(null, "value")?.toBoolean()
+
+                                        "long" -> configMap[name] =
+                                            parser.getAttributeValue(null, "value")?.toLong()
+
+                                        "float" -> configMap[name] =
+                                            parser.getAttributeValue(null, "value")?.toFloat()
+
+                                        "set" -> {
+                                            val set = mutableSetOf<String>()
+                                            val depth = parser.depth
+                                            while (!(parser.next() == XmlPullParser.END_TAG && parser.depth == depth)) {
+                                                if (parser.eventType == XmlPullParser.START_TAG && parser.name == "string") {
+                                                    set.add(parser.nextText())
+                                                }
+                                            }
+                                            configMap[name] = set
+                                        }
+                                    }
                                 }
                             }
                         }
+                        eventType = parser.next()
+                    }
+                }.onFailure {
+                    it.printOnDebug()
+                }
+            }
+        }
 
-                        else -> when (value) {
-                            is Int -> edit.putInt(key, value)
-                            is Boolean -> edit.putBoolean(key, value)
-                            is Long -> edit.putLong(key, value)
-                            is Float -> edit.putFloat(key, value)
-                            is String -> edit.putString(key, value)
+        if (configMap.isNotEmpty()) {
+            appCtx.defaultSharedPreferences.edit {
+                configMap.forEach { (key, value) ->
+                    if (BackupConfig.keyIsNotIgnore(key)) {
+                        when (key) {
+                            PreferKey.webDavPassword -> {
+                                kotlin.runCatching {
+                                    aes.decryptStr(value.toString())
+                                }.getOrNull()?.let {
+                                    putString(key, it)
+                                } ?: let {
+                                    if (appCtx.getPrefString(PreferKey.webDavPassword)
+                                            .isNullOrBlank()
+                                    ) {
+                                        putString(key, value.toString())
+                                    }
+                                }
+                            }
+
+                            else -> when (value) {
+                                is Int -> putInt(key, value)
+                                is Boolean -> putBoolean(key, value)
+                                is Long -> {
+                                    if (value >= Int.MIN_VALUE && value <= Int.MAX_VALUE) {
+                                        putInt(key, value.toInt())
+                                    } else {
+                                        putLong(key, value)
+                                    }
+                                }
+
+                                is Float -> putFloat(key, value)
+                                is Double -> {
+                                    if (value == value.toLong().toDouble()) {
+                                        val longValue = value.toLong()
+                                        if (longValue >= Int.MIN_VALUE && longValue <= Int.MAX_VALUE) {
+                                            putInt(key, longValue.toInt())
+                                        } else {
+                                            putLong(key, longValue)
+                                        }
+                                    } else {
+                                        putFloat(key, value.toFloat())
+                                    }
+                                }
+
+                                is String -> putString(key, value)
+                            }
                         }
                     }
                 }
             }
-            edit.apply()
         }
         ReadBookConfig.apply {
             comicStyleSelect = appCtx.getPrefInt(PreferKey.comicStyleSelect)
@@ -329,18 +410,17 @@ object Restore {
                 // 旧格式：用迁移算法还原为时间段
                 val endSec0 = if (b.lastRead > 0) b.lastRead / 1000 else nowSec
                 val day0 = if (b.day != 0) b.day else ReadRecord.dayKey(endSec0)
-                restoreOldRecord(dao, b.bookName, day0, b.readTime / 1000, endSec0, nowSec)
+                restoreOldRecord(dao, b.bookName, day0, b.readTime / 1000, endSec0)
             }
         }
     }
 
     private fun restoreOldRecord(
         dao: io.legado.app.data.dao.ReadRecordDao,
-        bookName: String, day: Int, remainingSecs: Long, endSec: Long, nowSec: Long
+        bookName: String, day: Int, remainingSecs: Long, endSec: Long
     ) {
         var remaining = remainingSecs
         var curDay = day
-        var curEndSec = endSec
         val cal = java.util.Calendar.getInstance()
 
         fun midnightSec(d: Int): Long {
@@ -356,10 +436,10 @@ object Restore {
             )
         }
 
-        val maxBack = minOf(16L * 3600, (curEndSec - midnightSec(curDay)).coerceAtLeast(0))
+        val maxBack = minOf(16L * 3600, (endSec - midnightSec(curDay)).coerceAtLeast(0))
         val seg0 = minOf(remaining, maxBack)
         if (seg0 > 0) {
-            dao.insertSession(ReadRecord(bookName, curDay, curEndSec - seg0, curEndSec))
+            dao.insertSession(ReadRecord(bookName, curDay, endSec - seg0, endSec))
             remaining -= seg0
         }
         curDay = prevDay(curDay)

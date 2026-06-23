@@ -2,7 +2,6 @@ package io.legado.app.help.storage
 
 import android.content.Context
 import android.net.Uri
-import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.constant.AppLog
@@ -25,7 +24,6 @@ import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
-import io.legado.app.utils.getSharedPreferences
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.openOutputStream
@@ -81,7 +79,7 @@ object Backup {
             ReadBookConfig.shareConfigFileName,
             ThemeConfig.configFileName,
             BookCover.configFileName,
-            "config.xml"
+            "config.json"
         )
     }
 
@@ -176,29 +174,24 @@ object Backup {
                 .writeText(GSON.toJson(it))
         }
         currentCoroutineContext().ensureActive()
-        appCtx.getSharedPreferences(backupPath, "config")?.let { sp ->
-            sp.edit(commit = true) {
-                appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
-                    if (BackupConfig.keyIsNotIgnore(key)) {
-                        when (key) {
-                            PreferKey.webDavPassword -> {
-                                putString(key, aes.runCatching {
-                                    encryptBase64(value.toString())
-                                }.getOrDefault(value.toString()))
-                            }
+        val configMap = mutableMapOf<String, Any>()
+        appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
+            if (BackupConfig.keyIsNotIgnore(key)) {
+                when (key) {
+                    PreferKey.webDavPassword -> {
+                        configMap[key] = aes.runCatching {
+                            encryptBase64(value.toString())
+                        }.getOrDefault(value.toString())
+                    }
 
-                            else -> when (value) {
-                                is Int -> putInt(key, value)
-                                is Boolean -> putBoolean(key, value)
-                                is Long -> putLong(key, value)
-                                is Float -> putFloat(key, value)
-                                is String -> putString(key, value)
-                            }
-                        }
+                    else -> value?.let {
+                        configMap[key] = it
                     }
                 }
             }
         }
+        val configFile = File(backupPath, "config.json")
+        FileUtils.createFileIfNotExist(configFile).writeText(GSON.toJson(configMap))
         currentCoroutineContext().ensureActive()
         val zipFileName = getNowZipFileName()
         val paths = arrayListOf(*backupFileNames)
