@@ -1,55 +1,46 @@
 package io.legado.app.ui.main.home
 
 import android.content.Context
-import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
+import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.HomeTab
 import io.legado.app.databinding.ItemHomeManageBinding
-import java.util.Collections
 
 class HomeTabManageAdapter(
-    private val context: Context,
+    context: Context,
     private val callback: Callback
-) : RecyclerView.Adapter<HomeTabManageAdapter.VH>() {
+) : RecyclerAdapter<HomeTab, ItemHomeManageBinding>(context) {
 
-    private val inflater = LayoutInflater.from(context)
-    private val items = mutableListOf<HomeTab>()
-
-    fun setItems(list: List<HomeTab>) {
-        items.clear()
-        items.addAll(list)
-        notifyDataSetChanged()
+    override fun getViewBinding(parent: ViewGroup): ItemHomeManageBinding {
+        return ItemHomeManageBinding.inflate(inflater, parent, false)
     }
 
-    fun getItems(): List<HomeTab> = items.toList()
+    override fun convert(
+        holder: ItemViewHolder,
+        binding: ItemHomeManageBinding,
+        item: HomeTab,
+        payloads: MutableList<Any>
+    ) {
+        binding.run {
+            tvTitle.text = item.title
+            tvDesc.text = context.getString(R.string.home_tab_section_count, item.sections.size)
+            tvEdit.setText(R.string.edit)
+        }
+    }
+
+    override fun registerListener(holder: ItemViewHolder, binding: ItemHomeManageBinding) {
+        binding.root.setOnClickListener {
+            getItemByLayoutPosition(holder.layoutPosition)?.let { callback.onOpenSections(it) }
+        }
+        binding.tvEdit.setOnClickListener {
+            getItemByLayoutPosition(holder.layoutPosition)?.let { callback.onEdit(it) }
+        }
+    }
 
     fun swap(from: Int, to: Int) {
-        if (from !in items.indices || to !in items.indices) return
-        Collections.swap(items, from, to)
-        notifyItemMoved(from, to)
-    }
-
-    override fun getItemCount() = items.size
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemHomeManageBinding.inflate(inflater, parent, false))
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.bind(items[position])
-    }
-
-    inner class VH(private val b: ItemHomeManageBinding) :
-        RecyclerView.ViewHolder(b.root) {
-
-        fun bind(tab: HomeTab) {
-            b.tvTitle.text = tab.title
-            b.tvDesc.text = context.getString(R.string.home_tab_section_count, tab.sections.size)
-            b.tvEdit.setText(R.string.edit)
-            b.root.setOnClickListener { callback.onOpenSections(tab) }
-            b.tvEdit.setOnClickListener { callback.onEdit(tab) }
-        }
+        swapItem(from, to)
     }
 
     interface Callback {

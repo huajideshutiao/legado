@@ -86,7 +86,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val fragmentMap = hashMapOf<Int, Fragment>()
     private var bottomMenuCount = 4
     private val EXIT_INTERVAL = 2000L
-    private val realPositions = arrayOf(idHome, idBookshelf, idExplore, idMy)
+    private val realPositions = mutableListOf<Int>()
     private val adapter by lazy {
         TabFragmentPageAdapter(supportFragmentManager)
     }
@@ -360,20 +360,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             menu.findItem(R.id.menu_home).isVisible = showHome
             menu.findItem(R.id.menu_discovery).isVisible = showDiscovery
         }
-        var index = -1
-        if (showHome) {
-            index++
-            realPositions[index] = idHome
-        }
-        index++
-        realPositions[index] = idBookshelf
-        if (showDiscovery) {
-            index++
-            realPositions[index] = idExplore
-        }
-        index++
-        realPositions[index] = idMy
-        bottomMenuCount = index + 1
+        realPositions.clear()
+        if (showHome) realPositions.add(idHome)
+        realPositions.add(idBookshelf)
+        if (showDiscovery) realPositions.add(idExplore)
+        realPositions.add(idMy)
+        bottomMenuCount = realPositions.size
         adapter.notifyDataSetChanged()
     }
 

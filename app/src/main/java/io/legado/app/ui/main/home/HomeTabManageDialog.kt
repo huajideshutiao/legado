@@ -45,7 +45,7 @@ class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_mana
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.home_tab_manage)
         binding.toolBar.inflateMenu(R.menu.dialog_home_section_manage)
-        binding.toolBar.menu.findItem(R.id.menu_add_section).setTitle(R.string.home_tab_add)
+        binding.toolBar.menu.findItem(R.id.menu_add_section)?.setTitle(R.string.home_tab_add)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener {
             if (it.itemId == R.id.menu_add_section) {

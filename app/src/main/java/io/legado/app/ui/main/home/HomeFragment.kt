@@ -119,12 +119,15 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
 
         override fun createFragment(position: Int): Fragment = HomeTabFragment(tabs[position].title)
 
-        override fun getItemId(position: Int): Long {
-            return tabs[position].title.hashCode().toLong()
-        }
+        override fun getItemId(position: Int): Long = stableId(tabs[position].title)
 
-        override fun containsItem(itemId: Long): Boolean {
-            return tabs.any { it.title.hashCode().toLong() == itemId }
+        override fun containsItem(itemId: Long): Boolean =
+            tabs.any { stableId(it.title) == itemId }
+
+        private fun stableId(title: String): Long {
+            var h = 1125899906842597L
+            for (c in title) h = 31 * h + c.code
+            return h
         }
     }
 

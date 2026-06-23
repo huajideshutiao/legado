@@ -122,6 +122,7 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
 
     private fun pickSource() {
         lifecycleScope.launch {
+            if (!isAdded) return@launch
             val parts = withContext(IO) {
                 appDb.bookSourceDao.flowExplore(enabled = true).first()
             }
@@ -131,6 +132,7 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             }
             searchPick(R.string.home_select_source, parts, { it.bookSourceName }) { part ->
                 lifecycleScope.launch {
+                    if (!isAdded) return@launch
                     val source = withContext(IO) {
                         appDb.bookSourceDao.getBookSource(part.bookSourceUrl)
                     } ?: return@launch
@@ -149,6 +151,7 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             return
         }
         lifecycleScope.launch {
+            if (!isAdded) return@launch
             val kinds = withContext(IO) {
                 runCatching { source.exploreKinds() }.getOrDefault(emptyList())
             }.filter { !it.url.isNullOrBlank() }
@@ -174,6 +177,7 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             pinnedExplores, { String.format("%s · %s", it.sourceName, it.categoryName) }
         ) { fav ->
             lifecycleScope.launch {
+                if (!isAdded) return@launch
                 val source = withContext(IO) {
                     appDb.bookSourceDao.getBookSource(fav.sourceUrl)
                 }
@@ -264,18 +268,8 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             R.id.rb_infinite_grid -> HomeSection.STYLE_INFINITE_GRID
             else -> HomeSection.STYLE_COVER_ROW
         }
-        // 无限流仅在当前 tab 内唯一
-        if (style == HomeSection.STYLE_INFINITE_GRID) {
-            val existsOther = HomeTabHelp.getSections(tabTitle).any {
-                it.style == HomeSection.STYLE_INFINITE_GRID && it.id != editing?.id
-            }
-            if (existsOther) {
-                toastOnUi(R.string.home_infinite_only_one)
-                return
-            }
-        }
         val old = editing
-        val section = HomeSection(
+        val newSection = HomeSection(
             id = old?.id ?: UUID.randomUUID().toString(),
             title = title,
             sourceUrl = source.bookSourceUrl,
@@ -286,17 +280,28 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
             sortOrder = old?.sortOrder ?: HomeTabHelp.getSections(tabTitle).size,
             coverVideo = binding.cbCoverVideo.isChecked
         )
+        if (newSection.style == HomeSection.STYLE_INFINITE_GRID) {
+            val existingInfinite = HomeTabHelp.getSections(tabTitle)
+                .firstOrNull { it.style == HomeSection.STYLE_INFINITE_GRID }
+            if (existingInfinite != null && existingInfinite.id != newSection.id) {
+                toastOnUi(R.string.home_infinite_only_one)
+                return
+            }
+        }
+        val finalSection = if (newSection.style == HomeSection.STYLE_INFINITE_GRID) {
+            newSection.copy(sortOrder = Int.MAX_VALUE - 1)
+        } else newSection
         lifecycleScope.launch {
             withContext(IO) {
-                if (old == null) HomeTabHelp.addSection(tabTitle, section)
-                else HomeTabHelp.updateSection(tabTitle, section)
+                if (old == null) HomeTabHelp.addSection(tabTitle, finalSection)
+                else HomeTabHelp.updateSection(tabTitle, finalSection)
             }
             postEvent(
                 EventBus.HOME_SECTION,
                 HomeSectionEvent(
                     if (old == null) HomeSectionEvent.ADD else HomeSectionEvent.UPDATE,
                     tabTitle,
-                    section
+                    finalSection
                 )
             )
             dismiss()

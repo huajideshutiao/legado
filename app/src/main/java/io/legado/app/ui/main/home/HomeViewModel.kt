@@ -2,6 +2,7 @@ package io.legado.app.ui.main.home
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -10,6 +11,9 @@ import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 主页外壳 ViewModel：持有所有 tab 的状态，按 tabTitle 分桶。
@@ -42,6 +46,9 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
     /** 携带 tabTitle + sectionId：该展示项加载状态变化 */
     val sectionLoadingChanged = MutableLiveData<Pair<String, String>>()
 
+    /** 携带 tabTitle + sectionId：该展示项书源失效，UI 需展示错误占位 */
+    val sectionErrorChanged = MutableLiveData<Pair<String, String>>()
+
     private val tabStates = mutableMapOf<String, TabState>()
 
     fun stateOf(tabTitle: String): TabState = tabStates.getOrPut(tabTitle) { TabState() }
@@ -59,7 +66,10 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
     // ─── 加载入口 ────────────────────────────────────────────────────────
 
     fun initTabs() {
-        tabsLiveData.value = HomeTabHelp.getTabs()
+        viewModelScope.launch {
+            val list = withContext(Dispatchers.IO) { HomeTabHelp.getTabs() }
+            tabsLiveData.value = list
+        }
     }
 
     /** 单个 tab 首次初始化：拉取其下所有展示项。已初始化则跳过（Fragment 重建走这里） */
@@ -86,12 +96,16 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
         sectionLoadingChanged.postValue(tabTitle to section.id)
         execute {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
-                ?: return@execute
+            if (source == null) {
+                sectionErrorChanged.postValue(tabTitle to section.id)
+                return@execute
+            }
             val result = getBookListAwait(source, section.exploreUrl, 1, isSearch = false)
             state.sectionBooksMap[section.id] = result.books
             sectionUpdated.postValue(tabTitle to section.id)
         }.onError {
             AppLog.put("主页[$tabTitle]展示项[${section.title}]加载失败", it)
+            sectionErrorChanged.postValue(tabTitle to section.id)
         }.onFinally {
             state.loadingSet.remove(section.id)
             sectionLoadingChanged.postValue(tabTitle to section.id)
@@ -191,6 +205,9 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
     fun onTabsChanged(rename: Pair<String, String>? = null, removed: String? = null) {
         rename?.let { (old, new) -> tabStates.remove(old)?.let { tabStates[new] = it } }
         removed?.let { tabStates.remove(it) }
-        tabsLiveData.value = HomeTabHelp.getTabs()
+        viewModelScope.launch {
+            val list = withContext(Dispatchers.IO) { HomeTabHelp.getTabs() }
+            tabsLiveData.value = list
+        }
     }
 }

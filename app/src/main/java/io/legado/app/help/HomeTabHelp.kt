@@ -18,8 +18,10 @@ object HomeTabHelp {
     private const val LEGACY_SECTIONS_KEY = "homeSections"
     private const val DEFAULT_TAB_TITLE = "主页"
 
+    @Volatile
     private var tabs: MutableList<HomeTab>? = null
 
+    @Synchronized
     private fun load(): MutableList<HomeTab> {
         tabs?.let { return it }
         val json = appCtx.getPrefString(PREF_KEY)
@@ -36,24 +38,19 @@ object HomeTabHelp {
 
     // ─── Tab 读 ──────────────────────────────────────────────────────────
 
-    fun getTabs(): List<HomeTab> = load().sortedBy { it.sortOrder }.map { sortInside(it) }
+    @Synchronized
+    fun getTabs(): List<HomeTab> = load().toList().sortedBy { it.sortOrder }
 
-    fun getTab(title: String): HomeTab? = load().find { it.title == title }?.let { sortInside(it) }
+    @Synchronized
+    fun getTab(title: String): HomeTab? = load().find { it.title == title }
 
+    @Synchronized
     fun getSections(tabTitle: String): List<HomeSection> =
-        getTab(tabTitle)?.sections ?: emptyList()
-
-    /** 分组内排序：无限流强制最后，否则按 sortOrder */
-    private fun sortInside(tab: HomeTab): HomeTab {
-        val sorted = tab.sections.sortedWith(
-            compareBy({ it.style == HomeSection.STYLE_INFINITE_GRID }, { it.sortOrder })
-        )
-        return if (sorted == tab.sections) tab else tab.copy(sections = sorted)
-    }
+        getTab(tabTitle)?.sections?.sortedBy { it.sortOrder } ?: emptyList()
 
     // ─── Tab 写 ──────────────────────────────────────────────────────────
 
-    /** 添加分组。重名返回 false。 */
+    @Synchronized
     fun addTab(title: String): Boolean {
         val list = load()
         if (list.any { it.title == title }) return false
@@ -62,6 +59,7 @@ object HomeTabHelp {
         return true
     }
 
+    @Synchronized
     fun removeTab(title: String) {
         val list = load()
         if (list.removeAll { it.title == title }) {
@@ -70,7 +68,7 @@ object HomeTabHelp {
         }
     }
 
-    /** 重命名分组。新名重名返回 false。 */
+    @Synchronized
     fun renameTab(oldTitle: String, newTitle: String): Boolean {
         if (oldTitle == newTitle) return true
         val list = load()
@@ -82,7 +80,7 @@ object HomeTabHelp {
         return true
     }
 
-    /** 按给定顺序整体写回 tabs，并重排 sortOrder。 */
+    @Synchronized
     fun saveTabsOrder(ordered: List<HomeTab>) {
         val reSorted = ordered.mapIndexed { i, t -> t.copy(sortOrder = i) }.toMutableList()
         persist(reSorted)
@@ -90,6 +88,7 @@ object HomeTabHelp {
 
     // ─── Section 写（限定在某个 tab 内）─────────────────────────────────
 
+    @Synchronized
     fun addSection(tabTitle: String, section: HomeSection) {
         mutateTab(tabTitle) { tab ->
             val list = tab.sections.toMutableList()
@@ -98,6 +97,7 @@ object HomeTabHelp {
         }
     }
 
+    @Synchronized
     fun updateSection(tabTitle: String, section: HomeSection) {
         mutateTab(tabTitle) { tab ->
             val list = tab.sections.toMutableList()
@@ -109,19 +109,21 @@ object HomeTabHelp {
         }
     }
 
+    @Synchronized
     fun removeSection(tabTitle: String, sectionId: String) {
         mutateTab(tabTitle) { tab ->
             tab.copy(sections = tab.sections.filterNot { it.id == sectionId })
         }
     }
 
-    /** 按给定顺序整体写回 tab 内 sections，并重排 sortOrder。 */
+    @Synchronized
     fun saveSectionsOrder(tabTitle: String, ordered: List<HomeSection>) {
         mutateTab(tabTitle) { tab ->
             tab.copy(sections = ordered.mapIndexed { i, s -> s.copy(sortOrder = i) })
         }
     }
 
+    @Synchronized
     private fun mutateTab(tabTitle: String, transform: (HomeTab) -> HomeTab) {
         val list = load()
         val idx = list.indexOfFirst { it.title == tabTitle }
@@ -130,10 +132,7 @@ object HomeTabHelp {
         persist(list)
     }
 
-    fun invalidate() {
-        tabs = null
-    }
-
+    @Synchronized
     private fun persist(list: List<HomeTab>) {
         tabs = list.toMutableList()
         appCtx.putPrefString(PREF_KEY, GSON.toJson(list))

@@ -1,44 +1,42 @@
 package io.legado.app.ui.main.home
 
 import android.content.Context
-import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
+import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.databinding.ItemHomeManageBinding
-import java.util.Collections
 
 class HomeSectionManageAdapter(
-    private val context: Context,
+    context: Context,
     private val callback: Callback
-) : RecyclerView.Adapter<HomeSectionManageAdapter.VH>() {
+) : RecyclerAdapter<HomeSection, ItemHomeManageBinding>(context) {
 
-    private val inflater = LayoutInflater.from(context)
-    private val items = mutableListOf<HomeSection>()
-
-    fun setItems(list: List<HomeSection>) {
-        items.clear()
-        items.addAll(list)
-        notifyDataSetChanged()
+    override fun getViewBinding(parent: ViewGroup): ItemHomeManageBinding {
+        return ItemHomeManageBinding.inflate(inflater, parent, false)
     }
 
-    fun getItems(): List<HomeSection> = items.toList()
-
-    /** 拖动相邻交换，同时同步内存顺序 */
-    fun swap(from: Int, to: Int) {
-        if (from !in items.indices || to !in items.indices) return
-        Collections.swap(items, from, to)
-        notifyItemMoved(from, to)
+    override fun convert(
+        holder: ItemViewHolder,
+        binding: ItemHomeManageBinding,
+        item: HomeSection,
+        payloads: MutableList<Any>
+    ) {
+        binding.run {
+            tvTitle.text = item.title
+            tvDesc.text = "${styleName(item.style)} · ${item.sourceName}"
+            tvEdit.setText(R.string.delete)
+        }
     }
 
-    override fun getItemCount() = items.size
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemHomeManageBinding.inflate(inflater, parent, false))
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.bind(items[position])
+    override fun registerListener(holder: ItemViewHolder, binding: ItemHomeManageBinding) {
+        binding.root.setOnClickListener {
+            getItemByLayoutPosition(holder.layoutPosition)?.let { callback.onEdit(it) }
+        }
+        binding.tvEdit.setOnClickListener {
+            getItemByLayoutPosition(holder.layoutPosition)?.let { callback.onDelete(it) }
+        }
     }
 
     private fun styleName(style: Int): String = context.getString(
@@ -50,20 +48,8 @@ class HomeSectionManageAdapter(
         }
     )
 
-    inner class VH(private val b: ItemHomeManageBinding) :
-        RecyclerView.ViewHolder(b.root) {
-
-        fun bind(section: HomeSection) {
-            b.tvTitle.text = section.title
-            b.tvDesc.text = context.getString(
-                R.string.home_manage_item_desc,
-                styleName(section.style),
-                section.sourceName
-            )
-            b.tvEdit.setText(R.string.delete)
-            b.root.setOnClickListener { callback.onEdit(section) }
-            b.tvEdit.setOnClickListener { callback.onDelete(section) }
-        }
+    fun swap(from: Int, to: Int) {
+        swapItem(from, to)
     }
 
     interface Callback {

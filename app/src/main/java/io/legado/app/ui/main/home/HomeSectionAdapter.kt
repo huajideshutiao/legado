@@ -3,6 +3,7 @@ package io.legado.app.ui.main.home
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -14,6 +15,7 @@ import io.legado.app.databinding.ItemHomeCoverCardBinding
 import io.legado.app.databinding.ItemHomeRankBookBinding
 import io.legado.app.databinding.ViewHomeSectionTitleBinding
 import io.legado.app.model.BookCover
+import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.visible
 import kotlin.math.abs
@@ -56,6 +58,10 @@ class HomeSectionAdapter(
         holders[sectionId]?.updateLoading(callback.isLoading(sectionId))
     }
 
+    fun updateSectionError(sectionId: String) {
+        holders[sectionId]?.showError(context.getString(R.string.home_source_invalid))
+    }
+
     private fun onBook(section: HomeSection, book: SearchBook, longClick: Boolean) {
         callback.onBookClick(book, section, longClick)
     }
@@ -78,10 +84,12 @@ class HomeSectionAdapter(
         }
 
         private var adapter: RecyclerView.Adapter<*>? = null
+        private var rv: RecyclerView? = null
+        private var stateView: LoadMoreView? = null
 
         init {
             if (section.style != HomeSection.STYLE_INFINITE_GRID) {
-                val rv = RecyclerView(context).apply {
+                rv = RecyclerView(context).apply {
                     setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
                     clipToPadding = false
                     isNestedScrollingEnabled = false
@@ -143,6 +151,10 @@ class HomeSectionAdapter(
                                             rv.parent?.requestDisallowInterceptTouchEvent(false)
                                         }
                                     }
+
+                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                        rv.parent?.requestDisallowInterceptTouchEvent(false)
+                                    }
                                 }
                                 return false
                             }
@@ -158,7 +170,23 @@ class HomeSectionAdapter(
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
                 )
+                stateView = LoadMoreView(context).apply {
+                    visibility = View.GONE
+                }
+                root.addView(
+                    stateView, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
             }
+        }
+
+        private fun itemCountOf(): Int = when (val a = adapter) {
+            is CoverCardAdapter -> a.itemCount
+            is RankBookAdapter -> a.itemCount
+            is FourColumnAdapter -> a.itemCount
+            else -> 0
         }
 
         fun updateBooks(books: List<SearchBook>) {
@@ -166,14 +194,29 @@ class HomeSectionAdapter(
             // 排行榜只展示前 5 名（数据缓存仍是完整一页，切样式不丢）
             (adapter as? RankBookAdapter)?.setBooks(books.take(RANK_LIMIT))
             (adapter as? FourColumnAdapter)?.setBooks(books)
+            // 数据到位后让 loading/empty 状态根据真实 item 数刷新
+            updateLoading(callback.isLoading(section.id))
         }
 
         fun updateLoading(loading: Boolean) {
-            if (loading && section.style != HomeSection.STYLE_INFINITE_GRID) {
-                titleBinding.rlLoading.visible()
-            } else {
-                titleBinding.rlLoading.gone()
+            if (section.style == HomeSection.STYLE_INFINITE_GRID) return
+            val sv = stateView ?: return
+            if (itemCountOf() > 0) {
+                rv?.visibility = View.VISIBLE
+                sv.visibility = View.GONE
+                return
             }
+            rv?.visibility = View.GONE
+            sv.visibility = View.VISIBLE
+            if (loading) sv.startLoad() else sv.noMore(context.getString(R.string.empty))
+        }
+
+        fun showError(message: String) {
+            if (section.style == HomeSection.STYLE_INFINITE_GRID) return
+            val sv = stateView ?: return
+            rv?.visibility = View.GONE
+            sv.visibility = View.VISIBLE
+            sv.error(message, message)
         }
     }
 

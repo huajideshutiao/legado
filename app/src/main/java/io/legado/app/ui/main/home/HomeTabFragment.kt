@@ -72,6 +72,8 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
     }
 
     private var gridAdapter: BaseExploreShowAdapter<*>? = null
+    private var lastInfiniteId: String? = null
+    private var lastCoverVideo: Boolean = false
 
     private val loadMoreView by lazy { LoadMoreView(requireContext()) }
 
@@ -167,6 +169,15 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
                 sectionViews.updateSectionLoading(sectionId)
             }
         }
+        viewModel.sectionErrorChanged.observe(viewLifecycleOwner) { (changedTab, sectionId) ->
+            if (changedTab != tabTitle) return@observe
+            if (sectionId == viewModel.infiniteSection(tabTitle)?.id) {
+                val msg = requireContext().getString(R.string.home_source_invalid)
+                loadMoreView.error(msg, msg)
+            } else {
+                sectionViews.updateSectionError(sectionId)
+            }
+        }
         observeEvent<HomeSectionEvent>(EventBus.HOME_SECTION) { event ->
             if (event.tabTitle != tabTitle) return@observeEvent
             val section = event.section
@@ -189,6 +200,19 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
         sectionViews.setSections(sections, viewModel.stateOf(tabTitle).sectionBooksMap)
 
         val infinite = sections.find { it.style == HomeSection.STYLE_INFINITE_GRID }
+        val coverVideo = infinite?.coverVideo == true
+        val canReuse = gridAdapter != null &&
+            infinite?.id == lastInfiniteId &&
+            coverVideo == lastCoverVideo
+        if (canReuse) {
+            if (infinite != null) {
+                gridAdapter?.setItems(viewModel.sectionBooks(tabTitle, infinite.id))
+            }
+            return
+        }
+        lastInfiniteId = infinite?.id
+        lastCoverVideo = coverVideo
+
         val cb = object : BaseExploreShowAdapter.CallBack {
             override fun isInBookshelf(book: BaseBook) = false
             override fun showBookInfo(book: BaseBook, longClick: Boolean) {
@@ -196,7 +220,7 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
                 (book as? SearchBook)?.let { sectionCallback.onBookClick(it, s, longClick) }
             }
         }
-        val adapter = if (infinite?.coverVideo == true) {
+        val adapter = if (coverVideo) {
             VideoExploreShowAdapter(requireContext(), cb)
         } else {
             GridExploreShowAdapter(requireContext(), cb)
