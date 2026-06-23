@@ -8,7 +8,6 @@ import java.io.File
 /**
  * 自动获取文件的编码
  * */
-@Suppress("unused")
 object EncodingDetect {
 
     private val headTagRegex = "(?i)<head>[\\s\\S]*?</head>".toRegex()

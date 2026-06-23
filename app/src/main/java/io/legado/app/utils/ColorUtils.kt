@@ -10,7 +10,6 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-@Suppress("unused", "MemberVisibilityCanBePrivate")
 object ColorUtils {
 
     fun isColorLight(@ColorInt color: Int): Boolean {

@@ -16,7 +16,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
-import io.legado.app.utils.IntentType
+import io.legado.app.utils.FileUtils
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.toastOnUi
 import splitties.systemservices.downloadManager
@@ -76,7 +76,7 @@ class DownloadService : BaseService() {
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
             )
             request.setTitle(fileName)
-            request.setMimeType(IntentType.from(fileName))
+            request.setMimeType(FileUtils.getMimeType(fileName))
             request.setAllowedOverMetered(true)
             request.setAllowedOverRoaming(true)
             request.setDestinationInExternalPublicDir(
@@ -113,7 +113,7 @@ class DownloadService : BaseService() {
                 if (status == DownloadManager.STATUS_SUCCESSFUL) {
                     val fileName = downloads.remove(id)
                     downloadManager.getUriForDownloadedFile(id)?.let { uri ->
-                        openFileUri(uri, IntentType.from(fileName))
+                        openFileUri(uri, FileUtils.getMimeType(fileName ?: ""))
                     }
                 }
             }

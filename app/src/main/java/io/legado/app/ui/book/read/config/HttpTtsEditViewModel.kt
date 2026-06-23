@@ -44,7 +44,7 @@ class HttpTtsEditViewModel(app: Application) : BaseViewModel(app) {
     }
 
     fun importFromClip(onSuccess: (httpTTS: HttpTTS) -> Unit) {
-        val text = context.getClipText()
+        val text = getClipText()
         if (text.isNullOrBlank()) {
             context.toastOnUi("剪贴板为空")
         } else {

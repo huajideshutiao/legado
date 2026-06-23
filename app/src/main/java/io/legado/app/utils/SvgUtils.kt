@@ -10,7 +10,6 @@ import java.io.FileInputStream
 import java.io.InputStream
 import kotlin.math.max
 
-@Suppress("WeakerAccess", "MemberVisibilityCanBePrivate")
 object SvgUtils {
 
     /**

@@ -11,13 +11,9 @@ import androidx.core.graphics.drawable.toDrawable
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
-import java.io.ObjectInputStream
-import java.io.ObjectOutputStream
-import java.io.Serializable
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -283,66 +279,6 @@ class ACache private constructor(cacheDir: File, max_size: Long, max_count: Int)
             }
         }
         return null
-    }
-
-    /**
-     * 保存 Serializable数据到 缓存中
-     *
-     * @param key      保存的key
-     * @param value    保存的value
-     * @param saveTime 保存的时间，单位：秒
-     */
-    @JvmOverloads
-    fun put(key: String, value: Serializable, saveTime: Int = -1) {
-        try {
-            val byteArrayOutputStream = ByteArrayOutputStream()
-            ObjectOutputStream(byteArrayOutputStream).use { oos ->
-                oos.writeObject(value)
-                val data = byteArrayOutputStream.toByteArray()
-                if (saveTime != -1) {
-                    put(key, data, saveTime)
-                } else {
-                    put(key, data)
-                }
-            }
-        } catch (e: Exception) {
-            e.printOnDebug()
-        }
-    }
-
-    /**
-     * 读取 Serializable数据
-     *
-     * @return Serializable 数据
-     */
-    fun getAsObject(key: String): Any? {
-        val data = getAsBinary(key)
-        if (data != null) {
-            var bis: ByteArrayInputStream? = null
-            var ois: ObjectInputStream? = null
-            try {
-                bis = ByteArrayInputStream(data)
-                ois = ObjectInputStream(bis)
-                return ois.readObject()
-            } catch (e: Exception) {
-                e.printOnDebug()
-            } finally {
-                try {
-                    bis?.close()
-                } catch (e: IOException) {
-                    e.printOnDebug()
-                }
-
-                try {
-                    ois?.close()
-                } catch (e: IOException) {
-                    e.printOnDebug()
-                }
-
-            }
-        }
-        return null
-
     }
 
     // =======================================

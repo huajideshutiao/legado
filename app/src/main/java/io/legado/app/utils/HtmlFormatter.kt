@@ -6,7 +6,6 @@ import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import java.util.LinkedList
 
-@Suppress("RegExpRedundantEscape")
 object HtmlFormatter {
     private val nbspRegex = "(&nbsp;)+".toRegex()
     private val espRegex = "(&ensp;|&emsp;)".toRegex()

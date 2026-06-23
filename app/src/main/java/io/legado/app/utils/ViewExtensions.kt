@@ -26,8 +26,6 @@ import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.view.menu.MenuPopupHelper
-import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.record
 import androidx.core.graphics.withTranslation
@@ -46,8 +44,6 @@ import io.legado.app.utils.canvasrecorder.record
 import splitties.systemservices.inputMethodManager
 import splitties.views.bottomPadding
 import splitties.views.topPadding
-import java.lang.reflect.Field
-
 
 private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {
     return when (context) {
@@ -236,17 +232,6 @@ fun TextView.setHtml(html: String) {
 fun TextView.setTextIfNotEqual(charSequence: CharSequence?) {
     if (text != charSequence) {
         text = charSequence
-    }
-}
-
-@SuppressLint("RestrictedApi")
-fun PopupMenu.show(x: Int, y: Int) {
-    kotlin.runCatching {
-        val field: Field = this.javaClass.getDeclaredField("mPopup")
-        field.isAccessible = true
-        (field.get(this) as MenuPopupHelper).show(x, y)
-    }.onFailure {
-        it.printOnDebug()
     }
 }
 

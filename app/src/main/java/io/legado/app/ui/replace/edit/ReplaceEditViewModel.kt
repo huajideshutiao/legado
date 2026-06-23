@@ -42,7 +42,7 @@ class ReplaceEditViewModel(application: Application) : BaseViewModel(application
 
     fun pasteRule(success: (ReplaceRule) -> Unit) {
         execute(context = Dispatchers.Main) {
-            val text = context.getClipText()
+            val text = getClipText()
             if (text.isNullOrBlank()) {
                 throw NoStackTraceException("剪贴板为空")
             }

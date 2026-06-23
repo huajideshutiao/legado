@@ -99,7 +99,7 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
         }
 
         fun pasteRule(success: (DictRule) -> Unit) {
-            val text = context.getClipText()
+            val text = getClipText()
             if (text.isNullOrBlank()) {
                 context.toastOnUi("剪贴板没有内容")
                 return

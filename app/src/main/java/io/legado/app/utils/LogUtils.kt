@@ -18,7 +18,6 @@ import java.util.logging.LogRecord
 import java.util.logging.Logger
 import kotlin.time.Duration.Companion.days
 
-@SuppressLint("SimpleDateFormat")
 object LogUtils {
     const val TIME_PATTERN = "yy-MM-dd HH:mm:ss.SSS"
     val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN) }

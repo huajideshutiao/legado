@@ -120,7 +120,7 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
 
         fun pasteRule(success: (TxtTocRule) -> Unit) {
             execute(context = Dispatchers.Main) {
-                val text = context.getClipText()
+                val text = getClipText()
                 if (text.isNullOrBlank()) {
                     throw NoStackTraceException("剪贴板为空")
                 }

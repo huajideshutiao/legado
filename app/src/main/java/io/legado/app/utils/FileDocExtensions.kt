@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package io.legado.app.utils
 
 import android.app.DownloadManager
@@ -45,7 +43,7 @@ data class FileDoc(
     fun asDocumentFile(): DocumentFile? {
         if (isContentScheme) {
             return if (isDir) {
-                treeDocumentFileConstructor.newInstance(null, appCtx, uri) as DocumentFile
+                DocumentFile.fromTreeUri(appCtx, uri)
             } else {
                 DocumentFile.fromSingleUri(appCtx, uri)
             }
@@ -61,17 +59,6 @@ data class FileDoc(
     }
 
     companion object {
-
-        private val treeDocumentFileConstructor by lazy {
-            Class.forName("androidx.documentfile.provider.TreeDocumentFile")
-                .getDeclaredConstructor(
-                    DocumentFile::class.java,
-                    Context::class.java,
-                    Uri::class.java
-                ).apply {
-                    isAccessible = true
-                }
-        }
 
         fun fromDir(path: String): FileDoc {
             return fromUri(path.toUri(), true)

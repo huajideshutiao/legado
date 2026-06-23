@@ -1,5 +1,3 @@
-@file:Suppress("UnusedReceiverParameter")
-
 package io.legado.app.utils
 
 import android.webkit.CookieManager

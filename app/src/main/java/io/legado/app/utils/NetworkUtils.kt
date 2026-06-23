@@ -1,9 +1,6 @@
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
-import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.os.Build
 import cn.hutool.core.lang.Validator
 import io.legado.app.constant.AppLog
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
@@ -15,41 +12,24 @@ import java.net.URL
 import java.util.BitSet
 import java.util.Enumeration
 
-@Suppress("MemberVisibilityCanBePrivate")
 object NetworkUtils {
 
     /**
      * 判断是否联网
      */
-    @SuppressLint("ObsoleteSdkInt")
-    @Suppress("DEPRECATION")
     fun isAvailable(): Boolean {
-        if (Build.VERSION.SDK_INT < 23) {
-            val mWiFiNetworkInfo = connectivityManager.activeNetworkInfo
-            if (mWiFiNetworkInfo != null) {
+        val network = connectivityManager.activeNetwork
+        if (network != null) {
+            val nc = connectivityManager.getNetworkCapabilities(network)
+            if (nc != null) {
                 // WIFI
-                return mWiFiNetworkInfo.type == ConnectivityManager.TYPE_WIFI ||
-                        // 移动数据
-                        mWiFiNetworkInfo.type == ConnectivityManager.TYPE_MOBILE ||
-                        // 以太网
-                        mWiFiNetworkInfo.type == ConnectivityManager.TYPE_ETHERNET ||
-                        // VPN
-                        mWiFiNetworkInfo.type == ConnectivityManager.TYPE_VPN
-            }
-        } else {
-            val network = connectivityManager.activeNetwork
-            if (network != null) {
-                val nc = connectivityManager.getNetworkCapabilities(network)
-                if (nc != null) {
-                    // WIFI
-                    return nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                            // 移动数据
-                            nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                            // 以太网
-                            nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
-                            // VPN
-                            nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-                }
+                return nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    // 移动数据
+                    nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    // 以太网
+                    nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                    // VPN
+                    nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
             }
         }
         return false
@@ -275,7 +255,7 @@ object NetworkUtils {
      * @return True if the input parameter is a valid IPv4 address.
      */
     fun isIPv4Address(input: String?): Boolean {
-        return input != null && input.isNotEmpty()
+        return !input.isNullOrEmpty()
                 && input[0] in '1'..'9'
                 && input.count { it == '.' } == 3
                 && Validator.isIpv4(input)

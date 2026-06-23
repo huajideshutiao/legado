@@ -17,8 +17,6 @@ import java.util.regex.Matcher
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-private val handler by lazy { buildMainHandler() }
-
 /**
  * 带有超时检测的正则替换
  */

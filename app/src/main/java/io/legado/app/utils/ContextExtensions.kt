@@ -1,5 +1,3 @@
-@file:Suppress("unused", "UnusedReceiverParameter")
-
 package io.legado.app.utils
 
 import android.annotation.SuppressLint
@@ -91,7 +89,6 @@ inline fun <reified T : Service> Context.stopService() {
     stopService(Intent(this, T::class.java))
 }
 
-@SuppressLint("UnspecifiedImmutableFlag")
 inline fun <reified T : Service> Context.servicePendingIntent(
     action: String,
     requestCode: Int = 0,
@@ -108,7 +105,6 @@ inline fun <reified T : Service> Context.servicePendingIntent(
     return getService(this, requestCode, intent, flags)
 }
 
-@SuppressLint("UnspecifiedImmutableFlag")
 fun Context.activityPendingIntent(
     intent: Intent,
     action: String,
@@ -122,7 +118,7 @@ fun Context.activityPendingIntent(
     return getActivity(this, 0, intent, flags)
 }
 
-@SuppressLint("UnspecifiedImmutableFlag")
+
 inline fun <reified T : Activity> Context.activityPendingIntent(
     action: String,
     configIntent: Intent.() -> Unit = {},
@@ -138,7 +134,6 @@ inline fun <reified T : Activity> Context.activityPendingIntent(
     return getActivity(this, 0, intent, flags)
 }
 
-@SuppressLint("UnspecifiedImmutableFlag")
 inline fun <reified T : BroadcastReceiver> Context.broadcastPendingIntent(
     action: String,
     configIntent: Intent.() -> Unit = {},
@@ -239,7 +234,6 @@ val Context.sysScreenOffTime: Int
     }
 
 val Context.statusBarHeight: Int
-    @SuppressLint("DiscouragedApi", "InternalInsetResource")
     get() {
         if (Build.BOARD == "windows") {
             return 0
@@ -249,7 +243,6 @@ val Context.statusBarHeight: Int
     }
 
 val Context.navigationBarHeight: Int
-    @SuppressLint("DiscouragedApi", "InternalInsetResource")
     get() {
         val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
         return resources.getDimensionPixelSize(resourceId)
@@ -290,24 +283,13 @@ fun Context.sendToClip(text: String) {
     longToastOnUi(R.string.copy_complete)
 }
 
-fun Context.getClipText(): String? {
+fun getClipText(): String? {
     clipboardManager.primaryClip?.let {
         if (it.itemCount > 0) {
             return it.getItemAt(0).text.toString().trim()
         }
     }
     return null
-}
-
-fun Context.sendMail(mail: String) {
-    try {
-        val intent = Intent(Intent.ACTION_SENDTO)
-        intent.data = Uri.parse("mailto:$mail")
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-    } catch (e: Exception) {
-        toastOnUi(e.localizedMessage ?: "Error")
-    }
 }
 
 /**
@@ -355,7 +337,7 @@ fun Context.openFileUri(uri: Uri, type: String? = null) {
     }
     val uri = if (uri.isContentScheme()) uri
     else FileProvider.getUriForFile(this, AppConst.authority, File(uri.path!!))
-    intent.setDataAndType(uri, type ?: IntentType.from(uri))
+    intent.setDataAndType(uri, type ?: FileUtils.getMimeType(uri.path ?: uri.toString()))
     try {
         startActivity(intent)
     } catch (e: Exception) {
@@ -364,9 +346,7 @@ fun Context.openFileUri(uri: Uri, type: String? = null) {
     }
 }
 
-@Suppress("DEPRECATION")
 val Context.isWifiConnect: Boolean
-    @SuppressLint("MissingPermission")
     get() {
         val info = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)
         return info?.isConnected == true

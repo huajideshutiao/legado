@@ -3,7 +3,9 @@ package io.legado.app.ui.book.search
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
@@ -14,10 +16,13 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
-import io.legado.app.utils.ConflateLiveData
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import java.util.concurrent.ConcurrentHashMap
 
@@ -26,7 +31,15 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
     val handler = Handler(Looper.getMainLooper())
     val bookshelf: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val upAdapterLiveData = MutableLiveData<String>()
-    var searchBookLiveData = ConflateLiveData<List<SearchBook>>(1000)
+    private val _searchBookFlow = MutableSharedFlow<List<SearchBook>>(
+        replay = 1,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    @OptIn(FlowPreview::class)
+    val searchBookLiveData: LiveData<List<SearchBook>> =
+        _searchBookFlow.debounce(1000).asLiveData(viewModelScope.coroutineContext)
     val searchScope: SearchScope = SearchScope(AppConfig.searchScope)
     var searchFinishLiveData = MutableLiveData<Boolean>()
     var isSearchLiveData = MutableLiveData<Boolean>()
@@ -48,7 +61,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
         }
 
         override fun onSearchSuccess(searchBooks: List<SearchBook>) {
-            searchBookLiveData.postValue(searchBooks)
+            _searchBookFlow.tryEmit(searchBooks)
         }
 
         override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) {
@@ -139,7 +152,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
             if ((searchKey == key) || key.isNotEmpty()) {
                 searchModel.cancelSearch()
                 searchID = System.currentTimeMillis()
-                searchBookLiveData.postValue(emptyList())
+                _searchBookFlow.tryEmit(emptyList())
                 searchKey = key
                 hasMore = true
                 if (resetOptions && searchOptions.isNotEmpty()) {

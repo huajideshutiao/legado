@@ -27,7 +27,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
 
-@Suppress("unused", "MemberVisibilityCanBePrivate")
 object FileUtils {
 
     fun createFileIfNotExist(root: File, vararg subDirFiles: String): File {

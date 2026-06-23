@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package io.legado.app.utils
 
 import android.content.Context
@@ -25,8 +23,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
-
-@Suppress("WeakerAccess", "MemberVisibilityCanBePrivate")
 object BitmapUtils {
 
     /**

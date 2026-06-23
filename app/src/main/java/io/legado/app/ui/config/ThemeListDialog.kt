@@ -57,7 +57,7 @@ class ThemeListDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_import -> {
-                requireContext().getClipText()?.let {
+                getClipText()?.let {
                     if (ThemeConfig.addConfig(it)) {
                         initData()
                     } else {

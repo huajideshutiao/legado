@@ -80,7 +80,7 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
 
     fun pasteSource(onSuccess: (source: BookSource) -> Unit) {
         execute(context = Dispatchers.Main) {
-            val text = context.getClipText()
+            val text = getClipText()
             if (text.isNullOrBlank()) {
                 throw NoStackTraceException("剪贴板为空")
             } else {

@@ -9,8 +9,8 @@ import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import androidx.core.net.toUri
 import androidx.core.provider.DocumentsContractCompat
-
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -40,7 +40,7 @@ object RealPathUtil {
             } else if (isDownloadsDocument(uri)) {
                 val id = DocumentsContract.getDocumentId(uri)
                 val contentUri = ContentUris.withAppendedId(
-                    Uri.parse("content://downloads/public_downloads"),
+                    "content://downloads/public_downloads".toUri(),
                     java.lang.Long.valueOf(id)
                 )
                 //return getDataColumn(context, uri, null, null);
@@ -83,22 +83,6 @@ object RealPathUtil {
             return uri.path
         }
         return uri.path
-    }
-
-    fun getTreePath(uri: Uri): String? {
-        if (!DocumentsContractCompat.isTreeUri(uri) || !isExternalStorageDocument(uri)) {
-            return null
-        }
-        val docId = DocumentsContract.getTreeDocumentId(uri)
-        val split = docId.split(":")
-        if (split.size < 2) {
-            return null
-        }
-        val type = split[0]
-        if ("primary".equals(type, ignoreCase = true)) {
-            return Environment.getExternalStorageDirectory().toString() + "/" + split[1]
-        }
-        return null
     }
 
     /**

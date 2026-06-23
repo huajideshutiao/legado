@@ -1,6 +1,5 @@
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
 import android.os.ParcelFileDescriptor
 import android.system.ErrnoException
 import android.system.Os
@@ -9,8 +8,6 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
 
-@Suppress("unused")
-@SuppressLint("NewApi")
 class ParcelFileDescriptorChannel(private val pfd: ParcelFileDescriptor) : SeekableByteChannel {
     @Throws(IOException::class)
     override fun read(dst: ByteBuffer): Int {

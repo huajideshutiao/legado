@@ -13,7 +13,6 @@ fun ConstraintLayout.modifyBegin(withAnim: Boolean = false): ConstraintModify.Co
     return begin
 }
 
-@Suppress("MemberVisibilityCanBePrivate", "unused")
 class ConstraintModify(private val constraintLayout: ConstraintLayout) {
 
     val begin: ConstraintBegin by lazy {

@@ -54,7 +54,7 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
             }
 
             R.id.menu_paste_rule -> runCatching {
-                requireContext().getClipText()!!.let {
+                getClipText()!!.let {
                     val rule = GSON.fromJsonObject<DirectLinkUpload.Rule>(it).getOrThrow()
                     upView(rule)
                 }

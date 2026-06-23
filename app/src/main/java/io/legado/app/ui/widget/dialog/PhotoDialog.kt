@@ -28,7 +28,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
-import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 

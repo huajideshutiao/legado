@@ -1,6 +1,3 @@
-@file:Suppress("RedundantVisibilityModifier", "UnusedReceiverParameter")
-@file:JvmName("ReflectionFragmentViewBindings")
-
 package io.legado.app.utils.viewbindingdelegate
 
 import android.view.View
@@ -19,7 +16,7 @@ private class FragmentViewBindingProperty<F : Fragment, T : ViewBinding>(
  * Create new [ViewBinding] associated with the [Fragment]
  */
 @JvmName("viewBindingFragment")
-public fun <F : Fragment, T : ViewBinding> Fragment.viewBinding(viewBinder: (F) -> T): ViewBindingProperty<F, T> {
+fun <F : Fragment, T : ViewBinding> viewBinding(viewBinder: (F) -> T): ViewBindingProperty<F, T> {
     return FragmentViewBindingProperty(viewBinder)
 }
 
@@ -30,7 +27,7 @@ public fun <F : Fragment, T : ViewBinding> Fragment.viewBinding(viewBinder: (F) 
  * @param viewProvider Provide a [View] from the Fragment. By default call [Fragment.requireView]
  */
 @JvmName("viewBindingFragment")
-public inline fun <F : Fragment, T : ViewBinding> Fragment.viewBinding(
+inline fun <F : Fragment, T : ViewBinding> viewBinding(
     crossinline vbFactory: (View) -> T,
     crossinline viewProvider: (F) -> View = Fragment::requireView
 ): ViewBindingProperty<F, T> {
@@ -44,7 +41,7 @@ public inline fun <F : Fragment, T : ViewBinding> Fragment.viewBinding(
  * @param viewBindingRootId Root view's id that will be used as root for the view binding
  */
 @JvmName("viewBindingFragment")
-public inline fun <T : ViewBinding> Fragment.viewBinding(
+inline fun <T : ViewBinding> viewBinding(
     crossinline vbFactory: (View) -> T,
     @IdRes viewBindingRootId: Int
 ): ViewBindingProperty<Fragment, T> {

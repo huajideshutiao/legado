@@ -1,5 +1,3 @@
-@file:Suppress("RedundantVisibilityModifier")
-
 package io.legado.app.utils.viewbindingdelegate
 
 import android.os.Handler
@@ -12,7 +10,7 @@ import androidx.viewbinding.ViewBinding
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
-public abstract class ViewBindingProperty<in R : Any, T : ViewBinding>(
+abstract class ViewBindingProperty<in R : Any, T : ViewBinding>(
     private val viewBinder: (R) -> T
 ) : ReadOnlyProperty<R, T> {
 
@@ -23,7 +21,7 @@ public abstract class ViewBindingProperty<in R : Any, T : ViewBinding>(
     protected abstract fun getLifecycleOwner(thisRef: R): LifecycleOwner
 
     @MainThread
-    public override fun getValue(thisRef: R, property: KProperty<*>): T {
+    override fun getValue(thisRef: R, property: KProperty<*>): T {
         viewBinding?.let { return it }
 
         this.thisRef = thisRef
@@ -37,7 +35,7 @@ public abstract class ViewBindingProperty<in R : Any, T : ViewBinding>(
     }
 
     @MainThread
-    public fun clear() {
+    fun clear() {
         val thisRef = thisRef ?: return
         this.thisRef = null
         getLifecycleOwner(thisRef).lifecycle.removeObserver(lifecycleObserver)
