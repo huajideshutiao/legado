@@ -198,6 +198,7 @@ object CacheBook {
         private var isStopped = false
         private var waitingRetry = false
         private var isLoading = false
+        var chapterList: List<BookChapter>? = null
 
         val waitCount get() = waitDownloadSet.size
         val onDownloadCount get() = onDownloadSet.size
@@ -352,12 +353,13 @@ object CacheBook {
                 }
                 return
             }
+            val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
             Coroutine.async(
                 scope,
                 context,
                 start = CoroutineStart.LAZY,
             ) {
-                val content = getContentAwait(bookSource, book, chapter)
+                val content = getContentAwait(bookSource, book, chapter, nextChapterUrl)
                 BookHelp.saveImages(bookSource, book, chapter, content, 2)
                 content
             }.onSuccess { content ->
@@ -384,7 +386,8 @@ object CacheBook {
                 waitDownloadSet.remove(chapter.index)
             }
             try {
-                val content = getContentAwait(bookSource, book, chapter)
+                val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
+                val content = getContentAwait(bookSource, book, chapter, nextChapterUrl)
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
@@ -414,12 +417,13 @@ object CacheBook {
             }
             onDownloadSet.add(chapter.index)
             waitDownloadSet.remove(chapter.index)
+            val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
             Coroutine.async(
                 scope,
                 start = CoroutineStart.LAZY,
                 semaphore = semaphore
             ) {
-                getContentAwait(bookSource, book, chapter)
+                getContentAwait(bookSource, book, chapter, nextChapterUrl)
             }.onSuccess { content ->
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)

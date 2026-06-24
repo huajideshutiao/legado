@@ -154,6 +154,9 @@ class CacheBookService : BaseService() {
             } else {
                 min(end, book.lastChapterIndex)
             }
+            if (cacheBook.chapterList == null) {
+                cacheBook.chapterList = appDb.bookChapterDao.getChapterList(bookUrl)
+            }
             cacheBook.addDownload(start, end2)
             notificationContent = CacheBook.downloadSummary
             upCacheBookNotification()

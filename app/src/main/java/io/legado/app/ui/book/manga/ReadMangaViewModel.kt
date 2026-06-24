@@ -149,7 +149,9 @@ class ReadMangaViewModel(application: Application) :
                 chapterListData.value?.getOrNull(index)
                     ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)
                     ?: run {
-                        upToc(true)
+                        if (index < simulatedChapterSize) {
+                            upToc(true)
+                        }
                         return@execute
                     }
             if (addLoading(index)) {
@@ -328,12 +330,13 @@ class ReadMangaViewModel(application: Application) :
         error: suspend () -> Unit = {},
         cancel: suspend () -> Unit = {},
     ) {
+        val nextChapterUrl = chapterListData.value?.getOrNull(chapter.index + 1)?.url
         Coroutine.async(
             scope,
             start = CoroutineStart.LAZY,
             semaphore = semaphore
         ) {
-            WebBook.getContentAwait(bookSource, book, chapter)
+            WebBook.getContentAwait(bookSource, book, chapter, nextChapterUrl)
         }.onSuccess { content ->
             success.invoke(content)
         }.onError {
@@ -459,6 +462,7 @@ class ReadMangaViewModel(application: Application) :
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                         appDb.bookChapterDao.insert(*cList.toTypedArray())
                     }
+                    chapterListData.postValue(cList)
                     onChapterListUpdated(book, false)
                     nextMangaChapter ?: loadContent(durChapterIndex + 1)
                 }

@@ -309,7 +309,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 val chapter = toc.getOrElse(book.durChapterIndex) {
                     toc.last()
                 }
-                val nextChapter = toc.getOrElse(chapter.index) {
+                val nextChapter = toc.getOrElse(chapter.index + 1) {
                     toc.first()
                 }
                 WebBook.getContentAwait(

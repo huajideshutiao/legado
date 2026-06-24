@@ -534,7 +534,10 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val book = book!!
-            val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
+            val chapter = chapterList?.getOrNull(index) ?: appDb.bookChapterDao.getChapter(
+                book.bookUrl,
+                index
+            ) ?: return@async
             if (addLoading(index)) {
                 startReviewCountFetchAsync(book, chapter)
                 BookHelp.getContent(book, chapter)?.let {
@@ -566,7 +569,10 @@ object ReadBook : CoroutineScope by MainScope() {
         if (addLoading(index)) {
             try {
                 val book = book!!
-                val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
+                val chapter = chapterList?.getOrNull(index) ?: appDb.bookChapterDao.getChapter(
+                    book.bookUrl,
+                    index
+                )!!
                 startReviewCountFetchAsync(book, chapter)
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
@@ -610,7 +616,11 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book ?: return removeLoading(chapter.index)
         val bookSource = bookSource
         if (bookSource != null) {
-            CacheBook.getOrCreate(bookSource, book).download(scope, chapter, semaphore)
+            val cacheBook = CacheBook.getOrCreate(bookSource, book)
+            if (cacheBook.chapterList == null) {
+                cacheBook.chapterList = chapterList
+            }
+            cacheBook.download(scope, chapter, semaphore)
         } else {
             val msg = if (book.isLocal) "无内容" else "没有书源"
             contentLoadFinish(
@@ -627,7 +637,11 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book!!
         val bookSource = bookSource
         if (bookSource != null) {
-            return CacheBook.getOrCreate(bookSource, book).downloadAwait(chapter)
+            val cacheBook = CacheBook.getOrCreate(bookSource, book)
+            if (cacheBook.chapterList == null) {
+                cacheBook.chapterList = chapterList
+            }
+            return cacheBook.downloadAwait(chapter)
         } else {
             val msg = if (book.isLocal) "无内容" else "没有书源"
             return "加载正文失败\n$msg"

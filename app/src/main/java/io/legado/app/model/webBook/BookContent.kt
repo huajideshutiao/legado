@@ -48,7 +48,6 @@ object BookContent {
         Debug.log(bookSource.bookSourceUrl, body, state = 40)
         val mNextChapterUrl = if (nextChapterUrl.isNullOrEmpty()) {
             appDb.bookChapterDao.getChapter(book.bookUrl, bookChapter.index + 1)?.url
-                ?: appDb.bookChapterDao.getChapter(book.bookUrl, 0)?.url
         } else {
             nextChapterUrl
         }
@@ -79,12 +78,16 @@ object BookContent {
             book, baseUrl, body, contentRule, bookChapter, bookSource, mNextChapterUrl
         )
         contentList.add(contentData.first)
+        if (contentData.second.isNotEmpty() && mNextChapterUrl == null && bookChapter.index < book.totalChapterNum - 1) throw Exception(
+            "未传入下一章节URL"
+        )
+
         if (contentData.second.size == 1) {
             var nextUrl = contentData.second[0]
             while (nextUrl.isNotEmpty() && !nextUrlList.contains(nextUrl)) {
-                if (!mNextChapterUrl.isNullOrEmpty()
-                    && NetworkUtils.getAbsoluteURL(redirectUrl, nextUrl)
-                    == NetworkUtils.getAbsoluteURL(redirectUrl, mNextChapterUrl)
+                if (!mNextChapterUrl.isNullOrEmpty() && NetworkUtils.getAbsoluteURL(
+                        redirectUrl, nextUrl
+                    ) == NetworkUtils.getAbsoluteURL(redirectUrl, mNextChapterUrl)
                 ) break
                 nextUrlList.add(nextUrl)
                 currentCoroutineContext().ensureActive()
@@ -97,12 +100,16 @@ object BookContent {
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 res.body?.let { nextBody ->
                     contentData = analyzeContent(
-                        book, nextUrl, nextBody, contentRule,
-                        bookChapter, bookSource, mNextChapterUrl,
+                        book,
+                        nextUrl,
+                        nextBody,
+                        contentRule,
+                        bookChapter,
+                        bookSource,
+                        mNextChapterUrl,
                         printLog = false
                     )
-                    nextUrl =
-                        if (contentData.second.isNotEmpty()) contentData.second[0] else ""
+                    nextUrl = if (contentData.second.isNotEmpty()) contentData.second[0] else ""
                     contentList.add(contentData.first)
                     Debug.log(bookSource.bookSourceUrl, "第${contentList.size}页完成")
                 }
@@ -123,8 +130,13 @@ object BookContent {
                 )
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 analyzeContent(
-                    book, urlStr, res.body!!, contentRule,
-                    bookChapter, bookSource, mNextChapterUrl,
+                    book,
+                    urlStr,
+                    res.body!!,
+                    contentRule,
+                    bookChapter,
+                    bookSource,
+                    mNextChapterUrl,
                     getNextPageUrl = false,
                     printLog = false
                 ).first
