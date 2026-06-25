@@ -198,7 +198,7 @@
                     android:orientation="vertical"
                     android:visibility="gone" />
 
-                <io.legado.app.ui.widget.text.ScrollTextView
+                <TextView
                     android:id="@+id/tv_intro"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

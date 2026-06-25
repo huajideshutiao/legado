@@ -18,10 +18,12 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.gone
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import splitties.views.onClick
@@ -58,7 +60,8 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
-        binding.rotateLoading.loadingColor = accentColor
+        // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
+        binding.rotateLoading.setIndicatorColor(accentColor)
     }
 
     private fun initSearchView() {

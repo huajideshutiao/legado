@@ -51,7 +51,9 @@ class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(
 
     fun stopLoad() {
         isLoading = false
-        binding.rotateLoading.inVisible()
+        // 原 RotateLoading.inVisible() 同时设为 INVISIBLE 并停止动画；
+        // CircularProgressIndicator 隐藏即停止，直接设 visibility 即可
+        binding.rotateLoading.visibility = View.INVISIBLE
     }
 
     fun hasMore() {
@@ -82,7 +84,8 @@ class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(
     }
 
     fun setLoadingColor(@ColorRes color: Int) {
-        binding.rotateLoading.loadingColor = context.getCompatColor(color)
+        // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
+        binding.rotateLoading.setIndicatorColor(context.getCompatColor(color))
     }
 
     fun setLoadingTextColor(@ColorRes color: Int) {

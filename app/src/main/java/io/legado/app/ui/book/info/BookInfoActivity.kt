@@ -197,6 +197,8 @@ class BookInfoActivity :
         flAction.applyNavigationBarPadding()
         tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
         tvIntro.revealOnFocusHint = false
+        // 原 ScrollTextView 在 init 中自动设置 LinkMovementMethod，迁移到 TextView 后需显式设置
+        tvIntro.movementMethod = LinkMovementMethod.getInstance()
     }
 
     private fun initData() {

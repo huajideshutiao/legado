@@ -124,11 +124,11 @@ class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
                 )
             )
         )
-        cbShowTopLine.onCheckedChangeListener = { _, isChecked ->
+        cbShowTopLine.setOnCheckedChangeListener { _, isChecked ->
             ReadBookConfig.showHeaderLine = isChecked
             postEvent(EventBus.UP_CONFIG, arrayListOf(2))
         }
-        cbShowBottomLine.onCheckedChangeListener = { _, isChecked ->
+        cbShowBottomLine.setOnCheckedChangeListener { _, isChecked ->
             ReadBookConfig.showFooterLine = isChecked
             postEvent(EventBus.UP_CONFIG, arrayListOf(2))
         }

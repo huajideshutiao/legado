@@ -1,6 +1,8 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
+import android.content.res.ColorStateList
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -63,10 +65,11 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
         rvStyle.adapter = styleAdapter
         styleAdapter.addFooterView {
             ItemReadStyleBinding.inflate(layoutInflater, it, false).apply {
-                ivStyle.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
-                ivStyle.setText(null)
+                // padding 设在 root 上,使 ShapeableImageView 的 stroke 画在 padding 内(与原 CircleImageView 行为一致)
+                root.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
+                tvStyle.text = null
                 ivStyle.applyMenuThemeColorFilter(theme)
-                ivStyle.borderColor = theme.textColor
+                ivStyle.strokeColor = ColorStateList.valueOf(theme.textColor)
                 ivStyle.setImageResource(R.drawable.ic_add)
                 root.setOnClickListener {
                     ReadBookConfig.configList.add(ReadBookConfig.Config())
@@ -114,7 +117,7 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             callBack?.upPageAnim()
             ReadBook.loadContent(false)
         }
-        cbShareLayout.onCheckedChangeListener = { _, isChecked ->
+        cbShareLayout.setOnCheckedChangeListener { _, isChecked ->
             ReadBookConfig.shareLayout = isChecked
             upView()
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
@@ -195,30 +198,28 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             payloads: MutableList<Any>
         ) {
             binding.apply {
-                ivStyle.setText(item.name.ifBlank { "文字" })
-                ivStyle.setTextColor(item.curTextColor())
+                tvStyle.text = item.name.ifBlank { "文字" }
+                tvStyle.setTextColor(item.curTextColor())
                 ivStyle.setImageDrawable(item.curBgDrawable(100, 150))
                 if (ReadBookConfig.styleSelect == holder.layoutPosition) {
-                    ivStyle.borderColor = accentColor
-                    ivStyle.setTextBold(true)
+                    ivStyle.strokeColor = ColorStateList.valueOf(accentColor)
+                    tvStyle.setTypeface(Typeface.defaultFromStyle(Typeface.BOLD))
                 } else {
-                    ivStyle.borderColor = item.curTextColor()
-                    ivStyle.setTextBold(false)
+                    ivStyle.strokeColor = ColorStateList.valueOf(item.curTextColor())
+                    tvStyle.setTypeface(Typeface.defaultFromStyle(Typeface.NORMAL))
                 }
             }
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemReadStyleBinding) {
             binding.apply {
-                ivStyle.setOnClickListener {
-                    if (ivStyle.isInView) {
-                        changeBgTextConfig(holder.layoutPosition)
-                    }
+                // 原 CircleImageView.isInView(点击是否在圆内)能力丢失,改为整个方块响应
+                // 48dp 方块四角区域很小,对用户体验影响可忽略
+                root.setOnClickListener {
+                    changeBgTextConfig(holder.layoutPosition)
                 }
-                ivStyle.onLongClick(ivStyle.isInView) {
-                    if (ivStyle.isInView) {
-                        showBgTextConfig(holder.layoutPosition)
-                    }
+                root.onLongClick {
+                    showBgTextConfig(holder.layoutPosition)
                 }
             }
         }

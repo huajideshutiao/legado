@@ -89,7 +89,7 @@
         app:layout_constraintTop_toBottomOf="@id/barrier"
         tools:ignore="RtlHardcoded" />
 
-    <io.legado.app.ui.widget.image.CircleImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_explore"
         android:layout_width="8dp"
         android:layout_height="8dp"
@@ -97,7 +97,8 @@
         android:scrollbars="none"
         android:src="@color/md_green_600"
         app:layout_constraintRight_toRightOf="@id/iv_menu_more"
-        app:layout_constraintTop_toTopOf="@id/iv_menu_more" />
+        app:layout_constraintTop_toTopOf="@id/iv_menu_more"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Circle" />
 
     <TextView
         android:id="@+id/iv_debug_text"

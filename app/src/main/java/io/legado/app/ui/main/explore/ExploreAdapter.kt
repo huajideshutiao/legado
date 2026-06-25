@@ -107,7 +107,8 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         val bookSource = item.getBookSource() ?: return
 
         binding.ivStatus.setImageResource(R.drawable.ic_arrow_down)
-        binding.rotateLoading.loadingColor = context.accentColor
+        // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
+        binding.rotateLoading.setIndicatorColor(context.accentColor)
         binding.rotateLoading.visible()
 
         Coroutine.async(callBack.scope) {
@@ -205,7 +206,8 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         (grid.tag as? ValueAnimator)?.cancel()
         grid.tag = null
         binding.ivStatus.setImageResource(R.drawable.ic_arrow_down)
-        binding.rotateLoading.loadingColor = context.accentColor
+        // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
+        binding.rotateLoading.setIndicatorColor(context.accentColor)
         binding.rotateLoading.visible()
         Coroutine.async(callBack.scope) {
             bookSource.exploreKinds()

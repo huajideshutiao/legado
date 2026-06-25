@@ -80,15 +80,6 @@
         <attr name="isBottomBackground" />
     </declare-styleable>
 
-    <declare-styleable name="SmoothCheckBox">
-        <attr name="duration" format="integer" />
-        <attr name="stroke_width" format="dimension" />
-        <attr name="color_tick" format="color" />
-        <attr name="color_checked" format="color" />
-        <attr name="color_unchecked" format="color" />
-        <attr name="color_unchecked_stroke" format="color" />
-    </declare-styleable>
-
     <declare-styleable name="NumberPickerPreference">
         <attr name="MinValue" format="integer" />
         <attr name="MaxValue" format="integer" />
@@ -123,22 +114,6 @@
         <attr name="icons" format="reference" />
     </declare-styleable>
 
-    <declare-styleable name="RotateLoading">
-        <attr name="loading_width" format="dimension" />
-        <attr name="loading_color" format="color" />
-        <attr name="shadow_position" format="integer" />
-        <attr name="loading_speed" format="integer" />
-    </declare-styleable>
-
-    <declare-styleable name="CircleImageView">
-        <attr name="civ_border_width" format="dimension" />
-        <attr name="civ_border_color" format="color" />
-        <attr name="civ_border_overlay" format="boolean" />
-        <attr name="civ_circle_background_color" format="color" />
-        <attr name="text" format="string" />
-        <attr name="textColor" format="color" />
-    </declare-styleable>
-
     <declare-styleable name="Battery">
         <attr name="batteryOrientation">
             <enum name="horizontal" value="0" />
@@ -146,15 +121,6 @@
         </attr>
         <attr name="batteryColor" format="color" />
         <attr name="batteryPower" format="integer" />
-    </declare-styleable>
-
-    <declare-styleable name="VerticalSeekBar">
-        <attr name="seekBarRotation">
-            <!-- Clock wise - 90 deg; top = min, bottom = max -->
-            <enum name="CW90" value="90" />
-            <!-- Clock wise - 270 deg; bottom = min, top = max -->
-            <enum name="CW270" value="270" />
-        </attr>
     </declare-styleable>
 
     <declare-styleable name="AccentBgTextView">

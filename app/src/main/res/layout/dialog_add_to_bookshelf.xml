@@ -80,10 +80,11 @@
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 
-    <io.legado.app.ui.widget.anima.RotateLoading
+    <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/rotate_loading"
         android:layout_width="48dp"
         android:layout_height="48dp"
+        app:indicatorSize="48dp"
         app:layout_constraintBottom_toBottomOf="@+id/book_info"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"

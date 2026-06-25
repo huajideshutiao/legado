@@ -22,7 +22,7 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <!-- 书名行 -->
-    <io.legado.app.ui.widget.image.CircleImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_in_bookshelf"
         android:layout_width="8dp"
         android:layout_height="8dp"
@@ -32,6 +32,7 @@
         app:layout_constraintBottom_toBottomOf="@id/tv_name"
         app:layout_constraintStart_toEndOf="@id/iv_cover"
         app:layout_constraintTop_toTopOf="@id/tv_name"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Circle"
         tools:visibility="visible" />
 
     <TextView
@@ -78,13 +79,14 @@
             android:layout_gravity="bottom|end"
             android:includeFontPadding="false" />
 
-        <io.legado.app.ui.widget.anima.RotateLoading
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/rl_loading"
             android:layout_width="26dp"
             android:layout_height="26dp"
             android:layout_gravity="end"
             android:visibility="invisible"
-            app:loading_width="2dp" />
+            app:indicatorSize="26dp"
+            app:trackThickness="2dp" />
     </FrameLayout>
 
     <!-- 作者行 -->

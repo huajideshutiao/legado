@@ -40,16 +40,17 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <io.legado.app.ui.widget.anima.RotateLoading
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/rl_loading"
             android:layout_width="22dp"
             android:layout_height="22dp"
             android:layout_gravity="right"
             android:scrollbars="none"
             android:visibility="invisible"
+            app:indicatorSize="22dp"
+            app:trackThickness="2dp"
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:loading_width="2dp"
             tools:ignore="RtlHardcoded" />
 
         <ImageView

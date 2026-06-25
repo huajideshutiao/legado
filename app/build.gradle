@@ -255,6 +255,9 @@ dependencies {
 
     implementation(libs.androidsvg)
 
+    // 图片查看手势库（缩放/平移/双击），替代已停滞的 chrisbanes/PhotoView
+    implementation(libs.touchimageview)
+
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
 

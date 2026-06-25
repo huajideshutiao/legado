@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <io.legado.app.ui.widget.text.ScrollTextView
+    <TextView
         android:id="@+id/text_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

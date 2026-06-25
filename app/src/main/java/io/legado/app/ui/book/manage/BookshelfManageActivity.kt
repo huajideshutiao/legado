@@ -645,7 +645,7 @@ class BookshelfManageActivity :
                 tvSelectExport.setOnClickListener {
                     cbSelectExport.callOnClick()
                 }
-                cbSelectExport.onCheckedChangeListener = { _, isChecked ->
+                cbSelectExport.setOnCheckedChangeListener { _, isChecked ->
                     if (isChecked) {
                         etEpubSize.isEnabled = true
                         etInputScope.isEnabled = true
@@ -654,7 +654,7 @@ class BookshelfManageActivity :
                         cbAllExport.isChecked = false
                     }
                 }
-                cbAllExport.onCheckedChangeListener = { _, isChecked ->
+                cbAllExport.setOnCheckedChangeListener { _, isChecked ->
                     if (isChecked) {
                         etEpubSize.isEnabled = false
                         etInputScope.isEnabled = false

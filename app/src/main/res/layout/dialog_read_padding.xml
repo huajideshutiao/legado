@@ -36,7 +36,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/showLine" />
 
-                <io.legado.app.ui.widget.checkbox.SmoothCheckBox
+                <com.google.android.material.checkbox.MaterialCheckBox
                     android:id="@+id/cb_show_top_line"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
@@ -131,7 +131,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/showLine" />
 
-            <io.legado.app.ui.widget.checkbox.SmoothCheckBox
+            <com.google.android.material.checkbox.MaterialCheckBox
                 android:id="@+id/cb_show_bottom_line"
                 android:layout_width="20dp"
                 android:layout_height="20dp"

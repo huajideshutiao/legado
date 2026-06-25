@@ -109,11 +109,12 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/fl_hide_toc" />
 
-        <io.legado.app.ui.widget.anima.RotateLoading
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/loading_toc"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:visibility="gone"
+            app:indicatorSize="48dp"
             app:layout_constraintBottom_toBottomOf="@+id/recycler_view_toc"
             app:layout_constraintLeft_toLeftOf="@+id/recycler_view_toc"
             app:layout_constraintRight_toRightOf="@+id/recycler_view_toc"

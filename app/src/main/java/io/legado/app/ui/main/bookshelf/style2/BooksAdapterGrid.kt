@@ -10,6 +10,7 @@ import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.invisible
+import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
 class BooksAdapterGrid(context: Context, callBack: CallBack) :
@@ -91,7 +92,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                 binding.bvUnread.invisible()
                 binding.rlLoading.visible()
             } else {
-                binding.rlLoading.inVisible()
+                binding.rlLoading.invisible()
                 if (AppConfig.showUnread) {
                     binding.bvUnread.setBadgeCount(item.getUnreadChapterNum())
                     binding.bvUnread.setHighlight(item.lastCheckCount > 0)

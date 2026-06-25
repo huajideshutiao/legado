@@ -1,13 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<io.legado.app.ui.widget.image.CircleImageView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 原 CircleImageView 已迁移到 ShapeableImageView + TextView overlay -->
+<!-- 文字能力由 TextView 提供，圆形剪裁由 ShapeableImageView 提供 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/iv_style"
+    android:id="@+id/item_root"
     android:layout_width="48dp"
     android:layout_height="48dp"
     android:layout_marginLeft="6dp"
-    android:layout_marginRight="6dp"
-    android:scaleType="centerCrop"
-    android:src="@drawable/image_cover_default"
-    app:civ_border_color="@color/primaryText"
-    app:civ_border_width="1dp"
-    app:text="@string/text" />
+    android:layout_marginRight="6dp">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/iv_style"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/image_cover_default"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Circle"
+        app:strokeColor="@color/primaryText"
+        app:strokeWidth="1dp" />
+
+    <TextView
+        android:id="@+id/tv_style"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        android:gravity="center"
+        android:text="@string/text"
+        android:textColor="@color/primaryText" />
+
+</FrameLayout>

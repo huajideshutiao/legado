@@ -13,7 +13,7 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="SpeakableTextPresentCheck" />
 
-    <io.legado.app.ui.widget.text.ScrollTextView
+    <TextView
         android:id="@+id/tv_dict"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -22,11 +22,12 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tab_layout" />
 
-    <io.legado.app.ui.widget.anima.RotateLoading
+    <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/rotate_loading"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="center"
+        app:indicatorSize="60dp"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tab_layout" />

@@ -159,4 +159,10 @@
         <item name="android:paddingBottom">4dp</item>
     </style>
 
+    <!-- 圆形 ShapeAppearance，供 ShapeableImageView 使用（替代 CircleImageView） -->
+    <style name="ShapeAppearance.Circle" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
 </resources>

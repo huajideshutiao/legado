@@ -27,14 +27,15 @@
             android:textColor="@color/primaryText"
             tools:text="起点中文" />
 
-        <io.legado.app.ui.widget.anima.RotateLoading
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/rotate_loading"
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:layout_gravity="center"
             android:layout_marginRight="4dp"
             android:visibility="gone"
-            app:loading_width="1dp"
+            app:indicatorSize="20dp"
+            app:trackThickness="1dp"
             tools:ignore="RtlHardcoded" />
 
         <ImageView

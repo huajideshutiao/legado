@@ -24,7 +24,9 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
