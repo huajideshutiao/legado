@@ -69,7 +69,7 @@
             app:endIconMode="custom"
             app:helperText="Variable: name, author, epubIndex">
 
-            <io.legado.app.lib.theme.view.ThemeEditText
+            <io.legado.app.ui.widget.text.ThemeEditText
                 android:id="@+id/et_epub_filename"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -86,7 +86,7 @@
             android:layout_marginTop="12dp"
             android:hint="@string/file_contains_number">
 
-            <io.legado.app.lib.theme.view.ThemeEditText
+            <io.legado.app.ui.widget.text.ThemeEditText
                 android:id="@+id/et_epub_size"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -102,7 +102,7 @@
             android:layout_height="wrap_content"
             android:hint="@string/export_chapter_index">
 
-            <io.legado.app.lib.theme.view.ThemeEditText
+            <io.legado.app.ui.widget.text.ThemeEditText
                 android:id="@+id/et_input_scope"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

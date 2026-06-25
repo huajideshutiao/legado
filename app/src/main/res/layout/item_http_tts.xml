@@ -7,7 +7,7 @@
     android:gravity="center"
     android:padding="8dp">
 
-    <io.legado.app.lib.theme.view.ThemeRadioButton
+    <io.legado.app.ui.widget.checkbox.ThemeRadioButton
         android:id="@+id/cb_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

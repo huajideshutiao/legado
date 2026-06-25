@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
+    <io.legado.app.ui.widget.ThemeSwitch
         android:id="@+id/sw_show_home"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -15,7 +15,7 @@
         android:textColor="@color/primaryText"
         android:textSize="15sp" />
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
+    <io.legado.app.ui.widget.ThemeSwitch
         android:id="@+id/sw_show_discovery"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -50,7 +50,7 @@
 
     </LinearLayout>
 
-    <io.legado.app.lib.theme.view.ThemeSeekBar
+    <io.legado.app.ui.widget.seekbar.ThemeSeekBar
         android:id="@+id/sb_height"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -84,7 +84,7 @@
 
     </LinearLayout>
 
-    <io.legado.app.lib.theme.view.ThemeSeekBar
+    <io.legado.app.ui.widget.seekbar.ThemeSeekBar
         android:id="@+id/sb_icon"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -105,28 +105,28 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <io.legado.app.lib.theme.view.ThemeRadioButton
+        <io.legado.app.ui.widget.checkbox.ThemeRadioButton
             android:id="@+id/rb_label_unlabeled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_unlabeled"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeRadioButton
+        <io.legado.app.ui.widget.checkbox.ThemeRadioButton
             android:id="@+id/rb_label_labeled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_labeled"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeRadioButton
+        <io.legado.app.ui.widget.checkbox.ThemeRadioButton
             android:id="@+id/rb_label_selected"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bottom_bar_label_selected"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeRadioButton
+        <io.legado.app.ui.widget.checkbox.ThemeRadioButton
             android:id="@+id/rb_label_auto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

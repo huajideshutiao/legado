@@ -7,7 +7,7 @@ import android.view.MenuItem
 import android.view.View
 import io.legado.app.lib.dialogs.SelectItem
 
-class PopupAction() {
+class PopupAction {
 
     var onActionClick: ((action: String) -> Unit)? = null
     var onDismiss: (() -> Unit)? = null

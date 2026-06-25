@@ -35,7 +35,7 @@
 
         </LinearLayout>
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_show_unread"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -44,7 +44,7 @@
             tools:ignore="TouchTargetSizeCheck" />
 
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_show_group_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -52,7 +52,7 @@
             android:text="@string/bookshelf_show_group_count"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_fixed_width_mode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -83,7 +83,7 @@
                 android:text="@string/column_count"
                 android:textColor="@color/primaryText" />
 
-            <io.legado.app.lib.theme.view.ThemeSeekBar
+            <io.legado.app.ui.widget.seekbar.ThemeSeekBar
                 android:id="@+id/sb_column_count"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -105,7 +105,7 @@
 
         </LinearLayout>
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_show_kind"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -113,7 +113,7 @@
             android:text="@string/bookshelf_list_show_kind"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_show_intro"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -172,7 +172,7 @@
 
         </LinearLayout>
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <io.legado.app.ui.widget.ThemeSwitch
             android:id="@+id/sw_show_last_update_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -224,42 +224,42 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_0"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_0"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_1"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_2"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_3"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_4"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/bookshelf_px_4"
                 tools:ignore="TouchTargetSizeCheck" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_sort_5"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

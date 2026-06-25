@@ -38,7 +38,7 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <io.legado.app.lib.theme.view.ThemeEditText
+            <io.legado.app.ui.widget.text.ThemeEditText
                 android:id="@+id/tie_group_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -67,7 +67,7 @@
             app:layout_constraintTop_toTopOf="@id/tv_sort"
             tools:ignore="RtlHardcoded" />
 
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/cb_enable_refresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

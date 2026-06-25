@@ -6,7 +6,7 @@
     android:gravity="center_vertical"
     android:orientation="horizontal">
 
-    <io.legado.app.lib.theme.view.ThemeCheckBox
+    <io.legado.app.ui.widget.checkbox.ThemeCheckBox
         android:id="@+id/cb_group"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

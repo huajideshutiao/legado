@@ -33,7 +33,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/replace_rule_summary">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_name"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -46,7 +46,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/group">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_group"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -59,7 +59,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/replace_rule">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_replace_rule"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -72,7 +72,7 @@
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_use_regex"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -96,7 +96,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/replace_to">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_replace_to"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -107,7 +107,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_scope_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -115,7 +115,7 @@
                     android:text="@string/scope_title"
                     tools:ignore="TouchTargetSizeCheck" />
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_scope_content"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -132,7 +132,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/replace_scope">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_scope"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -145,7 +145,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/replace_exclude_scope">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_exclude_scope"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -158,7 +158,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/timeout_millisecond">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_timeout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

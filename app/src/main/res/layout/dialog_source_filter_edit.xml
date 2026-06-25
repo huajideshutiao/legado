@@ -33,7 +33,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/source_filter_rule_name">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_name"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -46,7 +46,7 @@
                 android:layout_marginTop="8dp"
                 android:hint="@string/source_filter_rule_pattern">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_pattern"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -67,7 +67,7 @@
                 android:layout_marginTop="4dp"
                 android:columnCount="3">
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_field_name"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -75,7 +75,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_name" />
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_field_author"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -83,7 +83,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_author" />
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_field_intro"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -91,7 +91,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_intro" />
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_field_kind"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -99,7 +99,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:text="@string/source_filter_field_kind" />
 
-                <io.legado.app.lib.theme.view.ThemeCheckBox
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                     android:id="@+id/cb_field_word_count"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -168,7 +168,7 @@
                     android:text="@string/enable"
                     android:textColor="@color/primaryText" />
 
-                <io.legado.app.lib.theme.view.ThemeSwitch
+                <io.legado.app.ui.widget.ThemeSwitch
                     android:id="@+id/swt_enabled"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />

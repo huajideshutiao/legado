@@ -15,7 +15,7 @@
         android:text="variable"
         tools:ignore="HardcodedText" />
 
-    <io.legado.app.lib.theme.view.ThemeEditText
+    <io.legado.app.ui.widget.text.ThemeEditText
         android:id="@+id/tv_variable"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

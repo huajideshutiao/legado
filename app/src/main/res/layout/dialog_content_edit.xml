@@ -13,7 +13,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:title="edit" />
 
-    <io.legado.app.lib.theme.view.ThemeEditText
+    <io.legado.app.ui.widget.text.ThemeEditText
         android:id="@+id/content_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"

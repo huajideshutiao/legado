@@ -29,7 +29,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/edit_upload_url"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -43,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/edit_download_url_rule"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -57,7 +57,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/edit_summary"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -66,7 +66,7 @@
 
             </io.legado.app.ui.widget.text.TextInputLayout>
 
-            <io.legado.app.lib.theme.view.ThemeCheckBox
+            <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                 android:id="@+id/cb_compress"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

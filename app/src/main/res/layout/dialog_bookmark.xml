@@ -38,7 +38,7 @@
                     android:layout_height="wrap_content"
                     android:paddingTop="3dp">
 
-                    <io.legado.app.lib.theme.view.ThemeEditText
+                    <io.legado.app.ui.widget.text.ThemeEditText
                         android:id="@+id/edit_book_text"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -52,7 +52,7 @@
                     android:layout_height="wrap_content"
                     android:paddingTop="3dp">
 
-                    <io.legado.app.lib.theme.view.ThemeEditText
+                    <io.legado.app.ui.widget.text.ThemeEditText
                         android:id="@+id/edit_content"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

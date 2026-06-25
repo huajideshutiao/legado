@@ -20,7 +20,7 @@
         android:paddingRight="12dp"
         android:paddingTop="3dp">
 
-        <io.legado.app.lib.theme.view.ThemeEditText
+        <io.legado.app.ui.widget.text.ThemeEditText
             android:id="@+id/check_source_timeout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -44,27 +44,31 @@
         app:flexWrap="wrap"
         app:justifyContent="space_between">
 
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/check_search"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/search" />
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/check_discovery"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/discovery" />
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/check_info"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/source_tab_info" />
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/check_category"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/chapter_list" />
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/check_content"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

@@ -24,7 +24,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <io.legado.app.lib.theme.view.ThemeCheckBox
+            <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                 android:id="@+id/cb_enable"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -35,7 +35,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/edit_search_url"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -49,7 +49,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/edit_cover_url_rule"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

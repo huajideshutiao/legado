@@ -7,7 +7,7 @@
     android:orientation="vertical"
     android:padding="3dp">
 
-    <io.legado.app.lib.theme.view.ThemeCheckBox
+    <io.legado.app.ui.widget.checkbox.ThemeCheckBox
         android:id="@+id/check_box"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

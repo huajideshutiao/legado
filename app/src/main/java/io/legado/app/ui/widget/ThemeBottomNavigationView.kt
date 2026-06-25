@@ -1,4 +1,4 @@
-package io.legado.app.lib.theme.view
+package io.legado.app.ui.widget
 
 import android.content.Context
 import android.graphics.Color
@@ -22,7 +22,7 @@ import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.getPrefString
 
-class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
+class ThemeBottomNavigationView(context: Context, attrs: AttributeSet) :
     BottomNavigationView(context, attrs) {
 
     init {

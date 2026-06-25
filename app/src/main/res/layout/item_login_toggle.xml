@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<io.legado.app.lib.theme.view.ThemeSwitch xmlns:android="http://schemas.android.com/apk/res/android"
+<io.legado.app.ui.widget.ThemeSwitch xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/swt"
     android:layout_width="match_parent"
@@ -9,4 +9,4 @@
     tools:ignore="TouchTargetSizeCheck"
     tools:text="测试">
 
-</io.legado.app.lib.theme.view.ThemeSwitch>
+</io.legado.app.ui.widget.ThemeSwitch>

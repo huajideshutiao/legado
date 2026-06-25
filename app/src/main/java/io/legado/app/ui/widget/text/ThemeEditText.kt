@@ -1,4 +1,4 @@
-package io.legado.app.lib.theme.view
+package io.legado.app.ui.widget.text
 
 import android.content.Context
 import android.os.Build

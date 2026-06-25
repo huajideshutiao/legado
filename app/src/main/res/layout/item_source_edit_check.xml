@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<io.legado.app.lib.theme.view.ThemeCheckBox xmlns:android="http://schemas.android.com/apk/res/android"
+<io.legado.app.ui.widget.checkbox.ThemeCheckBox xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/checkBox"
     android:layout_width="match_parent"
     android:layout_height="48dp"

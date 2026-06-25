@@ -201,7 +201,7 @@
                     android:textSize="14sp"
                     tools:ignore="TouchTargetSizeCheck" />
 
-                <io.legado.app.lib.theme.view.ThemeSeekBar
+                <io.legado.app.ui.widget.seekbar.ThemeSeekBar
                     android:id="@+id/seek_read_page"
                     android:layout_width="0dp"
                     android:layout_height="25dp"

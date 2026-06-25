@@ -1,4 +1,4 @@
-package io.legado.app.lib.theme.view
+package io.legado.app.ui.widget.checkbox
 
 import android.content.Context
 import android.util.AttributeSet

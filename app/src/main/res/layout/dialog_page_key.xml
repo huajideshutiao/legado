@@ -21,7 +21,7 @@
         android:layout_margin="5dp"
         android:hint="@string/prev_page_key">
 
-        <io.legado.app.lib.theme.view.ThemeEditText
+        <io.legado.app.ui.widget.text.ThemeEditText
             android:id="@+id/et_prev"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -35,7 +35,7 @@
         android:layout_margin="5dp"
         android:hint="@string/next_page_key">
 
-        <io.legado.app.lib.theme.view.ThemeEditText
+        <io.legado.app.ui.widget.text.ThemeEditText
             android:id="@+id/et_next"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

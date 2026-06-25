@@ -1,4 +1,4 @@
-package io.legado.app.lib.theme.view
+package io.legado.app.ui.widget.checkbox
 
 import android.content.Context
 import android.graphics.Color
@@ -54,6 +54,7 @@ class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
                         .create()
                 )
             }
+
             else -> {
                 val accentColor = context.accentColor
                 val defaultTextColor = context.getCompatColor(R.color.primaryText)

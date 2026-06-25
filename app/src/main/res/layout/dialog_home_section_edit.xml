@@ -30,7 +30,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/home_section_title">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <io.legado.app.ui.widget.text.ThemeEditText
                     android:id="@+id/et_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -110,26 +110,26 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <io.legado.app.lib.theme.view.ThemeRadioButton
+                <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                     android:id="@+id/rb_cover_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:checked="true"
                     android:text="@string/home_style_cover_row" />
 
-                <io.legado.app.lib.theme.view.ThemeRadioButton
+                <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                     android:id="@+id/rb_rank_list"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/home_style_rank_list" />
 
-                <io.legado.app.lib.theme.view.ThemeRadioButton
+                <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                     android:id="@+id/rb_four_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/home_style_four_row" />
 
-                <io.legado.app.lib.theme.view.ThemeRadioButton
+                <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                     android:id="@+id/rb_infinite_grid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -137,7 +137,7 @@
 
             </RadioGroup>
 
-            <io.legado.app.lib.theme.view.ThemeCheckBox
+            <io.legado.app.ui.widget.checkbox.ThemeCheckBox
                 android:id="@+id/cb_cover_video"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

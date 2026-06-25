@@ -19,7 +19,7 @@
             android:hint="@string/export_file_name"
             app:helperText="Variable: name, author">
 
-            <io.legado.app.lib.theme.view.ThemeEditText
+            <io.legado.app.ui.widget.text.ThemeEditText
                 android:id="@+id/et_file_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -43,14 +43,14 @@
             android:layout_marginTop="4dp"
             android:orientation="horizontal">
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_type_txt"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:text="txt" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_type_epub"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -58,7 +58,7 @@
                 android:gravity="center"
                 android:text="epub" />
 
-            <io.legado.app.lib.theme.view.ThemeRadioButton
+            <io.legado.app.ui.widget.checkbox.ThemeRadioButton
                 android:id="@+id/rb_type_cbz"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -86,7 +86,7 @@
 
         </io.legado.app.ui.widget.text.TextInputLayout>
 
-        <io.legado.app.lib.theme.view.ThemeCheckBox
+        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
             android:id="@+id/cb_no_chapter_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

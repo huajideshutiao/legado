@@ -7,7 +7,7 @@
     android:background="?android:attr/selectableItemBackground"
     android:padding="16dp">
 
-    <io.legado.app.lib.theme.view.ThemeCheckBox
+    <io.legado.app.ui.widget.checkbox.ThemeCheckBox
         android:id="@+id/cb_source"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -20,7 +20,7 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="TouchTargetSizeCheck,DuplicateSpeakableTextCheck" />
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
+    <io.legado.app.ui.widget.ThemeSwitch
         android:id="@+id/swt_enabled"
         android:name="@string/enable"
         android:layout_width="wrap_content"
