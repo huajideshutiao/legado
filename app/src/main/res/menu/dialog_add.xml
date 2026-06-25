@@ -3,9 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/menu_add_section"
+        android:id="@+id/menu_add"
         android:icon="@drawable/ic_add"
-        android:title="@string/home_add_section"
+        android:title="@string/add"
         app:showAsAction="always" />
 
 </menu>

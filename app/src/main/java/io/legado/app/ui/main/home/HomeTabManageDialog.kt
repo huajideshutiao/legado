@@ -22,7 +22,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
  * 主页分组管理：item 点击进入该分组的展示项管理；编辑按钮改标题/删除；+ 添加分组；拖动排序。
- * 复用 dialog_home_section_manage 的 layout 和 menu（同构）。
+ * 复用 dialog_home_section_manage 的 layout（同构）。
  */
 class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_manage) {
 
@@ -44,11 +44,11 @@ class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_mana
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.home_tab_manage)
-        binding.toolBar.inflateMenu(R.menu.dialog_home_section_manage)
-        binding.toolBar.menu.findItem(R.id.menu_add_section)?.setTitle(R.string.home_tab_add)
+        binding.toolBar.inflateMenu(R.menu.dialog_add)
+        binding.toolBar.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_tab_add)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener {
-            if (it.itemId == R.id.menu_add_section) {
+            if (it.itemId == R.id.menu_add) {
                 showDialogFragment(HomeTabEditDialog.newInstance(null))
             }
             true

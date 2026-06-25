@@ -1290,6 +1290,8 @@
     <string name="dev_feat_summary">Enable some experimental features, such as 16:9 video thumbnails and directly play video books</string>
     <string name="source_filter_rule">Block rules</string>
     <string name="source_filter_rule_empty">No rules. Tap + to add.</string>
+    <string name="source_filter_rule_no_match">No block rules apply to this scope.</string>
+    <string name="source_filter_rule_manage">Manage all</string>
     <string name="source_filter_rule_name">Name</string>
     <string name="source_filter_rule_pattern">Regex pattern</string>
     <string name="source_filter_rule_fields">Apply to fields (any matches → drop)</string>

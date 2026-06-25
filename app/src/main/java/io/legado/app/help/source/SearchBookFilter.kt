@@ -57,6 +57,43 @@ object SearchBookFilter {
         return result to (books.size - result.size)
     }
 
+    /**
+     * 列出在指定 scope 下会生效的启用规则。
+     * scope 字符串协议同 [SearchScope]：空 → 全部；含 `::` → 单源；否则 → 分组 CSV。
+     * 单源场景按 origin 命中；分组场景按规则范围与目标分组是否相交。
+     */
+    fun rulesInScope(scope: String?): List<SourceFilterRule> {
+        val raw = runCatching { appDb.sourceFilterRuleDao.enabled }.getOrNull().orEmpty()
+        if (raw.isEmpty()) return emptyList()
+        val target = SourceFilterRule.parseScope(scope.orEmpty())
+        if (target is SourceFilterRule.Scope.None) return emptyList()
+        return raw.filter { it.appliesTo(target) }
+    }
+
+    private fun SourceFilterRule.appliesTo(target: SourceFilterRule.Scope): Boolean {
+        val ruleScope = SourceFilterRule.parseScope(scope)
+        return when (ruleScope) {
+            SourceFilterRule.Scope.All -> true
+            SourceFilterRule.Scope.None -> false
+            is SourceFilterRule.Scope.Source -> when (target) {
+                SourceFilterRule.Scope.All -> true
+                is SourceFilterRule.Scope.Source -> target.url == ruleScope.url
+                else -> false
+            }
+
+            is SourceFilterRule.Scope.Groups -> when (target) {
+                SourceFilterRule.Scope.All -> true
+                is SourceFilterRule.Scope.Groups -> target.names.any { it in ruleScope.names }
+                is SourceFilterRule.Scope.Source -> {
+                    val tokens = ensure().originToGroups[target.url] ?: emptySet()
+                    tokens.any { it in ruleScope.names }
+                }
+
+                else -> false
+            }
+        }
+    }
+
     private fun SearchBook.matchesAnyRule(snap: Snapshot): Boolean {
         val bookGroups = snap.originToGroups[origin] ?: emptySet()
         for (rule in snap.rules) {

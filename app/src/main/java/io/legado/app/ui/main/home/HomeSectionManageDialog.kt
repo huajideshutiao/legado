@@ -65,11 +65,12 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.dialog_home_section_manage)
+        binding.toolBar.inflateMenu(R.menu.dialog_add)
+        binding.toolBar.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener {
             when (it.itemId) {
-                R.id.menu_add_section ->
+                R.id.menu_add ->
                     showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
             }
             true

@@ -93,7 +93,6 @@ import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
@@ -802,7 +801,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 替换
      */
     override fun openReplaceRule() {
-        replaceActivity.launch(Intent(this, ReplaceRuleActivity::class.java))
+        showDialogFragment<EffectiveReplacesDialog>()
     }
 
     /**
@@ -1610,8 +1609,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                     viewModel.reverseRemoveSameTitle()
                 }
-
-                R.id.menu_effective_replaces -> showDialogFragment<EffectiveReplacesDialog>()
 
                 R.id.menu_review -> viewModel.openCommentDialog(this@ReadBookActivity)
 

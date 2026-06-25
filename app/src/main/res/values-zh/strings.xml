@@ -1288,6 +1288,8 @@
     <string name="dev_feat_summary">启用一些实验性特性，比如视频封面16：9，点击视频书籍直接播放</string>
     <string name="source_filter_rule">屏蔽规则</string>
     <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
+    <string name="source_filter_rule_no_match">当前范围没有命中的屏蔽规则</string>
+    <string name="source_filter_rule_manage">管理全部</string>
     <string name="source_filter_rule_name">名称</string>
     <string name="source_filter_rule_pattern">正则表达式</string>
     <string name="source_filter_rule_fields">作用字段（任一命中则丢弃）</string>
