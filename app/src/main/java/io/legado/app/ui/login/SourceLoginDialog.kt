@@ -98,9 +98,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 val rowStyle = rowUi.style(defaultStyle)
                 val view = when (rowUi.type) {
                     RowUi.Type.text -> ItemSourceEditBinding.inflate(
-                        layoutInflater,
-                        binding.flexbox,
-                        false
+                        layoutInflater, binding.flexbox, false
                     ).apply {
                         rowStyle.apply(root)
                         textInputLayout.hint = rowUi.name
@@ -109,9 +107,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }.root
 
                     RowUi.Type.password -> ItemSourceEditBinding.inflate(
-                        layoutInflater,
-                        binding.flexbox,
-                        false
+                        layoutInflater, binding.flexbox, false
                     ).apply {
                         rowStyle.apply(root)
                         textInputLayout.hint = rowUi.name
@@ -122,17 +118,13 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }.root
 
                     RowUi.Type.select -> ItemLoginSelectBinding.inflate(
-                        layoutInflater,
-                        binding.flexbox,
-                        false
+                        layoutInflater, binding.flexbox, false
                     ).apply {
                         rowStyle.apply(root)
                         textView.text = rowUi.name
                         val chars = rowUi.chars ?: emptyList()
                         val adapter = ArrayAdapter(
-                            requireContext(),
-                            android.R.layout.simple_spinner_item,
-                            chars
+                            requireContext(), android.R.layout.simple_spinner_item, chars
                         ).apply {
                             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                         }
@@ -143,10 +135,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         spinner.onItemSelectedListener =
                             object : AdapterView.OnItemSelectedListener {
                                 override fun onItemSelected(
-                                    parent: AdapterView<*>?,
-                                    view: View?,
-                                    position: Int,
-                                    id: Long
+                                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
                                 ) {
                                     if (position == selectedPosition) return
                                     selectedPosition = position
@@ -158,9 +147,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }.root
 
                     RowUi.Type.toggle -> ItemLoginToggleBinding.inflate(
-                        layoutInflater,
-                        binding.flexbox,
-                        false
+                        layoutInflater, binding.flexbox, false
                     ).apply {
                         rowStyle.apply(root)
                         swt.text = rowUi.name
@@ -171,9 +158,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }.root
 
                     else -> ItemFilletTextBinding.inflate(
-                        layoutInflater,
-                        binding.flexbox,
-                        false
+                        layoutInflater, binding.flexbox, false
                     ).apply {
                         rowStyle.apply(root)
                         textView.text = rowUi.name
@@ -202,7 +187,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 kotlin.runCatching {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
-                            put("result", getLoginData())
+                            put("result", { getLoginData() })
                             put("book", book)
                             put("chapter", chapter)
                         }
@@ -228,8 +213,9 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
                 RowUi.Type.select -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
-                    (ItemLoginSelectBinding.bind(rowView).spinner.selectedItem as? String)
-                        ?.let { loginData[rowUi.name] = it }
+                    (ItemLoginSelectBinding.bind(rowView).spinner.selectedItem as? String)?.let {
+                        loginData[rowUi.name] = it
+                    }
                 }
 
                 RowUi.Type.toggle -> {
@@ -245,8 +231,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
     }
 
     private fun login(
-        source: BaseSource,
-        loginData: HashMap<String, String>
+        source: BaseSource, loginData: HashMap<String, String>
     ) {
         lifecycleScope.launch(IO) {
             if (loginData.isEmpty()) {
