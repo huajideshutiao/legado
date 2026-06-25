@@ -9,8 +9,6 @@ public enum MimeTypeEnum {
 
     AVI("avi", "音频视频交错格式", "video/x-msvideo"),
 
-    AZW("azw", "亚马逊Kindle电子书格式", "application/vnd.amazon.ebook"),
-
     BIN("bin", "任何类型的二进制数据", "application/octet-stream"),
 
     BMP("bmp", "Windows OS / 2位图图形", "image/bmp"),

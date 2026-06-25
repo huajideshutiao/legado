@@ -25,7 +25,7 @@ object AppPattern {
     val debugMessageSymbolRegex = Regex("[⇒◇┌└≡]")
 
     //本地书籍支持类型
-    val bookFileRegex = Regex(".*\\.(txt|epub|pdf|mobi|azw3|azw|cbz)", RegexOption.IGNORE_CASE)
+    val bookFileRegex = Regex(".*\\.(txt|epub|pdf|cbz)", RegexOption.IGNORE_CASE)
     //压缩文件支持类型
     val archiveFileRegex = Regex(".*\\.(zip|rar|7z|tar|gz|bz2|xz|lzma)$", RegexOption.IGNORE_CASE)
 

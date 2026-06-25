@@ -148,7 +148,7 @@
     <div class="top-cont">
         <div>
             <p class="status">可支持文件格式：</p>
-                <p class="type">TXT、EPUB、UMD、PDF、MOBI、AZW3、AZW</p>
+            <p class="type">TXT、EPUB、PDF</p>
             </div>
         <form class="select-btn">
             选择文件
@@ -175,7 +175,7 @@
     </div>
 
 <script>
-    const FILE_TYPES = /(\.|\/)(txt|epub|umd|pdf|mobi|azw3|azw)$/i;
+    const FILE_TYPES = /(\.|\/)(txt|epub|pdf)$/i;
     const UPLOAD_URL = '../addLocalBook';
     const fileMap = {};
     const uploadQueue = [];

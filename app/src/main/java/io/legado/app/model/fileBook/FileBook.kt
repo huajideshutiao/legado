@@ -69,10 +69,6 @@ object FileBook : BaseFileBook {
         val originName = originName.lowercase(getDefault())
         return when {
             isPdf -> PdfFile
-            isLocal && (originName.endsWith(".mobi") || originName.endsWith(".azw3") || originName.endsWith(
-                ".azw"
-            )) -> MobiFile
-
             isEpub -> EpubFile
             isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && isImage) -> CbzFile
 

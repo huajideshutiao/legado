@@ -6,7 +6,6 @@ import android.os.Bundle
 import io.legado.app.base.BaseService
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.EpubFile
-import io.legado.app.model.fileBook.MobiFile
 import io.legado.app.model.fileBook.PdfFile
 import io.legado.app.utils.LogUtils
 import java.lang.ref.WeakReference
@@ -38,7 +37,6 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
         setOnAppFinishedListener {
             CbzFile.clear()
             EpubFile.clear()
-            MobiFile.clear()
             PdfFile.clear()
         }
     }

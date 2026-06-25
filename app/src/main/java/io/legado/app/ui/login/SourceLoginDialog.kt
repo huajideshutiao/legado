@@ -85,9 +85,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
     private fun buildLoginUi(source: BaseSource) {
         binding.flexbox.removeAllViews()
         val loginInfo = source.getLoginInfoMap()
-        val loginUi = source.loginUi()
-        this.loginUi = loginUi
         try {
+            loginUi = source.loginUi()
             loginUi?.forEachIndexed { index, rowUi ->
                 val defaultStyle =
                     if (rowUi.type == RowUi.Type.text || rowUi.type == RowUi.Type.password) {

@@ -277,11 +277,6 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/pdf" />
-                <data android:mimeType="application/mobi" />
-                <data android:mimeType="application/x-mobipocket-ebook" />
-                <data android:mimeType="application/azw" />
-                <data android:mimeType="application/azw3" />
-                <data android:mimeType="application/x-mobi8-ebook" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
@@ -307,15 +302,6 @@
                 <data android:pathAdvancedPattern=".*\\.[pP][dD][fF]" />
                 <data android:pathPattern=".*\\.pdf" />
                 <data android:pathPattern=".*\\.PDF" />
-                <data android:pathAdvancedPattern=".*\\.[mM][oO][bB][iI]" />
-                <data android:pathPattern=".*\\.mobi" />
-                <data android:pathPattern=".*\\.MOBI" />
-                <data android:pathAdvancedPattern=".*\\.[aA][zZ][wW]" />
-                <data android:pathPattern=".*\\.azw" />
-                <data android:pathPattern=".*\\.AZW" />
-                <data android:pathAdvancedPattern=".*\\.[aA][zZ][wW]3" />
-                <data android:pathPattern=".*\\.azw3" />
-                <data android:pathPattern=".*\\.AZW3" />
                 <data android:pathAdvancedPattern=".*\\.[zZ][iI][pP]" />
                 <data android:pathPattern=".*\\.zip" />
                 <data android:pathPattern=".*\\.ZIP" />

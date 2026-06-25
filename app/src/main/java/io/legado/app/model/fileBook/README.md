@@ -5,5 +5,4 @@
 * TextFile.kt 解析txt
 * EpubFile.kt 解析epub
 * PdfFile.kt 解析pdf 纯图片形式
-* UmdFile.kt 解析umd
 * CbzFile.kt 解析CBZ漫画
