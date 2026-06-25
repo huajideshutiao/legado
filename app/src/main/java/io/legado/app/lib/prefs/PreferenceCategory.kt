@@ -22,7 +22,7 @@ class PreferenceCategory(context: Context, attrs: AttributeSet) :
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         val view = holder.findViewById(R.id.preference_title)
-        if (view is TextView) {  //  && !view.isInEditMode
+        if (view is TextView) {
             view.text = title
             if (view.isInEditMode) return
             view.setTextColor(context.accentColor)

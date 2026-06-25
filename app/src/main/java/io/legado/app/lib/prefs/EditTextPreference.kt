@@ -11,6 +11,7 @@ import io.legado.app.utils.applyTint
 class EditTextPreference(context: Context, attrs: AttributeSet) :
     androidx.preference.EditTextPreference(context, attrs) {
 
+    private val isBottomBackground: Boolean
     private var mOnBindEditTextListener: OnBindEditTextListener? = null
     private val onBindEditTextListener = OnBindEditTextListener { editText ->
         editText.applyTint(context.accentColor)
@@ -18,13 +19,16 @@ class EditTextPreference(context: Context, attrs: AttributeSet) :
     }
 
     init {
-        // isPersistent = true
         layoutResource = R.layout.view_preference
+        isBottomBackground = attrs.parseIsBottomBackground(context)
         super.setOnBindEditTextListener(onBindEditTextListener)
     }
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
-        Preference.bindView<TextView>(context, holder, icon, title, summary, null, null)
+        Preference.bindView<TextView>(
+            context, holder, icon, title, summary,
+            isBottomBackground = isBottomBackground
+        )
         super.onBindViewHolder(holder)
     }
 

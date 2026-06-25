@@ -40,7 +40,7 @@ class ColorPreference(context: Context, attrs: AttributeSet) : Preference(contex
     private var showAlphaSlider: Boolean = false
     private var showColorShades: Boolean = false
     private var previewSize: Int = 0
-    private var presets: IntArray? = null
+    private var presets: IntArray = ColorPickerDialog.MATERIAL_COLORS
     private var dialogTitle: Int = 0
 
     init {
@@ -61,6 +61,7 @@ class ColorPreference(context: Context, attrs: AttributeSet) : Preference(contex
         val presetsResId = a.getResourceId(R.styleable.ColorPreference_cpv_colorPresets, 0)
         dialogTitle =
             a.getResourceId(R.styleable.ColorPreference_cpv_dialogTitle, R.string.cpv_default_title)
+        // init 中已保证 presets 非空:有资源则从资源加载,否则使用 MATERIAL_COLORS
         presets = if (presetsResId != 0) {
             context.resources.getIntArray(presetsResId)
         } else {
@@ -83,7 +84,7 @@ class ColorPreference(context: Context, attrs: AttributeSet) : Preference(contex
                 .setDialogType(dialogType)
                 .setDialogTitle(dialogTitle)
                 .setColorShape(colorShape)
-                .setPresets(presets!!)
+                .setPresets(presets)
                 .setAllowPresets(allowPresets)
                 .setAllowCustom(allowCustom)
                 .setShowAlphaSlider(showAlphaSlider)
@@ -173,7 +174,7 @@ class ColorPreference(context: Context, attrs: AttributeSet) : Preference(contex
      *
      * @return An array of color ints
      */
-    fun getPresets(): IntArray? {
+    fun getPresets(): IntArray {
         return presets
     }
 

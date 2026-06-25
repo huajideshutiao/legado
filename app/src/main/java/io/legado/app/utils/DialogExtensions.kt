@@ -1,9 +1,12 @@
 package io.legado.app.utils
 
+import android.app.Dialog
+import android.content.Context
 import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -110,4 +113,52 @@ fun android.view.Window.setupAsBottomDialog(height: Int = ViewGroup.LayoutParams
     attr.gravity = Gravity.BOTTOM
     attributes = attr
     setLayout(ViewGroup.LayoutParams.MATCH_PARENT, height)
+}
+
+/**
+ * PreferenceDialog 统一样式：圆角背景 + 按钮着色
+ * 替代 EditTextPreferenceDialog / ListPreferenceDialog / MultiSelectListPreferenceDialog
+ * 中 onCreateDialog 的重复代码
+ *
+ * @param context 用于获取主题色与背景 drawable
+ * @param tintListView 是否对列表项着色（ListPreferenceDialog / MultiSelectListPreferenceDialog 需要）
+ */
+fun Dialog.applyPreferenceDialogStyle(
+    context: Context,
+    tintListView: Boolean = false
+) {
+    window?.setBackgroundDrawable(context.filletBackground)
+    window?.decorView?.post {
+        (this as? AlertDialog)?.let { dialog ->
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(context.accentColor)
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(context.accentColor)
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(context.accentColor)
+            if (tintListView) {
+                dialog.listView?.forEach { it.applyTint(context.accentColor) }
+            }
+        }
+    }
+}
+
+/**
+ * E-Ink 模式下 PreferenceDialog 的窗口样式
+ * 替代 PreferenceDialog 中 onStart 的 EInk 处理重复代码
+ * 根据 gravity 区分 top/bottom/其他三种边框方向
+ */
+fun Window.applyEInkDialogStyle() {
+    clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    val attr = attributes
+    attr.dimAmount = 0.0f
+    attr.windowAnimations = 0
+    attributes = attr
+    setBackgroundDrawableResource(R.color.transparent)
+    when (attr.gravity) {
+        Gravity.TOP -> decorView.setBackgroundResource(R.drawable.bg_eink_border_bottom)
+        Gravity.BOTTOM -> decorView.setBackgroundResource(R.drawable.bg_eink_border_top)
+        else -> {
+            val padding = 2.dpToPx()
+            decorView.setPadding(padding, padding, padding, padding)
+            decorView.setBackgroundResource(R.drawable.bg_eink_border_dialog)
+        }
+    }
 }

@@ -28,15 +28,12 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
     @SuppressLint("RestrictedApi")
     override fun onDisplayPreferenceDialog(preference: Preference) {
 
-        var handled = false
-        if (callbackFragment is OnPreferenceDisplayDialogCallback) {
-            handled =
-                (callbackFragment as OnPreferenceDisplayDialogCallback)
-                    .onPreferenceDisplayDialog(this, preference)
-        }
-        if (!handled && activity is OnPreferenceDisplayDialogCallback) {
-            handled = (activity as OnPreferenceDisplayDialogCallback)
-                .onPreferenceDisplayDialog(this, preference)
+        // 优先交给 callbackFragment / activity 处理自定义 dialog
+        var handled = (callbackFragment as? OnPreferenceDisplayDialogCallback)
+            ?.onPreferenceDisplayDialog(this, preference) ?: false
+        if (!handled) {
+            handled = (activity as? OnPreferenceDisplayDialogCallback)
+                ?.onPreferenceDisplayDialog(this, preference) ?: false
         }
 
         if (handled) {

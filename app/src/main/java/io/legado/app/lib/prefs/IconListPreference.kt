@@ -38,13 +38,11 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
             a.recycle()
         }
 
+        // 初始化时一次性解析所有图标资源,避免列表滚动时重复查找
         for (iconName in iconNames) {
             val resId = context.resources
                 .getIdentifier(iconName.toString(), "mipmap", context.packageName)
-            var d: Drawable? = null
-            kotlin.runCatching {
-                d = context.getCompatDrawable(resId)
-            }
+            val d = runCatching { context.getCompatDrawable(resId) }.getOrNull()
             mEntryDrawables.add(d)
         }
     }
@@ -65,8 +63,7 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         if (v is ImageView) {
             val selectedIndex = findIndexOfValue(value)
             if (selectedIndex >= 0) {
-                val drawable = mEntryDrawables[selectedIndex]
-                v.setImageDrawable(drawable)
+                v.setImageDrawable(mEntryDrawables[selectedIndex])
             }
         }
     }
@@ -83,6 +80,8 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
                 onChanged = { value ->
                     this@IconListPreference.value = value
                 }
+                // 传递预解析的 drawable,避免 Adapter 每次绑定时查找资源
+                iconDrawables = this@IconListPreference.mEntryDrawables
             }
             it.supportFragmentManager
                 .beginTransaction()
@@ -95,8 +94,13 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         super.onAttached()
         val fragment =
             getActivity()?.supportFragmentManager?.findFragmentByTag(getFragmentTag()) as IconDialog?
-        fragment?.onChanged = { value ->
-            this@IconListPreference.value = value
+        fragment?.let {
+            it.onChanged = { value ->
+                this@IconListPreference.value = value
+            }
+            // 旋转屏幕后 fragment 重建,IconListPreference 也重建并重新解析了 drawable,
+            // 需要重新传递以确保 Adapter 使用最新的 drawable
+            it.iconDrawables = mEntryDrawables
         }
     }
 
@@ -120,31 +124,35 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
     class IconDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
         var onChanged: ((value: String) -> Unit)? = null
-        var dialogValue: String? = null
-        var dialogEntries: Array<CharSequence>? = null
-        var dialogEntryValues: Array<CharSequence>? = null
-        var dialogIconNames: Array<CharSequence>? = null
+        // 由 IconListPreference 在 onClick/onAttached 时赋值,
+        // 复用预解析的 drawable 避免列表滚动时重复 getIdentifier
+        var iconDrawables: List<Drawable?> = emptyList()
         private val binding by viewBinding(DialogRecyclerViewBinding::bind)
 
         override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
             binding.toolBar.setTitle(R.string.change_icon)
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-            val adapter = Adapter(requireContext())
+            val args = arguments ?: return
+            val dialogValue = args.getString("value")
+            val dialogEntries = args.getCharSequenceArray("entries")
+            val dialogEntryValues = args.getCharSequenceArray("entryValues") ?: emptyArray()
+            val adapter = Adapter(
+                requireContext(),
+                dialogEntries ?: emptyArray(),
+                dialogEntryValues,
+                dialogValue
+            )
+            adapter.setItems(dialogEntryValues.toList())
             binding.recyclerView.adapter = adapter
-            arguments?.let {
-                dialogValue = it.getString("value")
-                dialogEntries = it.getCharSequenceArray("entries")
-                dialogEntryValues = it.getCharSequenceArray("entryValues")
-                dialogIconNames = it.getCharSequenceArray("iconNames")
-                dialogEntryValues?.let { values ->
-                    adapter.setItems(values.toList())
-                }
-            }
         }
 
 
-        inner class Adapter(context: Context) :
-            RecyclerAdapter<CharSequence, ItemIconPreferenceBinding>(context) {
+        inner class Adapter(
+            context: Context,
+            private val dialogEntries: Array<CharSequence>,
+            private val dialogEntryValues: Array<CharSequence>,
+            private val dialogValue: String?
+        ) : RecyclerAdapter<CharSequence, ItemIconPreferenceBinding>(context) {
 
             override fun getViewBinding(parent: ViewGroup): ItemIconPreferenceBinding {
                 return ItemIconPreferenceBinding.inflate(inflater, parent, false)
@@ -157,27 +165,15 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
                 payloads: MutableList<Any>
             ) {
                 binding.run {
-                    val index = findIndexOfValue(item.toString())
-                    dialogEntries?.let {
-                        label.text = it[index]
+                    val index = dialogEntryValues.indexOf(item)
+                    if (index in dialogEntries.indices) {
+                        label.text = dialogEntries[index]
                     }
-                    dialogIconNames?.let {
-                        val resId = context.resources
-                            .getIdentifier(it[index].toString(), "mipmap", context.packageName)
-                        val d = try {
-                            context.getCompatDrawable(resId)
-                        } catch (e: Exception) {
-                            null
-                        }
-                        d?.let {
-                            icon.setImageDrawable(d)
-                        }
+                    // 直接复用预解析的 drawable,避免每次绑定都通过 getIdentifier 查找资源
+                    if (index in this@IconDialog.iconDrawables.indices) {
+                        icon.setImageDrawable(this@IconDialog.iconDrawables[index])
                     }
                     label.isChecked = item.toString() == dialogValue
-                    root.setOnClickListener {
-                        onChanged?.invoke(item.toString())
-                        this@IconDialog.dismissAllowingStateLoss()
-                    }
                 }
             }
 
@@ -185,22 +181,15 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
                 holder: ItemViewHolder,
                 binding: ItemIconPreferenceBinding
             ) {
+                // 统一在此处设置点击监听;之前 convert 中也设置了 root.setOnClickListener,
+                // 由于 onBindViewHolder 调用顺序为 registerListener -> convert,后者会覆盖前者,
+                // 导致此处的监听成为死代码。现统一只在 registerListener 中设置。
                 holder.itemView.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let {
-                        onChanged?.invoke(it.toString())
+                    getItem(holder.layoutPosition)?.let { item ->
+                        onChanged?.invoke(item.toString())
+                        this@IconDialog.dismissAllowingStateLoss()
                     }
                 }
-            }
-
-            private fun findIndexOfValue(value: String?): Int {
-                dialogEntryValues?.let { values ->
-                    for (i in values.indices.reversed()) {
-                        if (values[i] == value) {
-                            return i
-                        }
-                    }
-                }
-                return -1
             }
         }
     }

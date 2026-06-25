@@ -17,9 +17,7 @@ class SwitchPreference(context: Context, attrs: AttributeSet) :
 
     init {
         layoutResource = R.layout.view_preference
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.Preference)
-        isBottomBackground = typedArray.getBoolean(R.styleable.Preference_isBottomBackground, false)
-        typedArray.recycle()
+        isBottomBackground = attrs.parseIsBottomBackground(context)
     }
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
