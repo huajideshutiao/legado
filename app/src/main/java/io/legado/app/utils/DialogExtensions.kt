@@ -33,7 +33,7 @@ fun AlertDialog.applyTint(): AlertDialog {
             attr.windowAnimations = R.style.Animation_Dialog
             attributes = attr
             // 强制不透明背景色，防止主题设置了透明背景导致对话框看不见
-            val colorBackground = ColorUtils.stripAlpha(ThemeStore.bottomBackground(context))
+            val colorBackground = ColorUtils.stripAlpha(ThemeStore.bottomBackground)
             val bg = context.filletBackground.apply {
                 setColor(colorBackground)
                 alpha = 255
@@ -77,8 +77,8 @@ fun AlertDialog.applyTint(): AlertDialog {
 
     // 统一按钮颜色
     val colorStateList = Selector.colorBuild()
-        .setDefaultColor(ThemeStore.accentColor(context))
-        .setPressedColor(ColorUtils.darkenColor(ThemeStore.accentColor(context)))
+        .setDefaultColor(ThemeStore.accentColor)
+        .setPressedColor(ColorUtils.darkenColor(ThemeStore.accentColor))
         .create()
     getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(colorStateList)
     getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(colorStateList)
@@ -86,11 +86,9 @@ fun AlertDialog.applyTint(): AlertDialog {
 
     // 统一文本颜色
     findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(
-        ThemeStore.textColorPrimary(
-            context
-        )
+        ThemeStore.textColorPrimary
     )
-    findViewById<TextView>(android.R.id.message)?.setTextColor(ThemeStore.textColorSecondary(context))
+    findViewById<TextView>(android.R.id.message)?.setTextColor(ThemeStore.textColorSecondary)
 
     window?.decorView?.post {
         listView?.forEach {

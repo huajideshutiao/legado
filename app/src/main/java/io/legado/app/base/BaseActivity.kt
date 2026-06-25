@@ -203,7 +203,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         val bg =
             getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
         val statusBarColor =
-            if (bg.isNullOrBlank()) ThemeStore.statusBarColor(this) else Color.TRANSPARENT
+            if (bg.isNullOrBlank()) ThemeStore.statusBarColor else Color.TRANSPARENT
         setStatusBarColorAuto(statusBarColor, fullScreen)
         if (toolBarTheme == Theme.Dark) {
             setLightStatusBar(false)
@@ -217,7 +217,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         val bg =
             getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
         val navColor =
-            if (bg.isNullOrBlank()) ThemeStore.navigationBarColor(this) else Color.TRANSPARENT
+            if (bg.isNullOrBlank()) ThemeStore.navigationBarColor else Color.TRANSPARENT
         setNavigationBarColorAuto(navColor)
     }
 

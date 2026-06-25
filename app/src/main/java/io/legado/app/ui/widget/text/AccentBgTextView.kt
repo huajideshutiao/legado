@@ -35,7 +35,7 @@ class AccentBgTextView @JvmOverloads constructor(
         val accentColor = if (isInEditMode) {
             context.getCompatColor(R.color.accent)
         } else {
-            ThemeStore.accentColor(context)
+            ThemeStore.accentColor
         }
         background = Selector.shapeBuild()
             .setCornerRadius(radius)

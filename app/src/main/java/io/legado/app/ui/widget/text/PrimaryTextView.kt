@@ -12,6 +12,6 @@ class PrimaryTextView(context: Context, attrs: AttributeSet) :
     AppCompatTextView(context, attrs) {
 
     init {
-        setTextColor(ThemeStore.textColorPrimary(context))
+        setTextColor(ThemeStore.textColorPrimary)
     }
 }

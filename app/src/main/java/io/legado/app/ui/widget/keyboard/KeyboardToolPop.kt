@@ -63,7 +63,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     init {
         initRecyclerView()
         isVisible = false
-        backgroundColor = ThemeStore.bottomBackground(context)
+        backgroundColor = ThemeStore.bottomBackground
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     }
 

@@ -169,7 +169,7 @@ abstract class BaseReadBookActivity :
                 ) {
                     ReadBookConfig.bgMeanColor
                 } else {
-                    ThemeStore.statusBarColor(this)
+                    ThemeStore.statusBarColor
                 }
             setLightStatusBar(ColorUtils.isColorLight(statusBarColor))
         }

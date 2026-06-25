@@ -35,7 +35,7 @@ class ThemeBottomNavigationView(context: Context, attrs: AttributeSet) :
         val textColor = context.getSecondaryTextColor(textIsDark)
         val colorStateList = Selector.colorBuild()
             .setDefaultColor(textColor)
-            .setSelectedColor(ThemeStore.accentColor(context)).create()
+            .setSelectedColor(ThemeStore.accentColor).create()
         itemIconTintList = colorStateList
         itemTextColor = colorStateList
 

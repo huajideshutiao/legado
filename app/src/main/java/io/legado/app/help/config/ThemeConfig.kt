@@ -276,12 +276,7 @@ object ThemeConfig {
     fun applyTheme(context: Context) = with(context) {
         when {
             AppConfig.isEInkMode -> {
-                ThemeStore.editTheme(this)
-                    .primaryColor(Color.WHITE)
-                    .accentColor(Color.BLACK)
-                    .backgroundColor(Color.WHITE)
-                    .bottomBackground(Color.WHITE)
-                    .apply()
+                ThemeStore.saveTheme(Color.WHITE, Color.BLACK, Color.WHITE, Color.WHITE)
             }
 
             AppConfig.isNightTheme -> {
@@ -295,12 +290,12 @@ object ThemeConfig {
                 }
                 val bBackground =
                     getPrefInt(PreferKey.cNBBackground, getCompatColor(R.color.md_grey_850))
-                ThemeStore.editTheme(this)
-                    .primaryColor(ColorUtils.withAlpha(background, 1f))
-                    .accentColor(ColorUtils.withAlpha(accent, 1f))
-                    .backgroundColor(ColorUtils.withAlpha(background, 1f))
-                    .bottomBackground(ColorUtils.withAlpha(bBackground, 1f))
-                    .apply()
+                ThemeStore.saveTheme(
+                    ColorUtils.withAlpha(background, 1f),
+                    ColorUtils.withAlpha(accent, 1f),
+                    ColorUtils.withAlpha(background, 1f),
+                    ColorUtils.withAlpha(bBackground, 1f)
+                )
             }
 
             else -> {
@@ -314,12 +309,12 @@ object ThemeConfig {
                 }
                 val bBackground =
                     getPrefInt(PreferKey.cBBackground, getCompatColor(R.color.md_grey_200))
-                ThemeStore.editTheme(this)
-                    .primaryColor(ColorUtils.withAlpha(background, 1f))
-                    .accentColor(ColorUtils.withAlpha(accent, 1f))
-                    .backgroundColor(ColorUtils.withAlpha(background, 1f))
-                    .bottomBackground(ColorUtils.withAlpha(bBackground, 1f))
-                    .apply()
+                ThemeStore.saveTheme(
+                    ColorUtils.withAlpha(background, 1f),
+                    ColorUtils.withAlpha(accent, 1f),
+                    ColorUtils.withAlpha(background, 1f),
+                    ColorUtils.withAlpha(bBackground, 1f)
+                )
             }
         }
     }

@@ -49,7 +49,7 @@ class SmoothCheckBox @JvmOverloads constructor(
 
     init {
         val ta = context.obtainStyledAttributes(attrs, R.styleable.SmoothCheckBox)
-        var tickColor = ThemeStore.accentColor(context)
+        var tickColor = ThemeStore.accentColor
         mCheckedColor = context.getCompatColor(R.color.background_menu)
         mUnCheckedColor = context.getCompatColor(R.color.background_menu)
         mFloorColor = context.getCompatColor(R.color.transparent30)

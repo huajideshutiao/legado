@@ -124,7 +124,7 @@ object TintHelper {
         var drawable: Drawable? = view.background
         if (drawable != null) {
             drawable = createTintedDrawable(drawable, sl)
-            ViewUtils.setBackgroundCompat(view, drawable)
+            view.background = drawable
         }
 
         if (view is TextView && view !is Button) {
@@ -203,7 +203,7 @@ object TintHelper {
                 var drawable: Drawable? = view.background
                 if (drawable != null) {
                     drawable = createTintedDrawable(drawable, color)
-                    ViewUtils.setBackgroundCompat(view, drawable)
+                    view.background = drawable
                 }
             }
         }

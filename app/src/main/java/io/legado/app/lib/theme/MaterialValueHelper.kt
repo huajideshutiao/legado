@@ -14,7 +14,16 @@ import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 
 /**
+ * 主题相关的 Context / Fragment 扩展属性。
+ *
  * @author Karim Abou Zeid (kabouzeid)
+ */
+
+// ===== 文字颜色函数（按背景明暗返回对应色） =====
+
+/**
+ * 背景深色时返回浅色文字，背景浅色时返回深色文字。
+ * @param dark 背景是否为深色
  */
 @ColorInt
 fun Context.getPrimaryTextColor(dark: Boolean): Int {
@@ -25,6 +34,10 @@ fun Context.getPrimaryTextColor(dark: Boolean): Int {
     }
 }
 
+/**
+ * 背景深色时返回浅色次要文字，背景浅色时返回深色次要文字。
+ * @param dark 背景是否为深色
+ */
 @ColorInt
 fun Context.getSecondaryTextColor(dark: Boolean): Int {
     return if (dark) {
@@ -34,15 +47,10 @@ fun Context.getSecondaryTextColor(dark: Boolean): Int {
     }
 }
 
-@ColorInt
-fun Context.getPrimaryDisabledTextColor(dark: Boolean): Int {
-    return if (dark) {
-        ContextCompat.getColor(this, R.color.md_light_disabled)
-    } else {
-        ContextCompat.getColor(this, R.color.md_dark_disabled)
-    }
-}
-
+/**
+ * 背景深色时返回浅色禁用文字，背景浅色时返回深色禁用文字。
+ * @param dark 背景是否为深色
+ */
 @ColorInt
 fun Context.getSecondaryDisabledTextColor(dark: Boolean): Int {
     return if (dark) {
@@ -58,20 +66,19 @@ fun Context.getSecondaryDisabledTextColor(dark: Boolean): Int {
     }
 }
 
-val Context.primaryColor: Int
-    get() = ThemeStore.backgroundColor(this)
+// ===== Context 扩展属性 =====
 
-val Context.primaryColorDark: Int
-    get() = ColorUtils.darkenColor(ThemeStore.backgroundColor(this))
+val Context.primaryColor: Int
+    get() = ThemeStore.backgroundColor
 
 val Context.accentColor: Int
-    get() = ThemeStore.accentColor(this)
+    get() = ThemeStore.accentColor
 
 val Context.backgroundColor: Int
-    get() = ThemeStore.backgroundColor(this)
+    get() = ThemeStore.backgroundColor
 
 val Context.bottomBackground: Int
-    get() = ThemeStore.bottomBackground(this)
+    get() = ThemeStore.bottomBackground
 
 val Context.primaryTextColor: Int
     get() = getPrimaryTextColor(isDarkTheme)
@@ -79,51 +86,8 @@ val Context.primaryTextColor: Int
 val Context.secondaryTextColor: Int
     get() = getSecondaryTextColor(isDarkTheme)
 
-val Context.primaryDisabledTextColor: Int
-    get() = getPrimaryDisabledTextColor(isDarkTheme)
-
-val Context.secondaryDisabledTextColor: Int
-    get() = getSecondaryDisabledTextColor(isDarkTheme)
-
-val Fragment.primaryColor: Int
-    get() = ThemeStore.backgroundColor(requireContext())
-
-val Fragment.primaryColorDark: Int
-    get() = ColorUtils.darkenColor(ThemeStore.backgroundColor(requireContext()))
-
-val Fragment.accentColor: Int
-    get() = ThemeStore.accentColor(requireContext())
-
-val Fragment.backgroundColor: Int
-    get() = ThemeStore.backgroundColor(requireContext())
-
-val Fragment.bottomBackground: Int
-    get() = ThemeStore.bottomBackground(requireContext())
-
-val Fragment.primaryTextColor: Int
-    get() = requireContext().getPrimaryTextColor(isDarkTheme)
-
-val Fragment.secondaryTextColor: Int
-    get() = requireContext().getSecondaryTextColor(isDarkTheme)
-
-val Fragment.primaryDisabledTextColor: Int
-    get() = requireContext().getPrimaryDisabledTextColor(isDarkTheme)
-
-val Fragment.secondaryDisabledTextColor: Int
-    get() = requireContext().getSecondaryDisabledTextColor(isDarkTheme)
-
-val Context.buttonDisabledColor: Int
-    get() = if (isDarkTheme) {
-        ContextCompat.getColor(this, R.color.md_dark_disabled)
-    } else {
-        ContextCompat.getColor(this, R.color.md_light_disabled)
-    }
-
 val Context.isDarkTheme: Boolean
-    get() = ColorUtils.isColorLight(ThemeStore.backgroundColor(this))
-
-val Fragment.isDarkTheme: Boolean
-    get() = requireContext().isDarkTheme
+    get() = ColorUtils.isColorLight(ThemeStore.backgroundColor)
 
 val Context.elevation: Float
     @SuppressLint("PrivateResource")
@@ -146,3 +110,26 @@ val Context.filletBackground: GradientDrawable
         background.setColor(bottomBackground)
         return background
     }
+
+// ===== Fragment 扩展属性（委托给 requireContext()） =====
+
+val Fragment.primaryColor: Int
+    get() = requireContext().primaryColor
+
+val Fragment.accentColor: Int
+    get() = requireContext().accentColor
+
+val Fragment.backgroundColor: Int
+    get() = requireContext().backgroundColor
+
+val Fragment.bottomBackground: Int
+    get() = requireContext().bottomBackground
+
+val Fragment.primaryTextColor: Int
+    get() = requireContext().primaryTextColor
+
+val Fragment.secondaryTextColor: Int
+    get() = requireContext().secondaryTextColor
+
+val Fragment.isDarkTheme: Boolean
+    get() = requireContext().isDarkTheme

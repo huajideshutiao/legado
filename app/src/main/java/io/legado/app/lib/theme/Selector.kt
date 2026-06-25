@@ -1,17 +1,12 @@
 package io.legado.app.lib.theme
 
-import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import androidx.annotation.ColorInt
 import androidx.annotation.Dimension
-import androidx.annotation.DrawableRes
 import androidx.annotation.IntDef
-import androidx.core.content.ContextCompat
 
 @Suppress("unused")
 object Selector {
@@ -21,10 +16,6 @@ object Selector {
 
     fun colorBuild(): ColorSelector {
         return ColorSelector()
-    }
-
-    fun drawableBuild(): DrawableSelector {
-        return DrawableSelector()
     }
 
     /**
@@ -257,102 +248,6 @@ object Selector {
             drawable.cornerRadius = cornerRadius.toFloat()
             drawable.setColor(solidColor)
             return drawable
-        }
-    }
-
-    /**
-     * 资源DrawableSelector
-     *
-     * @author hjy
-     * created at 2017/12/11 22:34
-     */
-    @Suppress("MemberVisibilityCanBePrivate")
-    class DrawableSelector {
-
-        private var mDefaultDrawable: Drawable? = null
-        private var mDisabledDrawable: Drawable? = null
-        private var mPressedDrawable: Drawable? = null
-        private var mSelectedDrawable: Drawable? = null
-        private var mFocusedDrawable: Drawable? = null
-
-        private var hasSetDisabledDrawable = false
-        private var hasSetPressedDrawable = false
-        private var hasSetSelectedDrawable = false
-        private var hasSetFocusedDrawable = false
-
-        init {
-            mDefaultDrawable = ColorDrawable(Color.TRANSPARENT)
-        }
-
-        fun setDefaultDrawable(drawable: Drawable?): DrawableSelector {
-            mDefaultDrawable = drawable
-            if (!hasSetDisabledDrawable)
-                mDisabledDrawable = drawable
-            if (!hasSetPressedDrawable)
-                mPressedDrawable = drawable
-            if (!hasSetSelectedDrawable)
-                mSelectedDrawable = drawable
-            if (!hasSetFocusedDrawable)
-                mFocusedDrawable = drawable
-            return this
-        }
-
-        fun setDisabledDrawable(drawable: Drawable?): DrawableSelector {
-            mDisabledDrawable = drawable
-            hasSetDisabledDrawable = true
-            return this
-        }
-
-        fun setPressedDrawable(drawable: Drawable?): DrawableSelector {
-            mPressedDrawable = drawable
-            hasSetPressedDrawable = true
-            return this
-        }
-
-        fun setSelectedDrawable(drawable: Drawable?): DrawableSelector {
-            mSelectedDrawable = drawable
-            hasSetSelectedDrawable = true
-            return this
-        }
-
-        fun setFocusedDrawable(drawable: Drawable?): DrawableSelector {
-            mFocusedDrawable = drawable
-            hasSetFocusedDrawable = true
-            return this
-        }
-
-        fun create(): StateListDrawable {
-            val selector = StateListDrawable()
-            if (hasSetDisabledDrawable)
-                selector.addState(intArrayOf(-android.R.attr.state_enabled), mDisabledDrawable)
-            if (hasSetPressedDrawable)
-                selector.addState(intArrayOf(android.R.attr.state_pressed), mPressedDrawable)
-            if (hasSetSelectedDrawable)
-                selector.addState(intArrayOf(android.R.attr.state_selected), mSelectedDrawable)
-            if (hasSetFocusedDrawable)
-                selector.addState(intArrayOf(android.R.attr.state_focused), mFocusedDrawable)
-            selector.addState(intArrayOf(), mDefaultDrawable)
-            return selector
-        }
-
-        fun setDefaultDrawable(context: Context, @DrawableRes drawableRes: Int): DrawableSelector {
-            return setDefaultDrawable(ContextCompat.getDrawable(context, drawableRes))
-        }
-
-        fun setDisabledDrawable(context: Context, @DrawableRes drawableRes: Int): DrawableSelector {
-            return setDisabledDrawable(ContextCompat.getDrawable(context, drawableRes))
-        }
-
-        fun setPressedDrawable(context: Context, @DrawableRes drawableRes: Int): DrawableSelector {
-            return setPressedDrawable(ContextCompat.getDrawable(context, drawableRes))
-        }
-
-        fun setSelectedDrawable(context: Context, @DrawableRes drawableRes: Int): DrawableSelector {
-            return setSelectedDrawable(ContextCompat.getDrawable(context, drawableRes))
-        }
-
-        fun setFocusedDrawable(context: Context, @DrawableRes drawableRes: Int): DrawableSelector {
-            return setFocusedDrawable(ContextCompat.getDrawable(context, drawableRes))
         }
     }
 

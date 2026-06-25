@@ -11,7 +11,7 @@ class TextInputLayout(context: Context, attrs: AttributeSet?) : TextInputLayout(
     init {
         if (!isInEditMode) {
             defaultHintTextColor =
-                Selector.colorBuild().setDefaultColor(ThemeStore.accentColor(context)).create()
+                Selector.colorBuild().setDefaultColor(ThemeStore.accentColor).create()
         }
     }
 
