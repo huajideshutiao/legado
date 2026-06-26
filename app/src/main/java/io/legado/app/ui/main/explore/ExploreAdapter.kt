@@ -109,7 +109,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         binding.ivStatus.setImageResource(R.drawable.ic_arrow_down)
         // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
         binding.rotateLoading.setIndicatorColor(context.accentColor)
-        binding.rotateLoading.visible()
+        binding.rotateLoading.show()
 
         Coroutine.async(callBack.scope) {
             bookSource.exploreKinds()
@@ -128,7 +128,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 binding.flexbox.visible()
             }
         }.onFinally {
-            binding.rotateLoading.gone()
+            binding.rotateLoading.hide()
         }
     }
 
@@ -208,7 +208,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         binding.ivStatus.setImageResource(R.drawable.ic_arrow_down)
         // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
         binding.rotateLoading.setIndicatorColor(context.accentColor)
-        binding.rotateLoading.visible()
+        binding.rotateLoading.show()
         Coroutine.async(callBack.scope) {
             bookSource.exploreKinds()
         }.onSuccess { kinds ->
@@ -232,7 +232,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             }
         }.onFinally {
             if (holder.layoutPosition - getHeaderCount() == targetPos) {
-                binding.rotateLoading.gone()
+                binding.rotateLoading.hide()
             }
         }
     }
@@ -276,7 +276,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      */
     private fun handleCollapse(binding: ItemFindBookBinding, isUpdate: Boolean) {
         val grid = binding.flexbox
-        binding.rotateLoading.gone()
+        binding.rotateLoading.hide()
 
         if (grid.isGone) {
             binding.ivStatus.setImageResource(R.drawable.ic_arrow_right)

@@ -18,10 +18,8 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.utils.gone
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -61,9 +59,9 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
         }
         viewModel.loadStateLiveData.observe(this) {
             if (it) {
-                binding.rotateLoading.visible()
+                binding.rotateLoading.show()
             } else {
-                binding.rotateLoading.gone()
+                binding.rotateLoading.hide()
             }
         }
         viewModel.loadErrorLiveData.observe(this) {

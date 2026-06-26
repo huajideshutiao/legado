@@ -46,6 +46,7 @@
             android:layout_height="22dp"
             android:layout_gravity="right"
             android:scrollbars="none"
+            android:indeterminate="true"
             android:visibility="invisible"
             app:indicatorSize="22dp"
             app:trackThickness="2dp"

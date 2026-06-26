@@ -29,7 +29,8 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_margin="6dp"
-            android:visibility="gone"
+            android:indeterminate="true"
+            android:visibility="invisible"
             android:layout_gravity="center"
             app:indicatorSize="36dp"
             app:trackThickness="2dp" />

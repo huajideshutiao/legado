@@ -10,10 +10,8 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.DictRule
 import io.legado.app.databinding.DialogDictBinding
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.utils.invisible
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -52,9 +50,9 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
 
             override fun onTabSelected(tab: TabLayout.Tab) {
                 val dictRule = tab.tag as DictRule
-                binding.rotateLoading.visible()
+                binding.rotateLoading.show()
                 viewModel.dict(dictRule, word!!) {
-                    binding.rotateLoading.invisible()
+                    binding.rotateLoading.hide()
                     binding.tvDict.setHtml(it)
                 }
             }

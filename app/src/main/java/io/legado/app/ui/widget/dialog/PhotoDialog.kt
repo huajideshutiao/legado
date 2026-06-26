@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
-import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
@@ -71,7 +70,6 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
     private fun initEvent() {
         binding.photoView.setOnLongClickListener {
-            binding.photoView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             val path = ACache.get().getAsString(AppConst.imagePathKey)
             if (path.isNullOrEmpty()) {
                 saveImageLauncher.launch { }

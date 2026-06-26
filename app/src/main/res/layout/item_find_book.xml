@@ -33,7 +33,9 @@
             android:layout_height="20dp"
             android:layout_gravity="center"
             android:layout_marginRight="4dp"
-            android:visibility="gone"
+            android:indeterminate="true"
+            android:visibility="invisible"
+            app:indicatorInset="0dp"
             app:indicatorSize="20dp"
             app:trackThickness="1dp"
             tools:ignore="RtlHardcoded" />

@@ -51,7 +51,7 @@
 
             <ProgressBar
                 android:id="@+id/pb_loading"
-                style="@style/Widget.Material3.CircularProgressIndicator"
+                style="@style/Widget.MaterialComponents.CircularProgressIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:indeterminate="true"

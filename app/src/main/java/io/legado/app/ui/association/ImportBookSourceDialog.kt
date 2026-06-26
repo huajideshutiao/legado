@@ -32,7 +32,6 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.gone
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import splitties.views.onClick
@@ -66,7 +65,7 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.import_book_source)
-        binding.rotateLoading.visible()
+        binding.rotateLoading.show()
         initMenu()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -95,14 +94,14 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
             upSelectText()
         }
         viewModel.errorLiveData.observe(this) {
-            binding.rotateLoading.gone()
+            binding.rotateLoading.hide()
             binding.tvMsg.apply {
                 text = it
                 visible()
             }
         }
         viewModel.successLiveData.observe(this) {
-            binding.rotateLoading.gone()
+            binding.rotateLoading.hide()
             if (it > 0) {
                 adapter.setItems(viewModel.allSources)
                 upSelectText()

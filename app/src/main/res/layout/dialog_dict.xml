@@ -26,6 +26,7 @@
         android:id="@+id/rotate_loading"
         android:layout_width="60dp"
         android:layout_height="60dp"
+        android:indeterminate="true"
         android:layout_gravity="center"
         app:indicatorSize="60dp"
         app:layout_constraintLeft_toLeftOf="parent"

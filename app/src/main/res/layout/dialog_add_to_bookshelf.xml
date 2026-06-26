@@ -84,6 +84,7 @@
         android:id="@+id/rotate_loading"
         android:layout_width="48dp"
         android:layout_height="48dp"
+        android:indeterminate="true"
         app:indicatorSize="48dp"
         app:layout_constraintBottom_toBottomOf="@+id/book_info"
         app:layout_constraintLeft_toLeftOf="parent"

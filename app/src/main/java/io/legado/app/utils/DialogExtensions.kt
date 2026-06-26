@@ -17,6 +17,8 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.filletBackground
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 
 fun AlertDialog.applyTint(): AlertDialog {
     val context = context
@@ -84,11 +86,9 @@ fun AlertDialog.applyTint(): AlertDialog {
     getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(colorStateList)
     getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(colorStateList)
 
-    // 统一文本颜色
-    findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(
-        ThemeStore.textColorPrimary
-    )
-    findViewById<TextView>(android.R.id.message)?.setTextColor(ThemeStore.textColorSecondary)
+    // 统一文本颜色（按背景明暗取色，深色模式下也能正确显示）
+    findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(context.primaryTextColor)
+    findViewById<TextView>(android.R.id.message)?.setTextColor(context.secondaryTextColor)
 
     window?.decorView?.post {
         listView?.forEach {

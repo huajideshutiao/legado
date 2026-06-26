@@ -46,14 +46,16 @@ class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(
     fun startLoad() {
         isLoading = true
         binding.tvText.invisible()
-        binding.rotateLoading.visible()
+        // CircularProgressIndicator 需用 show() 启动 indeterminate 动画，
+        // 直接 setVisibility(VISIBLE) 控件可见但不转
+        binding.rotateLoading.show()
     }
 
     fun stopLoad() {
         isLoading = false
-        // 原 RotateLoading.inVisible() 同时设为 INVISIBLE 并停止动画；
-        // CircularProgressIndicator 隐藏即停止，直接设 visibility 即可
-        binding.rotateLoading.visibility = View.INVISIBLE
+        // CircularProgressIndicator 需用 hide() 停止 indeterminate 动画；
+        // tv_text 始终 invisible 保留布局空间，hide() 设 GONE 不影响高度
+        binding.rotateLoading.hide()
     }
 
     fun hasMore() {

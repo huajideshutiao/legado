@@ -31,7 +31,6 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.gone
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import splitties.views.onClick
@@ -61,7 +60,7 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.import_replace_rule)
-        binding.rotateLoading.visible()
+        binding.rotateLoading.show()
         initMenu()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -90,14 +89,14 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
             upSelectText()
         }
         viewModel.errorLiveData.observe(this) {
-            binding.rotateLoading.gone()
+            binding.rotateLoading.hide()
             binding.tvMsg.apply {
                 text = it
                 visible()
             }
         }
         viewModel.successLiveData.observe(this) {
-            binding.rotateLoading.gone()
+            binding.rotateLoading.hide()
             if (it > 0) {
                 adapter.setItems(viewModel.allRules)
                 upSelectText()

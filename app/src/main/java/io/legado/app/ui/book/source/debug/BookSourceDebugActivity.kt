@@ -18,12 +18,10 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.gone
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import splitties.views.onClick
@@ -50,7 +48,9 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
             lifecycleScope.launch {
                 adapter.addItem(msg)
                 if (state == -1 || state == 1000) {
-                    binding.rotateLoading.gone()
+                    // CircularProgressIndicator 需用 hide() 停止 indeterminate 动画并隐藏，
+                    // 直接 setVisibility(GONE) 不会停止 spinner
+                    binding.rotateLoading.hide()
                 }
             }
         }
@@ -178,7 +178,9 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     private fun startSearch(key: String) {
         adapter.clearItems()
         viewModel.startDebug(key, {
-            binding.rotateLoading.visible()
+            // CircularProgressIndicator 需用 show() 启动 indeterminate 动画，
+            // 直接 setVisibility(VISIBLE) 控件可见但不转
+            binding.rotateLoading.show()
         }, {
             toastOnUi("未获取到书源")
         })

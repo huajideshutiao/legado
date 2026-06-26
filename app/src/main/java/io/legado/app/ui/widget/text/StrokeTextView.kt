@@ -9,6 +9,7 @@ import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -76,13 +77,13 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
                     .setCornerRadius(radius)
                     .setStrokeWidth(1.dpToPx())
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
-                    .setDefaultStrokeColor(ThemeStore.textColorSecondary)
+                    .setDefaultStrokeColor(context.secondaryTextColor)
                     .setSelectedStrokeColor(ThemeStore.accentColor)
                     .setPressedBgColor(context.getCompatColor(R.color.transparent30))
                     .create()
                 setTextColor(
                     Selector.colorBuild()
-                        .setDefaultColor(ThemeStore.textColorSecondary)
+                        .setDefaultColor(context.secondaryTextColor)
                         .setSelectedColor(ThemeStore.accentColor)
                         .setDisabledColor(context.getCompatColor(R.color.md_grey_500))
                         .create()
