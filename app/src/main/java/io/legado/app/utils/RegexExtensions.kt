@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
-import com.script.ScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.ScriptBindings
 import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.coroutine.Coroutine
@@ -33,18 +33,35 @@ fun CharSequence.replace(regex: Regex, replacement: String, timeout: Long): Stri
                         val pattern = regex.toPattern()
                         val matcher = pattern.matcher(charSequence)
                         val stringBuffer = StringBuffer()
-                        while (matcher.find()) {
-                            if (isJs) {
-                                val jsResult = RhinoScriptEngine.run {
-                                    val bindings = ScriptBindings()
-                                    bindings["result"] = matcher.group()
-                                    eval(replacement1, bindings)
-                                }.toString()
-                                val quotedResult = Matcher.quoteReplacement(jsResult)
-                                matcher.appendReplacement(stringBuffer, quotedResult)
-                            } else {
-                                matcher.appendReplacement(stringBuffer, replacement1)
+                        // isJs 路径: 循环外创建共享 scope + 预编译 bytecode,
+                        // 避免每次匹配都重新初始化 bootstrap (性能优化,应对长文本大量匹配)
+                        val jsScope = if (isJs) {
+                            val bindings = ScriptBindings().apply { this["result"] = "" }
+                            val scope = QuickJsEngine.getRuntimeScope(bindings)
+                            val compiled = QuickJsEngine.compile(
+                                QuickJsEngine.wrapJsForEval(replacement1), scope
+                            )
+                            Pair(scope, compiled)
+                        } else null
+                        try {
+                            while (matcher.find()) {
+                                if (isJs) {
+                                    val (scope, compiled) = jsScope!!
+                                    // 更新 result 变量并注入到共享 scope
+                                    val bindings = ScriptBindings().apply {
+                                        this["result"] = matcher.group()
+                                        dangerousApi = false
+                                    }
+                                    QuickJsEngine.injectBindings(scope, bindings)
+                                    val jsResult = compiled.eval(scope, null)?.toString() ?: ""
+                                    val quotedResult = Matcher.quoteReplacement(jsResult)
+                                    matcher.appendReplacement(stringBuffer, quotedResult)
+                                } else {
+                                    matcher.appendReplacement(stringBuffer, replacement1)
+                                }
                             }
+                        } finally {
+                            jsScope?.first?.close()
                         }
                         matcher.appendTail(stringBuffer)
                         block.resume(stringBuffer.toString())

@@ -2,9 +2,9 @@ package io.legado.app.data.entities
 
 import androidx.appcompat.app.AppCompatActivity
 import cn.hutool.crypto.symmetric.AES
-import com.script.ScriptBindings
-import com.script.buildScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.ScriptBindings
+import com.script.quickjs.buildScriptBindings
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -285,14 +285,21 @@ interface BaseSource : JsExtensions {
             bindings.dangerousApi = enableDangerousApi == true
         }
         val sharedScope = getShareScope()
-        val scope = if (sharedScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings)
+        // 用 IIFE + eval 包裹,隔离 let/const,避免污染 sharedScope
+        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
+        // quickjs 没有 prototype 继承,有 sharedScope 时直接复用并注入 bindings 变量
+        // 子 scope 隔离: eval 后清理注入的变量,避免不同书源切换时变量泄漏
+        return if (sharedScope == null) {
+            val scope = QuickJsEngine.getRuntimeScope(bindings)
+            QuickJsEngine.eval(wrappedJs, scope, null)
         } else {
-            bindings.apply {
-                prototype = sharedScope
+            val injectedKeys = QuickJsEngine.injectBindings(sharedScope, bindings)
+            try {
+                QuickJsEngine.eval(wrappedJs, sharedScope, null)
+            } finally {
+                QuickJsEngine.cleanupBindings(sharedScope, injectedKeys)
             }
         }
-        return RhinoScriptEngine.eval(jsStr, scope)
     }
 
     fun showLoginDialog() {

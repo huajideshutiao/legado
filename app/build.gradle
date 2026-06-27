@@ -235,7 +235,7 @@ dependencies {
 
     implementation(libs.jsoup)
     implementation(libs.json.path)
-    implementation(project(path: ':modules:rhino'))
+    implementation(project(path: ':modules:quickjs'))
 
     implementation(libs.okhttp)
     implementation(libs.play.services.cronet)

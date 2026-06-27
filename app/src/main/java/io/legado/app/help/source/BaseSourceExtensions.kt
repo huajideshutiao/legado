@@ -1,13 +1,13 @@
 package io.legado.app.help.source
 
+import com.script.quickjs.QuickJsContext
 import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
 import io.legado.app.model.SharedJsScope
-import org.mozilla.javascript.Scriptable
 import kotlin.coroutines.CoroutineContext
 
-fun BaseSource.getShareScope(coroutineContext: CoroutineContext? = null): Scriptable? {
+fun BaseSource.getShareScope(coroutineContext: CoroutineContext? = null): QuickJsContext? {
     return SharedJsScope.getScope(jsLib, enableDangerousApi == true, coroutineContext)
 }
 

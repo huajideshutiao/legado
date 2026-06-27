@@ -1,8 +1,8 @@
 package io.legado.app.model.webBook
 
 import android.text.TextUtils
-import com.script.ScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.ScriptBindings
 import io.legado.app.R
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -22,7 +22,6 @@ import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
-import org.mozilla.javascript.Context
 import splitties.init.appCtx
 
 /**
@@ -128,21 +127,34 @@ object BookChapterList {
         }
         val formatJs = tocRule.formatJs
         if (!formatJs.isNullOrBlank()) {
-            Context.enter().use {
-                val bindings = ScriptBindings()
-                bindings["gInt"] = 0
+            // 循环外创建共享 scope,避免每次 eval 都重新初始化 bootstrap (性能优化)
+            // 复用 scope 编译 bytecode,避免每次 eval 都重新解析 JS
+            // wrapJsForEval 用 IIFE + eval 隔离 let/const,避免重复声明
+            val initBindings = ScriptBindings().apply {
+                this["gInt"] = 0
+                this["index"] = 0
+                this["chapter"] = list.firstOrNull()
+                this["title"] = list.firstOrNull()?.title
+            }
+            val scope = QuickJsEngine.getRuntimeScope(initBindings)
+            val compiled = QuickJsEngine.compile(QuickJsEngine.wrapJsForEval(formatJs), scope)
+            try {
                 list.forEachIndexed { index, bookChapter ->
-                    bindings["index"] = index + 1
-                    bindings["chapter"] = bookChapter
-                    bindings["title"] = bookChapter.title
-                    RhinoScriptEngine.runCatching {
-                        eval(formatJs, bindings)?.toString()?.let {
+                    // 更新变量值并重新注入(覆盖上次的值)
+                    initBindings["index"] = index + 1
+                    initBindings["chapter"] = bookChapter
+                    initBindings["title"] = bookChapter.title
+                    QuickJsEngine.injectBindings(scope, initBindings)
+                    try {
+                        compiled.eval(scope, null)?.toString()?.let {
                             bookChapter.title = it
                         }
-                    }.onFailure {
-                        Debug.log(book.origin, "格式化标题出错, ${it.localizedMessage}")
+                    } catch (e: Throwable) {
+                        Debug.log(book.origin, "格式化标题出错, ${e.localizedMessage}")
                     }
                 }
+            } finally {
+                scope.close()
             }
         }
         val replaceRules = ContentProcessor.get(book).getTitleReplaceRules()

@@ -4,8 +4,8 @@ package io.legado.app.help.book
 
 import android.net.Uri
 import androidx.core.net.toUri
-import com.script.buildScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.buildScriptBindings
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
@@ -306,7 +306,7 @@ fun Book.getExportFileName(suffix: String): String {
         bindings["author"] = getRealAuthor()
     }
     return kotlin.runCatching {
-        RhinoScriptEngine.eval(jsStr, bindings).toString() + "." + suffix
+        QuickJsEngine.eval(jsStr, bindings).toString() + "." + suffix
     }.onFailure {
         AppLog.put("导出书名规则错误,使用默认规则\n${it.localizedMessage}", it)
     }.getOrDefault(default).normalizeFileName()
@@ -331,7 +331,7 @@ fun Book.getExportFileName(
         bindings["epubIndex"] = epubIndex
     }
     return kotlin.runCatching {
-        RhinoScriptEngine.eval(jsStr, bindings).toString() + "." + suffix
+        QuickJsEngine.eval(jsStr, bindings).toString() + "." + suffix
     }.onFailure {
         AppLog.put("导出书名规则错误,使用默认规则\n${it.localizedMessage}", it)
     }.getOrDefault(default).normalizeFileName()
@@ -362,7 +362,7 @@ fun tryParesExportFileName(jsStr: String): Boolean {
         bindings["epubIndex"] = "epubIndex"
     }
     return runCatching {
-        RhinoScriptEngine.eval(jsStr, bindings)
+        QuickJsEngine.eval(jsStr, bindings)
         true
     }.getOrDefault(false)
 }

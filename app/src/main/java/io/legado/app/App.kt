@@ -9,15 +9,12 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Build
-import com.script.rhino.ReadOnlyJavaObject
-import com.script.rhino.RhinoScriptEngine
-import com.script.rhino.RhinoWrapFactory
+import com.script.quickjs.QuickJsEngine
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
@@ -81,7 +78,7 @@ class App : Application() {
             }
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }
-            initRhino()
+            initQuickJs()
             //初始化封面
             BookCover.toString()
         }
@@ -198,9 +195,9 @@ class App : Application() {
     }
 
     @Suppress("UnusedExpression")
-    private fun initRhino() {
-        RhinoScriptEngine
-        RhinoWrapFactory.register(Book.ReadConfig::class.java, ReadOnlyJavaObject.factory)
+    private fun initQuickJs() {
+        // 触发 QuickJsEngine 单例初始化,预加载 bootstrap
+        QuickJsEngine
     }
 
     companion object {

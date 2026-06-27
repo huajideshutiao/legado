@@ -3,8 +3,8 @@ package io.legado.app.model.fileBook
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
-import com.script.ScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.ScriptBindings
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -294,7 +294,7 @@ object FileBook : BaseFileBook {
                 //在用户脚本后添加捕获author、name的代码，只要脚本中author、name有值就会被捕获
                 val js = "$jsCode\nJSON.stringify({author:author,name:name})"
                 //在脚本中定义如何分解文件名成书名、作者名
-                val jsonStr = RhinoScriptEngine.run {
+                val jsonStr = QuickJsEngine.run {
                     val bindings = ScriptBindings().apply { put("src", tempFileName) }
                     eval(js, bindings)
                 }.toString()

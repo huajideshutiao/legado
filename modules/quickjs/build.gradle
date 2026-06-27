@@ -1,0 +1,49 @@
+plugins {
+    alias libs.plugins.android.library
+    alias libs.plugins.kotlin.android
+}
+
+android {
+    compileSdk = compile_sdk_version
+    namespace = 'com.script.quickjs'
+    kotlin {
+        jvmToolchain {
+            languageVersion.set(JavaLanguageVersion.of(17))
+        }
+    }
+    defaultConfig {
+        minSdk 26
+        targetSdk 36
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint {
+        checkDependencies = true
+    }
+    tasks.withType(JavaCompile).tap {
+        configureEach {
+            options.compilerArgs << "-Xlint:deprecation"
+        }
+    }
+}
+
+dependencies {
+    api libs.quickjs.kt.android
+
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.okhttp)
+    implementation(libs.androidx.collection)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.core)
+
+    androidTestImplementation(libs.bundles.androidTest)
+    // 仅用于基准测试对比 rhino vs quickjs 性能
+    androidTestImplementation project(':modules:rhino')
+}

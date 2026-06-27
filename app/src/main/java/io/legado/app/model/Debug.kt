@@ -21,7 +21,6 @@ import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import org.mozilla.javascript.NativeArray
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -398,10 +397,10 @@ object Debug {
             rule.evalJS(lrcRule)
         }.onSuccess { raw ->
             when (raw) {
-                is NativeArray -> {
-                    log(debugSource, "≡歌词行数:${raw.length}")
-                    for (i in 0 until raw.length.toInt()) {
-                        log(debugSource, raw.get(i, raw)?.toString().orEmpty(), showTime = false)
+                is List<*> -> {
+                    log(debugSource, "≡歌词行数:${raw.size}")
+                    for (i in 0 until raw.size) {
+                        log(debugSource, raw[i]?.toString().orEmpty(), showTime = false)
                     }
                 }
 

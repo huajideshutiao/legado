@@ -25,7 +25,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
-import com.script.ScriptException
+import com.script.quickjs.ScriptException
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -61,7 +61,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Response
-import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
 import java.io.File
 import java.io.InputStream
@@ -379,7 +378,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             } catch (e: Exception) {
                 when (e) {
                     is CancellationException -> throw e
-                    is ScriptException, is WrappedException -> {
+                    is ScriptException -> {
                         AppLog.put("js错误\n${e.localizedMessage}", e, true)
                         e.printOnDebug()
                         throw e

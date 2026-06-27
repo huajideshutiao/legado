@@ -14,7 +14,6 @@ import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import org.mozilla.javascript.NativeObject
 
 /**
  * 段评解析
@@ -186,14 +185,6 @@ object BookReview {
         return runCatching {
             val result = HashMap<Int, Int>()
             when (body) {
-                is NativeObject -> {
-                    body.ids.forEach { key ->
-                        val idx = key.toString().toIntOrNull() ?: return@forEach
-                        val count = body[key].toString().toIntOrNull() ?: 0
-                        if (count > 0) result[idx] = count
-                    }
-                }
-
                 is Map<*, *> -> {
                     body.forEach { (k, v) ->
                         val idx = k.toString().toIntOrNull() ?: return@forEach

@@ -1,6 +1,6 @@
 package io.legado.app.help.source
 
-import com.script.rhino.runScriptWithContext
+import com.script.quickjs.runScriptWithContext
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource

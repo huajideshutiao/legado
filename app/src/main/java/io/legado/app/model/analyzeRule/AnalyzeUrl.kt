@@ -14,8 +14,8 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializer
 import com.google.gson.reflect.TypeToken
-import com.script.buildScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.buildScriptBindings
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppConst.timeLimit
@@ -329,14 +329,21 @@ class AnalyzeUrl(
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val sharedScope = source?.getShareScope(coroutineContext)
-        val scope = if (sharedScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings)
+        // 用 IIFE + eval 包裹,隔离 let/const,避免污染 sharedScope
+        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
+        // quickjs 没有 prototype 继承,有 sharedScope 时直接复用并注入 bindings 变量
+        // 子 scope 隔离: eval 后清理注入的变量,避免不同书源切换时变量泄漏
+        return if (sharedScope == null) {
+            val scope = QuickJsEngine.getRuntimeScope(bindings)
+            QuickJsEngine.eval(wrappedJs, scope, coroutineContext)
         } else {
-            bindings.apply {
-                prototype = sharedScope
+            val injectedKeys = QuickJsEngine.injectBindings(sharedScope, bindings)
+            try {
+                QuickJsEngine.eval(wrappedJs, sharedScope, coroutineContext)
+            } finally {
+                QuickJsEngine.cleanupBindings(sharedScope, injectedKeys)
             }
         }
-        return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
     }
 
     fun put(key: String, value: String): String {

@@ -2,7 +2,7 @@ package io.legado.app.ui.book.rss
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.script.rhino.runScriptWithContext
+import com.script.quickjs.runScriptWithContext
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book

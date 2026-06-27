@@ -2,9 +2,10 @@ package io.legado.app.model.analyzeRule
 
 import android.text.TextUtils
 import androidx.annotation.Keep
-import com.script.CompiledScript
-import com.script.buildScriptBindings
-import com.script.rhino.RhinoScriptEngine
+import com.script.quickjs.CompiledScript
+import com.script.quickjs.QuickJsContext
+import com.script.quickjs.QuickJsEngine
+import com.script.quickjs.buildScriptBindings
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseBook
@@ -33,9 +34,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.jsoup.nodes.Node
-import org.mozilla.javascript.NativeObject
-import org.mozilla.javascript.Scriptable
-import java.lang.ref.WeakReference
 import java.net.URL
 import java.util.Locale
 import java.util.regex.Pattern
@@ -73,8 +71,7 @@ class AnalyzeRule(
     private val stringRuleCache = hashMapOf<String, List<SourceRule>>()
     private val regexCache = hashMapOf<String, Regex?>()
     private val scriptCache = hashMapOf<String, CompiledScript>()
-    private var topScopeRef: WeakReference<Scriptable>? = null
-    private var evalJSCallCount = 0
+    private var topScopeRef: QuickJsContext? = null
 
     var coroutineContext: CoroutineContext = EmptyCoroutineContext
         set(value) {
@@ -179,15 +176,20 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            if (result is NativeObject) {
+            if (result is Map<*, *>) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
+                } else if (sourceRule.mode == Mode.Json) {
+                    // JsonPath 规则用 JsonPath 解析
+                    // (Rhino 时代 NativeObject 只匹配 JS 对象,JsonPath 返回的 Map 走 else;
+                    //  QuickJS 时代 JS 对象也是 Map,需按 mode 区分,否则 result["$.name"] 返回 null)
+                    getAnalyzeByJSonPath(result).getStringList(sourceRule.rule)
                 } else {
-                    // 键值直接访问
+                    // 键值直接访问(JS 返回的 Map)
                     result[sourceRule.rule]
                 }
                 result?.let {
@@ -273,15 +275,20 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            if (result is NativeObject) {
+            if (result is Map<*, *>) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
+                } else if (sourceRule.mode == Mode.Json) {
+                    // JsonPath 规则用 JsonPath 解析
+                    // (Rhino 时代 NativeObject 只匹配 JS 对象,JsonPath 返回的 Map 走 else;
+                    //  QuickJS 时代 JS 对象也是 Map,需按 mode 区分,否则 result["$.name"] 返回 null)
+                    getAnalyzeByJSonPath(result).getString(sourceRule.rule)
                 } else {
-                    // 键值直接访问
+                    // 键值直接访问(JS 返回的 Map)
                     result[sourceRule.rule]?.toString()
                 }?.let {
                     replaceRegex(it, sourceRule)
@@ -777,6 +784,17 @@ class AnalyzeRule(
 
     /**
      * 执行JS
+     *
+     * quickjs 没有 rhino 的 prototype 继承链,无法用 `bindings.prototype = topScope`
+     * 实现 bindings scope 隔离。这里用 IIFE + eval 包裹用户 JS,模拟 rhino 行为:
+     * - let/const 留在 eval 词法环境(或 IIFE 函数作用域),不污染 topScope
+     *   (避免重复执行报 "redeclaration of 'xxx'")
+     * - return 在 IIFE 函数内生效(模拟 rhino 顶层 return 扩展)
+     * - eval 返回末尾表达式值(模拟 rhino script.exec 返回最后一个表达式)
+     * - bindings 变量通过 globalThis 注入(injectVariable),IIFE 内可访问
+     *
+     * 注: jslib 在 topScope(SharedJsScope)上执行,是共享的,不需要包裹。
+     * 这里只包裹 AnalyzeRule 的即开即走 JS。
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         // 空字符串早返回，避免不必要的编译执行开销
@@ -796,26 +814,27 @@ class AnalyzeRule(
             bindings["nextChapterUrl"] = nextChapterUrl
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
-        val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef?.get()
-        val scope = if (topScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings).apply {
-                if (evalJSCallCount++ > 16) {
-                    topScopeRef = WeakReference(prototype)
-                }
-            }
+        val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef
+        // 用 IIFE + eval 包裹,隔离 let/const,避免污染 topScope
+        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
+        // 子 scope 隔离: sharedScope 路径 eval 后清理注入的变量,避免不同书源切换时变量泄漏
+        return if (topScope == null) {
+            val scope = QuickJsEngine.getRuntimeScope(bindings)
+            topScopeRef = scope
+            compileScriptCache(wrappedJs).eval(scope, coroutineContext)
         } else {
-            bindings.apply {
-                prototype = topScope
+            val injectedKeys = QuickJsEngine.injectBindings(topScope, bindings)
+            try {
+                compileScriptCache(wrappedJs).eval(topScope, coroutineContext)
+            } finally {
+                QuickJsEngine.cleanupBindings(topScope, injectedKeys)
             }
         }
-        val script = compileScriptCache(jsStr)
-        val result = script.eval(scope, coroutineContext)
-        return result
     }
 
     private fun compileScriptCache(jsStr: String): CompiledScript {
         return scriptCache.getOrPutLimit(jsStr, 16) {
-            RhinoScriptEngine.compile(jsStr)
+            QuickJsEngine.compile(jsStr)
         }
     }
 

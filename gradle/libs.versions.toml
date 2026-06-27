@@ -44,6 +44,7 @@ hutool = "5.8.22"
 protobufJavalite = "4.35.0"
 jsoup = "1.22.2"
 rhino = "1.9.1"
+quickjsKt = "1.0.5"
 media3 = "1.10.1"
 webkit = "1.16.0"
 activity = "1.13.0"
@@ -144,6 +145,7 @@ kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "
 material = { module = "com.google.android.material:material", version.ref = "material" }
 
 mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+quickjs-kt-android = { module = "io.github.dokar3:quickjs-kt-android", version.ref = "quickjsKt" }
 
 [bundles]
 coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]
