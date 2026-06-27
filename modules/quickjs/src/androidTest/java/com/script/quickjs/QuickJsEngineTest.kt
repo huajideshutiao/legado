@@ -1101,4 +1101,442 @@ class QuickJsEngineTest {
             scopes.forEach { it.close() }
         }
     }
+
+    // ============ ownKeys trap 验证 ============
+    // 背景: JsBootstrap.kt 的 __wrapJavaObject Proxy 之前未加 ownKeys/getOwnPropertyDescriptor trap,
+    // 注释称 "native 层 getEvaluateResult 会通过这两个 trap 遍历 Proxy,导致无限递归 StackOverflowError"。
+    // 此处验证该结论是否准确: 若带 trap 的 Proxy 直接返回到 Kotlin 侧不爆栈,
+    // 说明可改用 Proxy+ownKeys 实现 rhino NativeJavaMap 行为一致(for...in + .get() 并存),
+    // 去掉 __wrapJavaResult 中的 Map→Object 转换 + origKeyMap 两重映射。
+
+    /**
+     * 测试1: 带 ownKeys/getOwnPropertyDescriptor trap 的 Proxy 直接作为 eval 返回值,
+     * 验证 native 层 JS→Kotlin 转换不会 StackOverflow。
+     *
+     * 若爆栈: 说明之前的注释结论正确,ownKeys trap 不可用。
+     * 若通过: 说明 ownKeys trap 可用,之前的注释可能是误判或特定数据导致。
+     */
+    @Test
+    fun testOwnKeysTrapReturnToKotlinNoStackOverflow() {
+        val js = """
+            var obj = {a: 1, b: 'hello', c: true};
+            var p = new Proxy(obj, {
+                ownKeys: function() { return ['a', 'b', 'c']; },
+                getOwnPropertyDescriptor: function(target, prop) {
+                    if (!(prop in target)) return undefined;
+                    return { value: target[prop], writable: true, enumerable: true, configurable: true };
+                }
+            });
+            p;
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        // 关键: 若爆栈,eval 会抛 StackOverflowError,到不了下面的 assert
+        println("testOwnKeysTrapReturnToKotlin result: $result (${result?.javaClass})")
+        assertTrue("Expected Map from Proxy, got ${result?.javaClass}", result is Map<*, *>)
+        val map = result as Map<*, *>
+        assertEquals(1, (map["a"] as Number).toInt())
+        assertEquals("hello", map["b"].toString())
+        assertEquals(true, map["c"])
+    }
+
+    /**
+     * 测试2: 嵌套 Proxy(Proxy 的 value 是另一个 Proxy),
+     * 验证 native 递归转换时正常终止,不爆栈。
+     *
+     * 这模拟真实业务场景: Java Map 的 value 是另一个 Java Map(如 idea_data → idea_count Map),
+     * 若 ownKeys trap 可用,每个 Map 都是带 trap 的 Proxy,转换时会递归。
+     */
+    @Test
+    fun testNestedProxyReturnToKotlinNoStackOverflow() {
+        val js = """
+            function makeProxy(obj) {
+                return new Proxy(obj, {
+                    ownKeys: function() { return Object.keys(obj); },
+                    getOwnPropertyDescriptor: function(target, prop) {
+                        if (!(prop in target)) return undefined;
+                        return { value: target[prop], writable: true, enumerable: true, configurable: true };
+                    }
+                });
+            }
+            var inner = makeProxy({x: 1, y: 2});
+            var outer = makeProxy({a: inner, b: 'test'});
+            outer;
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testNestedProxyReturnToKotlin result: $result (${result?.javaClass})")
+        assertTrue("Expected Map, got ${result?.javaClass}", result is Map<*, *>)
+        val outer = result as Map<*, *>
+        assertEquals("test", outer["b"].toString())
+        // 内层 Proxy 也应被递归转换为 Map
+        @Suppress("UNCHECKED_CAST")
+        val innerMap = outer["a"] as Map<String, Any?>
+        assertEquals(1, (innerMap["x"] as Number).toInt())
+        assertEquals(2, (innerMap["y"] as Number).toInt())
+    }
+
+    /**
+     * 测试3: 验证 Proxy 可同时支持 for...in(ownKeys trap) 和 .get()(get trap),
+     * 这是 rhino NativeJavaMap 的核心行为,也是业务代码 `for (let key in body) body.get(key).xxx` 所需。
+     *
+     * 此测试返回 JSON.stringify 的字符串,不直接返回 Proxy,主要验证 Proxy 语义可用。
+     */
+    @Test
+    fun testProxyForInAndGetCoexist() {
+        val js = """
+            var data = {'1': {idea_count: 5}, '2': {idea_count: 10}};
+            var p = new Proxy(data, {
+                ownKeys: function() { return ['1', '2']; },
+                getOwnPropertyDescriptor: function(target, prop) {
+                    if (!(prop in target)) return undefined;
+                    return { value: target[prop], writable: true, enumerable: true, configurable: true };
+                },
+                get: function(target, prop) {
+                    // .get(key) 调用: 返回一个函数,执行时返回 target[key]
+                    if (prop === 'get') {
+                        return function(k) { return target[k]; };
+                    }
+                    return target[prop];
+                }
+            });
+            // 业务代码模式: for...in + .get() 并存 (与段评解析一致)
+            var results = {};
+            for (var key in p) {
+                results[~~key] = p.get(key).idea_count;
+            }
+            JSON.stringify(results);
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testProxyForInAndGetCoexist result: $result")
+        assertEquals("""{"1":5,"2":10}""", result.toString())
+    }
+
+    /**
+     * 测试4: Java Map (LinkedHashMap) 通过 Java 方法返回后,for...in + .get() 并存。
+     *
+     * 真正互操作验证: Map 通过 javaToJsResult 走 Java 句柄路径 (标记 __java_is_map__),
+     * __wrapJavaResult 检测标记后用 __wrapJavaMap 包装 (Proxy 增加 ownKeys trap)。
+     * - ownKeys trap 让 for...in 枚举 Map keys (经 __getInstanceKeys → Map.keySet)
+     * - get trap 委托到 __getJavaPropertyValue → __getInstanceField → Map.get(key)
+     * - 嵌套 Map (idea_count) 也通过 __wrapJavaMap 递归包装,.idea_count 属性访问正常
+     *
+     * 这覆盖番茄小说段评解析的核心代码: for (var key in body) body.get(key).idea_count
+     *
+     * 注意: 必须通过 Java 方法返回 Map (clone()) 走 javaToJsResult → __wrapJavaMap 路径,
+     * 而非 bindings 注入 (bindings 注入走 __wrapJavaObject,不支持 for...in/Object.entries)。
+     * 这与段评业务路径一致: body = java.getElements("$..idea_data")[0] 通过 Java 方法返回 Map。
+     */
+    @Test
+    fun testJavaMapForInAndGetCoexist() {
+        // 模拟段评 idea_data: {"1": {idea_count: 5}, "2": {idea_count: 10}}
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            var v1 = new java.util.LinkedHashMap();
+            v1.put('idea_count', 5);
+            var v2 = new java.util.LinkedHashMap();
+            v2.put('idea_count', 10);
+            m.put('1', v1);
+            m.put('2', v2);
+            var body = m.clone();
+            var results = {};
+            for (var key in body) {
+                results[~~key] = body.get(key).idea_count;
+            }
+            JSON.stringify(results);
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testJavaMapForInAndGetCoexist result: $result")
+        assertEquals("""{"1":5,"2":10}""", result.toString())
+    }
+
+    /**
+     * 测试5: Object.entries 对 Java Map Proxy 的工作。
+     *
+     * 验证 __wrapJavaMap 的 ownKeys + getOwnPropertyDescriptor trap 让 Object.entries 返回 key-value 对。
+     * 对齐 rhino NativeJavaMap.getIds() 行为。
+     */
+    @Test
+    fun testObjectEntriesOnJavaMap() {
+        // 通过 m.clone() 让 Map 走 javaToJsResult → quickjs-kt 自动转 JS Map → __wrapJavaMap 路径
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('a', 1);
+            m.put('b', 2);
+            m.put('c', 3);
+            var body = m.clone();
+            var entries = Object.entries(body);
+            var sum = 0;
+            for (var i = 0; i < entries.length; i++) {
+                sum += entries[i][1];
+            }
+            sum;
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testObjectEntriesOnJavaMap result: $result")
+        assertEquals(6, (result as Number).toInt())
+    }
+
+    /**
+     * 测试6: Object.keys 对 Java Map Proxy 的工作。
+     */
+    @Test
+    fun testObjectKeysOnJavaMap() {
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('x', 1);
+            m.put('y', 2);
+            m.put('z', 3);
+            var body = m.clone();
+            var keys = Object.keys(body);
+            keys.join(',');
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testObjectKeysOnJavaMap result: $result")
+        assertEquals("x,y,z", result.toString())
+    }
+
+    // ============ __wrapJavaMap 真正互操作验证 ============
+    // 背景: 旧版 __wrapJsMap 把 Map 转成 ES6 Map 副本,JS 修改副本不影响原 Java Map,不叫互操作。
+    // 新版 __wrapJavaMap 通过 Java 句柄路径,set/get/ownKeys trap 直接操作原 Java Map。
+    // 以下测试验证修改源对象后,通过同一引用读取能感知到修改。
+
+    /**
+     * 测试7: __wrapJavaMap 修改后,通过同一 body 读取可见 (真正互操作)。
+     *
+     * 关键验证点: JS 侧 `body[key] = val` 修改后,通过同一 body 读取 `body[key]` 能看到新值。
+     * 这证明 __wrapJavaMap 的 set/get trap 都作用于同一个 Java Map (而非副本):
+     * - set trap → __setInstanceField → setCollectionField → Map.put(key, val)
+     * - get trap → __getInstanceField → getCollectionField → Map.get(key)
+     *
+     * 这是用户反馈 "无法修改源对象就不叫互操作" 的核心场景回归测试。
+     */
+    @Test
+    fun testJavaMapInteropModificationPersists() {
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('origKey', 'origVal');
+            var body = m.clone();
+            body['newKey'] = 'newVal';
+            body['origKey'] = 'modified';
+            var viaGet = body.get('newKey');
+            var viaBracket = body['origKey'];
+            var size = body.size();
+            viaGet + '|' + viaBracket + '|' + size;
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testJavaMapInteropModificationPersists result: $result")
+        assertEquals("newVal|modified|2", result.toString())
+    }
+
+    /**
+     * 测试8: __wrapJavaMap 修改后 Object.keys 反映新增的 key。
+     *
+     * 验证 set trap 后 ownKeys (经 cachedKeys 或 __getInstanceKeys) 能枚举到新增 key。
+     */
+    @Test
+    fun testJavaMapInteropKeysReflectModification() {
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('a', 1);
+            var body = m.clone();
+            body['b'] = 2;
+            body['c'] = 3;
+            Object.keys(body).join(',') + '|' + body.size();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testJavaMapInteropKeysReflectModification result: $result")
+        assertEquals("a,b,c|3", result.toString())
+    }
+
+    /**
+     * 测试9: __wrapJavaMap 修改后 for...in 枚举到新 key。
+     *
+     * 验证 ownKeys trap (经 cachedKeys) 反映 set trap 的新增 key,
+     * 让 for...in 能枚举到 JS 侧新增的 key (LinkedHashMap 维持插入顺序)。
+     */
+    @Test
+    fun testJavaMapInteropForInReflectsModification() {
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('orig', 'val');
+            var body = m.clone();
+            body['added'] = 'new';
+            var keys = [];
+            for (var k in body) keys.push(k);
+            keys.join(',') + '|' + body.size();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testJavaMapInteropForInReflectsModification result: $result")
+        assertEquals("orig,added|2", result.toString())
+    }
+
+    /**
+     * 测试10: __wrapJavaMap 修改后 Object.entries 反映新增的 key-value。
+     *
+     * 验证 getOwnPropertyDescriptor trap 也能访问到 set trap 添加的新 key。
+     */
+    @Test
+    fun testJavaMapInteropEntriesReflectModification() {
+        val js = """
+            var m = new java.util.LinkedHashMap();
+            m.put('a', 1);
+            var body = m.clone();
+            body['b'] = 2;
+            var entries = Object.entries(body);
+            var parts = [];
+            for (var i = 0; i < entries.length; i++) {
+                parts.push(entries[i][0] + '=' + entries[i][1]);
+            }
+            parts.join(',') + '|' + body.size();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        println("testJavaMapInteropEntriesReflectModification result: $result")
+        assertEquals("a=1,b=2|2", result.toString())
+    }
+
+    /**
+     * 测试11: StringBuilder 链式调用 (含数字参数)。
+     *
+     * 回归测试: javaToJsResult 中 StringBuilder 实现了 CharSequence 接口,
+     * 被错误地 toString() 转成 String,导致 sb.append(s) 返回 String 而非 StringBuilder,
+     * 后续 .append(i) 报 "TypeError: not a function"。
+     *
+     * 修复: StringBuilder/StringBuffer 保留为 Java 对象,不走 CharSequence.toString()。
+     */
+    @Test
+    fun testStringBuilderChainCallAfterMapInteropFix() {
+        val js = """
+            var sb = new java.lang.StringBuilder();
+            for (var i = 0; i < 20; i++) {
+                sb.append('item').append(i).append(',');
+            }
+            sb.toString();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        val expected = (0 until 20).joinToString("") { "item$it," }
+        assertEquals(expected, result.toString())
+    }
+
+    // ============ 精简验证 (本次精简点回归测试) ============
+    // 背景: 删除了 __jsFnStore 死变量、__unwrapJavaHandle 薄 wrapper、
+    //       __getJavaPropertyValue 的 length 特判死代码、__wrapJavaResult 的 v.get 死分支
+    // 以下测试验证行为未回归
+
+    /**
+     * 验证 1: __unwrapJavaHandle 删除后,Kotlin 侧通过 __wrapJavaObject 注入 Java 对象仍可正常调用。
+     *
+     * 覆盖 QuickJsEngine.injectVariable / JsFunction.javaArgToJsExpr / JsFunctionHandle.javaArgToJsExpr
+     * 三处调用点的精简(都从 __unwrapJavaHandle 改为 __wrapJavaObject)。
+     */
+    @Test
+    fun testUnwrapJavaHandleRemovalBindingsInjection() {
+        // bindings 注入 StringBuilder,JS 调用其实例方法
+        val sb = StringBuilder("prefix-")
+        val result = QuickJsEngine.eval("sb.append('tail').toString()") {
+            put("sb", sb)
+        }
+        assertEquals("prefix-tail", result.toString())
+    }
+
+    /**
+     * 验证 2: length 特判删除后,List/Array 的 length 字段仍能正常访问。
+     *
+     * List/Array 的 length 由 Java 侧 getCollectionField 处理(getInstanceField 返回 Int),
+     * JS 侧 __getJavaPropertyValue 收到的 field 已是 Number,直接返回不走 callable 路径。
+     */
+    @Test
+    fun testLengthSpecialCaseRemovalListLength() {
+        val list = ArrayList<String>(listOf("a", "b", "c", "d"))
+        val result = QuickJsEngine.eval("lst.length") {
+            put("lst", list)
+        }
+        assertEquals(4, (result as Number).toInt())
+    }
+
+    @Test
+    fun testLengthSpecialCaseRemovalArrayLength() {
+        val arr = arrayOf(10, 20, 30)
+        val result = QuickJsEngine.eval("arr.length") {
+            put("arr", arr)
+        }
+        assertEquals(3, (result as Number).toInt())
+    }
+
+    /**
+     * 验证 3: length 特判删除后,String.length() 方法仍能正常调用(走 method callable 路径)。
+     *
+     * String 没有 length 字段,只有 length() 方法,getInstanceField 返回 null,
+     * __getJavaPropertyValue 进入 "field 不存在" 分支返回 method callable。
+     */
+    @Test
+    fun testLengthSpecialCaseRemovalStringLengthMethod() {
+        val js = """
+            var s = new java.lang.String('hello');
+            s.length();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        assertEquals(5, (result as Number).toInt())
+    }
+
+    /**
+     * 验证 4: __wrapJavaResult 的 v.get(__java_handle__) 死分支删除后,
+     * 普通 Java 对象(包装为 {__java_handle__: handle} Map)仍能被正确解包为 __wrapJavaObject Proxy。
+     *
+     * quickjs-kt 把 Kotlin Map 转为 JS Map,在 __wrapJavaResult 中走 v instanceof Map 分支处理。
+     */
+    @Test
+    fun testWrapJavaResultObjectBranchRemoval() {
+        // 通过 Java 方法返回 Java 对象(java.util.ArrayList 实例化),
+        // javaToJsResult 包装为 {__java_handle__: handle} Map → quickjs-kt 转 JS Map →
+        // __wrapJavaResult 在 Map 分支处理,JS 侧可调用其实例方法
+        val js = """
+            var list = new java.util.ArrayList();
+            list.add('item1');
+            list.add('item2');
+            list.size();
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        assertEquals(2, (result as Number).toInt())
+    }
+
+    /**
+     * 验证 5: __jsFnStore 死变量删除后,JavaAdapter 仍能正常创建并工作。
+     *
+     * __registerJsFunction 实际只使用 __jsFnCounter 生成唯一名并存到 globalThis,
+     * __jsFnStore 从未被读写,删除后行为应一致。
+     */
+    @Test
+    fun testJsFnStoreRemovalJavaAdapter() {
+        // 验证 JavaAdapter 创建仍能工作(创建后调 hashCode/equals 不爆栈)
+        val js = """
+            var r = new Packages.java.lang.Runnable({ run: function(){} });
+            typeof r;
+        """.trimIndent()
+        val result = QuickJsEngine.eval(js)
+        assertEquals("object", result.toString())
+    }
+
+    /**
+     * 验证 6: __unwrapJavaHandle 删除后,JsFunction 回调链路仍能正常工作。
+     *
+     * JsFunction.argToJsExpr 把 Java 参数转为 JS 表达式,Java 对象参数通过 __wrapJavaObject 解包,
+     * 在 JS 侧应能调用其实例方法。
+     */
+    @Test
+    fun testUnwrapJavaHandleRemovalJsFunctionCallback() {
+        val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
+        try {
+            // 在 scope 中定义函数(用 globalThis 暴露)
+            QuickJsEngine.eval(
+                "globalThis.appendString = function(sb, suffix) { return sb.append(suffix).toString(); }; null",
+                scope, null
+            )
+            // 通过 JsFunction 调用,Java StringBuilder 参数经 javaArgToJsExpr 转 __wrapJavaObject(handle),
+            // JS 函数内调用 .append() 应正常工作
+            val sb = StringBuilder("hello-")
+            val result = JsFunction(scope, "appendString").call(sb, "world")
+            assertEquals("hello-world", result.toString())
+        } finally {
+            scope.close()
+        }
+    }
 }

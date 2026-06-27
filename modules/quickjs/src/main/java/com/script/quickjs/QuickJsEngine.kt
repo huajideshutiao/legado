@@ -333,7 +333,7 @@ object QuickJsEngine {
      * 注入单个 bindings 变量到 QuickJs 全局作用域。
      *
      * - null/基本类型(String/Number/Boolean)直接拼字面量
-     * - Java 对象通过 [JavaObjectBridge.registerObject] 注册句柄,JS 用 __unwrapJavaHandle 解包
+     * - Java 对象通过 [JavaObjectBridge.registerObject] 注册句柄,JS 用 __wrapJavaObject 解包
      *
      * 注意: 用 `globalThis.$key = ...` 而非 `var $key = ...`,
      * 因为 QuickJS 中 `var` 与书源 JS 的 `let`/`const` 同名会报 "redeclaration",
@@ -358,7 +358,7 @@ object QuickJsEngine {
                 // Java 对象通过句柄注入
                 if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
                 val handle = JavaObjectBridge.registerObject(value)
-                "__unwrapJavaHandle($handle)"
+                "__wrapJavaObject($handle)"
             }
         }
         runBlocking(Dispatchers.Unconfined) {

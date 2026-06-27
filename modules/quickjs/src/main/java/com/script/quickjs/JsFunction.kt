@@ -69,7 +69,7 @@ class JsFunction(
         // Java 对象通过句柄包装
         if (!JsSecurityPolicy.isObjectVisible(arg, dangerousApi)) return "null"
         val handle = JavaObjectBridge.registerObject(arg)
-        return "__unwrapJavaHandle($handle)"
+        return "__wrapJavaObject($handle)"
     }
 
     companion object {

@@ -2,6 +2,9 @@ package com.script.quickjs
 
 import android.util.Log
 import androidx.collection.LongSparseArray
+import com.script.quickjs.JavaObjectBridge.NO_RESULT
+import com.script.quickjs.JavaObjectBridge.appendToBuilder
+import com.script.quickjs.JavaObjectBridge.callStringBuilderMethod
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
 import com.script.quickjs.JavaObjectBridge.loadJavaClass
@@ -10,6 +13,7 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -42,6 +46,26 @@ object JavaObjectBridge {
     /** scopeId -> 该 scope 注册的句柄集合,close 时批量释放 */
     private val scopeHandles = LongSparseArray<MutableSet<Long>>()
     private val lock = Any()
+
+    /**
+     * 方法查找结果缓存 (类名#方法名(参数类型列表) -> Method)。
+     *
+     * 反射查找 findMethod 涉及 collectMethods + isArgsCompatible + paramSpecificityScore,
+     * 对于 List/Map/StringBuilder 等热点类型的循环调用是显著开销。
+     * 由于 Class 结构运行时不变,同一 (类, 方法, 参数类型签名) 总是解析到同一 Method,
+     * 可全局缓存跨 scope 复用。
+     *
+     * 命中:methodCache;未命中:methodMissCache 避免重复反射查找。
+     */
+    private val methodCache = ConcurrentHashMap<String, Method>()
+    private val methodMissCache = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * 快速路径未命中哨兵对象。callHotTypeMethod 返回此值表示该 methodName 未处理,
+     * 调用方需继续走原 findMethod 反射路径。
+     * 不能用 null 区分,null 是合法返回值(如 Map.get 不存在的 key 返回 null)。
+     */
+    private val NO_RESULT = Any()
 
     /**
      * 把 handle 记录到当前线程的 scope,close 时批量释放。
@@ -231,6 +255,12 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isMethodVisible(obj.javaClass.name, methodName, dangerousApi)) {
             return null
         }
+        // 热点类型快速路径: List/Map/StringBuilder/StringBuffer 绕过 findMethod 反射,
+        // 直接调用常用方法。这些类型在书源 JS 循环中频繁使用 (list.add/get/size,
+        // map.put/get/containsKey, sb.append/toString),反射开销显著。
+        // 快速路径未命中的方法 (如 list.subList) 返回 NO_RESULT,走原 findMethod 路径。
+        val fastResult = callHotTypeMethod(obj, methodName, args, dangerousApi)
+        if (fastResult !== NO_RESULT) return fastResult
         return try {
             val javaArgs = jsToJavaArgs(args)
             val method = findMethod(obj.javaClass, methodName, javaArgs)
@@ -275,6 +305,432 @@ object JavaObjectBridge {
         } catch (e: LinkageError) {
             Log.w(TAG, "callInstanceMethod linkage error: ${obj.javaClass.name}.$methodName", e)
             null
+        }
+    }
+
+    /**
+     * 热点类型方法快速路径分发。
+     *
+     * @return 处理结果(null 也是合法返回值);[NO_RESULT] 表示未命中,调用方走反射路径
+     */
+    private fun callHotTypeMethod(
+        obj: Any,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        return when (obj) {
+            is MutableList<*> -> callListMethod(
+                obj as MutableList<Any?>,
+                methodName,
+                args,
+                dangerousApi
+            )
+
+            is MutableMap<*, *> -> callMapMethod(
+                obj as MutableMap<Any?, Any?>,
+                methodName,
+                args,
+                dangerousApi
+            )
+
+            is StringBuilder -> callStringBuilderMethod(obj, methodName, args, dangerousApi)
+            is StringBuffer -> callStringBufferMethod(obj, methodName, args, dangerousApi)
+            else -> NO_RESULT
+        }
+    }
+
+    /**
+     * List 热点方法快速路径。
+     * 覆盖书源 JS 高频方法:size/get/add/remove/contains/indexOf/clear/isEmpty。
+     * 未覆盖的方法(如 subList/toArray/listIterator)走反射。
+     *
+     * @return 处理结果或 [NO_RESULT]
+     */
+    private fun callListMethod(
+        list: MutableList<Any?>,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        return when (methodName) {
+            "size" -> if (args.isEmpty()) javaToJsResult(list.size, dangerousApi) else NO_RESULT
+            "isEmpty" -> if (args.isEmpty()) javaToJsResult(
+                list.isEmpty(),
+                dangerousApi
+            ) else NO_RESULT
+
+            "get" -> if (args.size == 1) {
+                val idx = (args[0] as? Number)?.toInt()
+                    ?: return NO_RESULT
+                if (idx in 0 until list.size) javaToJsResult(list[idx], dangerousApi) else null
+            } else NO_RESULT
+
+            "add" -> when (args.size) {
+                1 -> {
+                    list.add(jsToJavaValue(args[0], null))
+                    javaToJsResult(true, dangerousApi)
+                }
+
+                2 -> {
+                    val idx = (args[0] as? Number)?.toInt()
+                        ?: return NO_RESULT
+                    list.add(idx, jsToJavaValue(args[1], null))
+                    null
+                }
+
+                else -> NO_RESULT
+            }
+
+            "remove" -> if (args.size == 1) {
+                val arg = args[0]
+                if (arg is Number) {
+                    val idx = arg.toInt()
+                    if (idx in 0 until list.size) javaToJsResult(
+                        list.removeAt(idx),
+                        dangerousApi
+                    ) else null
+                } else {
+                    javaToJsResult(list.remove(jsToJavaValue(arg, null)), dangerousApi)
+                }
+            } else NO_RESULT
+
+            "contains" -> if (args.size == 1) {
+                javaToJsResult(list.contains(jsToJavaValue(args[0], null)), dangerousApi)
+            } else NO_RESULT
+
+            "indexOf" -> if (args.size == 1) {
+                javaToJsResult(list.indexOf(jsToJavaValue(args[0], null)), dangerousApi)
+            } else NO_RESULT
+
+            "lastIndexOf" -> if (args.size == 1) {
+                javaToJsResult(list.lastIndexOf(jsToJavaValue(args[0], null)), dangerousApi)
+            } else NO_RESULT
+
+            "clear" -> if (args.isEmpty()) {
+                list.clear()
+                null
+            } else NO_RESULT
+
+            "set" -> if (args.size == 2) {
+                val idx = (args[0] as? Number)?.toInt()
+                    ?: return NO_RESULT
+                if (idx in 0 until list.size) {
+                    javaToJsResult(list.set(idx, jsToJavaValue(args[1], null)), dangerousApi)
+                } else null
+            } else NO_RESULT
+
+            else -> NO_RESULT
+        }
+    }
+
+    /**
+     * Map 热点方法快速路径。
+     * 覆盖书源 JS 高频方法:size/get/put/remove/containsKey/containsValue/keySet/values/entrySet/isEmpty/clear。
+     *
+     * @return 处理结果或 [NO_RESULT]
+     */
+    private fun callMapMethod(
+        map: MutableMap<Any?, Any?>,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        return when (methodName) {
+            "size" -> if (args.isEmpty()) javaToJsResult(map.size, dangerousApi) else NO_RESULT
+            "isEmpty" -> if (args.isEmpty()) javaToJsResult(
+                map.isEmpty(),
+                dangerousApi
+            ) else NO_RESULT
+
+            "get" -> if (args.size == 1) {
+                javaToJsResult(map[jsToJavaValue(args[0], null)], dangerousApi)
+            } else NO_RESULT
+
+            "put" -> if (args.size == 2) {
+                javaToJsResult(
+                    map.put(jsToJavaValue(args[0], null), jsToJavaValue(args[1], null)),
+                    dangerousApi
+                )
+            } else NO_RESULT
+
+            "putIfAbsent" -> if (args.size == 2) {
+                javaToJsResult(
+                    map.putIfAbsent(jsToJavaValue(args[0], null), jsToJavaValue(args[1], null)),
+                    dangerousApi
+                )
+            } else NO_RESULT
+
+            "remove" -> when (args.size) {
+                1 -> javaToJsResult(map.remove(jsToJavaValue(args[0], null)), dangerousApi)
+                2 -> javaToJsResult(
+                    map.remove(jsToJavaValue(args[0], null), jsToJavaValue(args[1], null)),
+                    dangerousApi
+                )
+
+                else -> NO_RESULT
+            }
+
+            "containsKey" -> if (args.size == 1) {
+                javaToJsResult(map.containsKey(jsToJavaValue(args[0], null)), dangerousApi)
+            } else NO_RESULT
+
+            "containsValue" -> if (args.size == 1) {
+                javaToJsResult(map.containsValue(jsToJavaValue(args[0], null)), dangerousApi)
+            } else NO_RESULT
+
+            "keySet" -> if (args.isEmpty()) {
+                javaToJsResult(map.keys, dangerousApi)
+            } else NO_RESULT
+
+            "values" -> if (args.isEmpty()) {
+                javaToJsResult(map.values, dangerousApi)
+            } else NO_RESULT
+
+            "entrySet" -> if (args.isEmpty()) {
+                javaToJsResult(map.entries, dangerousApi)
+            } else NO_RESULT
+
+            "clear" -> if (args.isEmpty()) {
+                map.clear()
+                null
+            } else NO_RESULT
+
+            "getOrDefault" -> if (args.size == 2) {
+                javaToJsResult(
+                    map.getOrDefault(jsToJavaValue(args[0], null), jsToJavaValue(args[1], null)),
+                    dangerousApi
+                )
+            } else NO_RESULT
+
+            else -> NO_RESULT
+        }
+    }
+
+    /**
+     * StringBuilder 热点方法快速路径。
+     * 覆盖书源 JS 高频方法:append/length/charAt/toString/delete/replace/insert/substring/reverse。
+     *
+     * 注意:append 整数 Number 时用 append(int) 而非 toString(),
+     * 避免 Double 0.0 被转为 "0.0"(Rhino LiveConnect 中 sb.append(0) 返回 "0")。
+     *
+     * @return 处理结果或 [NO_RESULT]
+     */
+    private fun callStringBuilderMethod(
+        sb: StringBuilder,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        return when (methodName) {
+            "append" -> if (args.size == 1) {
+                appendToBuilder(sb, args[0])
+                javaToJsResult(sb, dangerousApi)
+            } else NO_RESULT
+
+            "appendCodePoint" -> if (args.size == 1) {
+                val cp = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                sb.appendCodePoint(cp)
+                javaToJsResult(sb, dangerousApi)
+            } else NO_RESULT
+
+            "length" -> if (args.isEmpty()) {
+                javaToJsResult(sb.length, dangerousApi)
+            } else NO_RESULT
+
+            "charAt" -> if (args.size == 1) {
+                val idx = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                if (idx in 0 until sb.length) javaToJsResult(sb[idx], dangerousApi) else null
+            } else NO_RESULT
+
+            "setLength" -> if (args.size == 1) {
+                val len = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                sb.setLength(len)
+                null
+            } else NO_RESULT
+
+            "delete" -> if (args.size == 2) {
+                val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.delete(s, e), dangerousApi)
+            } else NO_RESULT
+
+            "deleteCharAt" -> if (args.size == 1) {
+                val idx = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.deleteCharAt(idx), dangerousApi)
+            } else NO_RESULT
+
+            "replace" -> if (args.size == 3) {
+                val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.replace(s, e, args[2]?.toString() ?: "null"), dangerousApi)
+            } else NO_RESULT
+
+            "insert" -> if (args.size == 2) {
+                val idx = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.insert(idx, args[1]?.toString() ?: "null"), dangerousApi)
+            } else NO_RESULT
+
+            "substring" -> when (args.size) {
+                1 -> {
+                    val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                    javaToJsResult(sb.substring(s), dangerousApi)
+                }
+
+                2 -> {
+                    val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                    val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                    javaToJsResult(sb.substring(s, e), dangerousApi)
+                }
+
+                else -> NO_RESULT
+            }
+
+            "indexOf" -> if (args.size == 1) {
+                javaToJsResult(sb.indexOf(args[0]?.toString() ?: "null"), dangerousApi)
+            } else if (args.size == 2) {
+                val from = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.indexOf(args[0]?.toString() ?: "null", from), dangerousApi)
+            } else NO_RESULT
+
+            "lastIndexOf" -> if (args.size == 1) {
+                javaToJsResult(sb.lastIndexOf(args[0]?.toString() ?: "null"), dangerousApi)
+            } else NO_RESULT
+
+            "reverse" -> if (args.isEmpty()) {
+                javaToJsResult(sb.reverse(), dangerousApi)
+            } else NO_RESULT
+
+            "toString" -> if (args.isEmpty()) {
+                javaToJsResult(sb.toString(), dangerousApi)
+            } else NO_RESULT
+
+            else -> NO_RESULT
+        }
+    }
+
+    /**
+     * StringBuffer 快速路径,委托到 [callStringBuilderMethod] (两者 API 等价)。
+     */
+    private fun callStringBufferMethod(
+        sb: StringBuffer,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        // StringBuffer 与 StringBuilder 方法签名一致,转换 args[0] 同样的方式处理
+        // 为避免重复实现,直接调用对应方法。StringBuffer 是 synchronized 的 StringBuilder。
+        return when (methodName) {
+            "append" -> if (args.size == 1) {
+                appendToBuffer(sb, args[0])
+                javaToJsResult(sb, dangerousApi)
+            } else NO_RESULT
+
+            "length" -> if (args.isEmpty()) javaToJsResult(sb.length, dangerousApi) else NO_RESULT
+            "charAt" -> if (args.size == 1) {
+                val idx = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                if (idx in 0 until sb.length) javaToJsResult(sb[idx], dangerousApi) else null
+            } else NO_RESULT
+
+            "delete" -> if (args.size == 2) {
+                val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.delete(s, e), dangerousApi)
+            } else NO_RESULT
+
+            "replace" -> if (args.size == 3) {
+                val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.replace(s, e, args[2]?.toString() ?: "null"), dangerousApi)
+            } else NO_RESULT
+
+            "insert" -> if (args.size == 2) {
+                val idx = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                javaToJsResult(sb.insert(idx, args[1]?.toString() ?: "null"), dangerousApi)
+            } else NO_RESULT
+
+            "substring" -> when (args.size) {
+                1 -> {
+                    val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                    javaToJsResult(sb.substring(s), dangerousApi)
+                }
+
+                2 -> {
+                    val s = (args[0] as? Number)?.toInt() ?: return NO_RESULT
+                    val e = (args[1] as? Number)?.toInt() ?: return NO_RESULT
+                    javaToJsResult(sb.substring(s, e), dangerousApi)
+                }
+
+                else -> NO_RESULT
+            }
+
+            "reverse" -> if (args.isEmpty()) javaToJsResult(
+                sb.reverse(),
+                dangerousApi
+            ) else NO_RESULT
+
+            "toString" -> if (args.isEmpty()) javaToJsResult(
+                sb.toString(),
+                dangerousApi
+            ) else NO_RESULT
+
+            else -> NO_RESULT
+        }
+    }
+
+    /**
+     * StringBuilder/StringBuffer append 参数智能转换。
+     *
+     * 模拟 Rhino LiveConnect 的 append 重载选择行为:
+     * - 整数值 Number (Int/Long/整数值 Double) → append(int/long),返回 "0" 而非 "0.0"
+     * - 非整数 Double → append(double)
+     * - String → append(String)
+     * - Boolean → append(boolean)
+     * - null → append("null") (Java 原生 append(Object null) 行为)
+     * - 其他对象 → append(obj.toString())
+     */
+    private fun appendToBuilder(sb: StringBuilder, value: Any?) {
+        when (value) {
+            is String -> sb.append(value)
+            is Boolean -> sb.append(value)
+            is Number -> {
+                if (isIntegerNumber(value)) {
+                    val longVal = value.toLong()
+                    if (longVal in Int.MIN_VALUE..Int.MAX_VALUE) {
+                        sb.append(longVal.toInt())
+                    } else {
+                        sb.append(longVal)
+                    }
+                } else {
+                    sb.append(value.toDouble())
+                }
+            }
+
+            null -> sb.append("null")
+            else -> sb.append(value.toString())
+        }
+    }
+
+    /** [appendToBuilder] 的 StringBuffer 版本 (签名不同需要单独实现)。 */
+    private fun appendToBuffer(sb: StringBuffer, value: Any?) {
+        when (value) {
+            is String -> sb.append(value)
+            is Boolean -> sb.append(value)
+            is Number -> {
+                if (isIntegerNumber(value)) {
+                    val longVal = value.toLong()
+                    if (longVal in Int.MIN_VALUE..Int.MAX_VALUE) {
+                        sb.append(longVal.toInt())
+                    } else {
+                        sb.append(longVal)
+                    }
+                } else {
+                    sb.append(value.toDouble())
+                }
+            }
+
+            null -> sb.append("null")
+            else -> sb.append(value.toString())
         }
     }
 
@@ -701,11 +1157,45 @@ object JavaObjectBridge {
             adapterMap.clear()
             scopeHandles.clear()
         }
+        // 方法缓存与 ClassLoader 强相关,测试场景需重置避免跨用例污染
+        methodCache.clear()
+        methodMissCache.clear()
     }
 
     // ============ 反射辅助 ============
 
     private fun findMethod(clazz: Class<*>, name: String, args: Array<Any?>): Method? {
+        // 缓存查找:Class 结构运行时不变,同一 (类,方法,参数类型签名) 解析结果相同
+        val cacheKey = buildMethodCacheKey(clazz, name, args)
+        methodCache[cacheKey]?.let { return it }
+        if (methodMissCache.contains(cacheKey)) return null
+
+        val method = findMethodImpl(clazz, name, args)
+        if (method != null) {
+            methodCache[cacheKey] = method
+        } else {
+            methodMissCache.add(cacheKey)
+        }
+        return method
+    }
+
+    /**
+     * 构造方法缓存 key: "className#methodName(argType1,argType2,...)"。
+     * null 参数用 "null" 表示。key 稳定,相同签名总是相同字符串。
+     */
+    private fun buildMethodCacheKey(clazz: Class<*>, name: String, args: Array<Any?>): String {
+        if (args.isEmpty()) return "${clazz.name}#$name()"
+        val sb = StringBuilder(clazz.name.length + name.length + args.size * 20 + 4)
+        sb.append(clazz.name).append('#').append(name).append('(')
+        for (i in args.indices) {
+            if (i > 0) sb.append(',')
+            sb.append(args[i]?.javaClass?.name ?: "null")
+        }
+        sb.append(')')
+        return sb.toString()
+    }
+
+    private fun findMethodImpl(clazz: Class<*>, name: String, args: Array<Any?>): Method? {
         // 收集本类 + 父类 + 接口的 public 方法
         val candidates = mutableListOf<Method>()
         collectMethods(clazz, name, candidates)
@@ -1024,18 +1514,22 @@ object JavaObjectBridge {
      *
      * 基本类型(String/Number/Boolean)直接返回。
      * Java 对象包装为句柄对象 { __java_handle__: handle },由 JS bootstrap 解包。
-     * 数组/集合转 JS 数组(List)。
+     * 数组转 JS 数组(List)。
      */
     private fun javaToJsResult(result: Any?, dangerousApi: Boolean): Any? {
         if (result == null) return null
         // 基本类型保留原始类型,让 quickjs 自动处理(JS Number/Boolean/String)
+        // 与 Rhino LiveConnect 一致: Java String/Boolean → JS 基本类型
+        // Number 仅 java.lang 标准包装类型(Byte/Short/Integer/Long/Float/Double)映射为 JS Number,
+        // 其他 Number 子类(BigInteger/BigDecimal/AtomicInteger 等)走 Java 句柄路径,
+        // 因为 quickjs-kt 无法处理这些类型,且 Rhino LiveConnect 也会把它们包装为 NativeJavaObject
         if (result is String) return result
-        if (result is CharSequence) return result.toString()
-        if (result is Number) return result
         if (result is Boolean) return result
         if (result is ByteArray) return result
+        if (result is Number && result.javaClass.name.startsWith("java.lang.")) return result
         if (result.javaClass.isArray) {
-            // 数组转 List
+            // Java 数组转 List (quickjs-kt 转 JS Array)
+            // 与 Rhino LiveConnect 一致: Java 数组 → NativeArray (JS Array)
             val len = java.lang.reflect.Array.getLength(result)
             return (0 until len).map {
                 javaToJsResult(
@@ -1044,13 +1538,14 @@ object JavaObjectBridge {
                 )
             }
         }
-        if (result is Collection<*>) {
-            return result.map { javaToJsResult(it, dangerousApi) }
-        }
+        // Map 走 Java 句柄路径 (不复制),支持真正互操作:
+        // JS 侧 body[key]/body.get(key)/body.put(key,val)/for...in 直接操作原 Java Map,
+        // 而非 quickjs-kt 创建的 ES6 Map 副本。
+        // 标记 __java_is_map__ 让 JS bootstrap 用 __wrapJavaMap 包装 (增加 ownKeys trap)。
         if (result is Map<*, *>) {
-            return result.entries.associate { (k, v) ->
-                k?.toString() to javaToJsResult(v, dangerousApi)
-            }
+            if (!JsSecurityPolicy.isObjectVisible(result, dangerousApi)) return null
+            val handle = registerObject(result)
+            return mapOf("__java_handle__" to handle, "__java_is_map__" to true)
         }
         // Java 对象包装为句柄对象
         if (!JsSecurityPolicy.isObjectVisible(result, dangerousApi)) return null

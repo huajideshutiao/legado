@@ -9,7 +9,7 @@ package com.script.quickjs
  * 2. `JavaImporter` —— 接受多个 Class,在 `with` 语句里按简单名查找。
  * 3. `importClass` / `importPackage` —— 全局函数。
  * 4. `JavaAdapter` —— 调用 Kotlin 侧 `__newJavaAdapter` 创建 java.lang.reflect.Proxy。
- * 5. `__wrapClass` / `__wrapJavaObject` / `__unwrapJavaHandle` —— Java 句柄的 JS 包装。
+ * 5. `__wrapClass` / `__wrapJavaObject` —— Java 句柄的 JS 包装。
  *
  * 依赖的 Kotlin function binding(由 QuickJsEngine 注册):
  * - `__loadJavaClass(fullName, dangerousApi): Long`
@@ -42,12 +42,10 @@ var __dangerousApi__ = false;
  *
  * Kotlin 侧返回的 Java 对象是 { __java_handle__: handle } Map,
  * JS 侧无法直接调用其实例方法,需要转为 __wrapJavaObject Proxy。
- * 此函数检测并转换,基本类型(String/Number/Boolean/List/Map)原样返回。
+ * 此函数检测并转换,基本类型(String/Number/Boolean/List)原样返回。
  *
- * 注意: quickjs-kt 可能把 Kotlin Map 转为 JS Map(ES6 Map,而非 Object)。
- * JS Map 的内容不是 own properties,Object.entries/keys/for...in 无法枚举,
- * 与 rhino NativeJavaMap.getIds() 行为不一致。
- * 这里把 JS Map 转成 JS Object,使属性枚举能正常工作 (与 rhino 行为一致)。
+ * Map 类型 (标记 __java_is_map__) 走 __wrapJavaMap 路径,
+ * 通过 ownKeys trap 支持 for...in/Object.entries,且 get/put/set 直接操作原 Java Map (真正互操作)。
  */
 function __wrapJavaResult(v) {
     if (v === null || v === undefined) return v;
@@ -55,32 +53,20 @@ function __wrapJavaResult(v) {
     if (Array.isArray(v)) {
         return v.map(__wrapJavaResult);
     }
-    // quickjs-kt 可能把 Kotlin Map 转成 JS Map (ES6 Map)
-    // JS Map 的内容不是 own properties,Object.entries/keys/for...in 无法枚举
-    // 转成 JS Object 以支持属性枚举 (与 rhino NativeJavaMap.getIds() 行为一致)
-    // 同时递归包装 value,处理嵌套的 Java 对象句柄
+    // quickjs-kt 把 Kotlin Map 转成 JS Map (ES6 Map)
     if (v instanceof Map) {
-        var obj = {};
-        v.forEach(function(val, key) {
-            obj[key] = __wrapJavaResult(val);
-        });
-        // 检测 __java_handle__ (quickjs-kt 可能把 {__java_handle__: handle} Map 转成 JS Map)
-        // 转成 JS Object 后,需要再次检测并包装为 Proxy
-        var handle = obj.__java_handle__;
+        var handle = v.get('__java_handle__');
         if (handle !== undefined && handle !== null) {
-            return __wrapJavaObject(handle);
-        }
-        return obj;
-    }
-    if (typeof v === 'object') {
-        var handle = v.__java_handle__;
-        if (handle === undefined && typeof v.get === 'function') {
-            handle = v.get('__java_handle__');
-        }
-        if (handle !== undefined && handle !== null) {
+            // Map 句柄: 用 __wrapJavaMap 包装,支持 for...in + 真正互操作
+            // (get/put/set 直接操作原 Java Map,而非 quickjs-kt 创建的 ES6 Map 副本)
+            if (v.get('__java_is_map__') === true) {
+                return __wrapJavaMap(handle);
+            }
+            // 普通 Java 对象句柄
             return __wrapJavaObject(handle);
         }
     }
+    // 基本类型(String/Number/Boolean) 或无 __java_handle__ 的对象原样返回
     return v;
 }
 
@@ -158,16 +144,139 @@ function __toPlainArgs(args) {
 }
 
 /**
+ * 把 Java Map 句柄包装为 JS Proxy,支持真正的互操作。
+ *
+ * 与 __wrapJavaObject 的区别: 增加 ownKeys/getOwnPropertyDescriptor trap,
+ * 支持 for...in / Object.entries / Object.keys 枚举 Map keys。
+ *
+ * 互操作 (直接操作原 Java Map,非 ES6 Map 副本):
+ * - body[key] / body.get(key) → Map.get(key)  (经 __getInstanceField → getCollectionField)
+ * - body[key] = val → Map.put(key, val)      (经 __setInstanceField → setCollectionField)
+ * - body.put(key, val) → Map.put(key, val)   (经 __callInstanceMethod)
+ * - body.size() → Map.size()                  (经 __callInstanceMethod)
+ * - for (let key in body) → Map.keySet()      (经 __getInstanceKeys)
+ * - Object.entries(body) → ownKeys + getOwnPropertyDescriptor
+ *
+ * ownKeys 必须包含 __java_handle__ (non-enumerable),
+ * 否则 native 层 JS→Kotlin 转换时丢失 handle,unwrapReturnValue 解包失败。
+ * for...in / Object.keys 只返回 enumerable 属性,不会看到 __java_handle__。
+ */
+function __wrapJavaMap(objHandle) {
+    if (objHandle === 0 || objHandle === null) return null;
+    // 缓存 Map keys (ownKeys 时填充, set trap 时更新)
+    var cachedKeys = null;
+    function getMapKeys() {
+        if (cachedKeys === null) {
+            var mapKeys = __getInstanceKeys(objHandle, __dangerousApi__) || [];
+            cachedKeys = ['__java_handle__'].concat(mapKeys);
+        }
+        return cachedKeys;
+    }
+    return new Proxy({ __java_handle__: objHandle }, {
+        get: function(target, prop) {
+            if (prop === '__java_handle__') return objHandle;
+            // toPrimitive: 调用 Java toString()
+            if (prop === Symbol.toPrimitive) {
+                return function() {
+                    var s = __callInstanceMethod(objHandle, 'toString', [], __dangerousApi__);
+                    return s === null ? '[java@' + objHandle + ']' : __wrapJavaResult(s);
+                };
+            }
+            if (typeof prop !== 'string') return undefined;
+            if (prop === 'then') return undefined;
+            // __getJavaPropertyValue 已对 Map 做特判:
+            // - __getInstanceField → getCollectionField → Map.get(key) 返回值
+            // - __hasInstanceMethod → get/put/size/containsKey 等方法 callable
+            return __getJavaPropertyValue(objHandle, prop);
+        },
+        set: function(target, prop, value) {
+            // body[key] = val → __setInstanceField → setCollectionField → Map.put(key, val)
+            // 真正修改原 Java Map
+            if (typeof prop === 'string') {
+                __setInstanceField(objHandle, prop, __toPlainArg(value), __dangerousApi__);
+                if (cachedKeys !== null && cachedKeys.indexOf(prop) === -1) {
+                    cachedKeys.push(prop);
+                }
+            }
+            return true;
+        },
+        ownKeys: function() {
+            return getMapKeys();
+        },
+        getOwnPropertyDescriptor: function(target, prop) {
+            if (prop === '__java_handle__') {
+                return { value: objHandle, writable: false, enumerable: false, configurable: true };
+            }
+            var keys = getMapKeys();
+            if (keys.indexOf(prop) === -1) return undefined;
+            return {
+                value: __getJavaPropertyValue(objHandle, prop),
+                writable: true,
+                enumerable: true,
+                configurable: true
+            };
+        }
+    });
+}
+
+/**
+ * 获取 Java 对象的属性值(模拟 rhino LiveConnect 成员查找)。
+ * 供 __wrapJavaObject 的 get trap 和 getOwnPropertyDescriptor trap 共用。
+ *
+ * 查找顺序:
+ *   1. 尝试 field/getter(对应 rhino BeanProperty / NativeJavaField)
+ *      Java 侧 getInstanceField 已对 Map/List/Array 的 length/索引做了特判
+ *   2. 若 field 存在且同名 method 也存在 → 返回 FieldAndMessages 风格 callable
+ *   3. 若只有 field/getter → 返回值
+ *   4. 若 field 不存在 → 检查同名 method → 返回 method callable 或 undefined
+ */
+function __getJavaPropertyValue(objHandle, prop) {
+    // 先尝试 field/getter(对应 rhino 的 BeanProperty / NativeJavaField)
+    // Java 侧 getInstanceField 已对 Map/List/Array 的 length/索引做了特判,这里不重复处理
+    var field = __wrapJavaResult(__getInstanceField(objHandle, prop, __dangerousApi__));
+    if (field !== null && field !== undefined) {
+        // field 存在,检查是否有同名 method (field+method 同名场景,如 StrResponse.body)
+        // 与 rhino LiveConnect 行为一致: method 优先,返回 FieldAndMessages 风格 callable
+        if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
+            return __makeCallableValue(field, objHandle, prop);
+        }
+        return field;
+    }
+    // field 不存在,检查是否有同名 method
+    // - 有 method → 返回 method callable (如 list.add, map.size, str.substring)
+    // - 无 method → 返回 undefined (与 rhino NativeJavaMap 行为一致:
+    //   missing key 不在 Map 中时返回 NOT_FOUND,JS 侧 typeof 为 "undefined")
+    if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
+        return function() {
+            var args = Array.prototype.slice.call(arguments);
+            var plainArgs = __toPlainArgs(args);
+            return __wrapJavaResult(__callInstanceMethod(objHandle, prop, plainArgs, __dangerousApi__));
+        };
+    }
+    return undefined;
+}
+
+/**
  * 把 Java 对象句柄包装为 JS Proxy。
  * JS 访问 prop 时(模拟 rhino LiveConnect 的成员查找):
  *   1. 尝试 field/getter(对应 rhino BeanProperty / NativeJavaField)
  *   2. 若 field 存在且同名 method 也存在 → 返回 FieldAndMessages 风格 callable
  *      (调用执行 method,Symbol.toPrimitive 返回 field 值,属性委托到 field 值)
- *   3. 若只有 field/getter → 返回值 (length 特判: List/Array 直接返回长度,不走 callable)
+ *   3. 若只有 field/getter → 返回值
  *   4. 若 field 不存在 → 检查是否有同名 method:
  *      - 有 → 返回 method callable (如 list.add, map.size, str.substring)
  *      - 无 → 返回 undefined (与 rhino NativeJavaMap.getIds() 行为一致:
  *        Map 不含 key 时返回 NOT_FOUND,JS 侧 typeof 为 "undefined")
+ *
+ * 不加 ownKeys/getOwnPropertyDescriptor trap:
+ * native 层在 evaluate 返回值时,会把 JS Proxy 转成 Kotlin Map(通过 JS_GetOwnPropertyNames
+ * + JS_GetOwnProperty 遍历 own properties)。若 trap 返回 Java 对象的所有 method/field name,
+ * 转换后的 Map 不再包含 __java_handle__ 键,QuickJsEngine.unwrapReturnValue 的解包逻辑失效
+ * (无法识别为 Java 对象句柄,会原样返回 Map,导致 toString() 得到 JsObject@xxx 而非 String)。
+ *
+ * Map 类型已通过 __wrapJavaMap 单独处理(在 __wrapJavaResult 检测 __java_is_map__ 标记时调用),
+ * 支持 for...in/Object.entries/Object.keys 且 get/put/set 直接操作原 Java Map。普通 Java 对象
+ * (如 String/Number/自定义业务对象) 业务代码不需要枚举其属性,故不启用 ownKeys trap。
  */
 function __wrapJavaObject(objHandle) {
     if (objHandle === 0 || objHandle === null) return null;
@@ -184,37 +293,7 @@ function __wrapJavaObject(objHandle) {
             if (typeof prop !== 'string') return undefined;
             if (prop === 'then') return undefined;
             // toString/valueOf 不做特殊覆盖,走正常实例方法路径,保证调用 Java 对象的真实 toString
-            // 先尝试 field/getter(对应 rhino 的 BeanProperty / NativeJavaField)
-            var field = __wrapJavaResult(__getInstanceField(objHandle, prop, __dangerousApi__));
-            if (field !== null && field !== undefined) {
-                // 集合特判字段(length): List/Array 的 length 是 field 别名,不走 FieldAndMethods
-                // 对齐 rhino NativeJavaList: length 直接返回值,不被同名方法 length() 覆盖为 callable
-                // 注意: size 不特判,rhino 中 size 是 method,list.size() 调用返回长度
-                if (prop === 'length') {
-                    return field;
-                }
-                // field 存在,检查是否有同名 method (field+method 同名场景,如 StrResponse.body)
-                // 与 rhino LiveConnect 行为一致: method 优先,返回 FieldAndMessages 风格 callable
-                // (callable 调用执行 method,Symbol.toPrimitive 返回 field 值,属性委托到 field 值)
-                if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
-                    return __makeCallableValue(field, objHandle, prop);
-                }
-                // 纯 field/getter,返回值
-                return field;
-            }
-            // field 不存在,检查是否有同名 method
-            // - 有 method → 返回 method callable (如 list.add, map.size, str.substring)
-            // - 无 method → 返回 undefined (如 map.missing,与 rhino NativeJavaMap 行为一致:
-            //   missing key 不在 Map 中时返回 NOT_FOUND,JS 侧 typeof 为 "undefined")
-            // 注意: 参数需经 __toPlainArgs 解引用,否则 quickjs-kt 无法识别 Proxy 参数
-            if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
-                return function() {
-                    var args = Array.prototype.slice.call(arguments);
-                    var plainArgs = __toPlainArgs(args);
-                    return __wrapJavaResult(__callInstanceMethod(objHandle, prop, plainArgs, __dangerousApi__));
-                };
-            }
-            return undefined;
+            return __getJavaPropertyValue(objHandle, prop);
         },
         set: function(target, prop, value) {
             if (typeof prop === 'string') {
@@ -222,20 +301,7 @@ function __wrapJavaObject(objHandle) {
             }
             return true;
         }
-        // 注意: 不添加 ownKeys/getOwnPropertyDescriptor trap。
-        // 原因: native 层 getEvaluateResult 会通过这两个 trap 遍历 Proxy 属性,
-        //       而 getOwnPropertyDescriptor 返回的 value 又是 Proxy,导致无限递归 → StackOverflowError。
-        //       rhino 的 NativeJavaObject.getIds() 只在显式调用时枚举,不会在 native 转换时触发,
-        //       quickjs-kt 的 native 层却会在 JS→Kotlin 转换时自动遍历,行为不同。
-        //       Object.entries(javaProxy) 暂不支持,需在 JS 侧显式用 java.getKeys() 等 binding。
     });
-}
-
-/**
- * 解包 Java 句柄(用于 JavaAdapter 回调时传递参数)。
- */
-function __unwrapJavaHandle(handle) {
-    return __wrapJavaObject(handle);
 }
 
 /**
@@ -455,12 +521,13 @@ function importPackage(pkg) {
 
 // ============ JavaAdapter ============
 
-// JS function 对象存储(用于 JavaAdapter 回调)
-var __jsFnStore = {};
+// JS function 计数器,用于为 JavaAdapter 回调对象生成唯一全局名
 var __jsFnCounter = 0;
 
 /**
  * 注册 JS function 对象,返回 Kotlin 侧 JsFunctionHandle 句柄。
+ *
+ * 把 JS 对象存到全局变量(避免被 GC),通过唯一名让 Kotlin 侧按需取回调用。
  */
 function __registerJsFunction(jsObj) {
     var name = '__jsFn_' + (__jsFnCounter++) + '__';

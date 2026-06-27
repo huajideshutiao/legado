@@ -56,7 +56,7 @@ class JsFunctionHandle private constructor(
      * 把 Java 参数转为 JS 表达式字符串。
      *
      * - null/基本类型直接拼字面量
-     * - Java 对象通过 [JavaObjectBridge.registerObject] 注册句柄,JS 用 `__unwrapJavaHandle(handle)` 解包
+     * - Java 对象通过 [JavaObjectBridge.registerObject] 注册句柄,JS 用 `__wrapJavaObject(handle)` 解包
      */
     private fun javaArgToJsExpr(arg: Any?): String {
         if (arg == null) return "null"
@@ -67,12 +67,12 @@ class JsFunctionHandle private constructor(
         if (arg is ByteArray) {
             // ByteArray 转 JS Uint8Array(通过 handle)
             val handle = JavaObjectBridge.registerObject(arg)
-            return "__unwrapJavaHandle($handle)"
+            return "__wrapJavaObject($handle)"
         }
         // Java 对象通过句柄包装
         if (!JsSecurityPolicy.isObjectVisible(arg, dangerousApi)) return "null"
         val handle = JavaObjectBridge.registerObject(arg)
-        return "__unwrapJavaHandle($handle)"
+        return "__wrapJavaObject($handle)"
     }
 
     companion object {
