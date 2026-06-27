@@ -34,6 +34,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.jsoup.nodes.Node
+import java.io.Closeable
 import java.net.URL
 import java.util.Locale
 import java.util.regex.Pattern
@@ -50,7 +51,7 @@ class AnalyzeRule(
     var ruleData: RuleDataInterface? = null,
     private val source: BaseSource? = null,
     private val preUpdateJs: Boolean = false
-) : JsExtensions {
+) : JsExtensions, Closeable {
 
     private val book get() = ruleData as? BaseBook
 
@@ -879,6 +880,22 @@ class AnalyzeRule(
             withTimeout(1800000) {
                 WebBook.getBookInfoAwait(bookSource, book, false)
             }
+        }
+    }
+
+    /**
+     * 释放 AnalyzeRule 持有的 native 资源。
+     *
+     * 仅 [topScopeRef] 需显式 close: 当 source 为 null (DictRule/DirectLinkUpload 等无书源构造) 时,
+     * evalJS 会走 [QuickJsEngine.getRuntimeScope] 自建 scope 并缓存到 [topScopeRef],
+     * 该 scope 不在 SharedJsScope 的 LruCache 中, 无显式释放路径会泄漏 native QuickJs 实例。
+     *
+     * 有 source 路径走 SharedJsScope 共享 scope, 由其 LruCache 淘汰时 close, 此处 topScopeRef 为 null, close 是空操作。
+     */
+    override fun close() {
+        topScopeRef?.let {
+            topScopeRef = null
+            it.close()
         }
     }
 

@@ -50,7 +50,7 @@ data class DictRule(
         val analyzeRule = AnalyzeRule().apply {
             coroutineContext = currentCoroutineContext()
         }
-        return analyzeRule.getString(showRule, mContent = body)
+        return analyzeRule.use { it.getString(showRule, mContent = body) }
     }
 
 }

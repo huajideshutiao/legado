@@ -63,11 +63,13 @@ object DirectLinkUpload {
             setContent(res.body, res.url)
             coroutineContext = currentCoroutineContext()
         }
-        val downloadUrl = analyzeRule.getString(downloadUrlRule)
-        if (downloadUrl.isBlank()) {
-            throw NoStackTraceException("上传失败,${res.body}")
+        return analyzeRule.use {
+            val downloadUrl = it.getString(downloadUrlRule)
+            if (downloadUrl.isBlank()) {
+                throw NoStackTraceException("上传失败,${res.body}")
+            }
+            downloadUrl
         }
-        return downloadUrl
     }
 
     val defaultRules: List<Rule> by lazy {
