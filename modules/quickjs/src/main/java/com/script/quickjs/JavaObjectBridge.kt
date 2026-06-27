@@ -5,6 +5,8 @@ import androidx.collection.LongSparseArray
 import com.script.quickjs.JavaObjectBridge.NO_RESULT
 import com.script.quickjs.JavaObjectBridge.appendToBuilder
 import com.script.quickjs.JavaObjectBridge.callStringBuilderMethod
+import com.script.quickjs.JavaObjectBridge.getInstanceField
+import com.script.quickjs.JavaObjectBridge.hasInstanceMethod
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
 import com.script.quickjs.JavaObjectBridge.loadJavaClass
@@ -756,6 +758,89 @@ object JavaObjectBridge {
         val candidates = mutableListOf<Method>()
         collectMethods(obj.javaClass, methodName, candidates)
         return candidates.isNotEmpty()
+    }
+
+    /**
+     * 一次性查 field + method 是否存在,合并 [getInstanceField] + [hasInstanceMethod] 两次 bridge。
+     *
+     * JS proxy.get 里 `__getJavaPropertyValue` 原本对每个属性访问都要 2 次 native 调用 (取 field
+     * + 判断 method 是否存在),实测书源 JS 循环里 (`sb.append(x)`、`list.get(i)`) 这是热点。
+     * 本函数把两次合并成一次,Kotlin 内部复用 collectMethods/findGetter/getCollectionField。
+     *
+     * 返回值 (List 元素):
+     *   - `[0] fieldValue`: 字段值(已经 javaToJsResult 包装),null 表示当前查询不到字段值
+     *   - `[1] fieldExists`: 字段空间内"可能存在"(即下次访问可能解析到 field 分支)。
+     *      用于 3.1 缓存判断:仅当 `!fieldExists && hasMethod` 时,JS 侧才能安全缓存 method
+     *      callable。Map 因为 key 空间动态可写,即使当前 key 缺失也标 true 防止缓存失效;
+     *      List/Array 的非数字 prop 永不会成为字段,可以放 false 让 JS 缓存。
+     *   - `[2] hasMethod`: 是否有同名实例方法
+     *
+     * @return null 表示 field 与 method 均不存在 (JS 侧返回 undefined);
+     *         否则返回 `[fieldValue, fieldExists, hasMethod]` 三元素 List
+     */
+    fun getJavaProperty(
+        objHandle: Long,
+        fieldName: String,
+        dangerousApi: Boolean
+    ): Any? {
+        val obj = getObject(objHandle) ?: return null
+        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
+
+        var fieldExists = false
+        // Field 部分: 复用 getInstanceField 的查找顺序 (Map/List/Array → getter → field)
+        val fieldValue: Any? = try {
+            val collectionVal = getCollectionField(obj, fieldName)
+            if (collectionVal != null) {
+                fieldExists = true
+                javaToJsResult(collectionVal, dangerousApi)
+            } else when {
+                // Map: 任意 key 都可能后续被 setInstanceField 注入,标 fieldExists 阻断缓存
+                obj is Map<*, *> -> {
+                    fieldExists = true
+                    null
+                }
+                // List/Array: 非数字 prop 永远不会被 setInstanceField 接收 (setCollectionField
+                // 只认数字索引),非数字 prop 走 method 分支后可以让 JS 安全缓存 callable
+                else -> {
+                    val getter = findGetter(obj.javaClass, fieldName)
+                    if (getter != null
+                        && JsSecurityPolicy.isMethodVisible(
+                            obj.javaClass.name, getter.name, dangerousApi
+                        )
+                    ) {
+                        fieldExists = true
+                        getter.isAccessible = true
+                        javaToJsResult(getter.invoke(obj), dangerousApi)
+                    } else {
+                        val field = findField(obj.javaClass, fieldName)
+                        if (field != null) {
+                            fieldExists = true
+                            field.isAccessible = true
+                            javaToJsResult(field.get(obj), dangerousApi)
+                        } else null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getJavaProperty field failed: ${obj.javaClass.name}.$fieldName", e)
+            null
+        } catch (e: LinkageError) {
+            Log.w(TAG, "getJavaProperty linkage error: ${obj.javaClass.name}.$fieldName", e)
+            null
+        }
+
+        // Method 部分: 复用 hasInstanceMethod 的逻辑
+        val hasMethod = if (
+            JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)
+        ) {
+            val candidates = mutableListOf<Method>()
+            collectMethods(obj.javaClass, fieldName, candidates)
+            candidates.isNotEmpty()
+        } else false
+
+        // 三重未命中: 返回 null 让 JS 一行结束 (省一次解构开销)
+        if (fieldValue == null && !fieldExists && !hasMethod) return null
+        return listOf(fieldValue, fieldExists, hasMethod)
     }
 
     /**
@@ -1515,6 +1600,9 @@ object JavaObjectBridge {
      * 基本类型(String/Number/Boolean)直接返回。
      * Java 对象包装为句柄对象 { __java_handle__: handle },由 JS bootstrap 解包。
      * 数组转 JS 数组(List)。
+     *
+     * 句柄复用 (优化 3.2): 同一 Java 对象多次返回时, 通过 [QuickJsContext.identityHandles]
+     * 复用已注册的句柄, 避免 objectMap 膨胀 + JS 侧拿到多个 Proxy(身份不一致)。
      */
     private fun javaToJsResult(result: Any?, dangerousApi: Boolean): Any? {
         if (result == null) return null
@@ -1544,12 +1632,28 @@ object JavaObjectBridge {
         // 标记 __java_is_map__ 让 JS bootstrap 用 __wrapJavaMap 包装 (增加 ownKeys trap)。
         if (result is Map<*, *>) {
             if (!JsSecurityPolicy.isObjectVisible(result, dangerousApi)) return null
-            val handle = registerObject(result)
+            val handle = getOrRegisterIdentityHandle(result)
             return mapOf("__java_handle__" to handle, "__java_is_map__" to true)
         }
         // Java 对象包装为句柄对象
         if (!JsSecurityPolicy.isObjectVisible(result, dangerousApi)) return null
-        val handle = registerObject(result)
+        val handle = getOrRegisterIdentityHandle(result)
         return mapOf("__java_handle__" to handle)
+    }
+
+    /**
+     * 按对象身份复用句柄, 同一 Java 对象在同一 scope 内只注册一次。
+     *
+     * 命中 [QuickJsContext.identityHandles] 直接返回旧 handle, 未命中则 registerObject + 写入映射。
+     * 没有 ctx (如 JavaAdapter 回调线程无 threadLocalContext) 时退化为直接 registerObject。
+     */
+    private fun getOrRegisterIdentityHandle(obj: Any): Long {
+        val ctx = QuickJsContext.threadLocalContext.get()
+            ?: return registerObject(obj)
+        val existing = ctx.identityHandles[obj]
+        if (existing != null) return existing
+        val handle = registerObject(obj)
+        ctx.identityHandles[obj] = handle
+        return handle
     }
 }

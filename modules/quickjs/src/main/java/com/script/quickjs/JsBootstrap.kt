@@ -220,39 +220,46 @@ function __wrapJavaMap(objHandle) {
 }
 
 /**
+ * 构造一个调用 Java 实例方法的 JS callable, 供 method-only 分支返回。
+ * 单独抽函数让 __wrapJavaObject 的 callable 缓存复用同一个闭包工厂。
+ */
+function __makeMethodCallable(objHandle, prop) {
+    return function() {
+        var args = Array.prototype.slice.call(arguments);
+        var plainArgs = __toPlainArgs(args);
+        return __wrapJavaResult(__callInstanceMethod(objHandle, prop, plainArgs, __dangerousApi__));
+    };
+}
+
+/**
  * 获取 Java 对象的属性值(模拟 rhino LiveConnect 成员查找)。
- * 供 __wrapJavaObject 的 get trap 和 getOwnPropertyDescriptor trap 共用。
+ * 供 __wrapJavaMap 的 get trap 和 getOwnPropertyDescriptor trap 共用。
+ * (__wrapJavaObject 已内联此逻辑以便读取 fieldExists 做 callable 缓存判定)
+ *
+ * 实现细节: 通过 __getJavaProperty 一次性拿到 [fieldValue, fieldExists, hasMethod], 把原本的
+ * __getInstanceField + __hasInstanceMethod 两次 bridge 合并成一次。
  *
  * 查找顺序:
  *   1. 尝试 field/getter(对应 rhino BeanProperty / NativeJavaField)
- *      Java 侧 getInstanceField 已对 Map/List/Array 的 length/索引做了特判
+ *      Java 侧已对 Map/List/Array 的 length/索引做了特判
  *   2. 若 field 存在且同名 method 也存在 → 返回 FieldAndMessages 风格 callable
  *   3. 若只有 field/getter → 返回值
  *   4. 若 field 不存在 → 检查同名 method → 返回 method callable 或 undefined
  */
 function __getJavaPropertyValue(objHandle, prop) {
-    // 先尝试 field/getter(对应 rhino 的 BeanProperty / NativeJavaField)
-    // Java 侧 getInstanceField 已对 Map/List/Array 的 length/索引做了特判,这里不重复处理
-    var field = __wrapJavaResult(__getInstanceField(objHandle, prop, __dangerousApi__));
+    // 一次 bridge 拿到 [fieldValue, fieldExists, hasMethod]; null 表示双双缺席
+    var r = __getJavaProperty(objHandle, prop, __dangerousApi__);
+    if (r === null || r === undefined) return undefined;
+    // quickjs-kt 把 Kotlin List 转成 JS Array
+    var field = __wrapJavaResult(r[0]);
+    // r[1] = fieldExists (用于 __wrapJavaObject 缓存判定,此处不需要)
+    var hasMethod = r[2];
     if (field !== null && field !== undefined) {
-        // field 存在,检查是否有同名 method (field+method 同名场景,如 StrResponse.body)
-        // 与 rhino LiveConnect 行为一致: method 优先,返回 FieldAndMessages 风格 callable
-        if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
-            return __makeCallableValue(field, objHandle, prop);
-        }
+        // field+method 同名 (如 StrResponse.body): 返回 FieldAndMessages 风格 callable
+        if (hasMethod) return __makeCallableValue(field, objHandle, prop);
         return field;
     }
-    // field 不存在,检查是否有同名 method
-    // - 有 method → 返回 method callable (如 list.add, map.size, str.substring)
-    // - 无 method → 返回 undefined (与 rhino NativeJavaMap 行为一致:
-    //   missing key 不在 Map 中时返回 NOT_FOUND,JS 侧 typeof 为 "undefined")
-    if (__hasInstanceMethod(objHandle, prop, __dangerousApi__)) {
-        return function() {
-            var args = Array.prototype.slice.call(arguments);
-            var plainArgs = __toPlainArgs(args);
-            return __wrapJavaResult(__callInstanceMethod(objHandle, prop, plainArgs, __dangerousApi__));
-        };
-    }
+    if (hasMethod) return __makeMethodCallable(objHandle, prop);
     return undefined;
 }
 
@@ -280,6 +287,13 @@ function __getJavaPropertyValue(objHandle, prop) {
  */
 function __wrapJavaObject(objHandle) {
     if (objHandle === 0 || objHandle === null) return null;
+    // method-only callable 缓存 (优化 3.1): 同一 prop 反复访问 list.add/sb.append 时,
+    // 避免每次重新执行 __getJavaProperty bridge + 闭包构造。
+    // 仅当 Kotlin 侧 fieldExists=false 才缓存:
+    //   - Java 对象的 field 空间运行时不变, 缺席字段永远缺席, callable 可永久复用
+    //   - 含 field 的 prop 不缓存, 防止 set 后下次访问漏看 field 值
+    // (__wrapJavaMap 不用此缓存: Map 的 fieldExists 永远 true, 也不会命中缓存)
+    var methodCache = null;
     return new Proxy({ __java_handle__: objHandle }, {
         get: function(target, prop) {
             if (prop === '__java_handle__') return objHandle;
@@ -292,8 +306,31 @@ function __wrapJavaObject(objHandle) {
             }
             if (typeof prop !== 'string') return undefined;
             if (prop === 'then') return undefined;
-            // toString/valueOf 不做特殊覆盖,走正常实例方法路径,保证调用 Java 对象的真实 toString
-            return __getJavaPropertyValue(objHandle, prop);
+            // 缓存查询 (method-only callable): 命中直接返回, 跳过 bridge 与闭包构造
+            if (methodCache !== null) {
+                var cached = methodCache[prop];
+                if (cached !== undefined) return cached;
+            }
+            // 一次 bridge 拿到 [fieldValue, fieldExists, hasMethod]
+            var r = __getJavaProperty(objHandle, prop, __dangerousApi__);
+            if (r === null || r === undefined) return undefined;
+            var field = __wrapJavaResult(r[0]);
+            var fieldExists = r[1];
+            var hasMethod = r[2];
+            if (field !== null && field !== undefined) {
+                // field+method 同名 (如 StrResponse.body): 返回 FieldAndMessages 风格 callable
+                if (hasMethod) return __makeCallableValue(field, objHandle, prop);
+                return field;
+            }
+            if (hasMethod) {
+                var callable = __makeMethodCallable(objHandle, prop);
+                if (!fieldExists) {
+                    if (methodCache === null) methodCache = {};
+                    methodCache[prop] = callable;
+                }
+                return callable;
+            }
+            return undefined;
         },
         set: function(target, prop, value) {
             if (typeof prop === 'string') {

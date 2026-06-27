@@ -562,6 +562,20 @@ object QuickJsEngine {
             }
         )
 
+        // 7.1 一次性查 field + method (合并 __getInstanceField + __hasInstanceMethod, 减半 bridge 调用)
+        // 返回 null = 都不存在; 否则 [fieldValue, fieldExists, hasMethod] 三元素 List
+        // fieldExists 供 JS 侧 __wrapJavaObject 做 method-only callable 缓存判定
+        quickJs.defineBinding(
+            "__getJavaProperty",
+            FunctionBinding<Any?> { args ->
+                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
+                val fieldName = args.getOrNull(1) as? String
+                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
+                if (objHandle == 0L || fieldName.isNullOrEmpty()) return@FunctionBinding null
+                JavaObjectBridge.getJavaProperty(objHandle, fieldName, dangerousApi)
+            }
+        )
+
         // 7.5 获取实例对象的所有可枚举属性名 (用于 __keys 函数 / Object.entries 等)
         // 与 rhino NativeJavaObject.getIds() / NativeJavaMap.getIds() / NativeJavaList.getIds() 行为一致
         // 返回 String[] (JS ownKeys 要求 string|symbol)
