@@ -137,18 +137,29 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv, int magic,
                                 JSValueConst *func_data) {
     JNIEnv *env = getJniEnv();
-    if (!env) return JS_EXCEPTION;
+    if (!env) {
+        // 契约: 返回 JS_EXCEPTION 必须先在 ctx 上设置异常 slot,
+        // 否则调用方 JS_GetException 拿到 stale 值, 后续 with/作用域 unwind
+        // 时 ref_count 跟踪可能错乱导致 JSString 提前释放 (heap corruption)
+        return JS_ThrowInternalError(ctx, "JNI env unavailable in method callable");
+    }
     ensureCallbacksInited(env);
-    if (!g_callMethod) return JS_EXCEPTION;
+    if (!g_callMethod) {
+        return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.callMethod not bound");
+    }
 
     // 从 func_data 提取 objHandle 和 methodName
     // 用 JS_ToInt64 统一读取 int32/float64 两种 tag, 避免超过 2^31 的句柄被截断
     int64_t objHandle = 0;
     if (JS_ToInt64(ctx, &objHandle, func_data[0])) {
+        // JS_ToInt64 失败时已经在 ctx 设过异常, 直接 propagate
         return JS_EXCEPTION;
     }
     const char *methodName = JS_ToCString(ctx, func_data[1]);
-    if (!methodName) return JS_EXCEPTION;
+    if (!methodName) {
+        // JS_ToCString 失败时已经在 ctx 设过异常
+        return JS_EXCEPTION;
+    }
 
     // 读取 dangerousApi
     bool dangerousApi = getDangerousApi(ctx);
@@ -159,12 +170,11 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
         env->ExceptionClear();
         JS_FreeCString(ctx, methodName);
         if (javaArgs) env->DeleteLocalRef(javaArgs);
-        return JS_EXCEPTION;
+        return JS_ThrowInternalError(ctx, "JNI exception while converting JS args");
     }
 
     // 调用 JavaObjectBridgeNative.callMethod(objHandle, methodName, args, dangerousApi)
     jstring jMethodName = env->NewStringUTF(methodName);
-    JS_FreeCString(ctx, methodName);
     jobject result = env->CallStaticObjectMethod(
             g_bridgeNativeCls,
             g_callMethod,
@@ -179,8 +189,11 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
-        return JS_EXCEPTION;
+        JSValue exc = JS_ThrowInternalError(ctx, "Java method '%s' threw", methodName);
+        JS_FreeCString(ctx, methodName);
+        return exc;
     }
+    JS_FreeCString(ctx, methodName);
 
     // 结果转 JSValue
     JSValue ret = JniValueConvert::fromJavaObject(ctx, env, result);
@@ -214,13 +227,20 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv, int magic,
                              JSValueConst *func_data) {
     JNIEnv *env = getJniEnv();
-    if (!env) return JS_EXCEPTION;
+    if (!env) {
+        return JS_ThrowInternalError(ctx, "JNI env unavailable in binding call");
+    }
     ensureCallbacksInited(env);
-    if (!g_bindingCall) return JS_EXCEPTION;
+    if (!g_bindingCall) {
+        return JS_ThrowInternalError(ctx, "BindingHandler.call not bound");
+    }
 
     // 从 func_data 提取 binding name
     const char *name = JS_ToCString(ctx, func_data[0]);
-    if (!name) return JS_EXCEPTION;
+    if (!name) {
+        // JS_ToCString 失败已设过 ctx 异常
+        return JS_EXCEPTION;
+    }
 
     // 保存 binding name 副本, 供后续判断是否需要强制 wrap (newJavaInstance 等)
     std::string nameStr(name);
@@ -231,7 +251,7 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (javaArgs) env->DeleteLocalRef(javaArgs);
-        return JS_EXCEPTION;
+        return JS_ThrowInternalError(ctx, "JNI exception while converting binding args");
     }
 
     // 调用 BindingHandler.call(name, args)
@@ -248,7 +268,7 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
-        return JS_EXCEPTION;
+        return JS_ThrowInternalError(ctx, "Java binding '%s' threw", nameStr.c_str());
     }
 
     // 结果转 JSValue

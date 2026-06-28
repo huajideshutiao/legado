@@ -3,6 +3,7 @@
 
 #include <quickjs.h>
 #include <jni.h>
+#include <string>
 
 /**
  * JSValue <-> Java 值转换。
@@ -64,6 +65,21 @@ public:
      *   10 = JavaObject (自定义类)
      */
     static int getTypeTag(JSContext *ctx, JSValueConst value);
+
+    /**
+     * 构建 JS 异常的完整错误消息 (含行号/堆栈)。
+     *
+     * - 调用 JS_ToCString 获取 message (如 "TypeError: xxx")
+     * - 若 exc 是 Error 对象 (JS_IsError), 附加 stack 属性 (含 `at line:col` 位置信息)
+     *
+     * 用于 [toJavaObject] 异常分支和 nativeCompile 编译失败分支,
+     * 让用户能直接看到出错行号, 而非只有 "TypeError: xxx"。
+     *
+     * @param ctx JSContext
+     * @param exc JS_GetException 返回的异常对象 (调用方负责 FreeValue)
+     * @return 完整错误消息字符串 (含 message + stack)
+     */
+    static std::string buildExceptionMessage(JSContext *ctx, JSValue exc);
 };
 
 #endif // JNI_VALUE_CONVERT_H

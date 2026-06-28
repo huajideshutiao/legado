@@ -16,6 +16,11 @@ namespace {
     jclass g_ByteCls = nullptr;
     jclass g_ShortCls = nullptr;
     jclass g_FloatCls = nullptr;
+    // NativeObject (com/script/quickjs/NativeObject) - JS Object 在 Kotlin 侧的标记类型
+    // 对齐 rhino NativeObject: 业务代码用 is NativeObject 区分 JS 返回的对象与 JsonPath 返回的 Map
+    jclass g_NativeObjectCls = nullptr;
+    jmethodID g_NativeObjectInitI = nullptr;   // <init>(I)V - 带初始容量
+    jmethodID g_NativeObjectPut = nullptr;     // put(Object,Object)Object - 复用 Map.put
     jmethodID g_BooleanValueOf = nullptr;
     jmethodID g_BooleanValue = nullptr;
     jmethodID g_IntegerValueOf = nullptr;
@@ -70,6 +75,13 @@ namespace {
         g_FloatCls = (jclass) env->NewGlobalRef(localFloat);
         env->DeleteLocalRef(localFloat);
         g_FloatValue = env->GetMethodID(g_FloatCls, "floatValue", "()F");
+        // NativeObject (com/script/quickjs/NativeObject)
+        jclass localNO = env->FindClass("com/script/quickjs/NativeObject");
+        g_NativeObjectCls = (jclass) env->NewGlobalRef(localNO);
+        env->DeleteLocalRef(localNO);
+        g_NativeObjectInitI = env->GetMethodID(g_NativeObjectCls, "<init>", "(I)V");
+        g_NativeObjectPut = env->GetMethodID(g_NativeObjectCls, "put",
+                                             "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
         g_inited = true;
     }
 }
@@ -79,11 +91,9 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
 
     // 异常: 抛出 JSException,返回 null
     if (JS_IsException(value)) {
-        // 获取异常对象,转字符串抛出
+        // 获取异常对象, 构建含 stack 的完整错误消息 (含行号位置)
         JSValue exc = JS_GetException(ctx);
-        const char *msg = JS_ToCString(ctx, exc);
-        std::string msgStr = msg ? msg : "JS Exception";
-        JS_FreeCString(ctx, msg);
+        std::string msgStr = buildExceptionMessage(ctx, exc);
         JS_FreeValue(ctx, exc);
         jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
         if (excCls) {
@@ -153,8 +163,9 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         env->DeleteLocalRef(arrayListCls);
         return list;
     }
-    // plain JS object (非 function) -> LinkedHashMap (递归转换)
-    // 对齐 rhino NativeObject -> Map 行为, 让业务代码能直接用 Map/List
+    // plain JS object (非 function) -> NativeObject (递归转换)
+    // 对齐 rhino NativeObject: 业务代码用 is NativeObject 区分 JS 返回的对象与 JsonPath 返回的 Map
+    // NativeObject 继承 LinkedHashMap, 仍可当 Map 用 (get/put/entries 等)
     // JS function 仍走句柄包装 (用于 JsFunctionHandle callback)
     if (JS_IsObject(value) && !JS_IsFunction(ctx, value)) {
         JSPropertyEnum *ptab = nullptr;
@@ -164,11 +175,7 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         int ret = JS_GetOwnPropertyNames(ctx, &ptab, &plen, value,
                                          JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY);
         if (ret == 0) {
-            jclass mapCls = env->FindClass("java/util/LinkedHashMap");
-            jobject map = env->NewObject(mapCls,
-                                         env->GetMethodID(mapCls, "<init>", "(I)V"), (jint) plen);
-            jmethodID putMethod = env->GetMethodID(mapCls, "put",
-                                                   "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+            jobject map = env->NewObject(g_NativeObjectCls, g_NativeObjectInitI, (jint) plen);
             for (uint32_t i = 0; i < plen; i++) {
                 const char *key = JS_AtomToCString(ctx, ptab[i].atom);
                 JSValue val = JS_GetProperty(ctx, value, ptab[i].atom);
@@ -176,13 +183,12 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
                 JS_FreeValue(ctx, val);
                 jstring keyStr = env->NewStringUTF(key ? key : "");
                 JS_FreeCString(ctx, key);
-                env->CallObjectMethod(map, putMethod, keyStr, valObj);
+                env->CallObjectMethod(map, g_NativeObjectPut, keyStr, valObj);
                 env->DeleteLocalRef(keyStr);
                 if (valObj) env->DeleteLocalRef(valObj);
                 JS_FreeAtom(ctx, ptab[i].atom);
             }
             js_free(ctx, ptab);
-            env->DeleteLocalRef(mapCls);
             return map;
         }
         // GetOwnPropertyNames 失败, 走句柄包装兜底
@@ -278,4 +284,28 @@ int JniValueConvert::getTypeTag(JSContext *ctx, JSValueConst value) {
         return 6;
     }
     return 6; // 兜底按 object 处理
+}
+
+std::string JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
+    // 1. 获取 message (toString), 如 "TypeError: xxx" / "SyntaxError: ... at line 1 col 6"
+    const char *msg = JS_ToCString(ctx, exc);
+    std::string msgStr = msg ? msg : "JS Exception";
+    JS_FreeCString(ctx, msg);
+
+    // 2. 若是 Error 对象 (含子类 SyntaxError/TypeError 等), 附加 stack 属性
+    //    stack 含调用位置信息, 如 "    at foo (<eval>:3)\n    at <eval>:5"
+    //    让用户直接看到出错行号, 而非只有错误类型+消息
+    if (JS_IsError(exc)) {
+        JSValue stack = JS_GetPropertyStr(ctx, exc, "stack");
+        if (!JS_IsUndefined(stack) && !JS_IsNull(stack)) {
+            const char *stackStr = JS_ToCString(ctx, stack);
+            if (stackStr && stackStr[0] != '\0') {
+                msgStr += "\n";
+                msgStr += stackStr;
+            }
+            JS_FreeCString(ctx, stackStr);
+        }
+        JS_FreeValue(ctx, stack);
+    }
+    return msgStr;
 }

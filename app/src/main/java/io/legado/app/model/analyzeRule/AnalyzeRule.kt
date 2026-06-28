@@ -3,6 +3,7 @@ package io.legado.app.model.analyzeRule
 import android.text.TextUtils
 import androidx.annotation.Keep
 import com.script.quickjs.CompiledScript
+import com.script.quickjs.NativeObject
 import com.script.quickjs.QuickJsContext
 import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.buildScriptBindings
@@ -177,11 +178,9 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            // QuickJS 时代 JS 对象在 Kotlin 端也是 Map,无法像 Rhino 时代用 NativeObject 区分。
-            // 用首个 SourceRule 的 mode 区分:
-            //  - Mode.Json: JsonPath 返回的 Map,走通用循环(执行后续 JS/JsonPath 等)
-            //  - 其他: JS 返回的 Map,键值直接访问(对应 Rhino 时代 NativeObject 分支)
-            if (result is Map<*, *> && ruleList.first().mode != Mode.Json) {
+            // JS 返回的对象在 Kotlin 侧是 NativeObject (对齐 rhino NativeObject)
+            // JsonPath 返回的普通 Map 走 else 分支, 执行后续 JS/JsonPath 等
+            if (result is NativeObject) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
@@ -189,7 +188,7 @@ class AnalyzeRule(
                     // get {{}}
                     sourceRule.rule
                 } else {
-                    // 键值直接访问(JS 返回的 Map)
+                    // 键值直接访问
                     result[sourceRule.rule]
                 }
                 result?.let {
@@ -275,12 +274,10 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            // QuickJS 时代 JS 对象在 Kotlin 端也是 Map,无法像 Rhino 时代用 NativeObject 区分。
-            // 用首个 SourceRule 的 mode 区分:
-            //  - Mode.Json: JsonPath 返回的 Map,走通用循环(执行后续 JS/JsonPath 等)
-            //  - 其他: JS 返回的 Map,键值直接访问(对应 Rhino 时代 NativeObject 分支)
+            // JS 返回的对象在 Kotlin 侧是 NativeObject (对齐 rhino NativeObject)
+            // JsonPath 返回的普通 Map 走 else 分支, 执行后续 JS/JsonPath 等
             // 否则 `$.postTime<js>格式化</js>` 这类规则只取到原始时间戳,JS 被跳过。
-            if (result is Map<*, *> && ruleList.first().mode != Mode.Json) {
+            if (result is NativeObject) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
@@ -288,7 +285,7 @@ class AnalyzeRule(
                     // get {{}}
                     sourceRule.rule
                 } else {
-                    // 键值直接访问(JS 返回的 Map)
+                    // 键值直接访问
                     result[sourceRule.rule]?.toString()
                 }?.let {
                     replaceRegex(it, sourceRule)
@@ -815,20 +812,23 @@ class AnalyzeRule(
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef
-        // 用 IIFE + eval 包裹,隔离 let/const,避免污染 topScope
-        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-        // 子 scope 隔离: sharedScope 路径 eval 后清理注入的变量,避免不同书源切换时变量泄漏
+        // 子 scope 隔离 (对齐 rhino 的 bindings.prototype = topScope 模型):
+        // - topScope == null: 创建独立 scope, bindings 注入 globalThis (scope 线程私有,无需隔离)
+        // - sharedScope 路径: 创建线程私有的子 scope JS Object, bindings 注入子 scope (不污染 topScope),
+        //   用 with(子scope) 执行 JS。多协程并发无需加锁 (rhino 的 ScriptBindings 也是线程私有 NativeObject)。
         return if (topScope == null) {
             val scope = QuickJsEngine.getRuntimeScope(bindings)
             topScopeRef = scope
+            val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
             compileScriptCache(wrappedJs).eval(scope, coroutineContext)
         } else {
-            val injectedKeys = QuickJsEngine.injectBindings(topScope, bindings)
-            try {
-                compileScriptCache(wrappedJs).eval(topScope, coroutineContext)
-            } finally {
-                QuickJsEngine.cleanupBindings(topScope, injectedKeys)
-            }
+            val wrappedWith = QuickJsEngine.wrapJsForWith(jsStr)
+            QuickJsEngine.evalInSubScope(
+                compileScriptCache(wrappedWith),
+                topScope,
+                bindings,
+                coroutineContext
+            )
         }
     }
 

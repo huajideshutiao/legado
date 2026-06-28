@@ -285,20 +285,18 @@ interface BaseSource : JsExtensions {
             bindings.dangerousApi = enableDangerousApi == true
         }
         val sharedScope = getShareScope()
-        // 用 IIFE + eval 包裹,隔离 let/const,避免污染 sharedScope
-        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-        // quickjs 没有 prototype 继承,有 sharedScope 时直接复用并注入 bindings 变量
-        // 子 scope 隔离: eval 后清理注入的变量,避免不同书源切换时变量泄漏
+        // 子 scope 隔离 (对齐 rhino 的 bindings.prototype = topScope 模型):
+        // - sharedScope == null: 创建独立 scope, bindings 注入 globalThis (scope 线程私有)
+        // - sharedScope 路径: 创建线程私有的子 scope JS Object, bindings 注入子 scope (不污染 topScope),
+        //   用 with(子scope) 执行 JS。多协程并发无需加锁 (rhino 的 ScriptBindings 也是线程私有 NativeObject)。
         return if (sharedScope == null) {
             val scope = QuickJsEngine.getRuntimeScope(bindings)
+            val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
             QuickJsEngine.eval(wrappedJs, scope, null)
         } else {
-            val injectedKeys = QuickJsEngine.injectBindings(sharedScope, bindings)
-            try {
-                QuickJsEngine.eval(wrappedJs, sharedScope, null)
-            } finally {
-                QuickJsEngine.cleanupBindings(sharedScope, injectedKeys)
-            }
+            val wrappedWith = QuickJsEngine.wrapJsForWith(jsStr)
+            val compiled = QuickJsEngine.compile(wrappedWith)
+            QuickJsEngine.evalInSubScope(compiled, sharedScope, bindings, null)
         }
     }
 

@@ -23,6 +23,17 @@ namespace {
     jmethodID g_getHandle = nullptr;  // method callable 创建时用
     bool g_bridgeInited = false;
 
+    // java.util.List 缓存 (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
+    jclass g_listCls = nullptr;
+    jmethodID g_listSize = nullptr;
+    jmethodID g_listGet = nullptr;
+
+    // java.lang.Class.isArray() 缓存 (用于检测 Java 数组, 配合 Symbol.iterator 支持)
+    jclass g_objectCls = nullptr;     // java.lang.Object
+    jclass g_classCls = nullptr;      // java.lang.Class
+    jmethodID g_getClass = nullptr;    // Object.getClass()
+    jmethodID g_isArray = nullptr;     // Class.isArray()
+
     // 获取 JNIEnv (从 JS 执行线程)
     JNIEnv *getJniEnv() {
         if (!JavaObjectClass::cachedJvm) return nullptr;
@@ -74,7 +85,174 @@ namespace {
             LOGE("JavaObjectBridgeNative methods not found");
             env->ExceptionClear();
         }
+
+        // java.util.List (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
+        // JavaObjectBridge.kt 的 callHotTypeMethod 已对 List 做快速路径,
+        // 但 JS for...of 需要对象实现 Symbol.iterator 协议, native 层在此补充。
+        jclass localList = env->FindClass("java/util/List");
+        if (localList) {
+            g_listCls = (jclass) env->NewGlobalRef(localList);
+            env->DeleteLocalRef(localList);
+            g_listSize = env->GetMethodID(g_listCls, "size", "()I");
+            g_listGet = env->GetMethodID(g_listCls, "get", "(I)Ljava/lang/Object;");
+        } else {
+            env->ExceptionClear();
+        }
+
+        // java.lang.Object.getClass() + java.lang.Class.isArray()
+        // 用于检测 Java 数组 (配合 Symbol.iterator 支持 for...of 迭代数组)
+        jclass localObject = env->FindClass("java/lang/Object");
+        if (localObject) {
+            g_objectCls = (jclass) env->NewGlobalRef(localObject);
+            env->DeleteLocalRef(localObject);
+            g_getClass = env->GetMethodID(g_objectCls, "getClass", "()Ljava/lang/Class;");
+        } else {
+            env->ExceptionClear();
+        }
+        jclass localClass = env->FindClass("java/lang/Class");
+        if (localClass) {
+            g_classCls = (jclass) env->NewGlobalRef(localClass);
+            env->DeleteLocalRef(localClass);
+            g_isArray = env->GetMethodID(g_classCls, "isArray", "()Z");
+        } else {
+            env->ExceptionClear();
+        }
+
         g_bridgeInited = true;
+    }
+
+    // 检测 atom 是否为 Symbol.iterator (well-known symbol)
+    // JS_AtomToCString 对 well-known symbol 返回其描述字符串 "Symbol.iterator"
+    // 用字符串比较避免依赖 quickjs-ng 内部 atom enum (未在公开头文件导出)
+    bool isSymbolIterator(JSContext *ctx, JSAtom atom) {
+        const char *name = JS_AtomToCString(ctx, atom);
+        if (!name) return false;
+        bool result = (strcmp(name, "Symbol.iterator") == 0);
+        JS_FreeCString(ctx, name);
+        return result;
+    }
+
+    // 判断 Java 对象是否为 List 或 Java 数组 (用于 Symbol.iterator 支持)
+    bool isJavaListOrArray(JNIEnv *env, jobject javaObj) {
+        if (!javaObj) return false;
+        // 优先检测 List (最常见场景: getStringList 返回 List<String>)
+        if (env->IsInstanceOf(javaObj, g_listCls)) return true;
+        // 再检测 Java 数组 (通过 getClass().isArray() 反射)
+        if (g_getClass && g_isArray) {
+            jobject classObj = env->CallObjectMethod(javaObj, g_getClass);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (classObj) env->DeleteLocalRef(classObj);
+                return false;
+            }
+            jboolean isArray = env->CallBooleanMethod(classObj, g_isArray);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                env->DeleteLocalRef(classObj);
+                return false;
+            }
+            env->DeleteLocalRef(classObj);
+            return isArray == JNI_TRUE;
+        }
+        return false;
+    }
+
+    // Symbol.iterator 工厂函数: 把 Java List/Array 转成 JS Array 并返回其迭代器
+    // for...of 会调用 obj[Symbol.iterator]() 获取迭代器, 本函数即为此调用的返回值。
+    // this_val 是 Java List/Array 对象 (JavaObject class 实例)
+    // 实现: 拷贝 Java 集合元素到 JS Array, 返回 Array.prototype.values 的调用结果
+    // (Array 的默认迭代器), 复用 QuickJS 内置 Array 迭代器逻辑。
+    // 注意: 用 JSCFunction 签名 (而非 JSCFunctionData), 因为 this_val 已携带
+    // Java 对象引用, 无需额外 func_data。
+    static JSValue jsJavaListSymbolIterator(JSContext *ctx, JSValueConst this_val,
+                                            int argc, JSValueConst *argv) {
+        JNIEnv *env = getJniEnv();
+        if (!env) {
+            // 契约: 返回 JS_EXCEPTION 必须先设置 ctx 异常 slot
+            return JS_ThrowInternalError(ctx, "JNI env unavailable for Symbol.iterator");
+        }
+        ensureBridgeInited(env);
+        if (!g_listCls) {
+            return JS_ThrowInternalError(ctx, "java.util.List class not bound");
+        }
+
+        jobject javaObj = JavaObjectClass::getJavaObject(ctx, this_val);
+        if (!javaObj) {
+            return JS_ThrowTypeError(ctx, "Symbol.iterator on non-Java object");
+        }
+
+        // 创建 JS Array
+        JSValue arr = JS_NewArray(ctx);
+        uint32_t jsIndex = 0;
+
+        // 判断是 List 还是 Java 数组
+        bool isList = env->IsInstanceOf(javaObj, g_listCls);
+        if (isList) {
+            // Java List: 调用 size() 和 get(i)
+            jint size = env->CallIntMethod(javaObj, g_listSize);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                JS_FreeValue(ctx, arr);
+                return JS_ThrowInternalError(ctx, "List.size() threw");
+            }
+            for (jint i = 0; i < size; i++) {
+                jobject elem = env->CallObjectMethod(javaObj, g_listGet, i);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    if (elem) env->DeleteLocalRef(elem);
+                    continue;
+                }
+                JSValue elemVal = JniValueConvert::fromJavaObject(ctx, env, elem);
+                JS_SetPropertyUint32(ctx, arr, jsIndex++, elemVal);
+                if (elem) env->DeleteLocalRef(elem);
+            }
+        } else {
+            // Java 数组: 用 java.lang.reflect.Array
+            jclass arrayCls = env->FindClass("java/lang/reflect/Array");
+            if (!arrayCls) {
+                env->ExceptionClear();
+                JS_FreeValue(ctx, arr);
+                return JS_ThrowInternalError(ctx, "java.lang.reflect.Array class not found");
+            }
+            jmethodID arrayGetLength = env->GetStaticMethodID(
+                    arrayCls, "getLength", "(Ljava/lang/Object;)I");
+            jmethodID arrayGet = env->GetStaticMethodID(
+                    arrayCls, "get", "(Ljava/lang/Object;I)Ljava/lang/Object;");
+            if (!arrayGetLength || !arrayGet) {
+                env->ExceptionClear();
+                env->DeleteLocalRef(arrayCls);
+                JS_FreeValue(ctx, arr);
+                return JS_ThrowInternalError(ctx, "Array.getLength/get method not found");
+            }
+            jint size = env->CallStaticIntMethod(arrayCls, arrayGetLength, javaObj);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                env->DeleteLocalRef(arrayCls);
+                JS_FreeValue(ctx, arr);
+                return JS_ThrowInternalError(ctx, "Array.getLength threw");
+            }
+            for (jint i = 0; i < size; i++) {
+                jobject elem = env->CallStaticObjectMethod(arrayCls, arrayGet, javaObj, i);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    if (elem) env->DeleteLocalRef(elem);
+                    continue;
+                }
+                JSValue elemVal = JniValueConvert::fromJavaObject(ctx, env, elem);
+                JS_SetPropertyUint32(ctx, arr, jsIndex++, elemVal);
+                if (elem) env->DeleteLocalRef(elem);
+            }
+            env->DeleteLocalRef(arrayCls);
+        }
+
+        // 返回 Array 的 [Symbol.iterator]() 结果
+        // Array.prototype.values 返回 Array 的默认迭代器 (value iterator)
+        // for...of 通过此迭代器的 next() 方法逐个获取元素
+        JSValue valuesFn = JS_GetPropertyStr(ctx, arr, "values");
+        JSValue iter = JS_Call(ctx, valuesFn, arr, 0, nullptr);
+        JS_FreeValue(ctx, valuesFn);
+        JS_FreeValue(ctx, arr);
+        return iter;
     }
 }
 
@@ -172,15 +350,27 @@ const char *JavaObjectClass::atomToCString(JSContext *ctx, JSAtom atom) {
 
 int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) {
     JNIEnv *env = getJniEnv();
-    if (!env) return 0;
+    if (!env) {
+        JS_ThrowInternalError(ctx, "JNI env unavailable in hasProperty");
+        return -1;
+    }
     ensureBridgeInited(env);
-    if (!g_hasProperty) return 0;
+    if (!g_hasProperty) {
+        JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.hasProperty not bound");
+        return -1;
+    }
 
     jobject javaObj = getJavaObject(ctx, obj);
-    if (!javaObj) return 0;
+    if (!javaObj) {
+        JS_ThrowInternalError(ctx, "Java object opaque is null in hasProperty");
+        return -1;
+    }
 
     const char *name = atomToCString(ctx, prop);
-    if (!name) return 0;
+    if (!name) {
+        JS_ThrowInternalError(ctx, "atom to string failed in hasProperty");
+        return -1;
+    }
 
     jstring jname = env->NewStringUTF(name);
     JS_FreeCString(ctx, name);
@@ -193,7 +383,8 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
 
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        return 0;
+        JS_ThrowInternalError(ctx, "Java hasProperty threw");
+        return -1;
     }
     return result ? 1 : 0;
 }
@@ -201,9 +392,30 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
 JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
                                      JSValueConst receiver) {
     JNIEnv *env = getJniEnv();
-    if (!env) return JS_EXCEPTION;
+    if (!env) {
+        return JS_ThrowInternalError(ctx, "JNI env unavailable in getProperty");
+    }
     ensureBridgeInited(env);
-    if (!g_getPropertyInfo) return JS_EXCEPTION;
+    if (!g_getPropertyInfo) {
+        return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.getPropertyInfo not bound");
+    }
+
+    // 检测 Symbol.iterator: 让 Java List/Array 可在 JS 中 for...of 迭代
+    // 背景: QuickJS 的 for...of 会调用 obj[Symbol.iterator]() 获取迭代器,
+    // 若返回 undefined 则报 "value is not iterable"。Java List 通过 JavaObject
+    // exotic trap 暴露, 默认不实现 Symbol.iterator 协议, 需在此特殊处理。
+    // 仅对 List/Array 返回迭代器工厂函数, 其他 Java 对象仍走原反射路径。
+    if (isSymbolIterator(ctx, atom)) {
+        jobject javaObjForCheck = getJavaObject(ctx, obj);
+        if (javaObjForCheck && isJavaListOrArray(env, javaObjForCheck)) {
+            // 返回一个 JS 函数, for...of 会调用它获取迭代器
+            // JS_NewCFunction 返回的函数 this 绑定到调用者 (即 Java List/Array 对象)
+            return JS_NewCFunction(ctx, jsJavaListSymbolIterator,
+                                   "[Symbol.iterator]", 0);
+        }
+        // 非 List/Array 对象访问 Symbol.iterator 返回 undefined (走标准 JS 行为)
+        return JS_UNDEFINED;
+    }
 
     jobject javaObj = getJavaObject(ctx, obj);
     if (!javaObj) return JS_UNDEFINED;
@@ -224,10 +436,9 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
-        LOGE("getProperty: JNI exception");
         env->ExceptionClear();
         if (info) env->DeleteLocalRef(info);
-        return JS_EXCEPTION;
+        return JS_ThrowInternalError(ctx, "Java getPropertyInfo threw");
     }
 
     if (!info) {
@@ -308,15 +519,27 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
 int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
                                  JSValueConst value, JSValueConst receiver, int flags) {
     JNIEnv *env = getJniEnv();
-    if (!env) return -1;
+    if (!env) {
+        JS_ThrowInternalError(ctx, "JNI env unavailable in setProperty");
+        return -1;
+    }
     ensureBridgeInited(env);
-    if (!g_setProperty) return -1;
+    if (!g_setProperty) {
+        JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.setProperty not bound");
+        return -1;
+    }
 
     jobject javaObj = getJavaObject(ctx, obj);
-    if (!javaObj) return -1;
+    if (!javaObj) {
+        JS_ThrowInternalError(ctx, "Java object opaque is null in setProperty");
+        return -1;
+    }
 
     const char *name = atomToCString(ctx, atom);
-    if (!name) return -1;
+    if (!name) {
+        JS_ThrowInternalError(ctx, "atom to string failed in setProperty");
+        return -1;
+    }
 
     jstring jname = env->NewStringUTF(name);
     JS_FreeCString(ctx, name);
@@ -333,6 +556,7 @@ int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
 
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
+        JS_ThrowInternalError(ctx, "Java setProperty threw");
         return -1;
     }
     return result ? 1 : 0;

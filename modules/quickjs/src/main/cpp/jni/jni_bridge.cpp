@@ -90,6 +90,12 @@ Java_com_script_quickjs_QuickJsNative_nativeEval(JNIEnv *env, jclass clazz,
     const char *src = env->GetStringUTFChars(code, nullptr);
     if (!src) return nullptr;
 
+    // 更新 stack_top 为当前线程栈指针: QuickJS 在 JS_NewRuntime 时记录创建线程的
+    // stack_top,SharedJsScope 缓存的 ctx 被其他线程协程使用时,栈检查会基于错误的
+    // stack_top (跨线程栈地址不可比较),导致误报 "Maximum call stack size exceeded"。
+    // 每次进入 JS 执行前刷新为当前线程栈顶,确保栈检查基于当前线程。
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+
     // 不使用 JS_EVAL_FLAG_STRICT: 兼容 Rhino sloppy mode,
     // 允许书源 JS 使用 with 语句 (JavaImporter 的常见用法)
     JSValue result = JS_Eval(ctx, src, strlen(src), "<eval>",
@@ -435,6 +441,9 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jclass cla
         env->ReleaseLongArrayElements(argHandles, handles, JNI_ABORT);
     }
 
+    // 更新 stack_top 为当前线程栈指针 (跨线程使用 ctx 时栈检查需基于当前线程)
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+
     JSValue result = JS_Call(ctx, func, thisVal, argCount, args.data());
     jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
     JS_FreeValue(ctx, result);
@@ -452,13 +461,31 @@ Java_com_script_quickjs_QuickJsNative_nativeCompile(JNIEnv *env, jclass clazz,
     const char *src = env->GetStringUTFChars(code, nullptr);
     if (!src) return nullptr;
 
+    // 更新 stack_top 为当前线程栈指针: compilerCtx 是全局单例, 可能被不同线程使用,
+    // QuickJS 在 JS_NewRuntime 时记录创建线程的 stack_top, 跨线程使用时栈检查会基于
+    // 错误的 stack_top (跨线程栈地址不可比较), 可能误报 "Maximum call stack size exceeded"
+    // 或导致 native crash。与 nativeEval/nativeEvalBytecode 保持一致。
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+
     // 编译为 bytecode (不执行)
     JSValue funVal = JS_Eval(ctx, src, strlen(src), "<compile>",
                              JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
     env->ReleaseStringUTFChars(code, src);
 
     if (JS_IsException(funVal)) {
+        // 获取编译错误的实际信息 (如语法错误位置), 抛出 JsNativeException 携带原始错误,
+        // 避免返回 null 让 Kotlin 侧只能抛 "Compile failed" 丢失错误信息无法排查
+        JSValue exc = JS_GetException(ctx);
+        // 用 buildExceptionMessage 获取含 stack 的完整消息
+        // (编译错误的 SyntaxError message 已含 "at line X col Y", stack 可能没意义但保留)
+        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, funVal);
+        jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
+        if (excCls) {
+            env->ThrowNew(excCls, msgStr.c_str());
+            env->DeleteLocalRef(excCls);
+        }
         return nullptr;
     }
 
@@ -492,6 +519,9 @@ Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jclass cla
         JS_FreeValue(ctx, funVal);
         return nullptr;
     }
+
+    // 更新 stack_top 为当前线程栈指针 (跨线程使用 ctx 时栈检查需基于当前线程)
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
 
     // 执行
     JSValue result = JS_EvalFunction(ctx, funVal);
