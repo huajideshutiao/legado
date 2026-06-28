@@ -10,7 +10,6 @@ import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.script.quickjs.JsFunction
-import com.script.quickjs.QuickJsContext
 import com.script.quickjs.QuickJsEngine
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ViewEmptyBinding
@@ -38,7 +37,7 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
      * 调用 fn.call() 时会在原 scope 上 evaluate,不使用此处的 cx。
      * 此处的 cx 主要用于 Activity 内创建的新 JS function(如 setBackEvent 的回调)。
      */
-    private val cx by lazy { QuickJsContext(QuickJsEngine.createQuickJsForActivity()) }
+    private val cx by lazy { QuickJsEngine.createQuickJsForActivity() }
     private var error: Throwable? = null
 
     val dialog by lazy {
@@ -182,8 +181,8 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
         val action = IntentData.get<(Throwable?) -> Unit>(waitKey)
         action?.let {
             cx.allowScriptRun = false
-            // 关闭 Activity 关联的 QuickJs 实例
-            cx.quickJs.close()
+            // 关闭 Activity 关联的 native QuickJs ctx
+            cx.close()
             it.invoke(error)
         }
     }

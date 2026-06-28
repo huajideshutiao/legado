@@ -865,13 +865,7 @@ class JsBenchmarkTest {
                 )
             )
         }
-        // 结果一致性校验 (基础类型比较,复杂对象跳过)
-        if (rhinoSupported) {
-            val qjStr = qjResult?.toString()?.take(50)
-            val rhStr = rhResult?.toString()?.take(50)
-            if (qjStr != rhStr) {
-                println("  ! 结果不一致: QJ=[$qjStr] Rh=[$rhStr]")
-            }
-        }
+            // 注: 结果一致性校验已剥离到 RealWorldSourceScenarioTest (功能性测试独立运行)。
+            // 本基准测试只关注性能数据,不再做 assert。
     }
 }

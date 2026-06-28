@@ -1,11 +1,7 @@
 # Add project specific ProGuard rules here.
 
-## quickjs-kt (Kotlin Multiplatform QuickJS 绑定)
--keep class com.dokar.quickjs.** { *; }
--keep class com.dokar.quickjs.binding.** { *; }
-
 ############################
-# QuickJS 引擎模块自身
+# QuickJS 引擎模块自身 (自封装 native QuickJS, 通过 JNI + JSClassExoticMethods trap 反射调用)
 # JavaObjectBridge/JsBootstrap/QuickJsEngine 等通过 JS Proxy 反射链路调用,
 # 私有方法(callHotTypeMethod/callMapMethod/collectMethods/getCollectionField/hasInstanceMethod)
 # 不能被 R8 optimize 阶段内联或基于类型推断优化,否则 Map/List 的 instanceof 检查

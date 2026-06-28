@@ -1,35 +1,39 @@
 package com.script.quickjs
 
-import com.dokar.quickjs.QuickJs
-import com.dokar.quickjs.QuickJsException
-import com.dokar.quickjs.binding.FunctionBinding
 import com.script.quickjs.QuickJsEngine.cleanupBindings
-import com.script.quickjs.QuickJsEngine.createQuickJs
+import com.script.quickjs.QuickJsEngine.compilerCtx
+import com.script.quickjs.QuickJsEngine.createNativeCtx
 import com.script.quickjs.QuickJsEngine.eval
 import com.script.quickjs.QuickJsEngine.evalBytecode
 import com.script.quickjs.QuickJsEngine.getRuntimeScope
 import com.script.quickjs.QuickJsEngine.injectBindings
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.CoroutineContext
 
 /**
  * QuickJS 脚本引擎,对应 Rhino 的 [com.script.rhino.RhinoScriptEngine]。
  *
- * 单例 object。每个 [getRuntimeScope] 创建独立的 [QuickJs] 实例 + [QuickJsContext],
- * 用于实现 SharedJsScope 的作用域隔离。实例创建后立即 evaluate [JsBootstrap.code]
- * (优先用预编译 bytecode,避免每次重新解析)注入 Packages/JavaImporter/JavaAdapter,
- * 并注册 12 个 function binding 供 JS 调用 Kotlin。
+ * 单例 object。每个 [getRuntimeScope] 创建独立的 native JSRuntime + JSContext +
+ * [QuickJsContext], 用于实现 SharedJsScope 的作用域隔离。实例创建后立即 evaluate
+ * [JsBootstrap.code] (优先用预编译 bytecode,避免每次重新解析) 注入
+ * Packages/JavaImporter/JavaAdapter, 并通过 [QuickJsNative.nativeDefineBinding]
+ * 注册 10 个 binding 供 JS 调用 Kotlin。
  *
- * 同步桥接: 业务层 [eval] 是同步签名,内部用 [runBlocking](Dispatchers.Unconfined) 包裹
- * quickjs-kt 的 suspend evaluate。Unconfined 保证 evaluate 在当前线程执行,
- * 使 [QuickJsContext.threadLocalContext] 在 binding handler 中有效。
+ * 架构 A (自封装 native QuickJS):
+ * - 不再依赖 quickjs-kt 的 QuickJs (Phase 5 已移除)
+ * - 所有 JS 操作通过 [QuickJsNative] 调用 native API
+ * - binding 回调由 native 层统一分发到 [BindingHandler.call]
  *
- * 安全名单: 通过 [JsSecurityPolicy] + [JavaObjectBridge] 实现,由 [ScriptBindings.dangerousApi] 控制。
+ * 同步桥接: 业务层 [eval] 是同步签名, native nativeEval 本身是同步 JNI 调用,
+ * 无需 runBlocking。但 [QuickJsContext.threadLocalContext] 仍需在 eval 前设置,
+ * 让 binding handler 能访问到当前 ctx。
+ *
+ * 安全名单: 通过 [JsSecurityPolicy] + [JavaObjectBridge] 实现,
+ * 由 [ScriptBindings.dangerousApi] 控制, 通过 [QuickJsNative.nativeSetDangerousApi]
+ * 同步到 native ctx opaque (供 exotic trap 读取)。
  *
  * 性能优化:
  * - bootstrap 预编译为 bytecode,避免每次 [getRuntimeScope] 重复解析
- * - dangerousApi 仅在变化时同步到 JS 全局变量(减少 evaluate 调用)
+ * - dangerousApi 仅在变化时同步到 native ctx opaque (减少 JNI 调用)
  * - [injectBindings] 返回注入键, [cleanupBindings] 可清理,实现子 scope 隔离
  */
 @Suppress("MemberVisibilityCanBePrivate")
@@ -39,27 +43,47 @@ object QuickJsEngine {
      * bootstrap 预编译 bytecode,懒加载。
      *
      * 解析 JS 是较慢的操作(bootstrap ~6KB,需要词法+语法分析+字节码生成)。
-     * 缓存 bytecode 后,每次 [createQuickJs] 只需 evaluate(bytecode),跳过解析步骤,
+     * 缓存 bytecode 后,每次 [createNativeCtx] 只需 nativeEvalBytecode,跳过解析步骤,
      * 显著降低 [getRuntimeScope] 的初始化开销。
+     *
+     * 注意: bytecode 在临时 ctx 上编译, 在目标 ctx 上执行。
+     * QuickJS bytecode 跨实例兼容 (格式标准), 只要 quickjs-ng 版本一致即可。
      */
     @Volatile
     private var bootstrapBytecode: ByteArray? = null
 
     /**
+     * 用于编译 bootstrap bytecode 的临时 ctx, 编译后复用避免重复创建。
+     * 编译不需要 bootstrap, 只需要空的 native ctx。
+     */
+    @Volatile
+    private var compilerCtx: Long = 0L
+
+    // ============ public API (保持与旧版兼容) ============
+
+    /**
      * 执行 JS(最常用入口)。
      *
      * 对应 RhinoScriptEngine.eval(js, bindingsConfig)。
-     * 内部构建 bindings 并创建新 scope 执行。
+     * 内部构建 bindings 并创建新 scope 执行,执行后立即 close 释放 native 资源
+     * (JSRuntime/JSContext/Java 句柄),避免大量一次性 eval 导致 native 内存泄漏。
      *
      * 注意: 此方法每次都创建新 scope,适合一次性 JS 执行。
      * 高频复用场景(如 BaseSource.evalJS)应使用 SharedJsScope 缓存 scope,
      * 配合 [injectBindings] + [cleanupBindings] 实现子 scope 隔离。
+     *
+     * 返回值说明: eval 期间创建的 Java 对象在 close 前已由 native 层 toJavaObject
+     * 解包为原始 Java 对象引用,close 只释放句柄映射,不影响已返回的 Java 对象。
      */
     fun eval(js: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
         if (js.isBlank()) return null
         val bindings = ScriptBindings().apply(bindingsConfig)
         val ctx = getRuntimeScope(bindings)
-        return eval(js, ctx, null)
+        return try {
+            eval(js, ctx, null)
+        } finally {
+            ctx.close()
+        }
     }
 
     /**
@@ -67,11 +91,16 @@ object QuickJsEngine {
      *
      * 对应 RhinoScriptEngine.eval(js, bindings: ScriptBindings)。
      * 用于 BookExtensions/RegexExtensions/FileBook 等直接传入 bindings 的场景。
+     * 执行后立即 close 释放 native 资源,避免内存泄漏。
      */
     fun eval(js: String, bindings: ScriptBindings): Any? {
         if (js.isBlank()) return null
         val ctx = getRuntimeScope(bindings)
-        return eval(js, ctx, null)
+        return try {
+            eval(js, ctx, null)
+        } finally {
+            ctx.close()
+        }
     }
 
     /**
@@ -87,11 +116,10 @@ object QuickJsEngine {
         if (js.isBlank()) return null
         return withEvalContext(scope, coroutineContext) {
             try {
-                // dangerousApi 仅在变化时同步(减少 evaluate 调用)
                 syncDangerousApiIfNeeded(scope)
-                val result = scope.quickJs.evaluate<Any?>(js)
+                val result = QuickJsNative.nativeEval(scope.ctxPtr, js)
                 unwrapReturnValue(result)
-            } catch (e: QuickJsException) {
+            } catch (e: JsNativeException) {
                 throw ScriptException(e.message, e)
             }
         }
@@ -133,9 +161,9 @@ object QuickJsEngine {
         return withEvalContext(scope, coroutineContext) {
             try {
                 syncDangerousApiIfNeeded(scope)
-                val result = scope.quickJs.evaluate<Any?>(bytecode)
+                val result = QuickJsNative.nativeEvalBytecode(scope.ctxPtr, bytecode)
                 unwrapReturnValue(result)
-            } catch (e: QuickJsException) {
+            } catch (e: JsNativeException) {
                 throw ScriptException(e.message, e)
             }
         }
@@ -151,21 +179,19 @@ object QuickJsEngine {
      */
     fun injectBindings(scope: QuickJsContext, bindings: ScriptBindings): List<String> {
         val injectedKeys = mutableListOf<String>()
-        runBlocking(Dispatchers.Unconfined) {
-            val previousThreadContext = QuickJsContext.threadLocalContext.get()
-            QuickJsContext.threadLocalContext.set(scope)
-            try {
-                // 同步 dangerousApi (仅变化时执行 evaluate)
-                scope.dangerousApi = bindings.dangerousApi
-                syncDangerousApiIfNeeded(scope)
-                for ((key, value) in bindings) {
-                    if (injectVariable(scope.quickJs, key, value, bindings.dangerousApi)) {
-                        injectedKeys.add(key)
-                    }
+        val previousThreadContext = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(scope)
+        try {
+            // 同步 dangerousApi (仅变化时调用 nativeSetDangerousApi)
+            scope.dangerousApi = bindings.dangerousApi
+            syncDangerousApiIfNeeded(scope)
+            for ((key, value) in bindings) {
+                if (injectVariable(scope.ctxPtr, key, value, bindings.dangerousApi)) {
+                    injectedKeys.add(key)
                 }
-            } finally {
-                QuickJsContext.threadLocalContext.set(previousThreadContext)
             }
+        } finally {
+            QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
         return injectedKeys
     }
@@ -180,86 +206,75 @@ object QuickJsEngine {
      */
     fun cleanupBindings(scope: QuickJsContext, keys: List<String>) {
         if (keys.isEmpty()) return
-        runBlocking(Dispatchers.Unconfined) {
-            val previousThreadContext = QuickJsContext.threadLocalContext.get()
-            QuickJsContext.threadLocalContext.set(scope)
-            try {
-                for (key in keys) {
-                    if (isValidVarName(key)) {
-                        // delete 全局变量,释放引用的 Java 对象句柄
-                        scope.quickJs.evaluate<Any?>("delete globalThis['$key'];")
-                    }
+        val previousThreadContext = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(scope)
+        try {
+            for (key in keys) {
+                if (isValidVarName(key)) {
+                    // delete 全局变量, 释放引用的 Java 对象句柄
+                    QuickJsNative.nativeEval(scope.ctxPtr, "delete globalThis['$key'];")
                 }
-            } finally {
-                QuickJsContext.threadLocalContext.set(previousThreadContext)
             }
+        } finally {
+            QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
     }
 
     /**
      * 编译 JS 为 bytecode,对应 RhinoScriptEngine.compile(script)。
      *
-     * 使用临时 QuickJs 实例(无需 bootstrap,compile 不执行代码)。
-     * bytecode 可缓存复用,通过 [evalBytecode] 的 scope 执行(QuickJS bytecode 跨实例兼容)。
+     * 使用临时 ctx (复用 [compilerCtx]), compile 不执行代码。
+     * bytecode 可缓存复用,通过 [evalBytecode] 的 scope 执行 (QuickJS bytecode 跨实例兼容)。
      */
     fun compile(script: String): CompiledScript {
-        val quickJs = QuickJs.create(Dispatchers.Default)
-        try {
-            return CompiledScript(quickJs.compile(script))
-        } catch (e: QuickJsException) {
-            throw ScriptException(e.message, e)
-        } finally {
-            quickJs.close()
-        }
+        val ctxPtr = getCompilerCtx()
+        val bytecode = QuickJsNative.nativeCompile(ctxPtr, script)
+            ?: throw ScriptException("Compile failed", null)
+        return CompiledScript(bytecode)
     }
 
     /**
-     * 复用目标 scope 编译 JS,避免创建临时 QuickJs 实例。
+     * 复用目标 scope 编译 JS,避免创建临时 ctx。
      *
      * 用于 AnalyzeRule 等已知目标 scope 的场景:
-     * 编译与执行在同一 scope,符号解析一致,且无临时实例初始化开销。
+     * 编译与执行在同一 scope,符号解析一致,且无临时 ctx 初始化开销。
      *
      * @param script JS 源码
-     * @param scope 目标 scope(执行时也用此 scope)
+     * @param scope 目标 scope (执行时也用此 scope)
      */
     fun compile(script: String, scope: QuickJsContext): CompiledScript {
-        return runBlocking(Dispatchers.Unconfined) {
-            val previousThreadContext = QuickJsContext.threadLocalContext.get()
-            QuickJsContext.threadLocalContext.set(scope)
-            try {
-                CompiledScript(scope.quickJs.compile(script))
-            } catch (e: QuickJsException) {
-                throw ScriptException(e.message, e)
-            } finally {
-                QuickJsContext.threadLocalContext.set(previousThreadContext)
-            }
+        val previousThreadContext = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(scope)
+        try {
+            val bytecode = QuickJsNative.nativeCompile(scope.ctxPtr, script)
+                ?: throw ScriptException("Compile failed", null)
+            return CompiledScript(bytecode)
+        } finally {
+            QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
     }
 
     /**
      * 创建运行时 scope,对应 RhinoScriptEngine.getRuntimeScope(bindings)。
      *
-     * 创建新 QuickJs 实例 → evaluate bootstrap bytecode(预编译,跳过解析)→ 注入 bindings 变量 → 返回 context。
+     * 创建新 native JSRuntime + JSContext → evaluate bootstrap bytecode(预编译,跳过解析)
+     * → 注册 binding → 注入 bindings 变量 → 返回 context。
      * SharedJsScope 用此方法创建共享作用域;BaseSource.evalJS 无 sharedScope 时也用此方法。
      */
     fun getRuntimeScope(bindings: ScriptBindings): QuickJsContext {
-        val quickJs = createQuickJs()
-        val ctx = QuickJsContext(quickJs).apply {
-            dangerousApi = bindings.dangerousApi
-        }
-        runBlocking(Dispatchers.Unconfined) {
-            val previous = QuickJsContext.threadLocalContext.get()
-            QuickJsContext.threadLocalContext.set(ctx)
-            try {
-                // 同步 dangerousApi (仅变化时执行 evaluate,bootstrap 默认 false)
-                syncDangerousApiIfNeeded(ctx)
-                // 注入 bindings 里的变量(java/source/baseUrl/cookie/cache 等)
-                for ((key, value) in bindings) {
-                    injectVariable(quickJs, key, value, bindings.dangerousApi)
-                }
-            } finally {
-                QuickJsContext.threadLocalContext.set(previous)
+        val ctx = createNativeCtx()
+        val previous = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(ctx)
+        try {
+            // 同步 dangerousApi (仅变化时调用 nativeSetDangerousApi, bootstrap 默认 false)
+            ctx.dangerousApi = bindings.dangerousApi
+            syncDangerousApiIfNeeded(ctx)
+            // 注入 bindings 里的变量 (java/source/baseUrl/cookie/cache 等)
+            for ((key, value) in bindings) {
+                injectVariable(ctx.ctxPtr, key, value, bindings.dangerousApi)
             }
+        } finally {
+            QuickJsContext.threadLocalContext.set(previous)
         }
         return ctx
     }
@@ -267,73 +282,78 @@ object QuickJsEngine {
     /**
      * 解包 JS 返回值,对应 RhinoScriptEngine.unwrapReturnValue。
      *
-     * JS 返回的 Java 对象句柄({__java_handle__: handle})解包为原始 Java 对象,
+     * JS 返回的 JavaObject (native JavaObjectClass 实例) 解包为原始 Java 对象,
      * 其他类型原样返回。
+     *
+     * 注意: 与旧版不同, 不再依赖 __java_handle__ 字段。
+     * native 层 toJavaObject 已对 JavaObjectClass 实例做解包 (返回原始 jobject),
+     * 但 basic 类型 (String/Number/Boolean) 直接返回, 不需要解包。
+     * 此方法保留兼容性, 实际 native 层已处理大部分解包, 这里只处理边界情况。
      */
     private fun unwrapReturnValue(result: Any?): Any? {
-        if (result is Map<*, *>) {
-            val handle = result["__java_handle__"]
-            if (handle != null) {
-                val h = (handle as? Long) ?: (handle as? Number)?.toLong() ?: 0L
-                if (h != 0L) {
-                    return JavaObjectBridge.getObject(h) ?: result
-                }
-            }
-        }
+        // native 层 toJavaObject 已对 JavaObject 解包为原始 Java 对象, 这里直接返回
         return result
     }
 
     /**
-     * 创建 QuickJs 实例并注入 bootstrap。
+     * 创建 native JSRuntime + JSContext 并注入 bootstrap + 注册 binding。
      *
-     * 优先用预编译 bytecode,避免每次重新解析 bootstrap 源码(~6KB)。
+     * 优先用预编译 bytecode,避免每次重新解析 bootstrap 源码 (~6KB)。
      */
-    private fun createQuickJs(): QuickJs {
-        val quickJs = QuickJs.create(Dispatchers.Default)
-        runBlocking(Dispatchers.Unconfined) {
-            val bytecode = getBootstrapBytecode()
-            quickJs.evaluate<Any?>(bytecode)
+    private fun createNativeCtx(): QuickJsContext {
+        val rtPtr = QuickJsNative.nativeCreateRuntime()
+        if (rtPtr == 0L) {
+            throw ScriptException("Failed to create JSRuntime", null)
         }
-        registerBindings(quickJs)
-        return quickJs
+        val ctxPtr = QuickJsNative.nativeCreateContext(rtPtr)
+        if (ctxPtr == 0L) {
+            QuickJsNative.nativeFreeRuntime(rtPtr)
+            throw ScriptException("Failed to create JSContext", null)
+        }
+        // evaluate bootstrap bytecode (首次启动时编译并缓存, 后续直接复用)
+        val bytecode = getBootstrapBytecode()
+        QuickJsNative.nativeEvalBytecode(ctxPtr, bytecode)
+        // 注册所有 binding
+        registerBindings(ctxPtr)
+        return QuickJsContext(rtPtr, ctxPtr)
     }
 
     /**
      * 获取预编译的 bootstrap bytecode,懒加载。
      *
-     * 首次调用时用临时 QuickJs 实例编译 [JsBootstrap.code],后续直接复用。
-     * 编译结果与具体 QuickJs 实例无关(QuickJS bytecode 格式标准),可跨实例执行。
+     * 首次调用时用 [compilerCtx] 编译 [JsBootstrap.code], 后续直接复用。
+     * bytecode 与具体 ctx 实例无关 (QuickJS bytecode 格式标准), 可跨实例执行。
      */
     private fun getBootstrapBytecode(): ByteArray {
         bootstrapBytecode?.let { return it }
         synchronized(this) {
             bootstrapBytecode?.let { return it }
-            val tmp = QuickJs.create(Dispatchers.Default)
-            try {
-                val bytecode = runBlocking(Dispatchers.Unconfined) {
-                    tmp.compile(JsBootstrap.code)
-                }
-                bootstrapBytecode = bytecode
-                return bytecode
-            } finally {
-                tmp.close()
-            }
+            // 用 compilerCtx 编译, 避免在目标 ctx 上编译 (避免污染)
+            val compilerCtxPtr = getCompilerCtx()
+            val bytecode = QuickJsNative.nativeCompile(compilerCtxPtr, JsBootstrap.code)
+                ?: throw ScriptException("Failed to compile bootstrap", null)
+            bootstrapBytecode = bytecode
+            return bytecode
         }
     }
 
     /**
-     * 创建独立的 QuickJs 实例(已注入 bootstrap + 注册 binding)。
+     * 创建独立的 native ctx (已注入 bootstrap + 注册 binding),返回 QuickJsContext。
      *
      * 用于 [io.legado.app.ui.association.JsActivity] 等需要独立 scope 的场景,
      * 不与 SharedJsScope 缓存的 scope 共享。
+     *
+     * 注意: 与旧版不同, 返回类型改为 [QuickJsContext] (而非 quickjs-kt 的 QuickJs)。
+     * 业务层 JsActivity 通过 cx.close() 释放, 不再调用 cx.quickJs.close()。
      */
-    fun createQuickJsForActivity(): QuickJs = createQuickJs()
+    fun createQuickJsForActivity(): QuickJsContext = createNativeCtx()
 
     /**
-     * 注入单个 bindings 变量到 QuickJs 全局作用域。
+     * 注入单个 bindings 变量到 native ctx 全局作用域。
      *
-     * - null/基本类型(String/Number/Boolean)直接拼字面量
-     * - Java 对象通过 [JavaObjectBridge.registerObject] 注册句柄,JS 用 __wrapJavaObject 解包
+     * - null/基本类型 (String/Number/Boolean) 直接拼字面量, 用 nativeEval 设置
+     * - Java 对象通过 [QuickJsNative.nativeWrapJavaObject] 包装为 JSValue,
+     *   再用 nativeSetProperty 设置到 globalThis
      *
      * 注意: 用 `globalThis.$key = ...` 而非 `var $key = ...`,
      * 因为 QuickJS 中 `var` 与书源 JS 的 `let`/`const` 同名会报 "redeclaration",
@@ -343,26 +363,49 @@ object QuickJsEngine {
      * @return true 表示注入成功(变量名合法),false 表示跳过(变量名非法或对象不可见)
      */
     private fun injectVariable(
-        quickJs: QuickJs,
+        ctxPtr: Long,
         key: String,
         value: Any?,
         dangerousApi: Boolean
     ): Boolean {
         if (!isValidVarName(key)) return false
-        val jsExpr = when {
-            value == null -> "null"
-            value is String -> JsStringUtils.escape(value)
-            value is Boolean -> value.toString()
-            value is Number -> value.toString()
-            else -> {
-                // Java 对象通过句柄注入
-                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
-                val handle = JavaObjectBridge.registerObject(value)
-                "__wrapJavaObject($handle)"
+        when {
+            value == null -> {
+                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = null;")
             }
-        }
-        runBlocking(Dispatchers.Unconfined) {
-            quickJs.evaluate<Any?>("globalThis.$key = $jsExpr;")
+
+            value is String -> {
+                val jsLiteral = JsStringUtils.escape(value)
+                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $jsLiteral;")
+            }
+
+            value is Boolean -> {
+                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $value;")
+            }
+
+            value is Number -> {
+                // Number 直接拼字面量 (Int/Long/Double/Float 都用 toString)
+                // 注意: Long 在 JS 中是 float64, 但值小于 2^53 时精度无损
+                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $value;")
+            }
+            else -> {
+                // Java 对象通过 nativeWrapJavaObject 包装为 JavaObject
+                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
+                // nativeWrapJavaObject 返回 JSValue 句柄 (Long)
+                val jsValueHandle = QuickJsNative.nativeWrapJavaObject(ctxPtr, value)
+                // 用 nativeSetPropertyHandle 设置到 globalThis
+                // 重要: 不能用 nativeSetProperty, 因为 fromJavaObject 会把 Long 句柄当数字
+                val globalObj = QuickJsNative.nativeGetGlobalObject(ctxPtr)
+                val globalHandle = (globalObj as? Number)?.toLong() ?: 0L
+                val valueHandle = (jsValueHandle as? Number)?.toLong() ?: 0L
+                if (globalHandle != 0L && valueHandle != 0L) {
+                    QuickJsNative.nativeSetPropertyHandle(ctxPtr, globalHandle, key, valueHandle)
+                    // 释放 globalObj 句柄 (避免泄漏)
+                    QuickJsNative.nativeFreeHandle(ctxPtr, globalHandle)
+                    // jsValueHandle 由 globalObj 持有 (SetPropertyStr 内部 DupValue), 这里 Free 安全
+                    QuickJsNative.nativeFreeHandle(ctxPtr, valueHandle)
+                }
+            }
         }
         return true
     }
@@ -378,17 +421,18 @@ object QuickJsEngine {
     }
 
     /**
-     * 同步 dangerousApi 到 JS 全局变量(仅当 scope.dangerousApi 与上次同步的值不同时)。
+     * 同步 dangerousApi 到 native ctx opaque (仅当 scope.dangerousApi 与上次同步的值不同时)。
      *
      * 通过 [QuickJsContext.lastSyncedDangerousApi] 跟踪上次同步值,
-     * 避免每次 eval 都执行 `__dangerousApi__ = true/false` 的 evaluate 调用。
-     * 同一 scope 连续多次 eval 同一书源时(dangerousApi 不变),仅首次同步。
+     * 避免每次 eval 都调用 [QuickJsNative.nativeSetDangerousApi]。
+     * 同一 scope 连续多次 eval 同一书源时 (dangerousApi 不变), 仅首次同步。
      */
     private fun syncDangerousApiIfNeeded(scope: QuickJsContext) {
         if (scope.lastSyncedDangerousApi == scope.dangerousApi) return
-        runBlocking(Dispatchers.Unconfined) {
-            scope.quickJs.evaluate<Any?>("__dangerousApi__ = ${scope.dangerousApi};")
-        }
+        QuickJsNative.nativeSetDangerousApi(scope.ctxPtr, scope.dangerousApi)
+        // 同步 JS 端 __dangerousApi__ 全局变量 (bootstrap 中定义, 供 binding 调用时传参)
+        // 仅 native opaque 同步不够, JS 代码读取的是 __dangerousApi__ 变量
+        QuickJsNative.nativeEval(scope.ctxPtr, "__dangerousApi__ = ${scope.dangerousApi};")
         scope.lastSyncedDangerousApi = scope.dangerousApi
     }
 
@@ -413,220 +457,93 @@ object QuickJsEngine {
     }
 
     /**
-     * 在指定 scope 上执行 evaluate,处理 ThreadLocalContext / 递归检查 / coroutineContext 同步。
+     * 在指定 scope 上执行 nativeEval,处理 ThreadLocalContext / 递归检查 / coroutineContext 同步。
      *
      * 抽取 [eval] 和 [evalBytecode] 的共用模板,确保 ThreadLocal 设置 / 资源清理一致。
      *
-     * 注意: block 必须是 suspend 的,因为内部会调用 [QuickJs.evaluate](suspend 函数)。
-     * 用 inline + crossinline 避免额外对象分配(性能优化)。
+     * 注意: block 是非 suspend 的, 因为 nativeEval 是同步 JNI 调用。
+     * 用 inline 避免额外对象分配 (性能优化)。
      */
     private inline fun <T> withEvalContext(
         scope: QuickJsContext,
         coroutineContext: CoroutineContext?,
-        crossinline block: suspend () -> T
+        crossinline block: () -> T
     ): T {
-        return runBlocking(Dispatchers.Unconfined) {
-            val previousThreadContext = QuickJsContext.threadLocalContext.get()
-            QuickJsContext.threadLocalContext.set(scope)
-            val previousCoroutineContext = scope.coroutineContext
-            val previousAllowScriptRun = scope.allowScriptRun
-            if (coroutineContext != null) {
-                scope.coroutineContext = coroutineContext
-            }
-            scope.allowScriptRun = true
-            scope.recursiveCount++
-            try {
-                scope.checkRecursive()
-                block()
-            } finally {
-                scope.coroutineContext = previousCoroutineContext
-                scope.allowScriptRun = previousAllowScriptRun
-                scope.recursiveCount--
-                QuickJsContext.threadLocalContext.set(previousThreadContext)
-            }
+        val previousThreadContext = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(scope)
+        val previousCoroutineContext = scope.coroutineContext
+        val previousAllowScriptRun = scope.allowScriptRun
+        if (coroutineContext != null) {
+            scope.coroutineContext = coroutineContext
+        }
+        scope.allowScriptRun = true
+        scope.recursiveCount++
+        try {
+            scope.checkRecursive()
+            return block()
+        } finally {
+            scope.coroutineContext = previousCoroutineContext
+            scope.allowScriptRun = previousAllowScriptRun
+            scope.recursiveCount--
+            QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
     }
 
     /**
-     * 注册 12 个 function binding,供 JS bootstrap 调用 Kotlin。
+     * 注册所有 binding,供 JS bootstrap 调用 Kotlin。
      *
-     * 这些函数由 [JsBootstrap] 的 JS 代码调用,实现 Packages/JavaImporter/JavaAdapter。
-     * 所有 args 用安全转换,避免 JS 传入错误类型导致崩溃。
+     * 架构 A: 通过 [QuickJsNative.nativeDefineBinding] 注册 binding 名,
+     * native 层的 jsBindingCall 回调统一分发到 [BindingHandler.call]。
+     *
+     * 注册的 binding 列表 (与 [JsBootstrap] 依赖一致):
+     * - __loadJavaClass / __classExists / __isInterface (类加载)
+     * - __newJavaInstance / __callStaticMethod / __getStaticField / __setStaticField (静态成员)
+     * - __newJavaAdapter / __registerJsFunctionNative (JavaAdapter)
+     * - __wrapJavaHandle (句柄包装, 供 JsFunctionHandle 用)
      */
-    private fun registerBindings(quickJs: QuickJs) {
-        // 1. 按类名加载 Class,返回 Class 句柄(>0)或 0(失败/拦截)
-        quickJs.defineBinding(
+    private fun registerBindings(ctxPtr: Long) {
+        val bindings = arrayOf(
             "__loadJavaClass",
-            FunctionBinding<Any?> { args ->
-                val fullName = args.getOrNull(0) as? String
-                if (fullName.isNullOrEmpty()) return@FunctionBinding 0L
-                val dangerousApi = (args.getOrNull(1) as? Boolean) ?: false
-                JavaObjectBridge.loadJavaClass(fullName, dangerousApi)
-            }
-        )
-
-        // 1.5 仅检查类是否存在,不注册句柄(用于 JavaImporter.has 探测,避免 has 泄漏)
-        quickJs.defineBinding(
             "__classExists",
-            FunctionBinding<Any?> { args ->
-                val fullName = args.getOrNull(0) as? String
-                if (fullName.isNullOrEmpty()) return@FunctionBinding false
-                val dangerousApi = (args.getOrNull(1) as? Boolean) ?: false
-                JavaObjectBridge.classExists(fullName, dangerousApi)
-            }
-        )
-
-        // 1.6 判断 Class 是否为 interface(用于 new Interface(impl) JavaAdapter 语法检测)
-        quickJs.defineBinding(
             "__isInterface",
-            FunctionBinding<Any?> { args ->
-                val classHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val dangerousApi = (args.getOrNull(1) as? Boolean) ?: false
-                if (classHandle == 0L) return@FunctionBinding false
-                JavaObjectBridge.isInterface(classHandle, dangerousApi)
-            }
-        )
-
-        // 2. 实例化 Java 对象,返回对象句柄(>0)或 0(失败)
-        quickJs.defineBinding(
             "__newJavaInstance",
-            FunctionBinding<Any?> { args ->
-                val classHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val ctorArgs = (args.getOrNull(1) as? List<*>)?.toTypedArray() ?: emptyArray()
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (classHandle == 0L) return@FunctionBinding 0L
-                JavaObjectBridge.newJavaInstance(classHandle, ctorArgs, dangerousApi)
-            }
-        )
-
-        // 3. 调用静态方法
-        quickJs.defineBinding(
             "__callStaticMethod",
-            FunctionBinding<Any?> { args ->
-                val classHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val methodName = args.getOrNull(1) as? String
-                val methodArgs = (args.getOrNull(2) as? List<*>)?.toTypedArray() ?: emptyArray()
-                val dangerousApi = (args.getOrNull(3) as? Boolean) ?: false
-                if (classHandle == 0L || methodName.isNullOrEmpty()) return@FunctionBinding null
-                JavaObjectBridge.callStaticMethod(classHandle, methodName, methodArgs, dangerousApi)
-            }
-        )
-
-        // 4. 获取静态字段
-        quickJs.defineBinding(
             "__getStaticField",
-            FunctionBinding<Any?> { args ->
-                val classHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val fieldName = args.getOrNull(1) as? String
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (classHandle == 0L || fieldName.isNullOrEmpty()) return@FunctionBinding null
-                JavaObjectBridge.getStaticField(classHandle, fieldName, dangerousApi)
-            }
-        )
-
-        // 5. 调用实例方法
-        quickJs.defineBinding(
-            "__callInstanceMethod",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val methodName = args.getOrNull(1) as? String
-                val methodArgs = (args.getOrNull(2) as? List<*>)?.toTypedArray() ?: emptyArray()
-                val dangerousApi = (args.getOrNull(3) as? Boolean) ?: false
-                if (objHandle == 0L || methodName.isNullOrEmpty()) return@FunctionBinding null
-                JavaObjectBridge.callInstanceMethod(objHandle, methodName, methodArgs, dangerousApi)
-            }
-        )
-
-        // 6. 获取实例字段
-        quickJs.defineBinding(
-            "__getInstanceField",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val fieldName = args.getOrNull(1) as? String
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (objHandle == 0L || fieldName.isNullOrEmpty()) return@FunctionBinding null
-                JavaObjectBridge.getInstanceField(objHandle, fieldName, dangerousApi)
-            }
-        )
-
-        // 7. 检查实例方法是否存在(不触发调用)
-        // 用于 Proxy get 判断 field+method 同名场景,实现 rhino LiveConnect 的 method 优先语义
-        quickJs.defineBinding(
-            "__hasInstanceMethod",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val methodName = args.getOrNull(1) as? String
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (objHandle == 0L || methodName.isNullOrEmpty()) return@FunctionBinding false
-                JavaObjectBridge.hasInstanceMethod(objHandle, methodName, dangerousApi)
-            }
-        )
-
-        // 7.1 一次性查 field + method (合并 __getInstanceField + __hasInstanceMethod, 减半 bridge 调用)
-        // 返回 null = 都不存在; 否则 [fieldValue, fieldExists, hasMethod] 三元素 List
-        // fieldExists 供 JS 侧 __wrapJavaObject 做 method-only callable 缓存判定
-        quickJs.defineBinding(
-            "__getJavaProperty",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val fieldName = args.getOrNull(1) as? String
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (objHandle == 0L || fieldName.isNullOrEmpty()) return@FunctionBinding null
-                JavaObjectBridge.getJavaProperty(objHandle, fieldName, dangerousApi)
-            }
-        )
-
-        // 7.5 获取实例对象的所有可枚举属性名 (用于 __keys 函数 / Object.entries 等)
-        // 与 rhino NativeJavaObject.getIds() / NativeJavaMap.getIds() / NativeJavaList.getIds() 行为一致
-        // 返回 String[] (JS ownKeys 要求 string|symbol)
-        quickJs.defineBinding(
-            "__getInstanceKeys",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val dangerousApi = (args.getOrNull(1) as? Boolean) ?: false
-                if (objHandle == 0L) return@FunctionBinding emptyArray<String>()
-                JavaObjectBridge.getInstanceKeys(objHandle, dangerousApi)
-            }
-        )
-
-        // 8. 设置实例字段
-        quickJs.defineBinding(
-            "__setInstanceField",
-            FunctionBinding<Any?> { args ->
-                val objHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val fieldName = args.getOrNull(1) as? String
-                val value = args.getOrNull(2)
-                val dangerousApi = (args.getOrNull(3) as? Boolean) ?: false
-                if (objHandle == 0L || fieldName.isNullOrEmpty()) return@FunctionBinding false
-                JavaObjectBridge.setInstanceField(objHandle, fieldName, value, dangerousApi)
-            }
-        )
-
-        // 9. 创建 JavaAdapter(Proxy 实现接口),返回代理对象句柄
-        quickJs.defineBinding(
+            "__setStaticField",
             "__newJavaAdapter",
-            FunctionBinding<Any?> { args ->
-                val classHandle = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val jsFnHandle = (args.getOrNull(1) as? Number)?.toLong() ?: 0L
-                val dangerousApi = (args.getOrNull(2) as? Boolean) ?: false
-                if (classHandle == 0L || jsFnHandle == 0L) return@FunctionBinding 0L
-                JavaObjectBridge.newJavaAdapter(classHandle, jsFnHandle, dangerousApi)
-            }
-        )
-
-        // 10. 注册 JS function 对象,返回 JsFunctionHandle 句柄(用于 JavaAdapter 回调)
-        quickJs.defineBinding(
             "__registerJsFunctionNative",
-            FunctionBinding<Any?> { args ->
-                val jsObjectExpr = args.getOrNull(0) as? String
-                val dangerousApi = (args.getOrNull(1) as? Boolean) ?: false
-                if (jsObjectExpr.isNullOrEmpty()) return@FunctionBinding 0L
-                JsFunctionHandle.register(
-                    quickJs = quickJs,
-                    jsObjectExpr = jsObjectExpr,
-                    dangerousApi = dangerousApi
-                )
-            }
+            "__wrapJavaHandle"
         )
+        for (name in bindings) {
+            QuickJsNative.nativeDefineBinding(ctxPtr, name)
+        }
+    }
+
+    /**
+     * 获取用于编译 bootstrap/业务脚本 的临时 ctx (复用)。
+     *
+     * 不需要注入 bootstrap, compile 只需要空的 native ctx。
+     * 复用同一个 ctx 避免每次 compile 都创建/销毁 ctx 的开销。
+     */
+    private fun getCompilerCtx(): Long {
+        if (compilerCtx != 0L) return compilerCtx
+        synchronized(this) {
+            if (compilerCtx != 0L) return compilerCtx
+            val rtPtr = QuickJsNative.nativeCreateRuntime()
+            if (rtPtr == 0L) {
+                throw ScriptException("Failed to create compiler JSRuntime", null)
+            }
+            val ctxPtr = QuickJsNative.nativeCreateContext(rtPtr)
+            if (ctxPtr == 0L) {
+                QuickJsNative.nativeFreeRuntime(rtPtr)
+                throw ScriptException("Failed to create compiler JSContext", null)
+            }
+            // compilerCtx 不需要注册 binding (compile 不执行代码)
+            // 但需要保留 rtPtr 引用避免被 GC, 这里简单 leak (compilerCtx 生命周期与进程一致)
+            // 实际上 nativeFreeContext 时 rtPtr 也会被引用, 但 nativeFreeRuntime 不会自动释放 ctx
+            // 简化处理: compilerCtx 永不释放 (单例, 进程级)
+            compilerCtx = ctxPtr
+            return ctxPtr
+        }
     }
 }

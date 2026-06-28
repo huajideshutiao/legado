@@ -177,18 +177,17 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            if (result is Map<*, *>) {
+            // QuickJS 时代 JS 对象在 Kotlin 端也是 Map,无法像 Rhino 时代用 NativeObject 区分。
+            // 用首个 SourceRule 的 mode 区分:
+            //  - Mode.Json: JsonPath 返回的 Map,走通用循环(执行后续 JS/JsonPath 等)
+            //  - 其他: JS 返回的 Map,键值直接访问(对应 Rhino 时代 NativeObject 分支)
+            if (result is Map<*, *> && ruleList.first().mode != Mode.Json) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
-                } else if (sourceRule.mode == Mode.Json) {
-                    // JsonPath 规则用 JsonPath 解析
-                    // (Rhino 时代 NativeObject 只匹配 JS 对象,JsonPath 返回的 Map 走 else;
-                    //  QuickJS 时代 JS 对象也是 Map,需按 mode 区分,否则 result["$.name"] 返回 null)
-                    getAnalyzeByJSonPath(result).getStringList(sourceRule.rule)
                 } else {
                     // 键值直接访问(JS 返回的 Map)
                     result[sourceRule.rule]
@@ -276,18 +275,18 @@ class AnalyzeRule(
         val content = mContent ?: this.content
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            if (result is Map<*, *>) {
+            // QuickJS 时代 JS 对象在 Kotlin 端也是 Map,无法像 Rhino 时代用 NativeObject 区分。
+            // 用首个 SourceRule 的 mode 区分:
+            //  - Mode.Json: JsonPath 返回的 Map,走通用循环(执行后续 JS/JsonPath 等)
+            //  - 其他: JS 返回的 Map,键值直接访问(对应 Rhino 时代 NativeObject 分支)
+            // 否则 `$.postTime<js>格式化</js>` 这类规则只取到原始时间戳,JS 被跳过。
+            if (result is Map<*, *> && ruleList.first().mode != Mode.Json) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
-                } else if (sourceRule.mode == Mode.Json) {
-                    // JsonPath 规则用 JsonPath 解析
-                    // (Rhino 时代 NativeObject 只匹配 JS 对象,JsonPath 返回的 Map 走 else;
-                    //  QuickJS 时代 JS 对象也是 Map,需按 mode 区分,否则 result["$.name"] 返回 null)
-                    getAnalyzeByJSonPath(result).getString(sourceRule.rule)
                 } else {
                     // 键值直接访问(JS 返回的 Map)
                     result[sourceRule.rule]?.toString()

@@ -838,16 +838,16 @@ class QuickJsEngineTest {
         }
     }
 
-    // ============ __keys 全局函数 (修复点: 显式枚举 Java 对象属性) ============
+    // ============ Object.keys 对 Java 对象的枚举 (对齐 rhino NativeJavaMap.getIds()) ============
 
     @Test
     fun testKeysOnInjectedMap() {
-        // 修复点: __keys(javaMap) 应返回 Map.keySet()(与 rhino NativeJavaMap.getIds() 一致)
+        // Object.keys(javaMap) 触发 native getOwnPropertyNames trap, 返回 Map.keySet()
         val map = LinkedHashMap<String, Any?>()
         map["a"] = 1
         map["b"] = 2
         map["c"] = 3
-        val result = QuickJsEngine.eval("__keys(m).sort().join(',')") {
+        val result = QuickJsEngine.eval("Object.keys(m).sort().join(',')") {
             put("m", map)
         }
         assertEquals("a,b,c", result.toString())
@@ -855,10 +855,9 @@ class QuickJsEngineTest {
 
     @Test
     fun testKeysOnInjectedList() {
-        // 修复点: __keys(javaList) 应返回 0 until size 的字符串索引
-        // (与 rhino NativeJavaList.getIds() 一致)
+        // Object.keys(javaList) 触发 native getOwnPropertyNames trap, 返回 0 until size 索引
         val list = ArrayList<String>(listOf("x", "y"))
-        val result = QuickJsEngine.eval("__keys(lst).join(',')") {
+        val result = QuickJsEngine.eval("Object.keys(lst).join(',')") {
             put("lst", list)
         }
         assertEquals("0,1", result.toString())
@@ -866,20 +865,12 @@ class QuickJsEngineTest {
 
     @Test
     fun testKeysOnPlainJsObject() {
-        // 修复点: __keys(plainJsObj) 应委托到 Object.keys
         val js = """
             var o = { foo: 1, bar: 2 };
-            __keys(o).sort().join(',');
+            Object.keys(o).sort().join(',');
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
         assertEquals("bar,foo", result.toString())
-    }
-
-    @Test
-    fun testKeysOnNullReturnsEmptyArray() {
-        // 修复点: __keys(null) / __keys(undefined) 应返回空数组,不抛异常
-        assertEquals(0, (QuickJsEngine.eval("__keys(null).length") as Number).toInt())
-        assertEquals(0, (QuickJsEngine.eval("__keys(undefined).length") as Number).toInt())
     }
 
     // ============ compile(script, scope) 复用目标 scope (修复点: 减少临时实例) ============
@@ -1214,16 +1205,15 @@ class QuickJsEngineTest {
      * 测试4: Java Map (LinkedHashMap) 通过 Java 方法返回后,for...in + .get() 并存。
      *
      * 真正互操作验证: Map 通过 javaToJsResult 走 Java 句柄路径 (标记 __java_is_map__),
-     * __wrapJavaResult 检测标记后用 __wrapJavaMap 包装 (Proxy 增加 ownKeys trap)。
-     * - ownKeys trap 让 for...in 枚举 Map keys (经 __getInstanceKeys → Map.keySet)
-     * - get trap 委托到 __getJavaPropertyValue → __getInstanceField → Map.get(key)
-     * - 嵌套 Map (idea_count) 也通过 __wrapJavaMap 递归包装,.idea_count 属性访问正常
+     * native JniValueConvert.fromJavaObject 自动把 Map 包装为 JavaObject (exotic trap)。
+     * - get_own_property_names trap 让 for...in 枚举 Map keys (经 getPropertyNames → Map.keySet)
+     * - get_property trap 委托到 getPropertyInfo → Map.get(key)
+     * - 嵌套 Map (idea_count) 也通过 exotic trap 递归包装,.idea_count 属性访问正常
      *
      * 这覆盖番茄小说段评解析的核心代码: for (var key in body) body.get(key).idea_count
      *
-     * 注意: 必须通过 Java 方法返回 Map (clone()) 走 javaToJsResult → __wrapJavaMap 路径,
-     * 而非 bindings 注入 (bindings 注入走 __wrapJavaObject,不支持 for...in/Object.entries)。
-     * 这与段评业务路径一致: body = java.getElements("$..idea_data")[0] 通过 Java 方法返回 Map。
+     * 注意: 必须通过 Java 方法返回 Map (clone()) 走 javaToJsResult → exotic trap 路径,
+     * 与段评业务路径一致: body = java.getElements("$..idea_data")[0] 通过 Java 方法返回 Map。
      */
     @Test
     fun testJavaMapForInAndGetCoexist() {
@@ -1328,9 +1318,10 @@ class QuickJsEngineTest {
     }
 
     /**
-     * 测试8: __wrapJavaMap 修改后 Object.keys 反映新增的 key。
+     * 测试8: JavaObject (Map) 修改后 Object.keys 反映新增的 key。
      *
-     * 验证 set trap 后 ownKeys (经 cachedKeys 或 __getInstanceKeys) 能枚举到新增 key。
+     * 验证 set trap (setProperty) 后 get_own_property_names trap (getPropertyNames)
+     * 能枚举到新增 key。
      */
     @Test
     fun testJavaMapInteropKeysReflectModification() {

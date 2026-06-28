@@ -4,13 +4,17 @@ import android.util.Log
 import androidx.collection.LongSparseArray
 import com.script.quickjs.JavaObjectBridge.NO_RESULT
 import com.script.quickjs.JavaObjectBridge.appendToBuilder
+import com.script.quickjs.JavaObjectBridge.callInstanceMethod
 import com.script.quickjs.JavaObjectBridge.callStringBuilderMethod
 import com.script.quickjs.JavaObjectBridge.getInstanceField
+import com.script.quickjs.JavaObjectBridge.getInstanceKeys
+import com.script.quickjs.JavaObjectBridge.getJavaProperty
 import com.script.quickjs.JavaObjectBridge.hasInstanceMethod
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
 import com.script.quickjs.JavaObjectBridge.loadJavaClass
 import com.script.quickjs.JavaObjectBridge.releaseScope
+import com.script.quickjs.JavaObjectBridge.setInstanceField
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -237,7 +241,7 @@ object JavaObjectBridge {
         for (ctor in candidates) {
             if (isArgsCompatible(ctor.parameterTypes, args)) {
                 ctor.isAccessible = true
-                return ctor.newInstance(*coerceArgs(ctor.parameterTypes, args))
+                return ctor.newInstance(*coerceArgs(ctor.parameterTypes, args, ctor.isVarArgs))
             }
         }
         return null
@@ -268,7 +272,10 @@ object JavaObjectBridge {
             val method = findMethod(obj.javaClass, methodName, javaArgs)
             if (method != null) {
                 method.isAccessible = true
-                val result = method.invoke(obj, *coerceArgs(method.parameterTypes, javaArgs))
+                val result = method.invoke(
+                    obj,
+                    *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
+                )
                 return javaToJsResult(result, dangerousApi)
             }
             // 找不到方法时尝试 getter: getXxx / isXxx (兼容 rhino 的 obj.prop() 语法调用 getter)
@@ -363,9 +370,15 @@ object JavaObjectBridge {
             ) else NO_RESULT
 
             "get" -> if (args.size == 1) {
-                val idx = (args[0] as? Number)?.toInt()
-                    ?: return NO_RESULT
-                if (idx in 0 until list.size) javaToJsResult(list[idx], dangerousApi) else null
+                // 支持字符串索引 (for...in 枚举返回字符串 "0","1"..., 对齐 rhino)
+                val idx = when (val a = args[0]) {
+                    is Number -> a.toInt()
+                    is String -> a.toIntOrNull() ?: return NO_RESULT
+                    else -> return NO_RESULT
+                }
+                // 对齐 rhino NativeJavaList: 越界抛 IndexOutOfBoundsException, JS 可 try-catch 捕获
+                if (idx in 0 until list.size) javaToJsResult(list[idx], dangerousApi)
+                else throw IndexOutOfBoundsException("Index: $idx, Size: ${list.size}")
             } else NO_RESULT
 
             "add" -> when (args.size) {
@@ -375,8 +388,12 @@ object JavaObjectBridge {
                 }
 
                 2 -> {
-                    val idx = (args[0] as? Number)?.toInt()
-                        ?: return NO_RESULT
+                    // 支持字符串索引 (对齐 rhino)
+                    val idx = when (val a = args[0]) {
+                        is Number -> a.toInt()
+                        is String -> a.toIntOrNull() ?: return NO_RESULT
+                        else -> return NO_RESULT
+                    }
                     list.add(idx, jsToJavaValue(args[1], null))
                     null
                 }
@@ -844,6 +861,215 @@ object JavaObjectBridge {
     }
 
     /**
+     * native 版本专用: 查 field + method, 返回原始 Java 对象 (不经过 javaToJsResult 包装)。
+     *
+     * 与 [getJavaProperty] 逻辑相同, 但 fieldValue 是原始 Java 对象,
+     * 供 native exotic trap 回调后由 native 层用 JavaObjectClass.wrap 包装为 JSValue。
+     *
+     * @return null 表示 field 与 method 均不存在;
+     *         否则返回 `[fieldValue(原始对象), fieldExists, hasMethod]` 三元素 Array
+     */
+    internal fun getJavaPropertyRaw(
+        obj: Any,
+        fieldName: String,
+        dangerousApi: Boolean
+    ): Array<Any?>? {
+        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
+
+        var fieldExists = false
+        val fieldValue: Any? = try {
+            val collectionVal = getCollectionField(obj, fieldName)
+            if (collectionVal != null) {
+                fieldExists = true
+                collectionVal // 原始对象, 不调 javaToJsResult
+            } else when {
+                obj is Map<*, *> -> {
+                    // 对齐 rhino FEATURE_ENABLE_JAVA_MAP_ACCESS:
+                    // - key 存在: 返回 map.get(key) (即使 value=null, fieldExists=true)
+                    // - key 不存在: fieldExists=false, fieldValue=null
+                    //   (让 native 层 getProperty trap 返回 JS_UNDEFINED, 而非 JS_NULL)
+                    if (obj.containsKey(fieldName)) {
+                        fieldExists = true
+                        obj[fieldName] // 可能是 null (value=null)
+                    } else null
+                }
+
+                else -> {
+                    val getter = findGetter(obj.javaClass, fieldName)
+                    if (getter != null && JsSecurityPolicy.isMethodVisible(
+                            obj.javaClass.name, getter.name, dangerousApi
+                        )
+                    ) {
+                        fieldExists = true
+                        getter.isAccessible = true
+                        getter.invoke(obj)
+                    } else {
+                        val field = findField(obj.javaClass, fieldName)
+                        if (field != null) {
+                            fieldExists = true
+                            field.isAccessible = true
+                            field.get(obj)
+                        } else null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getJavaPropertyRaw field failed: ${obj.javaClass.name}.$fieldName", e)
+            null
+        } catch (e: LinkageError) {
+            Log.w(TAG, "getJavaPropertyRaw linkage error: ${obj.javaClass.name}.$fieldName", e)
+            null
+        }
+
+        val hasMethod =
+            if (JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)) {
+                val candidates = mutableListOf<Method>()
+                collectMethods(obj.javaClass, fieldName, candidates)
+                candidates.isNotEmpty()
+            } else false
+
+        if (fieldValue == null && !fieldExists && !hasMethod) return null
+        return arrayOf(fieldValue, fieldExists, hasMethod)
+    }
+
+    /**
+     * native 版本专用: 设置实例字段, 接受原始 obj 和原始 value。
+     *
+     * 与 [setInstanceField] 逻辑相同, 但 value 是原始 Java 对象 (非句柄 Map),
+     * 若 value 是 Long 句柄 (native 层包装的 JS 对象) 会先解包。
+     */
+    internal fun setInstanceFieldRaw(
+        obj: Any,
+        fieldName: String,
+        value: Any?,
+        dangerousApi: Boolean
+    ): Boolean {
+        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return false
+        val javaValue = unwrapHandleValue(value)
+        if (setCollectionField(obj, fieldName, javaValue)) return true
+        return try {
+            val setter = findSetter(obj.javaClass, fieldName)
+            if (setter != null) {
+                if (!JsSecurityPolicy.isMethodVisible(
+                        obj.javaClass.name, setter.name, dangerousApi
+                    )
+                ) return false
+                setter.isAccessible = true
+                setter.invoke(obj, coerceValue(javaValue, setter.parameterTypes[0]))
+                return true
+            }
+            val field = findField(obj.javaClass, fieldName) ?: return false
+            field.isAccessible = true
+            field.set(obj, coerceValue(javaValue, field.type))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "setInstanceFieldRaw failed: ${obj.javaClass.name}.$fieldName", e)
+            false
+        } catch (e: LinkageError) {
+            Log.w(TAG, "setInstanceFieldRaw linkage error: ${obj.javaClass.name}.$fieldName", e)
+            false
+        }
+    }
+
+    /**
+     * native 版本专用: 获取实例属性名, 接受原始 obj。
+     * 与 [getInstanceKeys] 逻辑相同, 但接受 obj 而非 handle。
+     */
+    internal fun getInstanceKeysRaw(obj: Any, dangerousApi: Boolean): Array<String> {
+        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return emptyArray()
+        return try {
+            getInstanceKeysImpl(obj, dangerousApi)
+        } catch (e: Exception) {
+            Log.w(TAG, "getInstanceKeysRaw failed: ${obj.javaClass.name}", e)
+            emptyArray()
+        } catch (e: LinkageError) {
+            Log.w(TAG, "getInstanceKeysRaw linkage error: ${obj.javaClass.name}", e)
+            emptyArray()
+        }
+    }
+
+    /**
+     * native 版本专用: 调用实例方法, 接受原始 obj, 返回原始 Java 对象。
+     *
+     * 与 [callInstanceMethod] 逻辑相同, 但:
+     * - 接受 obj 而非 handle
+     * - args 中的 Long 句柄会先解包
+     * - 返回值是原始 Java 对象 (不经过 javaToJsResult 包装)
+     */
+    internal fun callInstanceMethodRaw(
+        obj: Any,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
+        if (!JsSecurityPolicy.isMethodVisible(obj.javaClass.name, methodName, dangerousApi)) {
+            return null
+        }
+        // 热点类型快速路径
+        val fastResult = callHotTypeMethod(obj, methodName, args, dangerousApi)
+        if (fastResult !== NO_RESULT) return fastResult
+        return try {
+            val javaArgs = Array(args.size) { i -> unwrapHandleValue(args[i]) }
+            val method = findMethod(obj.javaClass, methodName, javaArgs)
+            if (method != null) {
+                method.isAccessible = true
+                val result = method.invoke(
+                    obj,
+                    *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
+                )
+                return result // 原始对象, 不调 javaToJsResult
+            }
+            // getter 回退
+            if (args.isEmpty()) {
+                val getterName = buildString(methodName.length + 3) {
+                    append("get")
+                    if (methodName.isNotEmpty()) {
+                        methodName.first().uppercaseChar().let { append(it) }
+                        append(methodName.substring(1))
+                    }
+                }
+                val getter = findMethod(obj.javaClass, getterName, emptyArray())
+                if (getter != null) {
+                    getter.isAccessible = true
+                    return getter.invoke(obj)
+                }
+                val isName = buildString(methodName.length + 2) {
+                    append("is")
+                    if (methodName.isNotEmpty()) {
+                        methodName.first().uppercaseChar().let { append(it) }
+                        append(methodName.substring(1))
+                    }
+                }
+                val isGetter = findMethod(obj.javaClass, isName, emptyArray())
+                if (isGetter != null) {
+                    isGetter.isAccessible = true
+                    return isGetter.invoke(obj)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "callInstanceMethodRaw failed: ${obj.javaClass.name}.$methodName", e)
+            null
+        } catch (e: LinkageError) {
+            Log.w(TAG, "callInstanceMethodRaw linkage error: ${obj.javaClass.name}.$methodName", e)
+            null
+        }
+    }
+
+    /**
+     * native 版本专用: 解包 Long 句柄为原始 Java 对象。
+     * 若 value 是 Long 且对应已注册句柄, 返回原始对象; 否则原样返回。
+     */
+    internal fun unwrapHandleValue(value: Any?): Any? {
+        if (value is Long && value != 0L) {
+            val obj = getObject(value)
+            if (obj != null) return obj
+        }
+        return value
+    }
+
+    /**
      * 获取 Java 对象的所有可枚举属性名(与 rhino NativeJavaObject.getIds() 行为一致)。
      *
      * 用于 JS Proxy 的 ownKeys trap,让 Object.entries/Object.keys 能枚举 Java 对象属性。
@@ -946,7 +1172,8 @@ object JavaObjectBridge {
             val javaArgs = jsToJavaArgs(args)
             val method = findStaticMethod(clazz, methodName, javaArgs) ?: return null
             method.isAccessible = true
-            val result = method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs))
+            val result =
+                method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs))
             javaToJsResult(result, dangerousApi)
         } catch (e: Exception) {
             Log.w(TAG, "callStaticMethod failed: ${clazz.name}.$methodName", e)
@@ -1286,19 +1513,69 @@ object JavaObjectBridge {
         collectMethods(clazz, name, candidates)
         // 按参数个数过滤
         val matched = candidates.filter { it.parameterCount == args.size }
-        if (matched.isEmpty()) return null
-        // 找参数类型全兼容的重载
-        val compatible = matched.filter { isArgsCompatible(it.parameterTypes, args) }
-        if (compatible.isEmpty()) return matched.first()
-        if (compatible.size == 1) return compatible.first()
-        // 多个兼容重载时,按参数类型具体程度选择最优(模拟 rhino 的 NativeJavaMethod 行为)
-        // 背景: JS Number 经 quickjs-kt 传入是 Double,String.valueOf(Object) 会抢先返回 "123.0"
-        // 应优先匹配 String.valueOf(int) 返回 "123",与 rhino 行为一致
-        return compatible.minByOrNull { m ->
-            m.parameterTypes.indices.sumOf { i ->
-                paramSpecificityScore(m.parameterTypes[i], args[i])
+        if (matched.isNotEmpty()) {
+            // 找参数类型全兼容的重载
+            val compatible = matched.filter { isArgsCompatible(it.parameterTypes, args) }
+            if (compatible.isEmpty()) return matched.first()
+            if (compatible.size == 1) return compatible.first()
+            // 多个兼容重载时,按参数类型具体程度选择最优(模拟 rhino 的 NativeJavaMethod 行为)
+            // 背景: JS Number 经 quickjs-kt 传入是 Double,String.valueOf(Object) 会抢先返回 "123.0"
+            // 应优先匹配 String.valueOf(int) 返回 "123",与 rhino 行为一致
+            return compatible.minByOrNull { m ->
+                m.parameterTypes.indices.sumOf { i ->
+                    paramSpecificityScore(m.parameterTypes[i], args[i])
+                }
+            } ?: compatible.first()
+        }
+        // 精确参数个数匹配失败,尝试 varargs 匹配
+        // 场景: String.format(String, Object...) 调用时 args.size > parameterCount
+        // varargs 方法的最后一个参数是数组, args.size >= parameterCount - 1
+        val varargsMatched = candidates.filter {
+            it.isVarArgs && args.size >= it.parameterCount - 1
+        }
+        if (varargsMatched.isNotEmpty()) {
+            // 检查类型兼容性 (前 parameterCount-1 个固定参数 + varargs 参数)
+            val compatible = varargsMatched.filter { isVarArgsCompatible(it, args) }
+            if (compatible.isEmpty()) return varargsMatched.first()
+            return compatible.first()
+        }
+        return null
+    }
+
+    /**
+     * varargs 方法类型兼容性检查。
+     *
+     * varargs 方法的最后一个参数是数组 (如 Object[]),其 componentType 是实际参数类型。
+     * 前 parameterCount-1 个参数按普通方式检查,多余的参数都应该是 componentType。
+     */
+    private fun isVarArgsCompatible(method: Method, args: Array<Any?>): Boolean {
+        val paramTypes = method.parameterTypes
+        val fixedCount = paramTypes.size - 1
+        // 固定参数检查
+        for (i in 0 until fixedCount) {
+            val arg = args[i]
+            if (arg == null) {
+                if (paramTypes[i].isPrimitive) return false
+                continue
             }
-        } ?: compatible.first()
+            if (!paramTypes[i].isAssignableFrom(arg.javaClass) &&
+                !isPrimitiveCompatible(paramTypes[i], arg.javaClass)
+            ) return false
+        }
+        // varargs 参数检查 (最后一个参数是数组,检查 componentType)
+        // componentType 为 null 说明最后一个参数不是数组 (不应在 varargs 场景出现), 返回 false
+        val componentType = paramTypes[fixedCount].componentType ?: return false
+        for (i in fixedCount until args.size) {
+            val arg = args[i]
+            if (arg == null) {
+                if (componentType.isPrimitive) return false
+                continue
+            }
+            if (!componentType.isAssignableFrom(arg.javaClass) &&
+                !isPrimitiveCompatible(componentType, arg.javaClass)
+            ) return false
+        }
+        return true
     }
 
     /**
@@ -1530,7 +1807,43 @@ object JavaObjectBridge {
     /**
      * 强制转换参数到目标类型(基本类型 + 包装类)。
      */
-    private fun coerceArgs(paramTypes: Array<Class<*>>, args: Array<Any?>): Array<Any?> {
+    private fun coerceArgs(
+        paramTypes: Array<Class<*>>,
+        args: Array<Any?>,
+        isVarArgs: Boolean = false
+    ): Array<Any?> {
+        // varargs 处理: 方法/构造器是 varargs 且 args 数量不等于 paramTypes 数量
+        // (args.size == paramTypes.size 时,整个数组作为单个参数,走普通路径)
+        if (isVarArgs && args.size >= paramTypes.size - 1 && args.size != paramTypes.size) {
+            val fixedCount = paramTypes.size - 1
+            val result = arrayOfNulls<Any>(paramTypes.size)
+            // 固定参数
+            for (i in 0 until fixedCount) {
+                val v = args[i]
+                result[i] = if (v == null) {
+                    if (paramTypes[i].isPrimitive) 0 else null
+                } else {
+                    coerceValue(v, paramTypes[i])
+                }
+            }
+            // varargs 参数打包为数组 (componentType 是数组元素类型)
+            // isVarArgs 保证最后一个参数是数组, componentType 一定非空
+            val componentType = paramTypes[fixedCount].componentType!!
+            val varargsCount = args.size - fixedCount
+            val varargsArray = java.lang.reflect.Array.newInstance(componentType, varargsCount)
+            for (i in 0 until varargsCount) {
+                val v = args[fixedCount + i]
+                val coerced = if (v == null) {
+                    if (componentType.isPrimitive) 0 else null
+                } else {
+                    coerceValue(v, componentType)
+                }
+                java.lang.reflect.Array.set(varargsArray, i, coerced)
+            }
+            result[fixedCount] = varargsArray
+            return result
+        }
+        // 普通参数
         return Array(args.size) { i ->
             val v = args[i]
             val t = paramTypes[i]
@@ -1543,7 +1856,16 @@ object JavaObjectBridge {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun coerceValue(value: Any, targetType: Class<*>): Any {
+    private fun coerceValue(value: Any?, targetType: Class<*>): Any? {
+        // null 处理: 基本类型抛 NPE (与 rhino NativeJavaObject.coerceType 一致),
+        // 引用类型直接返回 null
+        if (value == null) {
+            return if (targetType.isPrimitive) {
+                throw NullPointerException("Cannot coerce null to primitive ${targetType.name}")
+            } else {
+                null
+            }
+        }
         if (targetType.isAssignableFrom(value.javaClass)) return value
         // 包装类 -> 基本类型
         return when (targetType) {
@@ -1647,7 +1969,7 @@ object JavaObjectBridge {
      * 命中 [QuickJsContext.identityHandles] 直接返回旧 handle, 未命中则 registerObject + 写入映射。
      * 没有 ctx (如 JavaAdapter 回调线程无 threadLocalContext) 时退化为直接 registerObject。
      */
-    private fun getOrRegisterIdentityHandle(obj: Any): Long {
+    internal fun getOrRegisterIdentityHandle(obj: Any): Long {
         val ctx = QuickJsContext.threadLocalContext.get()
             ?: return registerObject(obj)
         val existing = ctx.identityHandles[obj]
