@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.View
 
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
@@ -47,23 +48,23 @@ class RefreshProgressBar @JvmOverloads constructor(
     init {
         paint.style = Paint.Style.FILL
 
-        val a = context.obtainStyledAttributes(attrs, R.styleable.RefreshProgressBar)
-        speed = a.getDimensionPixelSize(R.styleable.RefreshProgressBar_speed, speed)
-        maxProgress = a.getInt(R.styleable.RefreshProgressBar_max_progress, maxProgress)
-        durProgress = a.getInt(R.styleable.RefreshProgressBar_dur_progress, durProgress)
-        secondDurProgress = a.getDimensionPixelSize(
-            R.styleable.RefreshProgressBar_second_dur_progress,
-            secondDurProgress
-        )
-        secondFinalProgress = secondDurProgress
-        secondMaxProgress = a.getDimensionPixelSize(
-            R.styleable.RefreshProgressBar_second_max_progress,
-            secondMaxProgress
-        )
-        bgColor = a.getColor(R.styleable.RefreshProgressBar_bg_color, bgColor)
-        secondColor = a.getColor(R.styleable.RefreshProgressBar_second_color, secondColor)
-        fontColor = a.getColor(R.styleable.RefreshProgressBar_font_color, fontColor)
-        a.recycle()
+        context.withStyledAttributes(attrs, R.styleable.RefreshProgressBar) {
+            speed = getDimensionPixelSize(R.styleable.RefreshProgressBar_speed, speed)
+            maxProgress = getInt(R.styleable.RefreshProgressBar_max_progress, maxProgress)
+            durProgress = getInt(R.styleable.RefreshProgressBar_dur_progress, durProgress)
+            secondDurProgress = getDimensionPixelSize(
+                R.styleable.RefreshProgressBar_second_dur_progress,
+                secondDurProgress
+            )
+            secondFinalProgress = secondDurProgress
+            secondMaxProgress = getDimensionPixelSize(
+                R.styleable.RefreshProgressBar_second_max_progress,
+                secondMaxProgress
+            )
+            bgColor = getColor(R.styleable.RefreshProgressBar_bg_color, bgColor)
+            secondColor = getColor(R.styleable.RefreshProgressBar_second_color, secondColor)
+            fontColor = getColor(R.styleable.RefreshProgressBar_font_color, fontColor)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {

@@ -1,12 +1,12 @@
 package io.legado.app.ui.about
 
 import android.app.Application
-import android.net.Uri
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
+import androidx.core.net.toUri
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
@@ -115,7 +115,7 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     }
                 val backupPath = AppConfig.backupPath
                 if (!backupPath.isNullOrEmpty()) {
-                    val uri = Uri.parse(backupPath)
+                    val uri = backupPath.toUri()
                     FileDoc.fromUri(uri, true)
                         .find("crash")
                         ?.list {
@@ -149,7 +149,7 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     }
                 val backupPath = AppConfig.backupPath
                 if (!backupPath.isNullOrEmpty()) {
-                    val uri = Uri.parse(backupPath)
+                    val uri = backupPath.toUri()
                     FileDoc.fromUri(uri, true)
                         .find("crash")
                         ?.delete()

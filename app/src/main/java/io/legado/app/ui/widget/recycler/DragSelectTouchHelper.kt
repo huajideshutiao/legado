@@ -16,11 +16,11 @@
 package io.legado.app.ui.widget.recycler
 
 import android.content.res.Resources
-import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.text.layoutDirection
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -732,8 +732,7 @@ class DragSelectTouchHelper(
     }
 
     private val isRtl: Boolean
-        get() = (TextUtils.getLayoutDirectionFromLocale(Locale.getDefault())
-                == View.LAYOUT_DIRECTION_RTL)
+        get() = Locale.getDefault().layoutDirection == View.LAYOUT_DIRECTION_RTL
 
     private fun isInSlideArea(e: MotionEvent): Boolean {
         val x = e.x

@@ -181,6 +181,10 @@ android {
     }
     lint {
         checkDependencies = true
+        // vi/pt-rBR/ja-rJP/es-rES 不在 localeFilters 中(APK 不打包),
+        // 保留翻译源文件备用但不强制要求翻译完整性
+        // NewerVersionAvailable/GradleDependency: 依赖版本升级需充分回归测试,不属 lint 修复范畴
+        disable 'MissingTranslation', 'NewerVersionAvailable', 'GradleDependency'
     }
     tasks.withType(JavaCompile).tap {
         configureEach {

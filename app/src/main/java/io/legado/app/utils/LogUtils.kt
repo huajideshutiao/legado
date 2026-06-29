@@ -12,6 +12,7 @@ import io.legado.app.help.globalExecutor
 import splitties.init.appCtx
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.logging.FileHandler
 import java.util.logging.Level
 import java.util.logging.LogRecord
@@ -20,7 +21,7 @@ import kotlin.time.Duration.Companion.days
 
 object LogUtils {
     const val TIME_PATTERN = "yy-MM-dd HH:mm:ss.SSS"
-    val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN) }
+    val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN, Locale.US) }
 
     fun init(context: Context) {
         fileHandler = createFileHandler(context)?.also {

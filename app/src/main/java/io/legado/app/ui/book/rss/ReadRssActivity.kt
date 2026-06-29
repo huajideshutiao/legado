@@ -12,6 +12,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
@@ -221,7 +222,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
         if (path.isNullOrEmpty()) {
             selectSaveFolder(webPic)
         } else {
-            viewModel.saveImage(webPic, Uri.parse(path))
+            viewModel.saveImage(webPic, path.toUri())
         }
     }
 

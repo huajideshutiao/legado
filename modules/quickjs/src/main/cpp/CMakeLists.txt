@@ -67,6 +67,13 @@ target_compile_options(legado_quickjs PRIVATE
         -Wno-unused-parameter
 )
 
+# Android 15+ 要求 native 库 16 KB 页面对齐,否则在 16 KB 页面设备上可能无法安装
+# 链接器标志 -z max-page-size=16384 强制 ELF 对齐到 16 KB
+# 官方文档: https://developer.android.com/guide/practices/page-sizes
+target_link_options(legado_quickjs PRIVATE
+        "-Wl,-z,max-page-size=16384"
+)
+
 # 链接 QuickJS-NG + Android log
 target_link_libraries(legado_quickjs
         PRIVATE

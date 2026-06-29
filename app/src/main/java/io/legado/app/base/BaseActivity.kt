@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
@@ -15,6 +14,7 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.drawable.toDrawable
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -150,12 +150,12 @@ abstract class BaseActivity<VB : ViewBinding>(
             val bg =
                 getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
             if (bg.isNullOrBlank()) {
-                window.setBackgroundDrawable(ColorDrawable(backgroundColor))
+                window.setBackgroundDrawable(backgroundColor.toDrawable())
             } else {
                 window.setBackgroundDrawable(null)
             }
         } else {
-            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
         }
 
         val isDark = when (theme) {

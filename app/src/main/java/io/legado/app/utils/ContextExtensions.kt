@@ -234,6 +234,7 @@ val Context.sysScreenOffTime: Int
     }
 
 val Context.statusBarHeight: Int
+    @android.annotation.SuppressLint("InternalInsetResource", "DiscouragedApi")
     get() {
         if (Build.BOARD == "windows") {
             return 0
@@ -243,6 +244,7 @@ val Context.statusBarHeight: Int
     }
 
 val Context.navigationBarHeight: Int
+    @android.annotation.SuppressLint("InternalInsetResource", "DiscouragedApi")
     get() {
         val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
         return resources.getDimensionPixelSize(resourceId)

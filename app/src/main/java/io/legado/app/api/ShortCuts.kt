@@ -50,6 +50,7 @@ object ShortCuts {
             .build()
     }
 
+    @android.annotation.SuppressLint("ReportShortcutUsage")
     fun buildShortCuts(context: Context) {
         ShortcutManagerCompat.setDynamicShortcuts(
             context, listOf(

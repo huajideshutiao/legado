@@ -9,6 +9,7 @@ import android.util.AttributeSet
 import androidx.annotation.ColorInt
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.withStyledAttributes
 import androidx.fragment.app.FragmentActivity
 import androidx.preference.PreferenceViewHolder
 import com.jaredrummler.android.colorpicker.ColorPanelView
@@ -47,32 +48,35 @@ class ColorPreference(context: Context, attrs: AttributeSet) : Preference(contex
         isPersistent = true
         layoutResource = io.legado.app.R.layout.view_preference
 
-        val a = context.obtainStyledAttributes(attrs, R.styleable.ColorPreference)
-        showDialog = a.getBoolean(R.styleable.ColorPreference_cpv_showDialog, true)
+        context.withStyledAttributes(attrs, R.styleable.ColorPreference) {
+            showDialog = getBoolean(R.styleable.ColorPreference_cpv_showDialog, true)
 
-        dialogType =
-            a.getInt(R.styleable.ColorPreference_cpv_dialogType, ColorPickerDialog.TYPE_PRESETS)
-        colorShape = a.getInt(R.styleable.ColorPreference_cpv_colorShape, ColorShape.CIRCLE)
-        allowPresets = a.getBoolean(R.styleable.ColorPreference_cpv_allowPresets, true)
-        allowCustom = a.getBoolean(R.styleable.ColorPreference_cpv_allowCustom, true)
-        showAlphaSlider = a.getBoolean(R.styleable.ColorPreference_cpv_showAlphaSlider, false)
-        showColorShades = a.getBoolean(R.styleable.ColorPreference_cpv_showColorShades, true)
-        previewSize = a.getInt(R.styleable.ColorPreference_cpv_previewSize, sizeNormal)
-        val presetsResId = a.getResourceId(R.styleable.ColorPreference_cpv_colorPresets, 0)
-        dialogTitle =
-            a.getResourceId(R.styleable.ColorPreference_cpv_dialogTitle, R.string.cpv_default_title)
-        // init 中已保证 presets 非空:有资源则从资源加载,否则使用 MATERIAL_COLORS
-        presets = if (presetsResId != 0) {
-            context.resources.getIntArray(presetsResId)
-        } else {
-            ColorPickerDialog.MATERIAL_COLORS
+            dialogType =
+                getInt(R.styleable.ColorPreference_cpv_dialogType, ColorPickerDialog.TYPE_PRESETS)
+            colorShape = getInt(R.styleable.ColorPreference_cpv_colorShape, ColorShape.CIRCLE)
+            allowPresets = getBoolean(R.styleable.ColorPreference_cpv_allowPresets, true)
+            allowCustom = getBoolean(R.styleable.ColorPreference_cpv_allowCustom, true)
+            showAlphaSlider = getBoolean(R.styleable.ColorPreference_cpv_showAlphaSlider, false)
+            showColorShades = getBoolean(R.styleable.ColorPreference_cpv_showColorShades, true)
+            previewSize = getInt(R.styleable.ColorPreference_cpv_previewSize, sizeNormal)
+            val presetsResId = getResourceId(R.styleable.ColorPreference_cpv_colorPresets, 0)
+            dialogTitle =
+                getResourceId(
+                    R.styleable.ColorPreference_cpv_dialogTitle,
+                    R.string.cpv_default_title
+                )
+            // init 中已保证 presets 非空:有资源则从资源加载,否则使用 MATERIAL_COLORS
+            presets = if (presetsResId != 0) {
+                context.resources.getIntArray(presetsResId)
+            } else {
+                ColorPickerDialog.MATERIAL_COLORS
+            }
+            widgetLayoutResource = if (colorShape == ColorShape.CIRCLE) {
+                if (previewSize == sizeLarge) R.layout.cpv_preference_circle_large else R.layout.cpv_preference_circle
+            } else {
+                if (previewSize == sizeLarge) R.layout.cpv_preference_square_large else R.layout.cpv_preference_square
+            }
         }
-        widgetLayoutResource = if (colorShape == ColorShape.CIRCLE) {
-            if (previewSize == sizeLarge) R.layout.cpv_preference_circle_large else R.layout.cpv_preference_circle
-        } else {
-            if (previewSize == sizeLarge) R.layout.cpv_preference_square_large else R.layout.cpv_preference_square
-        }
-        a.recycle()
     }
 
     override fun onClick() {

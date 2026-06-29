@@ -408,8 +408,20 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
-        JS_ThrowInternalError(ctx, "Java hasProperty threw");
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
+            // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
+            // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
+            JS_Throw(ctx, errObj);
+            return -1;
+        }
+        JS_ThrowInternalError(ctx, "Java hasProperty threw (no throwable)");
         return -1;
     }
     return result ? 1 : 0;
@@ -468,9 +480,19 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (info) env->DeleteLocalRef(info);
-        return JS_ThrowInternalError(ctx, "Java getPropertyInfo threw");
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            JS_Throw(ctx, errObj);
+            return JS_EXCEPTION;
+        }
+        return JS_ThrowInternalError(ctx, "Java getPropertyInfo threw (no throwable)");
     }
 
     if (!info) {
@@ -590,8 +612,18 @@ int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
-        JS_ThrowInternalError(ctx, "Java setProperty threw");
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            JS_Throw(ctx, errObj);
+            return -1;
+        }
+        JS_ThrowInternalError(ctx, "Java setProperty threw (no throwable)");
         return -1;
     }
     return result ? 1 : 0;
@@ -657,11 +689,21 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                                                     dangerousApi ? JNI_TRUE
                                                                                  : JNI_FALSE);
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (names) env->DeleteLocalRef(names);
         *ptab = nullptr;
         *plen = 0;
-        JS_ThrowInternalError(ctx, "Java getPropertyNames threw");
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            JS_Throw(ctx, errObj);
+            return -1;
+        }
+        JS_ThrowInternalError(ctx, "Java getPropertyNames threw (no throwable)");
         return -1;
     }
 

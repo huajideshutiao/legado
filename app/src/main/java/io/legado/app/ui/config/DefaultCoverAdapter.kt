@@ -1,5 +1,6 @@
 package io.legado.app.ui.config
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
@@ -29,6 +30,8 @@ class DefaultCoverAdapter(
     private val entries = mutableListOf<BookCover.DefaultCoverEntry>()
     private val padding = 6.dpToPx()
 
+    // 整体替换数据集,数据量小,notifyDataSetChanged 比 DiffUtil 更简洁
+    @SuppressLint("NotifyDataSetChanged")
     fun submit(list: List<BookCover.DefaultCoverEntry>) {
         entries.clear()
         entries.addAll(list)

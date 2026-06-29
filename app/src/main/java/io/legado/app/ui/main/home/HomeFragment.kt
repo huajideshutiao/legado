@@ -2,6 +2,7 @@
 
 package io.legado.app.ui.main.home
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -85,6 +86,8 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
         }.attach()
     }
 
+    // tabs 整体替换,FragmentStateAdapter 用 notifyDataSetChanged 通知重建
+    @SuppressLint("NotifyDataSetChanged")
     private fun upTabs(newTabs: List<HomeTab>) {
         tabs.clear()
         tabs.addAll(newTabs)

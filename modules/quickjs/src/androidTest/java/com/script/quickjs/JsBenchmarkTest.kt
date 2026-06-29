@@ -756,7 +756,8 @@ class JsBenchmarkTest {
             }
         }
 
-        // ===== 模式 3: Rhino 默认 (eval(js, bindingsConfig), rhino 复用 topLevelScope 本身轻量) =====
+        // ===== 模式 3: Rhino 无缓存 (eval(js, bindingsConfig) 每次完整路径,
+        //              对应 BookExtensions/RegexExtensions/AnalyzeUrl 等单次 eval 场景) =====
         repeat(WARMUP) {
             bookFieldInputs.forEach { fields ->
                 fieldRules.forEachIndexed { i, rule ->
@@ -769,6 +770,36 @@ class JsBenchmarkTest {
                 bookFieldInputs.forEach { fields ->
                     fieldRules.forEachIndexed { i, rule ->
                         RhinoScriptEngine.eval(rule) { put("result", fields[i]) }
+                    }
+                }
+            }
+        }
+
+        // ===== 模式 4: Rhino 有缓存 (compile 缓存 + topScope 复用,
+        //              对齐 master AnalyzeRule.evalJS / SharedJsScope 真实路径) =====
+        // topScope = standardObjects (一次性 init), 对齐 AnalyzeRule topScopeRef 模式
+        val rhTopScope = RhinoScriptEngine.getRuntimeScope(com.script.ScriptBindings()).prototype
+        val rhCompiled = fieldRules.map { RhinoScriptEngine.compile(it) }
+        repeat(WARMUP) {
+            bookFieldInputs.forEach { fields ->
+                fieldRules.forEachIndexed { i, _ ->
+                    val b = com.script.ScriptBindings().apply {
+                        prototype = rhTopScope
+                        put("result", fields[i])
+                    }
+                    rhCompiled[i].eval(b, null)
+                }
+            }
+        }
+        val rhCachedTime = measureTimeMillis {
+            repeat(pageCount) {
+                bookFieldInputs.forEach { fields ->
+                    fieldRules.forEachIndexed { i, _ ->
+                        val b = com.script.ScriptBindings().apply {
+                            prototype = rhTopScope
+                            put("result", fields[i])
+                        }
+                        rhCompiled[i].eval(b, null)
                     }
                 }
             }
@@ -799,14 +830,33 @@ class JsBenchmarkTest {
         )
         println(
             String.format(
-                "Rhino   默认:   %7.2f ms | %6.3f ms/eval",
+                "Rhino   无缓存: %7.2f ms | %6.3f ms/eval",
                 rhTime.toDouble(),
                 rhTime.toDouble() / totalEvals
             )
         )
+        println(
+            String.format(
+                "Rhino   有缓存: %7.2f ms | %6.3f ms/eval",
+                rhCachedTime.toDouble(),
+                rhCachedTime.toDouble() / totalEvals
+            )
+        )
         println("─────────────────────────────────────────────")
-        println(String.format("缓存提升 (无/有): %5.2fx", qjNoCacheTime.toDouble() / qjCachedTime))
-        println(String.format("QJ缓存/Rhino:     %5.2fx", qjCachedTime.toDouble() / rhTime))
+        println(
+            String.format(
+                "QJ 缓存提升 (无/有): %5.2fx",
+                qjNoCacheTime.toDouble() / qjCachedTime
+            )
+        )
+        println(String.format("Rh 缓存提升 (无/有): %5.2fx", rhTime.toDouble() / rhCachedTime))
+        println(String.format("无缓存 QJ/Rh:        %5.2fx", qjNoCacheTime.toDouble() / rhTime))
+        println(
+            String.format(
+                "有缓存 QJ/Rh:        %5.2fx",
+                qjCachedTime.toDouble() / rhCachedTime
+            )
+        )
         println("==============================================")
     }
 

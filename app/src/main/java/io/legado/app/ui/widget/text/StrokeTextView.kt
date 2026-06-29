@@ -3,6 +3,7 @@ package io.legado.app.ui.widget.text
 import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
@@ -22,11 +23,15 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
     private val isBottomBackground: Boolean
 
     init {
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.StrokeTextView)
-        radius = typedArray.getDimensionPixelOffset(R.styleable.StrokeTextView_radius, radius)
-        isBottomBackground =
-            typedArray.getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
-        typedArray.recycle()
+        // isBottomBackground 是 val,不能在 withStyledAttributes 的 lambda 内直接赋值,
+        // 用局部变量 bottomBg 在 lambda 内接收,lambda 外再赋值给 val
+        var bottomBg = false
+        context.withStyledAttributes(attrs, R.styleable.StrokeTextView) {
+            radius = getDimensionPixelOffset(R.styleable.StrokeTextView_radius, radius)
+            bottomBg =
+                getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
+        }
+        isBottomBackground = bottomBg
         upBackground()
     }
 

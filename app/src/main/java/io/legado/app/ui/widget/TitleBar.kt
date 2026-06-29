@@ -62,7 +62,10 @@ class TitleBar @JvmOverloads constructor(
     private val fitNavigationBar: Boolean
     private val attachToActivity: Boolean
 
+    // init 块内 inflate/toolbar 等使用 this 指向 TitleBar,
+    // 转 withStyledAttributes 会改变 this 语义,不适合转换
     init {
+        @Suppress("UseKtx")
         val a = context.obtainStyledAttributes(
             attrs, R.styleable.TitleBar, R.attr.titleBarStyle, 0
         )

@@ -177,6 +177,6 @@ internal object DOMUtil {
             }
             result.append((node as Text).getData())
         }
-        return result.toString().trim { it <= ' ' }
+        return result.toString().trim()
     }
 }

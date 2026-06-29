@@ -195,6 +195,36 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         env->DeleteLocalRef(arrayListCls);
         return list;
     }
+    // JS Error 对象 -> ScriptException (是 Throwable, 对齐 rhino WrappedException)
+    // 让 JS catch(e) 后 e 能传给 Java 方法 (如 AppLog.put(String, Throwable, Boolean))。
+    // 注意: Java 异常经 jni_callbacks 修复后包装成 JavaObject, 走上面 isInstance 分支
+    // 还原原始 Throwable, 不会进到这里。这里只处理纯 JS throw 的 Error。
+    // 必须在 plain object 分支之前, 否则 Error 会被当普通对象塞进 NativeObject。
+    if (JS_IsError(value)) {
+        std::string msgStr = buildExceptionMessage(ctx, value);
+        jclass excCls = env->FindClass("com/script/quickjs/ScriptException");
+        if (excCls) {
+            jmethodID ctor = env->GetMethodID(excCls, "<init>", "(Ljava/lang/String;)V");
+            if (ctor) {
+                jstring jmsg = env->NewStringUTF(msgStr.c_str());
+                jobject exc = env->NewObject(excCls, ctor, jmsg);
+                env->DeleteLocalRef(jmsg);
+                env->DeleteLocalRef(excCls);
+                if (exc && !env->ExceptionCheck()) {
+                    return exc;
+                }
+                if (env->ExceptionCheck()) env->ExceptionClear();
+                if (exc) env->DeleteLocalRef(exc);
+            } else {
+                env->DeleteLocalRef(excCls);
+            }
+        }
+        // 兜底 (ScriptException 构造失败或类找不到, 理论不会发生): 返回 message string
+        const char *str = JS_ToCString(ctx, value);
+        jstring jstr = env->NewStringUTF(str ? str : msgStr.c_str());
+        JS_FreeCString(ctx, str);
+        return jstr;
+    }
     // plain JS object (非 function) -> NativeObject (递归转换)
     // 对齐 rhino NativeObject: 业务代码用 is NativeObject 区分 JS 返回的对象与 JsonPath 返回的 Map
     // NativeObject 继承 LinkedHashMap, 仍可当 Map 用 (get/put/entries 等)

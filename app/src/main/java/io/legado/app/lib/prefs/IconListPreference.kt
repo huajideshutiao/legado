@@ -40,6 +40,8 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
 
         // 初始化时一次性解析所有图标资源,避免列表滚动时重复查找
         for (iconName in iconNames) {
+            // getIdentifier 会触发 DiscouragedApi lint,此处确实需要按名查资源,抑制警告
+            @Suppress("DiscouragedApi")
             val resId = context.resources
                 .getIdentifier(iconName.toString(), "mipmap", context.packageName)
             val d = runCatching { context.getCompatDrawable(resId) }.getOrNull()

@@ -78,6 +78,19 @@ function __wrapClass(classHandle, path) {
             // 尝试静态字段 (binding 返回 JavaObject 或基本类型, null/undefined 表示字段不存在)
             var field = __getStaticField(classHandle, prop, __dangerousApi__);
             if (field !== null && field !== undefined) return field;
+            // 尝试内部类 (对齐 rhino NativeJavaClass):
+            // Java 反射不把内部类作为字段暴露 (__getStaticField 的 findField 找不到),
+            // JsSecurityPolicy 又禁止 Class<*> 对象返回 JS 侧, 所以 getStaticField 无法
+            // 直接返回内部类 Class 对象。这里用 __loadJavaClass(path + "$" + prop) 加载
+            // 内部类 (path 是外层类全名, prop 是内部类 simpleName), 成功则用 __wrapClass
+            // 包装为 Proxy (不暴露原始 Class 对象)。
+            // 例: Bitmap.Config → __loadJavaClass 加载内部类 → __wrapClass 返回 Proxy
+            // 这样 Bitmap.Config.ARGB_8888 走 __getStaticField 返回枚举值;
+            // Bitmap.Config.values() 走 __callStaticMethod 调用静态方法
+            var innerClassHandle = __loadJavaClass(path + "$" + prop, __dangerousApi__);
+            if (innerClassHandle > 0) {
+                return __wrapClass(innerClassHandle, path + "$" + prop);
+            }
             // 尝试静态方法: 返回一个 JS function, 调用时走 __callStaticMethod binding
             // 参数中的 JavaObject 由 native 层 toJavaObject 自动解包为原始 Java 对象
             return function() {

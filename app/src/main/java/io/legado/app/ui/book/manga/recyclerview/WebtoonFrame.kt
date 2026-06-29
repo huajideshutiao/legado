@@ -150,6 +150,10 @@ class WebtoonFrame : FrameLayout {
         return true
     }
 
+    // 重写 performClick 以满足 ClickableViewAccessibility 检查
+    // WebtoonFrame 是手势容器(捏合/pan), 点击逻辑由上层处理, 这里仅转发给 super
+    override fun performClick(): Boolean = super.performClick()
+
     private fun beginPan(x: Float, y: Float) {
         lastX = x
         lastY = y

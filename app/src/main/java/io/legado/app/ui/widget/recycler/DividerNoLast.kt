@@ -6,6 +6,8 @@ import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.LinearLayout
+import androidx.core.content.withStyledAttributes
+import androidx.core.graphics.withSave
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.utils.LogUtils
 
@@ -36,15 +38,15 @@ class DividerNoLast(context: Context, orientation: Int) :
     private val mBounds = Rect()
 
     init {
-        val a = context.obtainStyledAttributes(attrs)
-        mDivider = a.getDrawable(0)
-        if (mDivider == null) {
-            LogUtils.e(
-                javaClass.name,
-                "@android:attr/listDivider was not set in the theme used for this DividerItemDecoration. Please set that attribute all call setDrawable()"
-            )
+        context.withStyledAttributes(null, attrs) {
+            mDivider = getDrawable(0)
+            if (mDivider == null) {
+                LogUtils.e(
+                    javaClass.name,
+                    "@android:attr/listDivider was not set in the theme used for this DividerItemDecoration. Please set that attribute all call setDrawable()"
+                )
+            }
         }
-        a.recycle()
         setOrientation(orientation)
     }
 
@@ -91,57 +93,57 @@ class DividerNoLast(context: Context, orientation: Int) :
         canvas: Canvas,
         parent: RecyclerView
     ) {
-        canvas.save()
-        val left: Int
-        val right: Int
-        if (parent.clipToPadding) {
-            left = parent.paddingLeft
-            right = parent.width - parent.paddingRight
-            canvas.clipRect(
-                left, parent.paddingTop, right,
-                parent.height - parent.paddingBottom
-            )
-        } else {
-            left = 0
-            right = parent.width
+        canvas.withSave {
+            val left: Int
+            val right: Int
+            if (parent.clipToPadding) {
+                left = parent.paddingLeft
+                right = parent.width - parent.paddingRight
+                canvas.clipRect(
+                    left, parent.paddingTop, right,
+                    parent.height - parent.paddingBottom
+                )
+            } else {
+                left = 0
+                right = parent.width
+            }
+            val childCount = parent.childCount
+            for (i in 0 until childCount - 1) {
+                val child = parent.getChildAt(i)
+                parent.getDecoratedBoundsWithMargins(child, mBounds)
+                val bottom = mBounds.bottom + child.translationY.roundToInt()
+                val top = bottom - mDivider!!.intrinsicHeight
+                mDivider!!.setBounds(left, top, right, bottom)
+                mDivider!!.draw(canvas)
+            }
         }
-        val childCount = parent.childCount
-        for (i in 0 until childCount - 1) {
-            val child = parent.getChildAt(i)
-            parent.getDecoratedBoundsWithMargins(child, mBounds)
-            val bottom = mBounds.bottom + child.translationY.roundToInt()
-            val top = bottom - mDivider!!.intrinsicHeight
-            mDivider!!.setBounds(left, top, right, bottom)
-            mDivider!!.draw(canvas)
-        }
-        canvas.restore()
     }
 
     private fun drawHorizontal(canvas: Canvas, parent: RecyclerView) {
-        canvas.save()
-        val top: Int
-        val bottom: Int
-        if (parent.clipToPadding) {
-            top = parent.paddingTop
-            bottom = parent.height - parent.paddingBottom
-            canvas.clipRect(
-                parent.paddingLeft, top,
-                parent.width - parent.paddingRight, bottom
-            )
-        } else {
-            top = 0
-            bottom = parent.height
+        canvas.withSave {
+            val top: Int
+            val bottom: Int
+            if (parent.clipToPadding) {
+                top = parent.paddingTop
+                bottom = parent.height - parent.paddingBottom
+                canvas.clipRect(
+                    parent.paddingLeft, top,
+                    parent.width - parent.paddingRight, bottom
+                )
+            } else {
+                top = 0
+                bottom = parent.height
+            }
+            val childCount = parent.childCount
+            for (i in 0 until childCount - 1) {
+                val child = parent.getChildAt(i)
+                parent.layoutManager!!.getDecoratedBoundsWithMargins(child, mBounds)
+                val right = mBounds.right + child.translationX.roundToInt()
+                val left = right - mDivider!!.intrinsicWidth
+                mDivider!!.setBounds(left, top, right, bottom)
+                mDivider!!.draw(canvas)
+            }
         }
-        val childCount = parent.childCount
-        for (i in 0 until childCount - 1) {
-            val child = parent.getChildAt(i)
-            parent.layoutManager!!.getDecoratedBoundsWithMargins(child, mBounds)
-            val right = mBounds.right + child.translationX.roundToInt()
-            val left = right - mDivider!!.intrinsicWidth
-            mDivider!!.setBounds(left, top, right, bottom)
-            mDivider!!.draw(canvas)
-        }
-        canvas.restore()
     }
 
     override fun getItemOffsets(

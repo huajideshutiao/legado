@@ -718,7 +718,7 @@ class XmlStreamReader : Reader {
                 } else {
                     mime = httpContentType
                 }
-                mime = mime.trim { it <= ' ' }
+                mime = mime.trim()
             }
             return mime
         }

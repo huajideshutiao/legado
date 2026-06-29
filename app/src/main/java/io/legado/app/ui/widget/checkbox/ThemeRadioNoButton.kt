@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatRadioButton
 import androidx.appcompat.widget.TooltipCompat
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
@@ -20,10 +21,14 @@ class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
     private val isBottomBackground: Boolean
 
     init {
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.ThemeRadioNoButton)
-        isBottomBackground =
-            typedArray.getBoolean(R.styleable.ThemeRadioNoButton_isBottomBackground, false)
-        typedArray.recycle()
+        // isBottomBackground 是 val,不能在 withStyledAttributes 的 lambda 内直接赋值,
+        // 用局部变量 bottomBg 在 lambda 内接收,lambda 外再赋值给 val
+        var bottomBg = false
+        context.withStyledAttributes(attrs, R.styleable.ThemeRadioNoButton) {
+            bottomBg =
+                getBoolean(R.styleable.ThemeRadioNoButton_isBottomBackground, false)
+        }
+        isBottomBackground = bottomBg
         initTheme()
         TooltipCompat.setTooltipText(this, text)
     }

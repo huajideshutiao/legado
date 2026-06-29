@@ -16,7 +16,7 @@ import java.util.Locale
 @Suppress("unused")
 object AppContextWrapper {
 
-    @SuppressLint("ObsoleteSdkInt")
+    @SuppressLint("ObsoleteSdkInt", "AppBundleLocaleChanges")
     fun wrap(context: Context): Context {
         val resources: Resources = context.resources
         val configuration: Configuration = resources.configuration

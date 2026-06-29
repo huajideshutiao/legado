@@ -10,6 +10,7 @@ import android.util.TypedValue
 import android.view.View
 import androidx.annotation.ColorInt
 import androidx.annotation.IntDef
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 
@@ -33,13 +34,15 @@ class BevelLabelView @JvmOverloads constructor(
         const val MODE_RIGHT_BOTTOM_FILL = 7
     }
 
-    private var mBgColor: Int
-    private var mText: String
-    private var mTextSize: Int
-    private var mTextColor: Int
-    private var mLength: Int
-    private var mCorner: Int
-    private var mMode: Int
+    // 这些属性在 init 块的 withStyledAttributes lambda 内一定会被赋值,
+    // 此处给默认初始值仅为满足 Kotlin 对 var 在 lambda 内赋值的确定赋值分析要求
+    private var mBgColor: Int = 0
+    private var mText: String = ""
+    private var mTextSize: Int = 0
+    private var mTextColor: Int = 0
+    private var mLength: Int = 0
+    private var mCorner: Int = 0
+    private var mMode: Int = 0
     private var mPaint: Paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var path: Path = Path()
     private var mWidth = 0
@@ -50,24 +53,24 @@ class BevelLabelView @JvmOverloads constructor(
     private var mY: Int = 0
 
     init {
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.BevelLabelView)
-        mBgColor = typedArray.getColor(
-            R.styleable.BevelLabelView_label_bg_color,
-            context.accentColor
-        ) //默认红色
-        mText = typedArray.getString(R.styleable.BevelLabelView_label_text) ?: ""
-        mTextSize =
-            typedArray.getDimensionPixelOffset(
-                R.styleable.BevelLabelView_label_text_size,
-                sp2px(11)
-            )
-        mTextColor = typedArray.getColor(R.styleable.BevelLabelView_label_text_color, Color.WHITE)
-        mLength =
-            typedArray.getDimensionPixelOffset(R.styleable.BevelLabelView_label_length, dip2px(40))
-        mCorner = typedArray.getDimensionPixelOffset(R.styleable.BevelLabelView_label_corner, 0)
-        mMode = typedArray.getInt(R.styleable.BevelLabelView_label_mode, 1)
-        mPaint.isAntiAlias = true
-        typedArray.recycle()
+        context.withStyledAttributes(attrs, R.styleable.BevelLabelView) {
+            mBgColor = getColor(
+                R.styleable.BevelLabelView_label_bg_color,
+                context.accentColor
+            ) //默认红色
+            mText = getString(R.styleable.BevelLabelView_label_text) ?: ""
+            mTextSize =
+                getDimensionPixelOffset(
+                    R.styleable.BevelLabelView_label_text_size,
+                    sp2px(11)
+                )
+            mTextColor = getColor(R.styleable.BevelLabelView_label_text_color, Color.WHITE)
+            mLength =
+                getDimensionPixelOffset(R.styleable.BevelLabelView_label_length, dip2px(40))
+            mCorner = getDimensionPixelOffset(R.styleable.BevelLabelView_label_corner, 0)
+            mMode = getInt(R.styleable.BevelLabelView_label_mode, 1)
+            mPaint.isAntiAlias = true
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

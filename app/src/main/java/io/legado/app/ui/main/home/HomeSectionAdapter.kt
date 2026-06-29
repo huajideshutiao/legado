@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.home
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -237,6 +238,8 @@ class HomeSectionAdapter(
         override fun onBindViewHolder(holder: CoverCardVH, position: Int) =
             holder.bind(books[position], coverVideo, onClick)
 
+        // 整体替换数据集,用 notifyDataSetChanged 通知
+        @SuppressLint("NotifyDataSetChanged")
         fun setBooks(newBooks: List<SearchBook>) {
             books.clear()
             books.addAll(newBooks)
@@ -259,6 +262,8 @@ class HomeSectionAdapter(
         override fun onBindViewHolder(holder: RankBookVH, position: Int) =
             holder.bind(position + 1, books[position], showRank, onClick)
 
+        // 整体替换数据集,用 notifyDataSetChanged 通知
+        @SuppressLint("NotifyDataSetChanged")
         fun setBooks(newBooks: List<SearchBook>) {
             books.clear()
             books.addAll(newBooks)
@@ -289,6 +294,8 @@ class HomeSectionAdapter(
         override fun onBindViewHolder(holder: FourColumnVH, position: Int) =
             holder.bind(columns[position])
 
+        // 整体替换数据集,用 notifyDataSetChanged 通知
+        @SuppressLint("NotifyDataSetChanged")
         fun setBooks(books: List<SearchBook>) {
             columns.clear()
             columns.addAll(books.chunked(4))

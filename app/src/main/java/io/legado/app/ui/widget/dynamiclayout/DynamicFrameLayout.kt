@@ -10,6 +10,7 @@ import android.widget.ProgressBar
 import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 
 @Suppress("unused")
@@ -43,18 +44,18 @@ class DynamicFrameLayout @JvmOverloads constructor(
     init {
         inflate(context, R.layout.view_dynamic, this)
 
-        val a = context.obtainStyledAttributes(attrs, R.styleable.DynamicFrameLayout)
-        errorIcon = a.getDrawable(R.styleable.DynamicFrameLayout_errorSrc)
-        emptyIcon = a.getDrawable(R.styleable.DynamicFrameLayout_emptySrc)
+        context.withStyledAttributes(attrs, R.styleable.DynamicFrameLayout) {
+            errorIcon = getDrawable(R.styleable.DynamicFrameLayout_errorSrc)
+            emptyIcon = getDrawable(R.styleable.DynamicFrameLayout_emptySrc)
 
-        emptyActionDescription = a.getText(R.styleable.DynamicFrameLayout_emptyActionDescription)
-        emptyDescription = a.getText(R.styleable.DynamicFrameLayout_emptyDescription)
+            emptyActionDescription = getText(R.styleable.DynamicFrameLayout_emptyActionDescription)
+            emptyDescription = getText(R.styleable.DynamicFrameLayout_emptyDescription)
 
-        errorActionDescription = a.getText(R.styleable.DynamicFrameLayout_errorActionDescription)
-        if (errorActionDescription == null) {
-            errorActionDescription = context.getString(R.string.dynamic_click_retry)
+            errorActionDescription = getText(R.styleable.DynamicFrameLayout_errorActionDescription)
+            if (errorActionDescription == null) {
+                errorActionDescription = context.getString(R.string.dynamic_click_retry)
+            }
         }
-        a.recycle()
     }
 
     override fun onFinishInflate() {

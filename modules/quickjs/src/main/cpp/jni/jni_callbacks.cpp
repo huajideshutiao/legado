@@ -237,9 +237,26 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 拿原始 Throwable, 用 JavaObjectClass::wrap 包装成
+        // JavaObject 后 JS_Throw。JS catch(e) 拿到 JavaObject (持有 Throwable), e 传回
+        // Java 时 toJavaObject 走 isInstance 分支还原原始 Throwable, AppLog.put(e,e,false)
+        // 第二参数能匹配 Throwable。原先 JS_ThrowInternalError 只保留方法名, 丢原始异常。
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
-        JSValue exc = JS_ThrowInternalError(ctx, "Java method '%s' threw", methodName);
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            JS_FreeCString(ctx, methodName);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
+            // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
+            // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
+            JS_Throw(ctx, errObj);
+            return JS_EXCEPTION;
+        }
+        // thr 为 null 的兜底 (理论不会发生): 先用 methodName 构造错误再释放
+        JSValue exc = JS_ThrowInternalError(ctx, "Java method '%s' threw (no throwable)",
+                                            methodName);
         JS_FreeCString(ctx, methodName);
         return exc;
     }
@@ -337,9 +354,20 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        // (见 jsMethodCallable 同类处理)
+        jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
-        return JS_ThrowInternalError(ctx, "Java binding '%s' threw", nameStr.c_str());
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 jsMethodCallable 注释)
+            JS_Throw(ctx, errObj);
+            return JS_EXCEPTION;
+        }
+        return JS_ThrowInternalError(ctx, "Java binding '%s' threw (no throwable)",
+                                     nameStr.c_str());
     }
 
     // 结果转 JSValue

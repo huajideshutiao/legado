@@ -17,7 +17,6 @@
 package io.legado.app.lib.epublib.util.commons.io
 
 
-import android.os.Build
 import io.legado.app.lib.epublib.util.IOUtil.EOF
 import java.io.IOException
 import java.io.InputStream
@@ -143,9 +142,8 @@ class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: Byte
         this.include = include
         val list = Arrays.asList<ByteOrderMark?>(*boms)
         // Sort the BOMs to match the longest BOM first because some BOMs have the same starting two bytes.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            list.sortWith(ByteOrderMarkLengthComparator)
-        }
+        // minSdk 26 >= N(24), SDK_INT 检查已无必要
+        list.sortWith(ByteOrderMarkLengthComparator)
         this.boms = list
     }
 

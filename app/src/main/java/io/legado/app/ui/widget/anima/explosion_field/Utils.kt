@@ -16,6 +16,7 @@
 package io.legado.app.ui.widget.anima.explosion_field
 
 
+import android.annotation.SuppressLint
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -59,6 +60,8 @@ object Utils {
         return bitmap
     }
 
+    // 第三方爆炸动画工具类,保留 Bitmap.createBitmap 标准 API
+    @SuppressLint("UseKtx")
     private fun createBitmapSafely(
         width: Int,
         height: Int,

@@ -3,6 +3,7 @@ package io.legado.app.help
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import io.legado.app.R
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -11,7 +12,7 @@ import splitties.init.appCtx
 object IntentHelp {
 
     fun getBrowserIntent(url: String): Intent {
-        return getBrowserIntent(Uri.parse(url))
+        return getBrowserIntent(url.toUri())
     }
 
     fun getBrowserIntent(uri: Uri): Intent {

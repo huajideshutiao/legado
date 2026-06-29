@@ -216,19 +216,15 @@ object JavaObjectBridge {
     fun newJavaInstance(classHandle: Long, args: Array<Any?>, dangerousApi: Boolean): Long {
         val clazz = getClass(classHandle) ?: return 0L
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return 0L
-        return try {
-            val javaArgs = jsToJavaArgs(args)
-            val instance = createInstance(clazz, javaArgs)
-            if (instance != null && JsSecurityPolicy.isObjectVisible(instance, dangerousApi)) {
-                registerObject(instance)
-            } else 0L
-        } catch (e: Exception) {
-            Log.w(TAG, "newJavaInstance failed: ${clazz.name}", e)
-            0L
-        } catch (e: LinkageError) {
-            Log.w(TAG, "newJavaInstance linkage error: ${clazz.name}", e)
-            0L
-        }
+        // 异常不 catch: 传播到 native 层, 由 jni_callbacks.cpp jsBindingCall 用
+        // JavaObjectClass::wrap 把 Throwable 包装成 JavaObject 传给 JS catch,
+        // 对齐 rhino WrappedException。原先 catch 返回 0L 让 JS 侧拿到 null
+        // 完全不知出错, 且让 native 的 ExceptionCheck 分支成为死代码。
+        val javaArgs = jsToJavaArgs(args)
+        val instance = createInstance(clazz, javaArgs)
+        return if (instance != null && JsSecurityPolicy.isObjectVisible(instance, dangerousApi)) {
+            registerObject(instance)
+        } else 0L
     }
 
     /**
@@ -890,7 +886,16 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
 
         var fieldExists = false
-        val fieldValue: Any? = try {
+        // 对齐 rhino NativeJavaClass: obj 是 Class 对象时, 用其表示的类查找静态成员/内部类,
+        // 而非 Class 类本身。例: Bitmap.Config → Bitmap 内部类; Bitmap.Config.ARGB_8888
+        // → Bitmap$Config 静态字段; Bitmap.createBitmap → Bitmap 静态方法。
+        // 原先 obj.javaClass 当 obj 是 Class<*> 时返回 Class 类本身, 查不到 Bitmap 的成员。
+        val lookupClass = if (obj is Class<*>) obj else obj.javaClass
+        // 异常不 catch: 传播到 native 层, 由 jni_object_class.cpp getProperty trap 用
+        // JavaObjectClass::wrap 把 Throwable 包装成 JavaObject 传给 JS catch,
+        // 对齐 rhino WrappedException。原先 catch 返回 null 让 JS 侧拿到 undefined
+        // 完全不知出错, 且让 native 的 ExceptionCheck 分支成为死代码。
+        val fieldValue: Any? = run {
             val collectionVal = getCollectionField(obj, fieldName)
             if (collectionVal != null) {
                 fieldExists = true
@@ -908,36 +913,36 @@ object JavaObjectBridge {
                 }
 
                 else -> {
-                    val getter = findGetter(obj.javaClass, fieldName)
+                    val getter = findGetter(lookupClass, fieldName)
                     if (getter != null && JsSecurityPolicy.isMethodVisible(
-                            obj.javaClass.name, getter.name, dangerousApi
+                            lookupClass.name, getter.name, dangerousApi
                         )
                     ) {
                         fieldExists = true
                         getter.isAccessible = true
-                        getter.invoke(obj)
+                        getter.invoke(if (obj is Class<*>) null else obj)
                     } else {
-                        val field = findField(obj.javaClass, fieldName)
+                        val field = findField(lookupClass, fieldName)
                         if (field != null) {
                             fieldExists = true
                             field.isAccessible = true
-                            field.get(obj)
+                            field.get(if (obj is Class<*>) null else obj)
+                        } else if (obj is Class<*>) {
+                            // 内部类查找 (对齐 rhino NativeJavaClass):
+                            // Java 反射不把内部类作为字段暴露 (getField/getDeclaredField 都
+                            // 找不到), 需用 getDeclaredClasses 按 simpleName 匹配, 或
+                            // Class.forName("Outer$Inner") 兜底。
+                            findInnerClass(obj, fieldName)?.also { fieldExists = true }
                         } else null
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "getJavaPropertyRaw field failed: ${obj.javaClass.name}.$fieldName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "getJavaPropertyRaw linkage error: ${obj.javaClass.name}.$fieldName", e)
-            null
         }
 
         val hasMethod =
-            if (JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)) {
+            if (JsSecurityPolicy.isMethodVisible(lookupClass.name, fieldName, dangerousApi)) {
                 val candidates = mutableListOf<Method>()
-                collectMethods(obj.javaClass, fieldName, candidates)
+                collectMethods(lookupClass, fieldName, candidates)
                 candidates.isNotEmpty()
             } else false
 
@@ -960,28 +965,21 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return false
         val javaValue = unwrapHandleValue(value)
         if (setCollectionField(obj, fieldName, javaValue)) return true
-        return try {
-            val setter = findSetter(obj.javaClass, fieldName)
-            if (setter != null) {
-                if (!JsSecurityPolicy.isMethodVisible(
-                        obj.javaClass.name, setter.name, dangerousApi
-                    )
-                ) return false
-                setter.isAccessible = true
-                setter.invoke(obj, coerceValue(javaValue, setter.parameterTypes[0]))
-                return true
-            }
-            val field = findField(obj.javaClass, fieldName) ?: return false
-            field.isAccessible = true
-            field.set(obj, coerceValue(javaValue, field.type))
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "setInstanceFieldRaw failed: ${obj.javaClass.name}.$fieldName", e)
-            false
-        } catch (e: LinkageError) {
-            Log.w(TAG, "setInstanceFieldRaw linkage error: ${obj.javaClass.name}.$fieldName", e)
-            false
+        // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
+        val setter = findSetter(obj.javaClass, fieldName)
+        if (setter != null) {
+            if (!JsSecurityPolicy.isMethodVisible(
+                    obj.javaClass.name, setter.name, dangerousApi
+                )
+            ) return false
+            setter.isAccessible = true
+            setter.invoke(obj, coerceValue(javaValue, setter.parameterTypes[0]))
+            return true
         }
+        val field = findField(obj.javaClass, fieldName) ?: return false
+        field.isAccessible = true
+        field.set(obj, coerceValue(javaValue, field.type))
+        return true
     }
 
     /**
@@ -990,15 +988,8 @@ object JavaObjectBridge {
      */
     internal fun getInstanceKeysRaw(obj: Any, dangerousApi: Boolean): Array<String> {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return emptyArray()
-        return try {
-            getInstanceKeysImpl(obj, dangerousApi)
-        } catch (e: Exception) {
-            Log.w(TAG, "getInstanceKeysRaw failed: ${obj.javaClass.name}", e)
-            emptyArray()
-        } catch (e: LinkageError) {
-            Log.w(TAG, "getInstanceKeysRaw linkage error: ${obj.javaClass.name}", e)
-            emptyArray()
-        }
+        // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
+        return getInstanceKeysImpl(obj, dangerousApi)
     }
 
     /**
@@ -1016,58 +1007,62 @@ object JavaObjectBridge {
         dangerousApi: Boolean
     ): Any? {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
-        if (!JsSecurityPolicy.isMethodVisible(obj.javaClass.name, methodName, dangerousApi)) {
+        // 对齐 rhino NativeJavaClass: obj 是 Class 对象时, 用其表示的类查找静态方法,
+        // 而非 Class 类本身。例: Bitmap.Config.values() → obj 是 Bitmap$Config Class 对象,
+        // findMethod(Bitmap$Config, "values") 而非 findMethod(Class, "values")。
+        // 由 getStaticField 返回的内部类 Class 对象被包装为 JavaObject, 访问 .values()
+        // 走 method callable → 此方法, 需用 lookupClass 查到内部类的静态方法。
+        val lookupClass = if (obj is Class<*>) obj else obj.javaClass
+        if (!JsSecurityPolicy.isMethodVisible(lookupClass.name, methodName, dangerousApi)) {
             return null
         }
         // 热点类型快速路径
         val fastResult = callHotTypeMethod(obj, methodName, args, dangerousApi)
         if (fastResult !== NO_RESULT) return fastResult
-        return try {
-            val javaArgs = Array(args.size) { i -> unwrapHandleValue(args[i]) }
-            val method = findMethod(obj.javaClass, methodName, javaArgs)
-            if (method != null) {
-                method.isAccessible = true
-                val result = method.invoke(
-                    obj,
-                    *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
-                )
-                return result // 原始对象, 不调 javaToJsResult
-            }
-            // getter 回退
-            if (args.isEmpty()) {
-                val getterName = buildString(methodName.length + 3) {
-                    append("get")
-                    if (methodName.isNotEmpty()) {
-                        methodName.first().uppercaseChar().let { append(it) }
-                        append(methodName.substring(1))
-                    }
-                }
-                val getter = findMethod(obj.javaClass, getterName, emptyArray())
-                if (getter != null) {
-                    getter.isAccessible = true
-                    return getter.invoke(obj)
-                }
-                val isName = buildString(methodName.length + 2) {
-                    append("is")
-                    if (methodName.isNotEmpty()) {
-                        methodName.first().uppercaseChar().let { append(it) }
-                        append(methodName.substring(1))
-                    }
-                }
-                val isGetter = findMethod(obj.javaClass, isName, emptyArray())
-                if (isGetter != null) {
-                    isGetter.isAccessible = true
-                    return isGetter.invoke(obj)
-                }
-            }
-            null
-        } catch (e: Exception) {
-            Log.w(TAG, "callInstanceMethodRaw failed: ${obj.javaClass.name}.$methodName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "callInstanceMethodRaw linkage error: ${obj.javaClass.name}.$methodName", e)
-            null
+        // 异常不 catch: 传播到 native 层, 由 jni_callbacks.cpp jsMethodCallable 用
+        // JavaObjectClass::wrap 把 Throwable 包装成 JavaObject 传给 JS catch,
+        // 对齐 rhino WrappedException。原先 catch 返回 null 让 JS 侧拿到 null
+        // 完全不知出错, 且让 native 的 ExceptionCheck 分支成为死代码。
+        val javaArgs = Array(args.size) { i -> unwrapHandleValue(args[i]) }
+        val method = findMethod(lookupClass, methodName, javaArgs)
+        if (method != null) {
+            method.isAccessible = true
+            // 静态方法 obj 被反射忽略, 传 Class 对象或 null 均可; 实例方法传 obj
+            val invokeTarget = if (Modifier.isStatic(method.modifiers)) null else obj
+            val result = method.invoke(
+                invokeTarget,
+                *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
+            )
+            return result // 原始对象, 不调 javaToJsResult
         }
+        // getter 回退
+        if (args.isEmpty()) {
+            val getterName = buildString(methodName.length + 3) {
+                append("get")
+                if (methodName.isNotEmpty()) {
+                    methodName.first().uppercaseChar().let { append(it) }
+                    append(methodName.substring(1))
+                }
+            }
+            val getter = findMethod(lookupClass, getterName, emptyArray())
+            if (getter != null) {
+                getter.isAccessible = true
+                return getter.invoke(if (Modifier.isStatic(getter.modifiers)) null else obj)
+            }
+            val isName = buildString(methodName.length + 2) {
+                append("is")
+                if (methodName.isNotEmpty()) {
+                    methodName.first().uppercaseChar().let { append(it) }
+                    append(methodName.substring(1))
+                }
+            }
+            val isGetter = findMethod(lookupClass, isName, emptyArray())
+            if (isGetter != null) {
+                isGetter.isAccessible = true
+                return isGetter.invoke(if (Modifier.isStatic(isGetter.modifiers)) null else obj)
+            }
+        }
+        return null
     }
 
     /**
@@ -1181,20 +1176,13 @@ object JavaObjectBridge {
         val clazz = getClass(classHandle) ?: return null
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return null
         if (!JsSecurityPolicy.isMethodVisible(clazz.name, methodName, dangerousApi)) return null
-        return try {
-            val javaArgs = jsToJavaArgs(args)
-            val method = findStaticMethod(clazz, methodName, javaArgs) ?: return null
-            method.isAccessible = true
-            val result =
-                method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs))
-            javaToJsResult(result, dangerousApi)
-        } catch (e: Exception) {
-            Log.w(TAG, "callStaticMethod failed: ${clazz.name}.$methodName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "callStaticMethod linkage error: ${clazz.name}.$methodName", e)
-            null
-        }
+        // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
+        val javaArgs = jsToJavaArgs(args)
+        val method = findStaticMethod(clazz, methodName, javaArgs) ?: return null
+        method.isAccessible = true
+        val result =
+            method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs))
+        return javaToJsResult(result, dangerousApi)
     }
 
     /**
@@ -1280,21 +1268,21 @@ object JavaObjectBridge {
 
     /**
      * 获取静态字段。
+     *
+     * 注: 内部类访问 (如 Bitmap.Config) 不在此处理, 而是在 JS bootstrap 的 __wrapClass
+     * Proxy get trap 中用 __loadJavaClass(path + "$" + prop) 加载内部类。原因:
+     * JsSecurityPolicy.isObjectVisible 禁止 Class<*> 对象返回 JS 侧 (安全策略,
+     * 防止反射滥用), 所以此处即使 findInnerClass 找到内部类, javaToJsResult 也会
+     * 因 isObjectVisible 拦截返回 null。JS 层 __loadJavaClass 返回 classHandle,
+     * 用 __wrapClass 包装为 Proxy, 不暴露原始 Class 对象。
      */
     fun getStaticField(classHandle: Long, fieldName: String, dangerousApi: Boolean): Any? {
         val clazz = getClass(classHandle) ?: return null
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return null
-        return try {
-            val field = findField(clazz, fieldName) ?: return null
-            field.isAccessible = true
-            javaToJsResult(field.get(null), dangerousApi)
-        } catch (e: Exception) {
-            Log.w(TAG, "getStaticField failed: ${clazz.name}.$fieldName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "getStaticField linkage error: ${clazz.name}.$fieldName", e)
-            null
-        }
+        // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
+        val field = findField(clazz, fieldName) ?: return null
+        field.isAccessible = true
+        return javaToJsResult(field.get(null), dangerousApi)
     }
 
     /**
@@ -1381,18 +1369,11 @@ object JavaObjectBridge {
     ): Boolean {
         val clazz = getClass(classHandle) ?: return false
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return false
-        return try {
-            val field = findField(clazz, fieldName) ?: return false
-            field.isAccessible = true
-            field.set(null, jsToJavaValue(value, field.type))
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "setStaticField failed: ${clazz.name}.$fieldName", e)
-            false
-        } catch (e: LinkageError) {
-            Log.w(TAG, "setStaticField linkage error: ${clazz.name}.$fieldName", e)
-            false
-        }
+        // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
+        val field = findField(clazz, fieldName) ?: return false
+        field.isAccessible = true
+        field.set(null, jsToJavaValue(value, field.type))
+        return true
     }
 
     /**
@@ -1681,6 +1662,28 @@ object JavaObjectBridge {
             c = c.superclass
         }
         return null
+    }
+
+    /**
+     * 查找内部类 (对齐 rhino NativeJavaClass)。
+     * Java 反射不把内部类作为字段暴露 (getField/getDeclaredField 都找不到),
+     * 需用 getDeclaredClasses 按 simpleName 匹配, 或 Class.forName("Outer$Inner") 兜底。
+     * 用于支持 `Bitmap.Config` 这类内部类访问语法 (Bitmap 是 Class 对象,
+     * .Config 访问其表示类 Bitmap 的内部类 Bitmap$Config)。
+     */
+    private fun findInnerClass(clazz: Class<*>, name: String): Class<*>? {
+        return try {
+            // 优先用 getDeclaredClasses 匹配 simpleName
+            for (inner in clazz.declaredClasses) {
+                if (inner.simpleName == name) return inner
+            }
+            // 兜底: 用完整类名查找 (处理非 declared 的情况)
+            Class.forName(clazz.name + "$" + name, false, clazz.classLoader)
+        } catch (_: ClassNotFoundException) {
+            null
+        } catch (_: LinkageError) {
+            null
+        }
     }
 
     /**

@@ -24,6 +24,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.view.View
 import android.view.animation.AccelerateInterpolator
+import androidx.core.graphics.get
 import java.util.Random
 import kotlin.math.pow
 
@@ -44,7 +45,7 @@ class ExplosionAnimator(private val mContainer: View, bitmap: Bitmap, bound: Rec
         for (i in 0 until partLen) {
             for (j in 0 until partLen) {
                 mParticles[i * partLen + j] =
-                    generateParticle(bitmap.getPixel((j + 1) * w, (i + 1) * h), random)
+                    generateParticle(bitmap[(j + 1) * w, (i + 1) * h], random)
             }
         }
         setFloatValues(0f, END_VALUE)

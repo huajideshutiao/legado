@@ -63,6 +63,7 @@ fun Menu.applyOpenTint(context: Context) {
     }
 }
 
+@SuppressLint("RestrictedApi")
 fun Menu.iconItemOnLongClick(id: Int, function: (view: View) -> Unit) {
     val context = (this as? MenuBuilder)?.context ?: return
     findItem(id)?.let { item ->

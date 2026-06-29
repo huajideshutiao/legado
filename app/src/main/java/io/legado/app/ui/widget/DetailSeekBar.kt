@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.SeekBar
 import androidx.appcompat.widget.TooltipCompat
+import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 import io.legado.app.databinding.ViewDetailSeekBarBinding
 import io.legado.app.lib.theme.bottomBackground
@@ -40,16 +41,20 @@ class DetailSeekBar @JvmOverloads constructor(
         }
 
     init {
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.DetailSeekBar)
-        isBottomBackground =
-            typedArray.getBoolean(R.styleable.DetailSeekBar_isBottomBackground, false)
-        val title = typedArray.getText(R.styleable.DetailSeekBar_title)
-        binding.tvSeekTitle.apply {
-            text = title
-            TooltipCompat.setTooltipText(this, title)
+        // isBottomBackground 是 val,不能在 withStyledAttributes 的 lambda 内直接赋值,
+        // 用局部变量 bottomBg 在 lambda 内接收,lambda 外再赋值给 val
+        var bottomBg = false
+        context.withStyledAttributes(attrs, R.styleable.DetailSeekBar) {
+            bottomBg =
+                getBoolean(R.styleable.DetailSeekBar_isBottomBackground, false)
+            val title = getText(R.styleable.DetailSeekBar_title)
+            binding.tvSeekTitle.apply {
+                text = title
+                TooltipCompat.setTooltipText(this, title)
+            }
+            binding.seekBar.max = getInteger(R.styleable.DetailSeekBar_max, 0)
         }
-        binding.seekBar.max = typedArray.getInteger(R.styleable.DetailSeekBar_max, 0)
-        typedArray.recycle()
+        isBottomBackground = bottomBg
         if (isBottomBackground && !isInEditMode) {
             val isLight = ColorUtils.isColorLight(context.bottomBackground)
             val textColor = context.getPrimaryTextColor(isLight)

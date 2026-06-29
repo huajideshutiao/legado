@@ -2,9 +2,9 @@ package io.legado.app.ui.widget
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.util.AttributeSet
 import android.util.TypedValue
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.ViewCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
@@ -37,7 +37,7 @@ class ThemeBottomNavigationView(context: Context, attrs: AttributeSet) :
 
         if (AppConfig.isEInkMode) {
             isItemHorizontalTranslationEnabled = false
-            itemBackground = ColorDrawable(Color.TRANSPARENT)
+            itemBackground = Color.TRANSPARENT.toDrawable()
         }
 
         applyUserPrefs()
