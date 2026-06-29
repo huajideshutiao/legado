@@ -19,7 +19,6 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -62,9 +61,20 @@ object JavaObjectBridge {
      * 可全局缓存跨 scope 复用。
      *
      * 命中:methodCache;未命中:methodMissCache 避免重复反射查找。
+     *
+     * LRU 限制: 1000 条上限防止长期运行累积内存泄漏 (10000+ 书源场景)。
+     * LinkedHashMap accessOrder=true 实现 LRU, removeEldestEntry 淘汰最旧条目。
+     * 手动 synchronized 保证线程安全 (Collections.synchronizedMap 不支持 accessOrder)。
      */
-    private val methodCache = ConcurrentHashMap<String, Method>()
-    private val methodMissCache = ConcurrentHashMap.newKeySet<String>()
+    private val methodCache = object : LinkedHashMap<String, Method>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Method>?) =
+            size > 1000
+    }
+    private val methodMissCache = object : LinkedHashMap<String, Boolean>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) =
+            size > 1000
+    }
+    private val cacheLock = Any()
 
     /**
      * 快速路径未命中哨兵对象。callHotTypeMethod 返回此值表示该 methodName 未处理,
@@ -542,7 +552,10 @@ object JavaObjectBridge {
         dangerousApi: Boolean
     ): Any? {
         return when (methodName) {
-            "append" -> if (args.size == 1) {
+            "append" -> if (args.size == 1 && args[0] is String) {
+                sb.append(args[0] as String)
+                javaToJsResult(sb, dangerousApi)
+            } else if (args.size == 1) {
                 appendToBuilder(sb, args[0])
                 javaToJsResult(sb, dangerousApi)
             } else NO_RESULT
@@ -1470,8 +1483,10 @@ object JavaObjectBridge {
             scopeHandles.clear()
         }
         // 方法缓存与 ClassLoader 强相关,测试场景需重置避免跨用例污染
-        methodCache.clear()
-        methodMissCache.clear()
+        synchronized(cacheLock) {
+            methodCache.clear()
+            methodMissCache.clear()
+        }
     }
 
     // ============ 反射辅助 ============
@@ -1479,14 +1494,19 @@ object JavaObjectBridge {
     private fun findMethod(clazz: Class<*>, name: String, args: Array<Any?>): Method? {
         // 缓存查找:Class 结构运行时不变,同一 (类,方法,参数类型签名) 解析结果相同
         val cacheKey = buildMethodCacheKey(clazz, name, args)
-        methodCache[cacheKey]?.let { return it }
-        if (methodMissCache.contains(cacheKey)) return null
+        synchronized(cacheLock) {
+            methodCache[cacheKey]?.let { return it }
+            if (methodMissCache.containsKey(cacheKey)) return null
+        }
 
+        // 反射查找放在锁外,避免长时间持锁阻塞并发调用
         val method = findMethodImpl(clazz, name, args)
-        if (method != null) {
-            methodCache[cacheKey] = method
-        } else {
-            methodMissCache.add(cacheKey)
+        synchronized(cacheLock) {
+            if (method != null) {
+                methodCache[cacheKey] = method
+            } else {
+                methodMissCache[cacheKey] = true
+            }
         }
         return method
     }

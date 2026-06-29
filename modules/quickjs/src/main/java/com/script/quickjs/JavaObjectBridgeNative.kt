@@ -1,5 +1,8 @@
 package com.script.quickjs
 
+import com.script.quickjs.JavaObjectBridgeNative.callMethod
+
+
 /**
  * Java 对象反射桥接, 供 native exotic trap 回调。
  *
@@ -104,6 +107,28 @@ object JavaObjectBridgeNative {
         dangerousApi: Boolean
     ): Any? {
         val obj = JavaObjectBridge.getObject(objHandle) ?: return null
+        val result = JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
+        return unwrapResult(result)
+    }
+
+    /**
+     * method callable 回调 (无句柄版本, Tier 2 共享 callable 走这条路径)。
+     *
+     * 与 [callMethod] 等价, 但接收 Java 对象本身而非 handle, 省掉:
+     * - 属性访问时 native 侧 getHandle JNI 往返
+     * - JavaObjectBridge.identityHandles 的 IdentityHashMap 查找/注册
+     * - getObject(handle) 的 LongSparseArray 查找
+     *
+     * 这条调用约定要求 native 侧从 this_val 取 jobject (通过 JavaObjectClass::getJavaObject),
+     * 而非靠 func_data 携带的 objHandle, 因而 callable JSValue 可在所有 Java 对象间共享。
+     */
+    @JvmStatic
+    fun callMethodByObj(
+        obj: Any,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
         val result = JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
         return unwrapResult(result)
     }

@@ -82,4 +82,8 @@ public:
     static std::string buildExceptionMessage(JSContext *ctx, JSValue exc);
 };
 
+// 导出 Long 类缓存供其他模块复用 (避免重复 FindClass)
+extern jclass g_LongCls;
+extern jmethodID g_LongValueOf;
+
 #endif // JNI_VALUE_CONVERT_H

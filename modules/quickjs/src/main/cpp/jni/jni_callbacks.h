@@ -4,6 +4,8 @@
 #include <quickjs.h>
 #include <jni.h>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 
 /**
  * JS 回调函数管理 (method callable + binding 注册)。
@@ -23,6 +25,12 @@
 // ctx opaque 数据 (存储 dangerousApi 等运行时状态)
 struct CtxOpaqueData {
     bool dangerousApi;
+    // method callable JSValue 缓存: methodName -> CFunctionData
+    // 同名方法在所有 Java 对象间共享一个 callable, 调用时从 this_val 取 jobject。
+    // 原先每次 obj.method 属性访问都 JS_NewCFunctionData 新建 + DupValue/FreeValue,
+    // 循环里 sb.append 这样的写法每轮都要分配新 callable; 缓存后 JS 端命中走 JS_DupValue
+    // (引用计数 +1) 即可。释放在 freeCtxOpaque 里统一 JS_FreeValue。
+    std::unordered_map<std::string, JSValue> methodCallableCache;
 };
 
 /**
@@ -46,14 +54,20 @@ void setDangerousApi(JSContext *ctx, bool dangerousApi);
 bool getDangerousApi(JSContext *ctx);
 
 /**
- * 创建 method callable JS 函数。
+ * 获取/创建 method callable JS 函数。
+ *
+ * 调用约定: 创建的 callable 不持有 jobject, 调用时从 this_val (即调用点的接收对象)
+ * 取出 jobject 传给 Java 侧。这让同名方法可在所有 Java 对象间共享同一个 JSFunction
+ * 实例, 避免循环里反复分配 (例如 sb.append 这类 hot loop)。
+ *
+ * 命中 [CtxOpaqueData::methodCallableCache] 时返回 cached value 的 DupValue;
+ * 未命中则新建并写入 cache。
  *
  * @param ctx JSContext
- * @param objHandle Java 对象句柄
- * @param methodName 方法名
+ * @param methodName 方法名 (cache key)
  * @return JS 函数 (调用方负责 FreeValue)
  */
-JSValue createMethodCallable(JSContext *ctx, int64_t objHandle, const char *methodName);
+JSValue getOrCreateMethodCallable(JSContext *ctx, const char *methodName);
 
 /**
  * 注册 binding (JS 全局函数, 回调 Java BindingHandler.call)。

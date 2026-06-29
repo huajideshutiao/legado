@@ -140,11 +140,8 @@ Java_com_script_quickjs_QuickJsNative_nativeGetGlobalObject(JNIEnv *env, jobject
     JSValue dup = JS_DupValue(ctx, global);
     int64_t handle = JsHandleTable::instance().store(ctx, dup);
     JS_FreeValue(ctx, global);
-    // 返回 Long 句柄
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
+    // 返回 Long 句柄 (复用 g_LongCls / g_LongValueOf 缓存)
+    jobject result = env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
     return result;
 }
 

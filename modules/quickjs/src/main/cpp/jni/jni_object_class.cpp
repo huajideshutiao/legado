@@ -22,7 +22,7 @@ namespace {
     jmethodID g_getPropertyInfo = nullptr;
     jmethodID g_setProperty = nullptr;
     jmethodID g_getPropertyNames = nullptr;
-    jmethodID g_getHandle = nullptr;  // method callable 创建时用
+    // Tier 2: method callable 改为共享 + 从 this_val 取对象后, 不再需要 getHandle (已删)
     // 用 std::once_flag 保证 init body 只执行一次, 且执行完成后对其它线程可见
     // (call_once 内部 release/acquire 屏障替代了原裸 bool 的 publish-after-write 隐患:
     //  原先 thread A 还在赋值 g_hasProperty/g_getHandle, thread B 已观察到 g_bridgeInited==true
@@ -40,6 +40,12 @@ namespace {
     jclass g_classCls = nullptr;      // java.lang.Class
     jmethodID g_getClass = nullptr;    // Object.getClass()
     jmethodID g_isArray = nullptr;     // Class.isArray()
+
+    // java.lang.Boolean 缓存 (getProperty 解包 fieldExists / hasMethod 用)
+    // 原先两次 Boolean 解包都 FindClass + GetMethodID, 每次属性访问算两次, 极热
+    jclass g_BooleanCls = nullptr;
+    jmethodID g_BooleanValueOf = nullptr;
+    jmethodID g_BooleanValue = nullptr;
 
     // 获取 JNIEnv (从 JS 执行线程)
     JNIEnv *getJniEnv() {
@@ -83,12 +89,8 @@ namespace {
             // getPropertyNames(obj, dangerousApi): Array<String>
             g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
                                                         "(Ljava/lang/Object;Z)[Ljava/lang/String;");
-            // getHandle(obj): Long  (method callable 创建时获取对象句柄)
-            g_getHandle = env->GetStaticMethodID(g_bridgeCls, "getHandle",
-                                                 "(Ljava/lang/Object;)J");
 
-            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
-                !g_getHandle) {
+            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames) {
                 LOGE("JavaObjectBridgeNative methods not found");
                 env->ExceptionClear();
             }
@@ -121,6 +123,18 @@ namespace {
                 g_classCls = (jclass) env->NewGlobalRef(localClass);
                 env->DeleteLocalRef(localClass);
                 g_isArray = env->GetMethodID(g_classCls, "isArray", "()Z");
+            } else {
+                env->ExceptionClear();
+            }
+
+            // java.lang.Boolean 缓存 (getProperty 解包 Boolean / 调用 valueOf)
+            jclass localBool = env->FindClass("java/lang/Boolean");
+            if (localBool) {
+                g_BooleanCls = (jclass) env->NewGlobalRef(localBool);
+                env->DeleteLocalRef(localBool);
+                g_BooleanValueOf = env->GetStaticMethodID(g_BooleanCls, "valueOf",
+                                                          "(Z)Ljava/lang/Boolean;");
+                g_BooleanValue = env->GetMethodID(g_BooleanCls, "booleanValue", "()Z");
             } else {
                 env->ExceptionClear();
             }
@@ -476,22 +490,16 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     jobject fieldExistsObj = env->GetObjectArrayElement(info, 1);
     jobject hasMethodObj = env->GetObjectArrayElement(info, 2);
 
-    // fieldExists 和 hasMethod 是 Boolean, 解包
+    // fieldExists 和 hasMethod 是 Boolean, 解包 (用缓存的 g_BooleanValue, 避免热路径 FindClass)
     bool fieldExists = false;
     bool hasMethod = false;
     if (fieldExistsObj) {
-        jclass boolCls = env->FindClass("java/lang/Boolean");
-        jmethodID boolValue = env->GetMethodID(boolCls, "booleanValue", "()Z");
-        fieldExists = env->CallBooleanMethod(fieldExistsObj, boolValue) == JNI_TRUE;
+        fieldExists = env->CallBooleanMethod(fieldExistsObj, g_BooleanValue) == JNI_TRUE;
         env->DeleteLocalRef(fieldExistsObj);
-        env->DeleteLocalRef(boolCls);
     }
     if (hasMethodObj) {
-        jclass boolCls = env->FindClass("java/lang/Boolean");
-        jmethodID boolValue = env->GetMethodID(boolCls, "booleanValue", "()Z");
-        hasMethod = env->CallBooleanMethod(hasMethodObj, boolValue) == JNI_TRUE;
+        hasMethod = env->CallBooleanMethod(hasMethodObj, g_BooleanValue) == JNI_TRUE;
         env->DeleteLocalRef(hasMethodObj);
-        env->DeleteLocalRef(boolCls);
     }
 
     // 决策逻辑 (对齐 rhino LiveConnect FieldAndMessages 行为):
@@ -506,17 +514,14 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     // 4. 都不存在: 返回 undefined
     JSValue ret = JS_UNDEFINED;
     if (hasMethod) {
-        // method 优先 (对齐 rhino FieldAndMessages), 创建 method callable
+        // method 优先 (对齐 rhino FieldAndMessages)
+        // 优化: 创建 callable 后用 JS_DefinePropertyValue 固化为对象自有属性,
+        // 后续访问直接走属性路径 (不再触发 trap), 避免每次都 hash 查 methodName。
         const char *methodName = atomToCString(ctx, atom);
         if (methodName) {
-            // 通过缓存的 g_getHandle 获取 Java 对象的句柄
-            jlong objHandle = env->CallStaticLongMethod(g_bridgeCls, g_getHandle, javaObj);
-            if (!env->ExceptionCheck() && objHandle != 0) {
-                ret = createMethodCallable(ctx, (int64_t) objHandle, methodName);
-            } else if (env->ExceptionCheck()) {
-                LOGE("getProperty: getHandle exception");
-                env->ExceptionClear();
-            }
+            ret = getOrCreateMethodCallable(ctx, methodName);
+            // 把 callable 写为对象自有属性 (JS_PROP_CONFIGURABLE 允许 delete)
+            JS_DefinePropertyValue(ctx, obj, atom, JS_DupValue(ctx, ret), JS_PROP_CONFIGURABLE);
             JS_FreeCString(ctx, methodName);
         }
         // fieldValue 不再需要, 释放

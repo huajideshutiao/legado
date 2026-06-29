@@ -9,14 +9,20 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 // 缓存 Java 类引用,避免每次 FindClass
+// Long 类缓存导出给 jni_bridge.cpp 等模块复用
+jclass g_LongCls = nullptr;
+jmethodID g_LongValueOf = nullptr;
+
 namespace {
     jclass g_BooleanCls = nullptr;
     jclass g_IntegerCls = nullptr;
     jclass g_DoubleCls = nullptr;
-    jclass g_LongCls = nullptr;
     jclass g_ByteCls = nullptr;
     jclass g_ShortCls = nullptr;
     jclass g_FloatCls = nullptr;
+    // String 类缓存 (fromJavaObject 热路径: 几乎每个 Java 方法返回值都过 String 判断)
+    // 原先每次都 FindClass("java/lang/String") + DeleteLocalRef, 锁 ClassLoader, 显著开销
+    jclass g_StringCls = nullptr;
     // NativeObject (com/script/quickjs/NativeObject) - JS Object 在 Kotlin 侧的标记类型
     // 对齐 rhino NativeObject: 业务代码用 is NativeObject 区分 JS 返回的对象与 JsonPath 返回的 Map
     jclass g_NativeObjectCls = nullptr;
@@ -28,7 +34,8 @@ namespace {
     jmethodID g_IntegerValue = nullptr;
     jmethodID g_DoubleValueOf = nullptr;
     jmethodID g_DoubleValue = nullptr;
-    jmethodID g_LongValueOf = nullptr;
+    // 注: g_LongValueOf 提升到文件级全局 (上方), 供 jni_bridge.cpp 复用, 避免重复 FindClass
+    jmethodID g_LongValue = nullptr;       // Long.longValue() (fromJavaObject 热路径)
     jmethodID g_ByteValue = nullptr;
     jmethodID g_ShortValue = nullptr;
     jmethodID g_FloatValue = nullptr;
@@ -67,6 +74,7 @@ namespace {
             g_LongCls = (jclass) env->NewGlobalRef(localLong);
             env->DeleteLocalRef(localLong);
             g_LongValueOf = env->GetStaticMethodID(g_LongCls, "valueOf", "(J)Ljava/lang/Long;");
+            g_LongValue = env->GetMethodID(g_LongCls, "longValue", "()J");
             // Byte (byte[] 元素访问需要, 否则 Byte 会被包装为 JavaObject 导致位运算失败)
             jclass localByte = env->FindClass("java/lang/Byte");
             g_ByteCls = (jclass) env->NewGlobalRef(localByte);
@@ -82,6 +90,10 @@ namespace {
             g_FloatCls = (jclass) env->NewGlobalRef(localFloat);
             env->DeleteLocalRef(localFloat);
             g_FloatValue = env->GetMethodID(g_FloatCls, "floatValue", "()F");
+            // String (fromJavaObject 热路径; toJavaObject 也复用)
+            jclass localStr = env->FindClass("java/lang/String");
+            g_StringCls = (jclass) env->NewGlobalRef(localStr);
+            env->DeleteLocalRef(localStr);
             // NativeObject (com/script/quickjs/NativeObject)
             jclass localNO = env->FindClass("com/script/quickjs/NativeObject");
             g_NativeObjectCls = (jclass) env->NewGlobalRef(localNO);
@@ -256,30 +268,25 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
         return JS_NULL;
     }
 
-    // Boolean
-    if (env->IsInstanceOf(javaObj, g_BooleanCls)) {
-        jboolean b = env->CallBooleanMethod(javaObj, g_BooleanValue);
-        return JS_NewBool(ctx, b == JNI_TRUE);
-    }
-    // Byte (byte[] 元素访问, 必须在 Integer 之前判断, 因为 Byte 不是 Integer 子类)
-    if (env->IsInstanceOf(javaObj, g_ByteCls)) {
-        jbyte v = env->CallByteMethod(javaObj, g_ByteValue);
-        return JS_NewInt32(ctx, (int32_t) v);
-    }
-    // Short
-    if (env->IsInstanceOf(javaObj, g_ShortCls)) {
-        jshort v = env->CallShortMethod(javaObj, g_ShortValue);
-        return JS_NewInt32(ctx, (int32_t) v);
+    // 热路径优化: 书源 JS 大量返回 String / Integer / 自定义 Java 对象。
+    // 先做 String 判断 (高频, 且字符串拼接/拷贝是常见瓶颈), 再 Integer (循环计数器、
+    // size/length 返回), 然后其他基本类型, 最后落到自定义 Java 对象 wrap 分支。
+    // String
+    if (env->IsInstanceOf(javaObj, g_StringCls)) {
+        const char *str = env->GetStringUTFChars((jstring) javaObj, nullptr);
+        JSValue val = JS_NewString(ctx, str ? str : "");
+        env->ReleaseStringUTFChars((jstring) javaObj, str);
+        return val;
     }
     // Integer
     if (env->IsInstanceOf(javaObj, g_IntegerCls)) {
         jint v = env->CallIntMethod(javaObj, g_IntegerValue);
         return JS_NewInt32(ctx, v);
     }
-    // Float (必须在 Double 之前判断, 虽然 Float 不是 Double 子类, 但保险起见)
-    if (env->IsInstanceOf(javaObj, g_FloatCls)) {
-        jfloat v = env->CallFloatMethod(javaObj, g_FloatValue);
-        return JS_NewFloat64(ctx, (double) v);
+    // Boolean
+    if (env->IsInstanceOf(javaObj, g_BooleanCls)) {
+        jboolean b = env->CallBooleanMethod(javaObj, g_BooleanValue);
+        return JS_NewBool(ctx, b == JNI_TRUE);
     }
     // Double
     if (env->IsInstanceOf(javaObj, g_DoubleCls)) {
@@ -289,20 +296,24 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
     // Long -> JS Number (用 float64 避免溢出, Long 句柄可能超过 int32 范围)
     // 重要: binding 返回的 classHandle/objHandle 是 Long, 需要作为 JS Number 传递
     if (env->IsInstanceOf(javaObj, g_LongCls)) {
-        jmethodID longValue = env->GetMethodID(g_LongCls, "longValue", "()J");
-        jlong v = env->CallLongMethod(javaObj, longValue);
+        jlong v = env->CallLongMethod(javaObj, g_LongValue);
         return JS_NewFloat64(ctx, (double) v);
     }
-    // String
-    jclass stringCls = env->FindClass("java/lang/String");
-    if (env->IsInstanceOf(javaObj, stringCls)) {
-        const char *str = env->GetStringUTFChars((jstring) javaObj, nullptr);
-        JSValue val = JS_NewString(ctx, str ? str : "");
-        env->ReleaseStringUTFChars((jstring) javaObj, str);
-        env->DeleteLocalRef(stringCls);
-        return val;
+    // Float
+    if (env->IsInstanceOf(javaObj, g_FloatCls)) {
+        jfloat v = env->CallFloatMethod(javaObj, g_FloatValue);
+        return JS_NewFloat64(ctx, (double) v);
     }
-    env->DeleteLocalRef(stringCls);
+    // Byte (byte[] 元素访问)
+    if (env->IsInstanceOf(javaObj, g_ByteCls)) {
+        jbyte v = env->CallByteMethod(javaObj, g_ByteValue);
+        return JS_NewInt32(ctx, (int32_t) v);
+    }
+    // Short
+    if (env->IsInstanceOf(javaObj, g_ShortCls)) {
+        jshort v = env->CallShortMethod(javaObj, g_ShortValue);
+        return JS_NewInt32(ctx, (int32_t) v);
+    }
 
     // 其他 Java 对象 -> JavaObjectClass.wrap (走 exotic trap)
     return JavaObjectClass::wrap(ctx, env, javaObj);

@@ -15,10 +15,15 @@ namespace {
     // JavaObjectBridgeNative (method callable 回调)
     jclass g_bridgeNativeCls = nullptr;
     jmethodID g_callMethod = nullptr;
+    jmethodID g_callMethodByObj = nullptr;  // Tier 2: 不走 handle, 直接传 jobject
 
     // BindingHandler (binding 回调)
     jclass g_bindingHandlerCls = nullptr;
     jmethodID g_bindingCall = nullptr;
+
+    // java.lang.Object class 缓存 (jsArgsToJavaArray 用 NewObjectArray)
+    // 原先每次方法调用都 FindClass("java/lang/Object"), 会锁 ClassLoader, 是热路径开销大头之一
+    jclass g_objectCls = nullptr;
 
     // 用 std::once_flag 替代裸 bool: call_once 内置 release/acquire 屏障,
     // 保证 g_bridgeNativeCls / g_callMethod / g_bindingHandlerCls / g_bindingCall
@@ -60,6 +65,25 @@ namespace {
                 LOGE("JavaObjectBridgeNative.callMethod not found");
                 env->ExceptionClear();
             }
+            // callMethodByObj(obj, methodName, args, dangerousApi): Any?
+            // Tier 2: 全局 method callable 共享 (按 methodName 缓存), 不再持有 objHandle,
+            // 改为从 this_val 取 jobject 直接传 Kotlin, 省掉 getHandle JNI 往返与 identityHandles 查询。
+            g_callMethodByObj = env->GetStaticMethodID(g_bridgeNativeCls, "callMethodByObj",
+                                                       "(Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;Z)Ljava/lang/Object;");
+            if (!g_callMethodByObj) {
+                LOGE("JavaObjectBridgeNative.callMethodByObj not found");
+                env->ExceptionClear();
+            }
+
+            // java.lang.Object 缓存 (jsArgsToJavaArray 用)
+            jclass objCls = env->FindClass("java/lang/Object");
+            if (objCls) {
+                g_objectCls = (jclass) env->NewGlobalRef(objCls);
+                env->DeleteLocalRef(objCls);
+            } else {
+                LOGE("java.lang.Object class not found");
+                env->ExceptionClear();
+            }
 
             // BindingHandler (binding 回调)
             jclass bindingCls = env->FindClass("com/script/quickjs/BindingHandler");
@@ -82,10 +106,8 @@ namespace {
 
     // 把 JS args 转换为 Java Object[] (用 JniValueConvert::toJavaObject)
     jobjectArray jsArgsToJavaArray(JSContext *ctx, JNIEnv *env, int argc, JSValueConst *argv) {
-        jclass objCls = env->FindClass("java/lang/Object");
-        if (!objCls) return nullptr;
-        jobjectArray args = env->NewObjectArray(argc, objCls, nullptr);
-        env->DeleteLocalRef(objCls);
+        if (!g_objectCls) return nullptr;
+        jobjectArray args = env->NewObjectArray(argc, g_objectCls, nullptr);
         if (!args) return nullptr;
 
         for (int i = 0; i < argc; i++) {
@@ -112,7 +134,8 @@ namespace {
 
 void initCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
-    CtxOpaqueData *data = new CtxOpaqueData{false};
+    CtxOpaqueData *data = new CtxOpaqueData();
+    data->dangerousApi = false;
     JS_SetContextOpaque(ctx, data);
 }
 
@@ -120,6 +143,11 @@ void freeCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
     CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
     if (data) {
+        // 释放缓存的 method callable JSValue (callable 是 ctx 持有的 +1 引用)
+        for (auto &kv: data->methodCallableCache) {
+            JS_FreeValue(ctx, kv.second);
+        }
+        data->methodCallableCache.clear();
         delete data;
         JS_SetContextOpaque(ctx, nullptr);
     }
@@ -129,7 +157,8 @@ void setDangerousApi(JSContext *ctx, bool dangerousApi) {
     if (!ctx) return;
     CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
     if (!data) {
-        data = new CtxOpaqueData{dangerousApi};
+        data = new CtxOpaqueData();
+        data->dangerousApi = dangerousApi;
         JS_SetContextOpaque(ctx, data);
     } else {
         data->dangerousApi = dangerousApi;
@@ -145,8 +174,14 @@ bool getDangerousApi(JSContext *ctx) {
 // ============ method callable ============
 
 // method callable 的 C 回调
-// func_data[0] = JS_NewInt64(objHandle) (int32 范围内用 int32 tag, 超出用 float64)
-// func_data[1] = JS_NewString(methodName)
+//
+// 共享设计 (Tier 2 优化):
+// - 每个 methodName 只创建一个 JSCFunctionData, 跨所有 Java 对象共享
+// - func_data[0] = JS_NewString(methodName), 不再持有 objHandle
+// - this_val 由 JS 调用点 (obj.method(...)) 自动绑定到接收对象, 是真正的 Java 对象 wrapper
+// - 从 this_val 取 jobject -> 直接传给 callMethodByObj, 省去 getHandle / identityHandle 查询
+//
+// 与 rhino 对齐: rhino 的 NativeJavaMethod 也是按 (class, methodName) 共享, this 由 callsite 提供。
 static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv, int magic,
                                 JSValueConst *func_data) {
@@ -158,18 +193,19 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowInternalError(ctx, "JNI env unavailable in method callable");
     }
     ensureCallbacksInited(env);
-    if (!g_callMethod) {
-        return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.callMethod not bound");
+    if (!g_callMethodByObj) {
+        return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.callMethodByObj not bound");
     }
 
-    // 从 func_data 提取 objHandle 和 methodName
-    // 用 JS_ToInt64 统一读取 int32/float64 两种 tag, 避免超过 2^31 的句柄被截断
-    int64_t objHandle = 0;
-    if (JS_ToInt64(ctx, &objHandle, func_data[0])) {
-        // JS_ToInt64 失败时已经在 ctx 设过异常, 直接 propagate
-        return JS_EXCEPTION;
+    // this_val 必须是 JavaObject 实例 (由 obj.method(...) 调用点绑定)
+    // 用户写 `var f = sb.append; f("x")` 这种丢失 this 的写法会拿到 undefined this_val,
+    // 这时报错而不是猜对象 — 与 rhino 行为基本对齐 (rhino 也要求 LiveConnect 调用带正确 this)。
+    jobject javaObj = JavaObjectClass::getJavaObject(ctx, this_val);
+    if (!javaObj) {
+        return JS_ThrowTypeError(ctx, "Java method called without Java object as 'this'");
     }
-    const char *methodName = JS_ToCString(ctx, func_data[1]);
+
+    const char *methodName = JS_ToCString(ctx, func_data[0]);
     if (!methodName) {
         // JS_ToCString 失败时已经在 ctx 设过异常
         return JS_EXCEPTION;
@@ -187,12 +223,12 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowInternalError(ctx, "JNI exception while converting JS args");
     }
 
-    // 调用 JavaObjectBridgeNative.callMethod(objHandle, methodName, args, dangerousApi)
+    // 调用 JavaObjectBridgeNative.callMethodByObj(obj, methodName, args, dangerousApi)
     jstring jMethodName = env->NewStringUTF(methodName);
     jobject result = env->CallStaticObjectMethod(
             g_bridgeNativeCls,
-            g_callMethod,
-            (jlong) objHandle,
+            g_callMethodByObj,
+            javaObj,
             jMethodName,
             javaArgs,
             dangerousApi ? JNI_TRUE : JNI_FALSE
@@ -209,27 +245,48 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     }
     JS_FreeCString(ctx, methodName);
 
+    // return-this 复用 (Tier 2b):
+    // sb.append / sb.insert / list.add 等"返回 this"的方法非常多, 原先每次都 wrap
+    // 出新 JavaObject (NewGlobalRef + JS_NewObjectClass + SetOpaque)。
+    // 这里检测 result 与 this_val 关联的是否同一 jobject, 是则直接 DupValue(this_val),
+    // 省一次 GlobalRef + 一次 JS_NewObject。
+    if (result && env->IsSameObject(result, javaObj)) {
+        env->DeleteLocalRef(result);
+        return JS_DupValue(ctx, this_val);
+    }
+
     // 结果转 JSValue
     JSValue ret = JniValueConvert::fromJavaObject(ctx, env, result);
     if (result) env->DeleteLocalRef(result);
     return ret;
 }
 
-JSValue createMethodCallable(JSContext *ctx, int64_t objHandle, const char *methodName) {
+JSValue getOrCreateMethodCallable(JSContext *ctx, const char *methodName) {
     if (!ctx || !methodName) return JS_UNDEFINED;
 
-    // func_data 存 objHandle 和 methodName
-    // 用 JS_NewInt64 存 int64 句柄 (int32 范围内自动用 int32 tag, 超出用 float64)
-    JSValue data[2];
-    data[0] = JS_NewInt64(ctx, objHandle);
-    data[1] = JS_NewString(ctx, methodName);
+    CtxOpaqueData *opaque = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+    if (opaque) {
+        auto it = opaque->methodCallableCache.find(methodName);
+        if (it != opaque->methodCallableCache.end()) {
+            // 命中: 调用方负责 FreeValue, 这里 DupValue
+            return JS_DupValue(ctx, it->second);
+        }
+    }
 
-    JSValue fn = JS_NewCFunctionData(ctx, jsMethodCallable, 0, 0, 2, data);
+    // func_data 只存 methodName, objHandle 通过 this_val 传递
+    JSValue data[1];
+    data[0] = JS_NewString(ctx, methodName);
+    JSValue fn = JS_NewCFunctionData(ctx, jsMethodCallable, 0, 0, 1, data);
+    JS_FreeValue(ctx, data[0]);  // JS_NewCFunctionData 内部 DupValue data
 
-    // JS_NewCFunctionData 内部会 DupValue data, 这里释放引用
-    JS_FreeValue(ctx, data[0]);
-    JS_FreeValue(ctx, data[1]);
+    if (JS_IsException(fn)) {
+        return fn;
+    }
 
+    // 写入 cache (cache 持 1 引用, 调用方再 DupValue 拿到独立的 +1)
+    if (opaque) {
+        opaque->methodCallableCache.emplace(std::string(methodName), JS_DupValue(ctx, fn));
+    }
     return fn;
 }
 
