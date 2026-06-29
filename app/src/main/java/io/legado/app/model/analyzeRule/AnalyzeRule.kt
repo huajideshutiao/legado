@@ -782,15 +782,17 @@ class AnalyzeRule(
     /**
      * 执行JS
      *
-     * quickjs 没有 rhino 的 prototype 继承链,无法用 `bindings.prototype = topScope`
-     * 实现 bindings scope 隔离。这里用 IIFE + eval 包裹用户 JS,模拟 rhino 行为:
-     * - let/const 留在 eval 词法环境(或 IIFE 函数作用域),不污染 topScope
+     * quickjs 没有 rhino 的 prototype 继承链, 不能直接 `bindings.prototype = topScope`,
+     * 这里用 IIFE + eval 包裹用户 JS, bindings 直接注入 topScope 的 globalThis:
+     * - let/const 留在 eval 词法环境(或 IIFE 函数作用域), 不污染 topScope
      *   (避免重复执行报 "redeclaration of 'xxx'")
-     * - return 在 IIFE 函数内生效(模拟 rhino 顶层 return 扩展)
-     * - eval 返回末尾表达式值(模拟 rhino script.exec 返回最后一个表达式)
-     * - bindings 变量通过 globalThis 注入(injectVariable),IIFE 内可访问
+     * - return 在 IIFE 函数内生效(对齐 rhino 顶层 return 扩展)
+     * - eval 返回末尾表达式值(对齐 rhino script.exec 返回最后一个表达式)
+     * - bindings 通过 [QuickJsEngine.injectBindings] 写入 globalThis, jsLib 里
+     *   定义在 topScope 上的自由函数 (如 `lk`) 内部访问 `cache` 等 binding 也能命中,
+     *   执行后由 [QuickJsEngine.evalInSubScope] 调 cleanupBindings 删除, 避免残留。
      *
-     * 注: jslib 在 topScope(SharedJsScope)上执行,是共享的,不需要包裹。
+     * 注: jsLib 在 topScope(SharedJsScope)上执行,是共享的,不需要包裹。
      * 这里只包裹 AnalyzeRule 的即开即走 JS。
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
@@ -812,19 +814,18 @@ class AnalyzeRule(
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef
-        // 子 scope 隔离 (对齐 rhino 的 bindings.prototype = topScope 模型):
-        // - topScope == null: 创建独立 scope, bindings 注入 globalThis (scope 线程私有,无需隔离)
-        // - sharedScope 路径: 创建线程私有的子 scope JS Object, bindings 注入子 scope (不污染 topScope),
-        //   用 with(子scope) 执行 JS。多协程并发无需加锁 (rhino 的 ScriptBindings 也是线程私有 NativeObject)。
+        // - topScope == null: 创建独立 scope, bindings 注入 globalThis
+        // - sharedScope 路径: SharedJsScope 缓存的 topScope (ThreadLocal 线程独占),
+        //   bindings 也注入到该 topScope 的 globalThis, 执行后由 evalInSubScope 自行清理,
+        //   既能让 jsLib 自由函数命中 binding, 又不会跨 evalJS 残留。
         return if (topScope == null) {
             val scope = QuickJsEngine.getRuntimeScope(bindings)
             topScopeRef = scope
             val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
             compileScriptCache(wrappedJs).eval(scope, coroutineContext)
         } else {
-            val wrappedWith = QuickJsEngine.wrapJsForWith(jsStr)
             QuickJsEngine.evalInSubScope(
-                compileScriptCache(wrappedWith),
+                compileSubScopeCache(jsStr),
                 topScope,
                 bindings,
                 coroutineContext
@@ -835,6 +836,13 @@ class AnalyzeRule(
     private fun compileScriptCache(jsStr: String): CompiledScript {
         return scriptCache.getOrPutLimit(jsStr, 16) {
             QuickJsEngine.compile(jsStr)
+        }
+    }
+
+    private fun compileSubScopeCache(jsStr: String): CompiledScript {
+        // 与 compileScriptCache 共用 LRU, 但 key 用 "sub:" 前缀避免与 wrapJsForEval 路径冲突
+        return scriptCache.getOrPutLimit("sub:$jsStr", 16) {
+            QuickJsEngine.compileForSubScope(jsStr)
         }
     }
 

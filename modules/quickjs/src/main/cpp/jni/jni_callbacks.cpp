@@ -3,6 +3,7 @@
 #include "jni_object_class.h"
 #include <android/log.h>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,13 @@ namespace {
     jclass g_bindingHandlerCls = nullptr;
     jmethodID g_bindingCall = nullptr;
 
-    bool g_callbacksInited = false;
+    // 用 std::once_flag 替代裸 bool: call_once 内置 release/acquire 屏障,
+    // 保证 g_bridgeNativeCls / g_callMethod / g_bindingHandlerCls / g_bindingCall
+    // 这些写入对其它线程 happen-before 可见。原裸 bool 可能被 thread A 先观察到 true,
+    // 但 method ID 仍是 nullptr, 走入"未绑定"分支 return JS_EXCEPTION 时 ctx 异常 slot
+    // 未设, 后续 JS_GetException 拿 stale 引发的 ref_count 错乱表现为 JSString header
+    // 被覆盖, JS_ToCString -> strv -> abort。
+    std::once_flag g_callbacksInitFlag;
 
     // 获取 JNIEnv (复用 JavaObjectClass::cachedJvm)
     JNIEnv *getJniEnv() {
@@ -36,59 +43,66 @@ namespace {
 
     // 初始化回调方法 ID
     void ensureCallbacksInited(JNIEnv *env) {
-        if (g_callbacksInited) return;
+        std::call_once(g_callbacksInitFlag, [env]() {
+            // JavaObjectBridgeNative (method callable 回调)
+            jclass bridgeCls = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
+            if (!bridgeCls) {
+                LOGE("JavaObjectBridgeNative class not found");
+                env->ExceptionClear();
+                return;
+            }
+            g_bridgeNativeCls = (jclass) env->NewGlobalRef(bridgeCls);
+            env->DeleteLocalRef(bridgeCls);
+            // callMethod(objHandle, methodName, args, dangerousApi): Any?
+            g_callMethod = env->GetStaticMethodID(g_bridgeNativeCls, "callMethod",
+                                                  "(JLjava/lang/String;[Ljava/lang/Object;Z)Ljava/lang/Object;");
+            if (!g_callMethod) {
+                LOGE("JavaObjectBridgeNative.callMethod not found");
+                env->ExceptionClear();
+            }
 
-        // JavaObjectBridgeNative (method callable 回调)
-        jclass bridgeCls = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
-        if (!bridgeCls) {
-            LOGE("JavaObjectBridgeNative class not found");
-            env->ExceptionClear();
-            return;
-        }
-        g_bridgeNativeCls = (jclass) env->NewGlobalRef(bridgeCls);
-        env->DeleteLocalRef(bridgeCls);
-        // callMethod(objHandle, methodName, args, dangerousApi): Any?
-        g_callMethod = env->GetStaticMethodID(g_bridgeNativeCls, "callMethod",
-                                              "(JLjava/lang/String;[Ljava/lang/Object;Z)Ljava/lang/Object;");
-        if (!g_callMethod) {
-            LOGE("JavaObjectBridgeNative.callMethod not found");
-            env->ExceptionClear();
-        }
-
-        // BindingHandler (binding 回调)
-        jclass bindingCls = env->FindClass("com/script/quickjs/BindingHandler");
-        if (!bindingCls) {
-            LOGE("BindingHandler class not found");
-            env->ExceptionClear();
-            return;
-        }
-        g_bindingHandlerCls = (jclass) env->NewGlobalRef(bindingCls);
-        env->DeleteLocalRef(bindingCls);
-        // call(name, args): Any?
-        g_bindingCall = env->GetStaticMethodID(g_bindingHandlerCls, "call",
-                                               "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;");
-        if (!g_bindingCall) {
-            LOGE("BindingHandler.call not found");
-            env->ExceptionClear();
-        }
-
-        g_callbacksInited = true;
+            // BindingHandler (binding 回调)
+            jclass bindingCls = env->FindClass("com/script/quickjs/BindingHandler");
+            if (!bindingCls) {
+                LOGE("BindingHandler class not found");
+                env->ExceptionClear();
+                return;
+            }
+            g_bindingHandlerCls = (jclass) env->NewGlobalRef(bindingCls);
+            env->DeleteLocalRef(bindingCls);
+            // call(name, args): Any?
+            g_bindingCall = env->GetStaticMethodID(g_bindingHandlerCls, "call",
+                                                   "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;");
+            if (!g_bindingCall) {
+                LOGE("BindingHandler.call not found");
+                env->ExceptionClear();
+            }
+        });
     }
 
     // 把 JS args 转换为 Java Object[] (用 JniValueConvert::toJavaObject)
     jobjectArray jsArgsToJavaArray(JSContext *ctx, JNIEnv *env, int argc, JSValueConst *argv) {
         jclass objCls = env->FindClass("java/lang/Object");
+        if (!objCls) return nullptr;
         jobjectArray args = env->NewObjectArray(argc, objCls, nullptr);
         env->DeleteLocalRef(objCls);
         if (!args) return nullptr;
 
         for (int i = 0; i < argc; i++) {
             jobject arg = JniValueConvert::toJavaObject(ctx, env, argv[i]);
+            // toJavaObject 失败会抛 JsNativeException, 此后 JNI 处于 pending exception
+            // 状态。必须立刻 return, 否则 SetObjectArrayElement / DeleteLocalRef /
+            // 下一轮 toJavaObject 内的 FindClass 都属于"在 pending exc 下调 JNI", 会
+            // 破坏 JNI 内部状态, 远处堆上 JSString header 被踩 -> strv abort。
+            // 调用方 (jsMethodCallable / jsBindingCall) 已会 ExceptionCheck 处理。
+            if (env->ExceptionCheck()) {
+                if (arg) env->DeleteLocalRef(arg);
+                return args;
+            }
             if (arg) {
                 env->SetObjectArrayElement(args, i, arg);
                 env->DeleteLocalRef(arg);
             }
-            // 异常时 toJavaObject 会抛 JsNativeException, 这里不额外处理
         }
         return args;
     }

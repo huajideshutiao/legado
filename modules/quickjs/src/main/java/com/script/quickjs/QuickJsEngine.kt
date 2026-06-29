@@ -1,6 +1,7 @@
 package com.script.quickjs
 
 import com.script.quickjs.QuickJsEngine.cleanupBindings
+import com.script.quickjs.QuickJsEngine.compileForSubScope
 import com.script.quickjs.QuickJsEngine.compilerCtx
 import com.script.quickjs.QuickJsEngine.createNativeCtx
 import com.script.quickjs.QuickJsEngine.eval
@@ -8,8 +9,7 @@ import com.script.quickjs.QuickJsEngine.evalBytecode
 import com.script.quickjs.QuickJsEngine.evalInSubScope
 import com.script.quickjs.QuickJsEngine.getRuntimeScope
 import com.script.quickjs.QuickJsEngine.injectBindings
-import com.script.quickjs.QuickJsEngine.injectVariable
-import com.script.quickjs.QuickJsEngine.wrapJsForWith
+import com.script.quickjs.QuickJsEngine.wrapJsForEval
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -173,19 +173,21 @@ object QuickJsEngine {
     }
 
     /**
-     * 在子 scope 中执行编译后的 JS (对齐 rhino 的子 scope 隔离模型)。
+     * 在 SharedJsScope 缓存的 topScope 上执行用户 JS bytecode。
      *
-     * 创建线程私有的子 scope JS Object, bindings 注入到子 scope (不污染 topScope),
-     * 用 with(子scope) 让 JS 访问 bindings + topScope 全局变量。
+     * 早期版本曾尝试用子 scope object + `with(__b)` 包装来"隔离 bindings 不污染 topScope",
+     * 但那种写法会让 jsLib 里定义在 topScope 上的函数(如 `lk`)在执行时拿不到 binding:
+     * `lk` 的词法作用域 = topScope, 内部访问自由变量 `cache` 只会走 topScope, 而 binding
+     * 只存在于子 scope, 于是 `cache` 解析为 undefined, 复刻 rhino 行为时就破功。
      *
-     * 线程安全: 子 scope 是线程私有的 local JSValue, 不写入共享的 topScope,
-     * 多协程并发调用无需加锁 (对齐 rhino 的 bindings.prototype = topScope 模型,
-     * rhino 的 ScriptBindings 是线程私有的 NativeObject, prototype 指向共享 topScope;
-     * quickjs 用 nativeNewObject 创建子 scope + with 语句实现等价作用域查找)。
+     * SharedJsScope 的 ctx 本身就是 ThreadLocal 线程独占的 (见 SharedJsScope.threadCache),
+     * topScope 不存在跨线程共享, 所以直接走"注入到 globalThis + 执行后清理"是安全的:
+     * - bindings 进入 globalThis ⇒ user JS 和 jsLib 函数都能通过普通自由变量查找命中
+     * - 执行结束后 [cleanupBindings] 删除注入的键, 避免 binding 在 jsLib 函数之间跨 evalJS 残留
      *
-     * @param compiled [wrapJsForWith] 编译的 bytecode (函数定义,不立即调用)
-     * @param scope SharedJsScope 缓存的 topScope (只读共享,jslib 定义在此)
-     * @param bindings 变量注入到子 scope (线程私有)
+     * @param compiled [compileForSubScope] 编译出的 wrapJsForEval 包装后的 bytecode
+     * @param scope SharedJsScope 缓存的 topScope (线程独占)
+     * @param bindings 变量注入到 topScope 的 globalThis, 执行后清理
      */
     fun evalInSubScope(
         compiled: CompiledScript,
@@ -193,46 +195,11 @@ object QuickJsEngine {
         bindings: ScriptBindings,
         coroutineContext: CoroutineContext?
     ): Any? {
-        return withEvalContext(scope, coroutineContext) {
-            try {
-                // 同步 dangerousApi (bindings 为准,支持不同书源切换)
-                scope.dangerousApi = bindings.dangerousApi
-                syncDangerousApiIfNeeded(scope)
-                // 1. 创建子 scope JS Object (线程私有, 不写入 topScope)
-                val subScopeHandle =
-                    (QuickJsNative.nativeNewObject(scope.ctxPtr) as Number).toLong()
-                try {
-                    // 2. 注入 bindings 到子 scope (不污染 topScope)
-                    for ((key, value) in bindings) {
-                        injectVariableToHandle(
-                            scope.ctxPtr,
-                            subScopeHandle,
-                            key,
-                            value,
-                            bindings.dangerousApi
-                        )
-                    }
-                    // 3. 执行 bytecode 拿函数句柄 (函数定义: (function(__b){with(__b){return eval(用户JS);}}))
-                    // nativeEvalBytecode 对函数对象返回 Long 句柄 (jni_value_convert.cpp: JS_IsObject -> 句柄包装)
-                    val funcObj = QuickJsNative.nativeEvalBytecode(scope.ctxPtr, compiled.bytecode)
-                        ?: throw ScriptException("Failed to evaluate bytecode in subScope", null)
-                    val funcHandle = (funcObj as? Number)?.toLong()
-                        ?: throw ScriptException("Bytecode did not return a function handle", null)
-                    try {
-                        // 4. 调用函数, 传入子 scope 作为参数 (this=undefined, args=[subScope])
-                        val result = QuickJsNative.nativeCallFunction(
-                            scope.ctxPtr, funcHandle, 0L, longArrayOf(subScopeHandle)
-                        )
-                        unwrapReturnValue(result)
-                    } finally {
-                        QuickJsNative.nativeFreeHandle(scope.ctxPtr, funcHandle)
-                    }
-                } finally {
-                    QuickJsNative.nativeFreeHandle(scope.ctxPtr, subScopeHandle)
-                }
-            } catch (e: JsNativeException) {
-                throw ScriptException(e.message, e)
-            }
+        val injectedKeys = injectBindings(scope, bindings)
+        try {
+            return evalBytecode(compiled.bytecode, scope, coroutineContext)
+        } finally {
+            cleanupBindings(scope, injectedKeys)
         }
     }
 
@@ -488,51 +455,6 @@ object QuickJsEngine {
         return true
     }
 
-    /**
-     * 注入变量到指定 JS Object (子 scope),而非 globalThis。
-     *
-     * 用于 [evalInSubScope] 把 bindings 注入到线程私有的子 scope Object,
-     * 避免污染共享的 topScope (对齐 rhino 的子 scope 写入)。
-     *
-     * 与 [injectVariable] 区别: 目标从 globalThis 改为指定的 objHandle,
-     * 基本类型用 nativeSetProperty (fromJavaObject 转换),Java 对象用 nativeSetPropertyHandle。
-     */
-    private fun injectVariableToHandle(
-        ctxPtr: Long,
-        objHandle: Long,
-        key: String,
-        value: Any?,
-        dangerousApi: Boolean
-    ): Boolean {
-        if (!isValidVarName(key)) return false
-        return when {
-            value == null -> {
-                QuickJsNative.nativeSetProperty(ctxPtr, objHandle, key, null)
-            }
-
-            value is String || value is Boolean || value is Number -> {
-                // 基本类型: nativeSetProperty 内部用 fromJavaObject 转换为 JSValue
-                QuickJsNative.nativeSetProperty(ctxPtr, objHandle, key, value)
-            }
-
-            else -> {
-                // Java 对象: nativeWrapJavaObject 包装为 JavaObject 句柄, 再用 nativeSetPropertyHandle 设置
-                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
-                val valueHandle =
-                    (QuickJsNative.nativeWrapJavaObject(ctxPtr, value) as? Number)?.toLong() ?: 0L
-                if (valueHandle != 0L) {
-                    try {
-                        QuickJsNative.nativeSetPropertyHandle(ctxPtr, objHandle, key, valueHandle)
-                    } finally {
-                        // SetPropertyStr 内部 DupValue, 这里 Free 安全
-                        QuickJsNative.nativeFreeHandle(ctxPtr, valueHandle)
-                    }
-                }
-                true
-            }
-        }
-    }
-
     private fun isValidVarName(name: String): Boolean {
         if (name.isEmpty()) return false
         val first = name[0]
@@ -580,23 +502,18 @@ object QuickJsEngine {
     }
 
     /**
-     * 用 with(子scope) + IIFE + eval 包裹用户 JS,用于 sharedScope 路径的子 scope 隔离。
+     * 把用户 JS 包装后编译为 bytecode, 供 [evalInSubScope] 在 SharedJsScope 的 topScope 上执行。
      *
-     * 对齐 rhino 的 `bindings.prototype = topScope` 模型:
-     * - 返回函数定义(不立即调用),由 [evalInSubScope] 用 nativeCallFunction 调用,
-     *   子 scope JS Object 作为参数传入(线程私有,不写入共享 topScope)
-     * - 用户 JS 在 with(__b) 块内执行,能访问 __b 的属性(bindings) + 外层作用域(topScope 全局变量)
-     * - let/const/var 留在 IIFE 函数作用域,不污染 topScope
-     * - return 在 IIFE 函数内生效(模拟 rhino 顶层 return 扩展)
-     * - eval 返回末尾表达式值(模拟 rhino script.exec 返回最后一个表达式)
+     * 走 [wrapJsForEval] 的 `(function(){return eval(<源码>);})()` 包装:
+     * - let/const/var 留在 IIFE 函数作用域, 不污染 topScope (避免重复执行报 "redeclaration")
+     * - 顶层 return 在 IIFE 内生效 (对齐 rhino script.exec 顶层 return 扩展)
+     * - eval 返回末尾表达式值 (对齐 rhino script.exec 返回最后一个表达式)
      *
-     * 线程安全: 子 scope 是线程私有的 local JSValue,不写入共享的 topScope,
-     * 多协程并发调用无需加锁(对齐 rhino 的 bindings.prototype = topScope 模型)。
+     * 与早期 native 端 `(function(__b){...with(__b){...}})` 包装的区别: 这里不再创建子 scope,
+     * binding 由 [evalInSubScope] 直接注入 globalThis, jsLib 里定义在 topScope 上的自由函数
+     * 也能命中 binding (对齐 rhino 行为, 见 [evalInSubScope] 注释)。
      */
-    fun wrapJsForWith(jsStr: String): String {
-        val jsLiteral = JsStringUtils.escape(jsStr)
-        return "(function(__b){with(__b){return eval($jsLiteral);}})"
-    }
+    fun compileForSubScope(jsStr: String): CompiledScript = compile(wrapJsForEval(jsStr))
 
     /**
      * 在指定 scope 上执行 nativeEval,处理 ThreadLocalContext / 递归检查 / coroutineContext 同步。

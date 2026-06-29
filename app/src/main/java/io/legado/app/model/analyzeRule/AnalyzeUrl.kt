@@ -329,17 +329,16 @@ class AnalyzeUrl(
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
         val sharedScope = source?.getShareScope(coroutineContext)
-        // 子 scope 隔离 (对齐 rhino 的 bindings.prototype = topScope 模型):
-        // - sharedScope == null: 创建独立 scope, bindings 注入 globalThis (scope 线程私有)
-        // - sharedScope 路径: 创建线程私有的子 scope JS Object, bindings 注入子 scope (不污染 topScope),
-        //   用 with(子scope) 执行 JS。多协程并发无需加锁 (rhino 的 ScriptBindings 也是线程私有 NativeObject)。
+        // - sharedScope == null: 创建独立 scope, bindings 注入 globalThis
+        // - sharedScope 路径: SharedJsScope 缓存的 topScope (ThreadLocal 线程独占),
+        //   bindings 注入该 topScope 的 globalThis 后再执行, evalInSubScope 内部清理,
+        //   保证 jsLib 自由函数 (如 lk) 能命中 cache/book 等 binding。
         return if (sharedScope == null) {
             val scope = QuickJsEngine.getRuntimeScope(bindings)
             val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
             QuickJsEngine.eval(wrappedJs, scope, coroutineContext)
         } else {
-            val wrappedWith = QuickJsEngine.wrapJsForWith(jsStr)
-            val compiled = QuickJsEngine.compile(wrappedWith)
+            val compiled = QuickJsEngine.compileForSubScope(jsStr)
             QuickJsEngine.evalInSubScope(compiled, sharedScope, bindings, coroutineContext)
         }
     }

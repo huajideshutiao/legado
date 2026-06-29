@@ -27,7 +27,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
 // ============ Runtime / Context 生命周期 ============
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeCreateRuntime(JNIEnv *env, jclass clazz) {
+Java_com_script_quickjs_QuickJsNative_nativeCreateRuntime(JNIEnv *env, jobject clazz) {
     JSRuntime *rt = JS_NewRuntime();
     if (!rt) {
         LOGE("JS_NewRuntime failed");
@@ -40,9 +40,9 @@ Java_com_script_quickjs_QuickJsNative_nativeCreateRuntime(JNIEnv *env, jclass cl
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeFreeRuntime(JNIEnv *env, jclass clazz, jlong rtPtr) {
+Java_com_script_quickjs_QuickJsNative_nativeFreeRuntime(JNIEnv *env, jobject clazz, jlong rtPtr) {
     if (!rtPtr) return;
-    JSRuntime *rt = (JSRuntime *) rtPtr;
+    auto *rt = (JSRuntime *) rtPtr;
     // 必须在 JS_FreeRuntime 之前移除, 否则 rt 指针悬空后仍留在 registeredRuntimes,
     // 新 runtime 复用同一地址时误判为已注册, 跳过 JS_NewClass 导致 class 未注册
     JavaObjectClass::unregisterRuntime(rt);
@@ -50,9 +50,9 @@ Java_com_script_quickjs_QuickJsNative_nativeFreeRuntime(JNIEnv *env, jclass claz
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeCreateContext(JNIEnv *env, jclass clazz, jlong rtPtr) {
+Java_com_script_quickjs_QuickJsNative_nativeCreateContext(JNIEnv *env, jobject clazz, jlong rtPtr) {
     if (!rtPtr) return 0;
-    JSRuntime *rt = (JSRuntime *) rtPtr;
+    auto *rt = (JSRuntime *) rtPtr;
     JSContext *ctx = JS_NewContext(rt);
     if (!ctx) {
         LOGE("JS_NewContext failed");
@@ -69,9 +69,9 @@ Java_com_script_quickjs_QuickJsNative_nativeCreateContext(JNIEnv *env, jclass cl
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeFreeContext(JNIEnv *env, jclass clazz, jlong ctxPtr) {
+Java_com_script_quickjs_QuickJsNative_nativeFreeContext(JNIEnv *env, jobject clazz, jlong ctxPtr) {
     if (!ctxPtr) return;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     // 释放 ctx opaque 数据
     freeCtxOpaque(ctx);
     // 释放此 ctx 的所有句柄 (防止 Java 侧漏 release)
@@ -82,10 +82,10 @@ Java_com_script_quickjs_QuickJsNative_nativeFreeContext(JNIEnv *env, jclass claz
 // ============ JS 执行 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeEval(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeEval(JNIEnv *env, jobject clazz,
                                                  jlong ctxPtr, jstring code) {
     if (!ctxPtr || !code) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
 
     const char *src = env->GetStringUTFChars(code, nullptr);
     if (!src) return nullptr;
@@ -111,17 +111,17 @@ Java_com_script_quickjs_QuickJsNative_nativeEval(JNIEnv *env, jclass clazz,
 // ============ 句柄管理 ============
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeFreeHandle(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeFreeHandle(JNIEnv *env, jobject clazz,
                                                        jlong ctxPtr, jlong handle) {
     if (!handle) return;
     JsHandleTable::instance().release(handle);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeDupHandle(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeDupHandle(JNIEnv *env, jobject clazz,
                                                       jlong ctxPtr, jlong handle) {
     if (!handle) return 0;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return 0;
     JSValue dup = JS_DupValue(ctx, val);
@@ -131,10 +131,10 @@ Java_com_script_quickjs_QuickJsNative_nativeDupHandle(JNIEnv *env, jclass clazz,
 // ============ 全局对象 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeGetGlobalObject(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeGetGlobalObject(JNIEnv *env, jobject clazz,
                                                             jlong ctxPtr) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue global = JS_GetGlobalObject(ctx);
     // global 是 object,转句柄返回
     JSValue dup = JS_DupValue(ctx, global);
@@ -151,11 +151,11 @@ Java_com_script_quickjs_QuickJsNative_nativeGetGlobalObject(JNIEnv *env, jclass 
 // ============ 属性操作 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeGetProperty(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeGetProperty(JNIEnv *env, jobject clazz,
                                                         jlong ctxPtr, jlong objHandle,
                                                         jstring name) {
     if (!ctxPtr || !objHandle || !name) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue obj = JsHandleTable::instance().get(objHandle);
     if (JS_IsNull(obj)) return nullptr;
 
@@ -169,19 +169,24 @@ Java_com_script_quickjs_QuickJsNative_nativeGetProperty(JNIEnv *env, jclass claz
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeSetProperty(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeSetProperty(JNIEnv *env, jobject clazz,
                                                         jlong ctxPtr, jlong objHandle,
                                                         jstring name, jobject value) {
     if (!ctxPtr || !objHandle || !name) return JNI_FALSE;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue obj = JsHandleTable::instance().get(objHandle);
     if (JS_IsNull(obj)) return JNI_FALSE;
 
     const char *cname = env->GetStringUTFChars(name, nullptr);
     JSValue jsVal = JniValueConvert::fromJavaObject(ctx, env, value);
+    // JS_SetPropertyStr 会 consume jsVal (失败路径也会 JS_FreeValue),
+    // 调用方不能再 JS_FreeValue, 否则 refcount 多扣一次:
+    // String binding 时 jsVal 是 +1 的 JSString, consume 后属性槽持 1 引用,
+    // 再 Free 会立刻把 refcount 归零并 list_del 释放 string,
+    // 而属性槽指针仍指向已 free 的 string。下次 GC / 属性替换 / ctx 释放
+    // 二次 list_del 触发 SIGSEGV (链表节点 prev 已被 fail-safe 置 NULL)。
     int ret = JS_SetPropertyStr(ctx, obj, cname, jsVal);
     env->ReleaseStringUTFChars(name, cname);
-    JS_FreeValue(ctx, jsVal); // SetPropertyStr 内部会 DupValue
     return ret >= 0 ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -189,11 +194,11 @@ Java_com_script_quickjs_QuickJsNative_nativeSetProperty(JNIEnv *env, jclass claz
 // 与 nativeSetProperty 区别: valueHandle 直接从 JsHandleTable 取 JSValue,
 // 避免 fromJavaObject 把 Long 句柄误当成普通数字 (修复 injectVariable 注入 Java 对象丢失问题)
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeSetPropertyHandle(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeSetPropertyHandle(JNIEnv *env, jobject clazz,
                                                               jlong ctxPtr, jlong objHandle,
                                                               jstring name, jlong valueHandle) {
     if (!ctxPtr || !objHandle || !name) return JNI_FALSE;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue obj = JsHandleTable::instance().get(objHandle);
     if (JS_IsNull(obj)) return JNI_FALSE;
 
@@ -215,11 +220,11 @@ Java_com_script_quickjs_QuickJsNative_nativeSetPropertyHandle(JNIEnv *env, jclas
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeHasProperty(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeHasProperty(JNIEnv *env, jobject clazz,
                                                         jlong ctxPtr, jlong objHandle,
                                                         jstring name) {
     if (!ctxPtr || !objHandle || !name) return JNI_FALSE;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue obj = JsHandleTable::instance().get(objHandle);
     if (JS_IsNull(obj)) return JNI_FALSE;
 
@@ -234,30 +239,30 @@ Java_com_script_quickjs_QuickJsNative_nativeHasProperty(JNIEnv *env, jclass claz
 // ============ 类型查询与转换 ============
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeGetTypeTag(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeGetTypeTag(JNIEnv *env, jobject clazz,
                                                        jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return 0;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return 0;
     return JniValueConvert::getTypeTag(ctx, val);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeToBoolean(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeToBoolean(JNIEnv *env, jobject clazz,
                                                       jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return JNI_FALSE;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return JNI_FALSE;
     return JS_ToBool(ctx, val) > 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeToInt32(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeToInt32(JNIEnv *env, jobject clazz,
                                                     jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return 0;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return 0;
     int32_t v = 0;
@@ -266,10 +271,10 @@ Java_com_script_quickjs_QuickJsNative_nativeToInt32(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeToFloat64(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeToFloat64(JNIEnv *env, jobject clazz,
                                                       jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return 0.0;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return 0.0;
     double v = 0.0;
@@ -278,10 +283,10 @@ Java_com_script_quickjs_QuickJsNative_nativeToFloat64(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeToString(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeToString(JNIEnv *env, jobject clazz,
                                                      jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return nullptr;
     const char *str = JS_ToCString(ctx, val);
@@ -293,10 +298,10 @@ Java_com_script_quickjs_QuickJsNative_nativeToString(JNIEnv *env, jclass clazz,
 // ============ 从 Java 值创建 JSValue ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewBoolean(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeNewBoolean(JNIEnv *env, jobject clazz,
                                                        jlong ctxPtr, jboolean value) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewBool(ctx, value == JNI_TRUE);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
     jclass longCls = env->FindClass("java/lang/Long");
@@ -307,10 +312,10 @@ Java_com_script_quickjs_QuickJsNative_nativeNewBoolean(JNIEnv *env, jclass clazz
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewInt32(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeNewInt32(JNIEnv *env, jobject clazz,
                                                      jlong ctxPtr, jint value) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewInt32(ctx, value);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
     jclass longCls = env->FindClass("java/lang/Long");
@@ -321,10 +326,10 @@ Java_com_script_quickjs_QuickJsNative_nativeNewInt32(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewFloat64(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeNewFloat64(JNIEnv *env, jobject clazz,
                                                        jlong ctxPtr, jdouble value) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewFloat64(ctx, value);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
     jclass longCls = env->FindClass("java/lang/Long");
@@ -335,10 +340,10 @@ Java_com_script_quickjs_QuickJsNative_nativeNewFloat64(JNIEnv *env, jclass clazz
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewString(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeNewString(JNIEnv *env, jobject clazz,
                                                       jlong ctxPtr, jstring value) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     const char *str = env->GetStringUTFChars(value, nullptr);
     JSValue val = JS_NewString(ctx, str ? str : "");
     env->ReleaseStringUTFChars(value, str);
@@ -351,22 +356,9 @@ Java_com_script_quickjs_QuickJsNative_nativeNewString(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewObject(JNIEnv *env, jclass clazz, jlong ctxPtr) {
+Java_com_script_quickjs_QuickJsNative_nativeNewArray(JNIEnv *env, jobject clazz, jlong ctxPtr) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
-    JSValue val = JS_NewObject(ctx);
-    int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
-}
-
-extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeNewArray(JNIEnv *env, jclass clazz, jlong ctxPtr) {
-    if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewArray(ctx);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
     jclass longCls = env->FindClass("java/lang/Long");
@@ -379,10 +371,10 @@ Java_com_script_quickjs_QuickJsNative_nativeNewArray(JNIEnv *env, jclass clazz, 
 // ============ JavaObject 包装 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jobject clazz,
                                                            jlong ctxPtr, jobject javaObj) {
     if (!ctxPtr || !javaObj) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JavaObjectClass::wrap(ctx, env, javaObj);
     if (JS_IsNull(val)) return nullptr;
     int64_t handle = JsHandleTable::instance().store(ctx, val);
@@ -396,9 +388,9 @@ Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jclass c
 // ============ 异常处理 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeGetException(JNIEnv *env, jclass clazz, jlong ctxPtr) {
+Java_com_script_quickjs_QuickJsNative_nativeGetException(JNIEnv *env, jobject clazz, jlong ctxPtr) {
     if (!ctxPtr) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue exc = JS_GetException(ctx);
     jobject ret = JniValueConvert::toJavaObject(ctx, env, exc);
     JS_FreeValue(ctx, exc);
@@ -406,7 +398,7 @@ Java_com_script_quickjs_QuickJsNative_nativeGetException(JNIEnv *env, jclass cla
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeIsError(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeIsError(JNIEnv *env, jobject clazz,
                                                     jlong ctxPtr, jlong handle) {
     if (!ctxPtr || !handle) return JNI_FALSE;
     // quickjs-ng: JS_IsError 只接受 JSValueConst 单参数,无需 ctx
@@ -418,11 +410,11 @@ Java_com_script_quickjs_QuickJsNative_nativeIsError(JNIEnv *env, jclass clazz,
 // ============ 函数调用 ============
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject clazz,
                                                          jlong ctxPtr, jlong funcHandle,
                                                          jlong thisHandle, jlongArray argHandles) {
     if (!ctxPtr || !funcHandle) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     JSValue func = JsHandleTable::instance().get(funcHandle);
     if (JS_IsNull(func)) return nullptr;
 
@@ -453,10 +445,10 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jclass cla
 // ============ bytecode 编译与执行 ============
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeCompile(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeCompile(JNIEnv *env, jobject clazz,
                                                     jlong ctxPtr, jstring code) {
     if (!ctxPtr || !code) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
 
     const char *src = env->GetStringUTFChars(code, nullptr);
     if (!src) return nullptr;
@@ -496,17 +488,17 @@ Java_com_script_quickjs_QuickJsNative_nativeCompile(JNIEnv *env, jclass clazz,
 
     if (!buf) return nullptr;
 
-    jbyteArray result = env->NewByteArray(outLen);
-    env->SetByteArrayRegion(result, 0, outLen, (jbyte *) buf);
+    jbyteArray result = env->NewByteArray((jsize) outLen);
+    env->SetByteArrayRegion(result, 0, (jsize) outLen, (jbyte *) buf);
     js_free(ctx, buf);
     return result;
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jobject clazz,
                                                          jlong ctxPtr, jbyteArray bytecode) {
     if (!ctxPtr || !bytecode) return nullptr;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
 
     jsize len = env->GetArrayLength(bytecode);
     jbyte *data = env->GetByteArrayElements(bytecode, nullptr);
@@ -533,10 +525,10 @@ Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jclass cla
 // ============ Binding 注册 ============
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeDefineBinding(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeDefineBinding(JNIEnv *env, jobject clazz,
                                                           jlong ctxPtr, jstring name) {
     if (!ctxPtr || !name) return JNI_FALSE;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     const char *cname = env->GetStringUTFChars(name, nullptr);
     if (!cname) return JNI_FALSE;
     bool ok = defineBinding(ctx, cname);
@@ -547,9 +539,9 @@ Java_com_script_quickjs_QuickJsNative_nativeDefineBinding(JNIEnv *env, jclass cl
 // ============ dangerousApi 管理 ============
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_script_quickjs_QuickJsNative_nativeSetDangerousApi(JNIEnv *env, jclass clazz,
+Java_com_script_quickjs_QuickJsNative_nativeSetDangerousApi(JNIEnv *env, jobject clazz,
                                                             jlong ctxPtr, jboolean dangerousApi) {
     if (!ctxPtr) return;
-    JSContext *ctx = (JSContext *) ctxPtr;
+    auto *ctx = (JSContext *) ctxPtr;
     setDangerousApi(ctx, dangerousApi == JNI_TRUE);
 }

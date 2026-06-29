@@ -4,6 +4,7 @@
 #include "jni_callbacks.h"
 #include <android/log.h>
 #include <cstring>
+#include <mutex>
 
 #define TAG "legado_qjs"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -12,6 +13,7 @@
 JSClassID JavaObjectClass::classId = 0;
 JavaVM *JavaObjectClass::cachedJvm = nullptr;
 std::unordered_set<JSRuntime *> JavaObjectClass::registeredRuntimes;
+std::mutex JavaObjectClass::registryMutex;
 
 // 缓存的 Java 方法 ID (JavaObjectBridgeNative 静态方法)
 namespace {
@@ -21,7 +23,12 @@ namespace {
     jmethodID g_setProperty = nullptr;
     jmethodID g_getPropertyNames = nullptr;
     jmethodID g_getHandle = nullptr;  // method callable 创建时用
-    bool g_bridgeInited = false;
+    // 用 std::once_flag 保证 init body 只执行一次, 且执行完成后对其它线程可见
+    // (call_once 内部 release/acquire 屏障替代了原裸 bool 的 publish-after-write 隐患:
+    //  原先 thread A 还在赋值 g_hasProperty/g_getHandle, thread B 已观察到 g_bridgeInited==true
+    //  并取走零值 method ID, 走入"调用未初始化方法 ID"路径, 后续返回 JS_EXCEPTION 时
+    //  ctx 异常 slot 为空, 触发 JS_GetException 拿 stale 值的契约违反)
+    std::once_flag g_bridgeInitFlag;
 
     // java.util.List 缓存 (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
     jclass g_listCls = nullptr;
@@ -52,73 +59,72 @@ namespace {
     // 初始化 JavaObjectBridgeNative 的方法 ID
     // 所有方法签名都带 dangerousApi 参数 (从 ctx opaque 读取)
     void ensureBridgeInited(JNIEnv *env) {
-        if (g_bridgeInited) return;
-        // JavaObjectBridgeNative 是 Kotlin object,编译后类名 com.script.quickjs.JavaObjectBridgeNative
-        // 提供 @JvmStatic 静态方法供 native 回调,实现 Java 对象的属性访问
-        jclass local = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
-        if (!local) {
-            LOGE("JavaObjectBridgeNative class not found");
-            env->ExceptionClear();
-            return;
-        }
-        g_bridgeCls = (jclass) env->NewGlobalRef(local);
-        env->DeleteLocalRef(local);
+        std::call_once(g_bridgeInitFlag, [env]() {
+            // JavaObjectBridgeNative 是 Kotlin object,编译后类名 com.script.quickjs.JavaObjectBridgeNative
+            // 提供 @JvmStatic 静态方法供 native 回调,实现 Java 对象的属性访问
+            jclass local = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
+            if (!local) {
+                LOGE("JavaObjectBridgeNative class not found");
+                env->ExceptionClear();
+                return;
+            }
+            g_bridgeCls = (jclass) env->NewGlobalRef(local);
+            env->DeleteLocalRef(local);
 
-        // hasProperty(obj, name, dangerousApi): Boolean
-        g_hasProperty = env->GetStaticMethodID(g_bridgeCls, "hasProperty",
-                                               "(Ljava/lang/Object;Ljava/lang/String;Z)Z");
-        // getPropertyInfo(obj, name, dangerousApi): Array<Any?>?  (返回 [fieldValue, fieldExists, hasMethod])
-        g_getPropertyInfo = env->GetStaticMethodID(g_bridgeCls, "getPropertyInfo",
-                                                   "(Ljava/lang/Object;Ljava/lang/String;Z)[Ljava/lang/Object;");
-        // setProperty(obj, name, value, dangerousApi): Boolean
-        g_setProperty = env->GetStaticMethodID(g_bridgeCls, "setProperty",
-                                               "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;Z)Z");
-        // getPropertyNames(obj, dangerousApi): Array<String>
-        g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
-                                                    "(Ljava/lang/Object;Z)[Ljava/lang/String;");
-        // getHandle(obj): Long  (method callable 创建时获取对象句柄)
-        g_getHandle = env->GetStaticMethodID(g_bridgeCls, "getHandle",
-                                             "(Ljava/lang/Object;)J");
+            // hasProperty(obj, name, dangerousApi): Boolean
+            g_hasProperty = env->GetStaticMethodID(g_bridgeCls, "hasProperty",
+                                                   "(Ljava/lang/Object;Ljava/lang/String;Z)Z");
+            // getPropertyInfo(obj, name, dangerousApi): Array<Any?>?  (返回 [fieldValue, fieldExists, hasMethod])
+            g_getPropertyInfo = env->GetStaticMethodID(g_bridgeCls, "getPropertyInfo",
+                                                       "(Ljava/lang/Object;Ljava/lang/String;Z)[Ljava/lang/Object;");
+            // setProperty(obj, name, value, dangerousApi): Boolean
+            g_setProperty = env->GetStaticMethodID(g_bridgeCls, "setProperty",
+                                                   "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;Z)Z");
+            // getPropertyNames(obj, dangerousApi): Array<String>
+            g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
+                                                        "(Ljava/lang/Object;Z)[Ljava/lang/String;");
+            // getHandle(obj): Long  (method callable 创建时获取对象句柄)
+            g_getHandle = env->GetStaticMethodID(g_bridgeCls, "getHandle",
+                                                 "(Ljava/lang/Object;)J");
 
-        if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
-            !g_getHandle) {
-            LOGE("JavaObjectBridgeNative methods not found");
-            env->ExceptionClear();
-        }
+            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
+                !g_getHandle) {
+                LOGE("JavaObjectBridgeNative methods not found");
+                env->ExceptionClear();
+            }
 
-        // java.util.List (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
-        // JavaObjectBridge.kt 的 callHotTypeMethod 已对 List 做快速路径,
-        // 但 JS for...of 需要对象实现 Symbol.iterator 协议, native 层在此补充。
-        jclass localList = env->FindClass("java/util/List");
-        if (localList) {
-            g_listCls = (jclass) env->NewGlobalRef(localList);
-            env->DeleteLocalRef(localList);
-            g_listSize = env->GetMethodID(g_listCls, "size", "()I");
-            g_listGet = env->GetMethodID(g_listCls, "get", "(I)Ljava/lang/Object;");
-        } else {
-            env->ExceptionClear();
-        }
+            // java.util.List (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
+            // JavaObjectBridge.kt 的 callHotTypeMethod 已对 List 做快速路径,
+            // 但 JS for...of 需要对象实现 Symbol.iterator 协议, native 层在此补充。
+            jclass localList = env->FindClass("java/util/List");
+            if (localList) {
+                g_listCls = (jclass) env->NewGlobalRef(localList);
+                env->DeleteLocalRef(localList);
+                g_listSize = env->GetMethodID(g_listCls, "size", "()I");
+                g_listGet = env->GetMethodID(g_listCls, "get", "(I)Ljava/lang/Object;");
+            } else {
+                env->ExceptionClear();
+            }
 
-        // java.lang.Object.getClass() + java.lang.Class.isArray()
-        // 用于检测 Java 数组 (配合 Symbol.iterator 支持 for...of 迭代数组)
-        jclass localObject = env->FindClass("java/lang/Object");
-        if (localObject) {
-            g_objectCls = (jclass) env->NewGlobalRef(localObject);
-            env->DeleteLocalRef(localObject);
-            g_getClass = env->GetMethodID(g_objectCls, "getClass", "()Ljava/lang/Class;");
-        } else {
-            env->ExceptionClear();
-        }
-        jclass localClass = env->FindClass("java/lang/Class");
-        if (localClass) {
-            g_classCls = (jclass) env->NewGlobalRef(localClass);
-            env->DeleteLocalRef(localClass);
-            g_isArray = env->GetMethodID(g_classCls, "isArray", "()Z");
-        } else {
-            env->ExceptionClear();
-        }
-
-        g_bridgeInited = true;
+            // java.lang.Object.getClass() + java.lang.Class.isArray()
+            // 用于检测 Java 数组 (配合 Symbol.iterator 支持 for...of 迭代数组)
+            jclass localObject = env->FindClass("java/lang/Object");
+            if (localObject) {
+                g_objectCls = (jclass) env->NewGlobalRef(localObject);
+                env->DeleteLocalRef(localObject);
+                g_getClass = env->GetMethodID(g_objectCls, "getClass", "()Ljava/lang/Class;");
+            } else {
+                env->ExceptionClear();
+            }
+            jclass localClass = env->FindClass("java/lang/Class");
+            if (localClass) {
+                g_classCls = (jclass) env->NewGlobalRef(localClass);
+                env->DeleteLocalRef(localClass);
+                g_isArray = env->GetMethodID(g_classCls, "isArray", "()Z");
+            } else {
+                env->ExceptionClear();
+            }
+        });
     }
 
     // 检测 atom 是否为 Symbol.iterator (well-known symbol)
@@ -257,6 +263,11 @@ namespace {
 }
 
 JSClassID JavaObjectClass::init(JSRuntime *rt, JavaVM *jvm) {
+    // 并发安全: nativeCreateContext 可能从多个 Java 线程同时调用,
+    // 这里对 classId 分配 + JS_NewClass + registeredRuntimes.insert 整体加锁。
+    // 在 quickjs-ng 多 runtime 场景下, 这是少数能跨 runtime 触发的 native 路径。
+    std::lock_guard<std::mutex> lock(registryMutex);
+
     cachedJvm = jvm;
 
     // 首次调用: 用 JS_NewClassID 分配进程级全局唯一的 classId
@@ -304,6 +315,7 @@ JSClassID JavaObjectClass::getClassId() {
 
 void JavaObjectClass::unregisterRuntime(JSRuntime *rt) {
     if (!rt) return;
+    std::lock_guard<std::mutex> lock(registryMutex);
     registeredRuntimes.erase(rt);
 }
 
@@ -421,7 +433,13 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     if (!javaObj) return JS_UNDEFINED;
 
     const char *name = atomToCString(ctx, atom);
-    if (!name) return JS_UNDEFINED;
+    if (!name) {
+        // JS_AtomToCString 失败 (通常 OOM) 时 quickjs 已设过 ctx 异常,
+        // 这里若返回 JS_UNDEFINED, 调用方拿到"undefined + ctx 有异常"的
+        // 矛盾状态, 后续 JS_GetException 拿到的就是这条 stale 异常,
+        // 触发 ref_count 错乱。propagate 异常更安全。
+        return JS_EXCEPTION;
+    }
 
     jstring jname = env->NewStringUTF(name);
     JS_FreeCString(ctx, name);
@@ -547,6 +565,18 @@ int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
     // JSValue -> jobject (基本类型直接转,对象走 wrap 或句柄)
     jobject javaValue = JniValueConvert::toJavaObject(ctx, env, value);
 
+    // toJavaObject 抛 JsNativeException 后再调 CallStaticBooleanMethod 是 UB:
+    // ART 的 JNI 内部表 (LocalReferenceTable / ExceptionState) 在 pending exc 下被写
+    // 会破坏相邻分配 (sscudo 还会复用 freed slot 给 quickjs JSString), 表现为远处
+    // strv() abort。这里把 pending exc 转成 trap 异常返回 -1, 沿用上面 -1 路径契约。
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(jname);
+        if (javaValue) env->DeleteLocalRef(javaValue);
+        JS_ThrowInternalError(ctx, "Java setProperty: value conversion threw");
+        return -1;
+    }
+
     bool dangerousApi = getDangerousApi(ctx);
     jboolean result = env->CallStaticBooleanMethod(g_bridgeCls, g_setProperty,
                                                    javaObj, jname, javaValue,
@@ -574,10 +604,17 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
     if (has <= 0) return has;
 
     if (desc) {
+        JSValue val = getProperty(ctx, obj, prop, JS_UNDEFINED);
+        if (JS_IsException(val)) {
+            // 不能把 JS_EXCEPTION 写进 desc->value 后返回 1 (success),
+            // 调用方会把它当成普通 value 使用, 后续 JS_DupValue/JS_FreeValue
+            // 会污染异常 slot, 触发远处 JS_ToCString -> strv abort。
+            return -1;
+        }
         desc->flags = JS_PROP_WRITABLE | JS_PROP_ENUMERABLE | JS_PROP_CONFIGURABLE;
         desc->getter = JS_UNDEFINED;
         desc->setter = JS_UNDEFINED;
-        desc->value = getProperty(ctx, obj, prop, JS_UNDEFINED);
+        desc->value = val;
     }
     return 1;
 }
@@ -585,11 +622,20 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
 int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                          uint32_t *plen, JSValueConst obj) {
     JNIEnv *env = getJniEnv();
-    if (!env) return -1;
+    if (!env) {
+        // 契约: trap 返回 -1 必须先在 ctx 设置异常 slot, 否则调用方 JS_GetException
+        // 拿到的是上一次 stale 异常对象, 递增 refcount 后释放会导致已释放 JSString 被
+        // 再次写入, 表现为远处线程 JS_ToCString -> strv abort (heap corruption)
+        *ptab = nullptr;
+        *plen = 0;
+        JS_ThrowInternalError(ctx, "JNI env unavailable in getOwnPropertyNames");
+        return -1;
+    }
     ensureBridgeInited(env);
     if (!g_getPropertyNames) {
         *ptab = nullptr;
         *plen = 0;
+        JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.getPropertyNames not bound");
         return -1;
     }
 
@@ -610,6 +656,7 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
         if (names) env->DeleteLocalRef(names);
         *ptab = nullptr;
         *plen = 0;
+        JS_ThrowInternalError(ctx, "Java getPropertyNames threw");
         return -1;
     }
 
@@ -625,6 +672,7 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
     if (!*ptab) {
         env->DeleteLocalRef(names);
         *plen = 0;
+        // js_malloc 失败时 quickjs 内部已抛 OOM 异常, 这里无需再 throw
         return -1;
     }
     *plen = len;

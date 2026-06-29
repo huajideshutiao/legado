@@ -136,7 +136,6 @@ object QuickJsNative {
     external fun nativeNewInt32(ctxPtr: Long, value: Int): Any?
     external fun nativeNewFloat64(ctxPtr: Long, value: Double): Any?
     external fun nativeNewString(ctxPtr: Long, value: String): Any?
-    external fun nativeNewObject(ctxPtr: Long): Any?
     external fun nativeNewArray(ctxPtr: Long): Any?
 
     // ============ JavaObject 包装 ============

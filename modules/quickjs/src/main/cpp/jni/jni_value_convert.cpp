@@ -3,6 +3,7 @@
 #include "jni_object_class.h"
 #include <android/log.h>
 #include <cstring>
+#include <mutex>
 
 #define TAG "legado_qjs"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -31,58 +32,64 @@ namespace {
     jmethodID g_ByteValue = nullptr;
     jmethodID g_ShortValue = nullptr;
     jmethodID g_FloatValue = nullptr;
-    bool g_inited = false;
+    // 用 std::once_flag 保证类缓存初始化只跑一次, 且初始化期间的所有写对其它
+    // 线程 happen-before 可见。原先裸 bool 没有 release barrier, thread A 写完
+    // g_inited=true 之前, g_BooleanCls 等赋值可能还在 store buffer, thread B 已
+    // 看到 g_inited=true 后用零/部分初始化的全局做 JNI 调用 (NULL methodID),
+    // 触发 JNI 内部 abort 或写错位置, 与远处 JSString header 损坏对得上。
+    std::once_flag g_initFlag;
 
     void ensureClassCache(JNIEnv *env) {
-        if (g_inited) return;
-        // Boolean
-        jclass localBool = env->FindClass("java/lang/Boolean");
-        g_BooleanCls = (jclass) env->NewGlobalRef(localBool);
-        env->DeleteLocalRef(localBool);
-        g_BooleanValueOf = env->GetStaticMethodID(g_BooleanCls, "valueOf",
-                                                  "(Z)Ljava/lang/Boolean;");
-        g_BooleanValue = env->GetMethodID(g_BooleanCls, "booleanValue", "()Z");
-        // Integer
-        jclass localInt = env->FindClass("java/lang/Integer");
-        g_IntegerCls = (jclass) env->NewGlobalRef(localInt);
-        env->DeleteLocalRef(localInt);
-        g_IntegerValueOf = env->GetStaticMethodID(g_IntegerCls, "valueOf",
-                                                  "(I)Ljava/lang/Integer;");
-        g_IntegerValue = env->GetMethodID(g_IntegerCls, "intValue", "()I");
-        // Double
-        jclass localDouble = env->FindClass("java/lang/Double");
-        g_DoubleCls = (jclass) env->NewGlobalRef(localDouble);
-        env->DeleteLocalRef(localDouble);
-        g_DoubleValueOf = env->GetStaticMethodID(g_DoubleCls, "valueOf", "(D)Ljava/lang/Double;");
-        g_DoubleValue = env->GetMethodID(g_DoubleCls, "doubleValue", "()D");
-        // Long (用于句柄包装)
-        jclass localLong = env->FindClass("java/lang/Long");
-        g_LongCls = (jclass) env->NewGlobalRef(localLong);
-        env->DeleteLocalRef(localLong);
-        g_LongValueOf = env->GetStaticMethodID(g_LongCls, "valueOf", "(J)Ljava/lang/Long;");
-        // Byte (byte[] 元素访问需要, 否则 Byte 会被包装为 JavaObject 导致位运算失败)
-        jclass localByte = env->FindClass("java/lang/Byte");
-        g_ByteCls = (jclass) env->NewGlobalRef(localByte);
-        env->DeleteLocalRef(localByte);
-        g_ByteValue = env->GetMethodID(g_ByteCls, "byteValue", "()B");
-        // Short
-        jclass localShort = env->FindClass("java/lang/Short");
-        g_ShortCls = (jclass) env->NewGlobalRef(localShort);
-        env->DeleteLocalRef(localShort);
-        g_ShortValue = env->GetMethodID(g_ShortCls, "shortValue", "()S");
-        // Float
-        jclass localFloat = env->FindClass("java/lang/Float");
-        g_FloatCls = (jclass) env->NewGlobalRef(localFloat);
-        env->DeleteLocalRef(localFloat);
-        g_FloatValue = env->GetMethodID(g_FloatCls, "floatValue", "()F");
-        // NativeObject (com/script/quickjs/NativeObject)
-        jclass localNO = env->FindClass("com/script/quickjs/NativeObject");
-        g_NativeObjectCls = (jclass) env->NewGlobalRef(localNO);
-        env->DeleteLocalRef(localNO);
-        g_NativeObjectInitI = env->GetMethodID(g_NativeObjectCls, "<init>", "(I)V");
-        g_NativeObjectPut = env->GetMethodID(g_NativeObjectCls, "put",
-                                             "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-        g_inited = true;
+        std::call_once(g_initFlag, [env]() {
+            // Boolean
+            jclass localBool = env->FindClass("java/lang/Boolean");
+            g_BooleanCls = (jclass) env->NewGlobalRef(localBool);
+            env->DeleteLocalRef(localBool);
+            g_BooleanValueOf = env->GetStaticMethodID(g_BooleanCls, "valueOf",
+                                                      "(Z)Ljava/lang/Boolean;");
+            g_BooleanValue = env->GetMethodID(g_BooleanCls, "booleanValue", "()Z");
+            // Integer
+            jclass localInt = env->FindClass("java/lang/Integer");
+            g_IntegerCls = (jclass) env->NewGlobalRef(localInt);
+            env->DeleteLocalRef(localInt);
+            g_IntegerValueOf = env->GetStaticMethodID(g_IntegerCls, "valueOf",
+                                                      "(I)Ljava/lang/Integer;");
+            g_IntegerValue = env->GetMethodID(g_IntegerCls, "intValue", "()I");
+            // Double
+            jclass localDouble = env->FindClass("java/lang/Double");
+            g_DoubleCls = (jclass) env->NewGlobalRef(localDouble);
+            env->DeleteLocalRef(localDouble);
+            g_DoubleValueOf = env->GetStaticMethodID(g_DoubleCls, "valueOf",
+                                                     "(D)Ljava/lang/Double;");
+            g_DoubleValue = env->GetMethodID(g_DoubleCls, "doubleValue", "()D");
+            // Long (用于句柄包装)
+            jclass localLong = env->FindClass("java/lang/Long");
+            g_LongCls = (jclass) env->NewGlobalRef(localLong);
+            env->DeleteLocalRef(localLong);
+            g_LongValueOf = env->GetStaticMethodID(g_LongCls, "valueOf", "(J)Ljava/lang/Long;");
+            // Byte (byte[] 元素访问需要, 否则 Byte 会被包装为 JavaObject 导致位运算失败)
+            jclass localByte = env->FindClass("java/lang/Byte");
+            g_ByteCls = (jclass) env->NewGlobalRef(localByte);
+            env->DeleteLocalRef(localByte);
+            g_ByteValue = env->GetMethodID(g_ByteCls, "byteValue", "()B");
+            // Short
+            jclass localShort = env->FindClass("java/lang/Short");
+            g_ShortCls = (jclass) env->NewGlobalRef(localShort);
+            env->DeleteLocalRef(localShort);
+            g_ShortValue = env->GetMethodID(g_ShortCls, "shortValue", "()S");
+            // Float
+            jclass localFloat = env->FindClass("java/lang/Float");
+            g_FloatCls = (jclass) env->NewGlobalRef(localFloat);
+            env->DeleteLocalRef(localFloat);
+            g_FloatValue = env->GetMethodID(g_FloatCls, "floatValue", "()F");
+            // NativeObject (com/script/quickjs/NativeObject)
+            jclass localNO = env->FindClass("com/script/quickjs/NativeObject");
+            g_NativeObjectCls = (jclass) env->NewGlobalRef(localNO);
+            env->DeleteLocalRef(localNO);
+            g_NativeObjectInitI = env->GetMethodID(g_NativeObjectCls, "<init>", "(I)V");
+            g_NativeObjectPut = env->GetMethodID(g_NativeObjectCls, "put",
+                                                 "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        });
     }
 }
 
@@ -151,11 +158,24 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         jobject list = env->NewObject(arrayListCls,
                                       env->GetMethodID(arrayListCls, "<init>", "(I)V"),
                                       (jint) len64);
+        if (!list) {
+            env->DeleteLocalRef(arrayListCls);
+            return nullptr;
+        }
         jmethodID addMethod = env->GetMethodID(arrayListCls, "add", "(Ljava/lang/Object;)Z");
         for (int64_t i = 0; i < len64; i++) {
             JSValue elem = JS_GetPropertyUint32(ctx, value, (uint32_t) i);
             jobject elemObj = toJavaObject(ctx, env, elem);
             JS_FreeValue(ctx, elem);
+            // 递归 toJavaObject 抛 JsNativeException 后必须立刻退出, 否则后续
+            // CallBooleanMethod / DeleteLocalRef 都属于 "pending exception 下的 JNI 调用",
+            // 会污染 JNI 状态, 表现为远处堆腐败 (JSString header.kind 被覆盖)
+            if (env->ExceptionCheck()) {
+                if (elemObj) env->DeleteLocalRef(elemObj);
+                env->DeleteLocalRef(arrayListCls);
+                env->DeleteLocalRef(list);
+                return nullptr;
+            }
             // 注意: null 元素也要 add (List 允许 null), 不能跳过
             env->CallBooleanMethod(list, addMethod, elemObj);
             if (elemObj) env->DeleteLocalRef(elemObj);
@@ -176,11 +196,32 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
                                          JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY);
         if (ret == 0) {
             jobject map = env->NewObject(g_NativeObjectCls, g_NativeObjectInitI, (jint) plen);
+            // NewObject 失败时 map 是 NULL 且有 pending JNI 异常, 继续调用任何 JNI
+            // 函数都是 UB。先释放 ptab 把 ctx 资源退出, 再让上层看到异常。
+            if (!map) {
+                for (uint32_t i = 0; i < plen; i++) JS_FreeAtom(ctx, ptab[i].atom);
+                js_free(ctx, ptab);
+                return nullptr;
+            }
             for (uint32_t i = 0; i < plen; i++) {
                 const char *key = JS_AtomToCString(ctx, ptab[i].atom);
                 JSValue val = JS_GetProperty(ctx, value, ptab[i].atom);
                 jobject valObj = toJavaObject(ctx, env, val);
                 JS_FreeValue(ctx, val);
+                // 递归 toJavaObject 可能抛 JsNativeException (val 是 JS_EXCEPTION 时)。
+                // JNI 契约: 有 pending exception 时除 ExceptionClear 等少数函数外都是 UB,
+                // 继续 NewStringUTF / CallObjectMethod / DeleteLocalRef 会污染 JNI 状态,
+                // 最终堆上其它 JSString header 被随机改写 -> 远处 JS_ToCString -> strv abort。
+                if (env->ExceptionCheck()) {
+                    JS_FreeCString(ctx, key);
+                    JS_FreeAtom(ctx, ptab[i].atom);
+                    if (valObj) env->DeleteLocalRef(valObj);
+                    // 后续 atom 也要释放, 否则 ctx 持续泄漏 atom
+                    for (uint32_t j = i + 1; j < plen; j++) JS_FreeAtom(ctx, ptab[j].atom);
+                    js_free(ctx, ptab);
+                    env->DeleteLocalRef(map);
+                    return nullptr;
+                }
                 jstring keyStr = env->NewStringUTF(key ? key : "");
                 JS_FreeCString(ctx, key);
                 env->CallObjectMethod(map, g_NativeObjectPut, keyStr, valObj);

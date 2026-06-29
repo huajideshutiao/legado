@@ -3,6 +3,7 @@
 
 #include <quickjs.h>
 #include <jni.h>
+#include <mutex>
 #include <unordered_set>
 
 /**
@@ -77,6 +78,11 @@ private:
     // 已注册 JavaObject class 的 runtime 集合
     // 避免在同一 runtime 上重复调用 JS_NewClass (JS_NewClassID 全局分配,JS_NewClass 是 runtime-specific)
     static std::unordered_set<JSRuntime *> registeredRuntimes;
+    // 保护 registeredRuntimes 与 classId 的并发 find/insert/erase。
+    // nativeCreateContext 可能从多个线程并发调用 init(), unordered_set 的并发
+    // 读写是 UB, 在 heap 上踩到 rehash 中的临时状态会污染相邻分配块,
+    // 表现为遥远 JSString header 被覆盖, 后续 JS_ToCString 调 strv 时 abort。
+    static std::mutex registryMutex;
 
     // JSClassExoticMethods trap 实现
     static int hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop);
