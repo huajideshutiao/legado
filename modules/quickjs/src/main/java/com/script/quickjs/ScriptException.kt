@@ -35,18 +35,20 @@ class ScriptException : Exception {
         this.columnNumber = columnNumber
     }
 
+    /**
+     * 不写 "ScriptException: " 前缀:JS message 自带 "Error: ..." / "TypeError: ..."
+     * 已经够清楚,再加一层 Java 类名只是噪声。
+     *
+     * 注:Java/Kotlin/JNI 调用栈仍照常收集 (默认 fillInStackTrace),便于排查引擎侧问题。
+     */
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.append("ScriptException: ")
         sb.append(message ?: "")
         if (fileName != null && lineNumber != -1) {
             sb.append(" at ").append(fileName).append(':').append(lineNumber)
             if (columnNumber != -1) {
                 sb.append(':').append(columnNumber)
             }
-        }
-        if (cause != null) {
-            sb.append(" caused by ").append(cause)
         }
         return sb.toString()
     }

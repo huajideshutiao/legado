@@ -69,13 +69,13 @@ private fun addTitleChip(
     inflater: LayoutInflater,
     container: LinearLayout,
     text: String,
-    onClick: View.OnClickListener
+    onClick: View.OnClickListener?
 ) {
     val binding = ItemFilletTextBinding.inflate(inflater, container, true)
     binding.textView.text = text
     binding.textView.alpha = ALPHA_TITLE
     binding.textView.paint.isFakeBoldText = true
-    binding.root.setOnClickListener(onClick)
+    if (onClick != null) binding.root.setOnClickListener(onClick)
 }
 
 private fun bindSingleSelect(
@@ -92,9 +92,10 @@ private fun bindSingleSelect(
         }
     }
     addTitleChip(inflater, row, option.name) {
-        option.resetToDefault()
-        refreshAlpha()
-        onOptionSelected(option)
+        if (option.resetToDefault()) {
+            refreshAlpha()
+            onOptionSelected(option)
+        }
     }
     option.options.forEach { (label, value) ->
         val binding = ItemFilletTextBinding.inflate(inflater, row, true)
@@ -118,18 +119,20 @@ private fun bindMultiSelect(
 ) {
     fun render() {
         row.removeAllViews()
-        val openDialog = View.OnClickListener {
-            showMultiSelectDialog(inflater, option) {
-                render()
-                onOptionSelected(option)
-            }
-        }
-        addTitleChip(inflater, row, option.name, openDialog)
+        // 多选模式下 title chip + 已选 chip 的点击行为完全一致 (打开对话框),
+        // 不在每个 chip 上重复挂 listener: chip 是 TextView 默认 unclickable,
+        // touch 会冒泡到 row, 整行 (含 chip 之间空白) 都能触发, 扩大点击区域。
+        addTitleChip(inflater, row, option.name, null)
         option.options.forEach { (label, value) ->
             if (value !in option.selectedValues) return@forEach
             val binding = ItemFilletTextBinding.inflate(inflater, row, true)
             binding.textView.text = label
-            binding.root.setOnClickListener(openDialog)
+        }
+    }
+    row.setOnClickListener {
+        showMultiSelectDialog(inflater, option) {
+            render()
+            onOptionSelected(option)
         }
     }
     render()

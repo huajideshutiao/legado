@@ -404,6 +404,51 @@ int JniValueConvert::getTypeTag(JSContext *ctx, JSValueConst value) {
     return 6; // 兜底按 object 处理
 }
 
+// 判定一行 stack 是否是 wrapJsForEval 产生的壳帧。
+//
+// wrapJsForEval 把用户 JS 包成 `(function(){return eval(<literal>);})()`,
+// 编译后跑出来的 stack 末尾会冒出:
+//   "    at <anonymous> (<compile>:1:19)"   ← IIFE 函数体
+//   "    at <eval>      (<compile>:1:19)"   ← IIFE 调用本身
+// 这两帧对书源作者排错没价值,过滤掉。
+//
+// 判定:函数名是 <anonymous> 或 <eval> + source 是 <compile> + line 是 1。
+// jsLib 帧也走 <compile>,但 jsLib 第一行一般是 lk/merge 这类有名函数(line/col 不在 1:),
+// 退一步说,即便 jsLib 第 1 行有匿名 IIFE 报错,把它误判成 wrapper 也只损失一帧,影响有限。
+static bool isWrapperFrame(const char *line, size_t len) {
+    // "    at <anonymous> (<compile>:1:" / "    at <eval> (<compile>:1:"
+    static const char kAnonPrefix[] = "    at <anonymous> (<compile>:1:";
+    static const char kEvalPrefix[] = "    at <eval> (<compile>:1:";
+    if (len >= sizeof(kAnonPrefix) - 1 &&
+        std::memcmp(line, kAnonPrefix, sizeof(kAnonPrefix) - 1) == 0) {
+        return true;
+    }
+    if (len >= sizeof(kEvalPrefix) - 1 &&
+        std::memcmp(line, kEvalPrefix, sizeof(kEvalPrefix) - 1) == 0) {
+        return true;
+    }
+    return false;
+}
+
+// 从 stack 文本末尾起,丢弃连续的 wrapper 壳帧,返回裁剪后的长度。
+// stack 形如 "    at foo (...)\n    at bar (...)\n",末尾可能带或不带 \n。
+static size_t trimTrailingWrapperFrames(const char *s, size_t n) {
+    while (n > 0) {
+        // 跳过末尾的 \n
+        size_t end = n;
+        while (end > 0 && s[end - 1] == '\n') --end;
+        if (end == 0) return 0;
+        // 找最后一行起点
+        size_t start = end;
+        while (start > 0 && s[start - 1] != '\n') --start;
+        if (!isWrapperFrame(s + start, end - start)) {
+            return n;   // 不是壳帧,停在这
+        }
+        n = start;      // 整段(含前面的 \n)丢弃
+    }
+    return n;
+}
+
 std::string JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     // 1. 获取 message (toString), 如 "TypeError: xxx" / "SyntaxError: ... at line 1 col 6"
     const char *msg = JS_ToCString(ctx, exc);
@@ -418,8 +463,11 @@ std::string JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) 
         if (!JS_IsUndefined(stack) && !JS_IsNull(stack)) {
             const char *stackStr = JS_ToCString(ctx, stack);
             if (stackStr && stackStr[0] != '\0') {
-                msgStr += "\n";
-                msgStr += stackStr;
+                size_t kept = trimTrailingWrapperFrames(stackStr, std::strlen(stackStr));
+                if (kept > 0) {
+                    msgStr += "\n";
+                    msgStr.append(stackStr, kept);
+                }
             }
             JS_FreeCString(ctx, stackStr);
         }

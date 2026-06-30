@@ -26,11 +26,21 @@ data class ExploreOption(
             return prefix + core + suffix
         }
 
-    fun resetToDefault() {
-        if (multiSelect) {
+    /**
+     * 重置到默认值。返回是否实际发生了变化(已是默认状态时返回 false)。
+     *
+     * 调用方据此跳过无意义的回调:重置按钮被反复点击时,避免每次都触发外层刷新。
+     */
+    fun resetToDefault(): Boolean {
+        return if (multiSelect) {
+            if (selectedValues.isEmpty()) return false
             selectedValues.clear()
+            true
         } else {
-            selectedValue = options.firstOrNull()?.second.orEmpty()
+            val defaultValue = options.firstOrNull()?.second.orEmpty()
+            if (selectedValue == defaultValue) return false
+            selectedValue = defaultValue
+            true
         }
     }
 
