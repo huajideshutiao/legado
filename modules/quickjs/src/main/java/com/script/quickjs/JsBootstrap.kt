@@ -4,9 +4,12 @@ package com.script.quickjs
  * JS bootstrap 脚本 (架构 A: 极简版本)。
  *
  * 在 QuickJs 实例创建后立即 evaluate,注入:
- * 1. `Packages` / `java` / `javax` / `android` / `com` / `org` / `io` / `cn`
- *    —— 用 ES6 Proxy 模拟动态路径访问,按 `prefix.prop` 累积路径,
+ * 1. `Packages` —— 用 ES6 Proxy 模拟动态路径访问,按 `prefix.prop` 累积路径,
  *    调用 native binding `__loadJavaClass` 判断是 Class 还是 Package。
+ *    访问 Java 包统一走 `Packages.java.lang.X` 这一条路径; 不再像 rhino LiveConnect
+ *    那样另设 `java`/`javax`/`android`/`com`/`org`/`io`/`cn` 顶级别名, 因为这些名字
+ *    会与 legado 业务 binding (如 `bindings["java"]=BaseSource`) 撞车, 保留别名会让
+ *    `java` 在不同时机有完全不同的语义, 心智负担反而比写 `Packages.` 更重。
  * 2. `JavaImporter` —— 接受多个 Class,在 `with` 语句里按简单名查找。
  * 3. `importClass` / `importPackage` —— 全局函数。
  * 4. `JavaAdapter` —— 调用 native binding `__newJavaAdapter` 创建 java.lang.reflect.Proxy。
@@ -156,15 +159,12 @@ function __makePkgProxy(prefix) {
     });
 }
 
-// 注入 Packages 和快捷别名 (与 rhino LiveConnect 一致)
+// 只暴露 Packages 入口, 不注入 rhino 风格的 java/javax/android/com/org/io/cn 顶级别名.
+// 原因: legado 业务层在 evalJS 时把 BaseSource 等对象 inject 为 `java` (BaseSource.kt:279)、
+// `source` 等 binding, 会写到 globalThis 覆盖同名 Package Proxy. 同时保留别名会让书源作者
+// 难以判断当前作用域里 `java` 究竟是包入口还是业务对象, 也会让 jsLib 函数在不同调用时机
+// 拿到完全不同语义的 `java`. 直接砍掉别名, 统一走 Packages.java.lang.X, 语义无歧义.
 var Packages = __makePkgProxy('');
-var java = __makePkgProxy('java');
-var javax = __makePkgProxy('javax');
-var android = __makePkgProxy('android');
-var com = __makePkgProxy('com');
-var org = __makePkgProxy('org');
-var io = __makePkgProxy('io');
-var cn = __makePkgProxy('cn');
 
 // ============ JavaImporter ============
 
@@ -311,5 +311,22 @@ function JavaAdapter(superClass, implementation) {
     }
     return adapter;
 }
+
+// ============ bootstrap 全局快照 ============
+
+// bootstrap 用 var / function 在 global script 创建的 property 是 [[Configurable]]: false,
+// `delete globalThis[k]` 在 sloppy mode 静默失败. 跨 evalJS 通过 injectBindings 把
+// BaseSource 写到 globalThis.java 后, cleanupBindings 的 delete 不掉, 既让 BaseSource
+// 残留 (跨书源串味), 也让 jsLib 函数后续访问 java.lang.X 时拿到 BaseSource.lang = undefined.
+// 由于 [[Writable]]: true, 重写赋值合法, cleanupBindings 用此快照恢复初值即可.
+// 名单含 bootstrap 用 var/function 创建的全局: Packages 业务不会 inject, 但仍纳入
+// 以防未来扩展; JavaImporter/JavaAdapter/importClass/importPackage 同理, 防御性保护.
+var __bootstrapGlobals__ = {
+    Packages: Packages,
+    JavaImporter: JavaImporter,
+    JavaAdapter: JavaAdapter,
+    importClass: importClass,
+    importPackage: importPackage
+};
     """.trimIndent()
 }

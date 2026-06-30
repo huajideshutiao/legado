@@ -240,15 +240,23 @@ object QuickJsEngine {
      */
     fun cleanupBindings(scope: QuickJsContext, keys: List<String>) {
         if (keys.isEmpty()) return
+        val validKeys = keys.filter { isValidVarName(it) }
+        if (validKeys.isEmpty()) return
         val previousThreadContext = QuickJsContext.threadLocalContext.get()
         QuickJsContext.threadLocalContext.set(scope)
         try {
-            for (key in keys) {
-                if (isValidVarName(key)) {
-                    // delete 全局变量, 释放引用的 Java 对象句柄
-                    QuickJsNative.nativeEval(scope.ctxPtr, "delete globalThis['$key'];")
-                }
-            }
+            // bootstrap 用 var/function 创建的全局 (java/Packages/JavaImporter 等) 是
+            // [[Configurable]]:false, delete 静默失败会让 injectBindings 写入的 BaseSource
+            // 等残留 -> 下次 jsLib 函数访问 java.lang.X 拿到 BaseSource.lang = undefined,
+            // 不同书源 BaseSource 还会跨调用串味. 这些名字必须重写赋值恢复初值
+            // ([[Writable]]:true 允许); 其它 (cache/book/source 等) 是 injectVariable
+            // 时 setProperty 创建的 configurable:true, delete 即可.
+            // 一次 eval 批量处理所有 key, 避免逐键 nativeEval 解析开销.
+            val keysLiteral = validKeys.joinToString(",") { "\"$it\"" }
+            val script = "(function(){var ks=[$keysLiteral],b=__bootstrapGlobals__,g=globalThis;" +
+                "for(var i=0;i<ks.length;i++){var k=ks[i];" +
+                "if(Object.prototype.hasOwnProperty.call(b,k)){g[k]=b[k];}else{delete g[k];}}})();"
+            QuickJsNative.nativeEval(scope.ctxPtr, script)
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
