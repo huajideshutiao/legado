@@ -79,6 +79,12 @@ object JavaObjectBridge {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) =
             size > 1000
     }
+
+    /**
+     * SAM 接口判定缓存 (类 -> 是否为 SAM)。
+     * Class 结构运行时不变, 缓存跨 scope 复用, 避免每次 coerceValue 重复反射扫描。
+     */
+    private val samInterfaceCache = java.util.concurrent.ConcurrentHashMap<Class<*>, Boolean>()
     private val cacheLock = Any()
 
     /**
@@ -1908,6 +1914,11 @@ object JavaObjectBridge {
             }
             val argType = arg.javaClass
             if (!paramType.isAssignableFrom(argType)) {
+                // SAM 接口: JS function (Long 句柄) 可包装为 SAM Proxy (对齐 rhino FunctionAdapter)
+                // 让 forEach(Consumer) 等方法走正常匹配路径, 而非 matched.first() 兜底
+                if (paramType.isInterface && arg is Long && arg > 0L && isSamInterface(paramType)) {
+                    continue
+                }
                 // 尝试基本类型 + 包装类兼容
                 if (!isPrimitiveCompatible(paramType, argType)) {
                     // 尝试 List/Array -> Java Array 兼容 (对齐 rhino NativeArray -> byte[])
@@ -1936,6 +1947,38 @@ object JavaObjectBridge {
         if (!paramType.isArray) return false
         // List/Java Array 都可以 coerce 到目标 Java Array (coerceValue.coerceToArray 实现)
         return List::class.java.isAssignableFrom(argType) || argType.isArray
+    }
+
+    /**
+     * 判断 clazz 是否为 SAM (Single Abstract Method) 接口。
+     *
+     * SAM 接口只有一个抽象方法 (非 default), JS function 可自动包装为该接口的 Proxy。
+     * 对齐 rhino FunctionAdapter: rhino 自动把 JS function 适配为 SAM 接口。
+     *
+     * JLS §9.2 陷阱: 接口隐式声明 Object 类的 hashCode()/equals(Object)/toString() 为
+     * public abstract, 不能用 declaringClass == Object.class 排除 (接口场景不可靠)。
+     * 必须按方法签名 (name + paramTypes) 排除这三个方法, 否则 Consumer 的 abstract
+     * 非 default 方法数 = 4 (accept + hashCode + equals + toString), 被误判为非 SAM。
+     *
+     * 已知限制: Iterable (iterator() 是 abstract) 会被误判为 SAM, 但调用时 JS function
+     * 返回非 Iterator 会抛 ClassCastException, fail-fast 可接受。
+     */
+    private fun isSamInterface(clazz: Class<*>): Boolean {
+        return samInterfaceCache.computeIfAbsent(clazz) {
+            if (!clazz.isInterface) return@computeIfAbsent false
+            val abstractNonDefault = clazz.methods.filter {
+                Modifier.isAbstract(it.modifiers) && !it.isDefault
+            }.filterNot { m ->
+                (m.name == "hashCode" && m.parameterCount == 0) ||
+                    (m.name == "equals" && m.parameterCount == 1 &&
+                        m.parameterTypes[0] == Any::class.java) ||
+                    (m.name == "toString" && m.parameterCount == 0)
+            }
+            val uniqueSigs = abstractNonDefault.map {
+                it.name + "(" + it.parameterTypes.joinToString(",") { p -> p.name } + ")"
+            }.toSet()
+            uniqueSigs.size == 1
+        }
     }
 
     private fun isPrimitiveCompatible(paramType: Class<*>, argType: Class<*>): Boolean {
@@ -2081,6 +2124,15 @@ object JavaObjectBridge {
             }
         }
         if (targetType.isAssignableFrom(value.javaClass)) return value
+        // SAM 接口自动转换: JS function (Long 句柄) 包装为目标接口的 Proxy
+        // 对齐 rhino NativeJavaObject.coerceTypeImpl 的 FunctionAdapter 行为:
+        // JS function 传给期望 SAM 接口 (Consumer/Function/Predicate/Supplier/Runnable 等) 的
+        // Java 方法时, 自动包装为该接口的 Proxy, 接口方法调用通过 JsSamAdapter 回调 JS function。
+        // 典型场景: tmp.forEach(i => {...}) 中 tmp 是 Java ArrayList, JS 箭头函数被包装为 Consumer。
+        // value > 0L 过滤: JsHandleTable 句柄从 1 开始递增, 避免误把 0 当句柄
+        if (targetType.isInterface && value is Long && value > 0L && isSamInterface(targetType)) {
+            return JsSamAdapter.wrapAsSam(value, targetType)
+        }
         // 包装类 -> 基本类型
         return when (targetType) {
             Int::class.javaPrimitiveType -> (value as Number).toInt()

@@ -286,9 +286,14 @@ Java_com_script_quickjs_QuickJsNative_nativeToString(JNIEnv *env, jobject clazz,
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JsHandleTable::instance().get(handle);
     if (JS_IsNull(val)) return nullptr;
-    const char *str = JS_ToCString(ctx, val);
-    jstring jstr = env->NewStringUTF(str ? str : "");
-    JS_FreeCString(ctx, str);
+    // 用 UTF-16 路径避免 JS_ToCString 的 NUL 截断 (见 jni_value_convert.cpp toJavaObject 注释)
+    size_t len16 = 0;
+    const uint16_t *u16 = JS_ToCStringLenUTF16(ctx, &len16, val);
+    if (!u16) {
+        return env->NewStringUTF("");
+    }
+    jstring jstr = env->NewString((const jchar *) u16, (jsize) len16);
+    JS_FreeCStringUTF16(ctx, u16);
     return jstr;
 }
 
@@ -448,6 +453,65 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject cl
     JS_UpdateStackTop(JS_GetRuntime(ctx));
 
     JSValue result = JS_Call(ctx, func, thisVal, argCount, args.data());
+    jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
+    JS_FreeValue(ctx, result);
+    return ret;
+}
+
+// 调用 JsHandleTable 中句柄对应的 JS function (用于 SAM 自动转换)。
+// 与 nativeCallFunction 区别: args 是 Java Object[] (非句柄数组),
+// native 层用 fromJavaObject 转换参数。ctx 从 funcHandle 经 getCtx 获取。
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_script_quickjs_QuickJsNative_nativeCallJsHandle(JNIEnv *env, jobject clazz,
+                                                         jlong funcHandle,
+                                                         jobjectArray argObjects) {
+    if (!funcHandle) return nullptr;
+    JSContext *ctx = JsHandleTable::instance().getCtx(funcHandle);
+    if (!ctx) return nullptr;
+    JSValue func = JsHandleTable::instance().get(funcHandle);
+    if (JS_IsNull(func)) return nullptr;
+
+    // 1. Java Object[] -> 临时 JSValue[] (fromJavaObject 返回需 FreeValue)
+    jsize argCount = argObjects ? env->GetArrayLength(argObjects) : 0;
+    std::vector<JSValue> args;
+    args.reserve(argCount);
+    for (jsize i = 0; i < argCount; i++) {
+        jobject argObj = argObjects ? env->GetObjectArrayElement(argObjects, i) : nullptr;
+        JSValue arg = JniValueConvert::fromJavaObject(ctx, env, argObj);
+        if (argObj) env->DeleteLocalRef(argObj);
+        // 致命陷阱: fromJavaObject 内部 wrap 失败返回 JS_EXCEPTION (ctx 已设异常),
+        // 但 ExceptionCheck 检测不到 (不是 JNI 异常), 必须先检查 JS_IsException,
+        // 否则 JS_EXCEPTION 会被当作合法参数传给 JS_Call 触发 UB (堆腐败/abort)
+        if (JS_IsException(arg)) {
+            for (jsize j = 0; j < i; j++) JS_FreeValue(ctx, args[j]);
+            // 把 ctx 异常转成 JsNativeException 抛出 (对齐 nativeEval 模式)
+            jobject excObj = JniValueConvert::toJavaObject(ctx, env, arg);
+            JS_FreeValue(ctx, arg);  // JS_EXCEPTION 的 FreeValue 是 no-op, 保持对称
+            return excObj;
+        }
+        if (env->ExceptionCheck()) {
+            // JNI 异常 (如 Integer.intValue() 抛 NumberFormatException)
+            // pending 异常下后续 JNI 调用是 UB, 必须 early return
+            for (jsize j = 0; j < i; j++) JS_FreeValue(ctx, args[j]);
+            JS_FreeValue(ctx, arg);
+            return nullptr;  // pending JNI 异常会传播到 Java 调用方
+        }
+        args.push_back(arg);
+    }
+
+    // 2. 更新 stack_top (跨线程栈检查必需, 对齐 nativeCallFunction)
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+
+    // 3. 用全局对象作 thisVal (对齐 nativeEval 的 JS_EVAL_TYPE_GLOBAL sloppy mode,
+    //    避免普通 function 的 this=undefined 导致严格模式行为不一致)
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue result = JS_Call(ctx, func, global, argCount, args.data());
+    JS_FreeValue(ctx, global);
+
+    // 4. 释放临时 args (fromJavaObject 返回的 JSValue 需 FreeValue)
+    for (jsize i = 0; i < argCount; i++) JS_FreeValue(ctx, args[i]);
+
+    // 5. 转 Java 返回值 (toJavaObject 内部处理 JS_IsException -> 抛 JsNativeException)
     jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
     JS_FreeValue(ctx, result);
     return ret;

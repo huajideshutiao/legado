@@ -1,5 +1,6 @@
 package com.script.quickjs
 
+import com.script.quickjs.QuickJsNative.nativeCallFunction
 import com.script.quickjs.QuickJsNative.nativeSetProperty
 
 
@@ -169,6 +170,22 @@ object QuickJsNative {
         thisHandle: Long,
         argHandles: LongArray
     ): Any?
+
+    /**
+     * 调用 JsHandleTable 中句柄对应的 JS function (用于 SAM 自动转换)。
+     *
+     * 与 [nativeCallFunction] 区别: args 是 Java Object[] (非句柄数组),
+     * native 层用 fromJavaObject 转换参数, 避免 Kotlin 侧手动管理句柄。
+     * ctx 从 funcHandle 经 JsHandleTable::getCtx 获取, 无需调用方传 ctxPtr。
+     *
+     * 场景: JS 箭头函数 `tmp.forEach(i=>{...})` 传给 ArrayList.forEach(Consumer),
+     * 由 [com.script.quickjs.JsSamAdapter] 调用。
+     *
+     * @param funcHandle JsHandleTable 句柄 (指向 JS function)
+     * @param argObjects Java 参数数组 (基本类型/String/Java 对象, 不要传 Long 句柄)
+     * @return JS function 返回值 (同 nativeEval 返回类型), 异常时抛 JsNativeException
+     */
+    external fun nativeCallJsHandle(funcHandle: Long, argObjects: Array<Any?>): Any?
 
     // ============ bytecode 编译与执行 ============
 

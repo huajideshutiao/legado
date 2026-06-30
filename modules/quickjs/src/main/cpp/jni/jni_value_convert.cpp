@@ -149,10 +149,20 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         return env->CallStaticObjectMethod(g_DoubleCls, g_DoubleValueOf, v);
     }
     // string
+    // 不能用 JS_ToCString (null-terminated C 字符串): JS 字符串含 NUL 字符 (U+0000) 时
+    // 会被截断为空串。典型场景: 网易云 weapi 的 "\0".repeat(112) + sk 反转串, 首字节即
+    // NUL, JS_ToCString 返回 "" → encryptHex("") → RSA/NoPadding 加密 m=0 → c=0^e mod n=0
+    // → encSecKey hex 全 "00"。
+    // 修复: 走 UTF-16 路径 (JS_ToCStringLenUTF16 + JNI NewString(jchar*, len)),
+    // Java String 内部即 UTF-16, 零损耗且彻底避免 NUL 截断。jchar 在 JNI 中即 uint16_t。
     if (JS_IsString(value)) {
-        const char *str = JS_ToCString(ctx, value);
-        jstring jstr = env->NewStringUTF(str ? str : "");
-        JS_FreeCString(ctx, str);
+        size_t len16 = 0;
+        const uint16_t *u16 = JS_ToCStringLenUTF16(ctx, &len16, value);
+        if (!u16) {
+            return env->NewStringUTF("");
+        }
+        jstring jstr = env->NewString((const jchar *) u16, (jsize) len16);
+        JS_FreeCStringUTF16(ctx, u16);
         return jstr;
     }
     // JavaObject (自定义类实例) -> 解包返回原始 jobject
@@ -314,10 +324,24 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
     // 先做 String 判断 (高频, 且字符串拼接/拷贝是常见瓶颈), 再 Integer (循环计数器、
     // size/length 返回), 然后其他基本类型, 最后落到自定义 Java 对象 wrap 分支。
     // String
+    // 用 UTF-16 路径 (GetStringChars + JS_NewStringUTF16), 与 toJavaObject 对称。
+    // 原 GetStringUTFChars 返回 modified UTF-8 (NUL 编码为 0xC0 0x80), 传给
+    // JS_NewString (标准 UTF-8 解析) 时 0xC0 0x80 是 overlong encoding (无效),
+    // QuickJS 会替换为 U+FFFD; 且 JS_NewString 用 strlen, Java String 含 NUL 时
+    // modified UTF-8 虽无 0x00 字节但 overlong 序列解析异常。
+    // GetStringChars 返回原生 UTF-16 (jchar), JS_NewStringUTF16 直接消费, 零损耗。
     if (env->IsInstanceOf(javaObj, g_StringCls)) {
-        const char *str = env->GetStringUTFChars((jstring) javaObj, nullptr);
-        JSValue val = JS_NewString(ctx, str ? str : "");
-        env->ReleaseStringUTFChars((jstring) javaObj, str);
+        jstring jstr = (jstring) javaObj;
+        jsize len = env->GetStringLength(jstr);  // UTF-16 code unit 数 (非字节数)
+        if (len == 0) {
+            return JS_NewString(ctx, "");
+        }
+        const jchar *chars = env->GetStringChars(jstr, nullptr);
+        if (!chars) {
+            return JS_NewString(ctx, "");
+        }
+        JSValue val = JS_NewStringUTF16(ctx, (const uint16_t *) chars, (size_t) len);
+        env->ReleaseStringChars(jstr, chars);
         return val;
     }
     // Integer
