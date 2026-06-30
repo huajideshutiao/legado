@@ -38,6 +38,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.filter.SourceFilterRuleListDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
@@ -75,6 +76,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import kotlin.math.abs
 
@@ -515,6 +517,22 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      */
     override fun showBookInfo(book: BaseBook, isClick: Boolean) {
         searchView.clearFocus()
+        val urlParts = book.bookUrl.split("::", limit = 2)
+        if (urlParts.size == 2) {
+            lifecycleScope.launch {
+                val source = withContext(IO) {
+                    appDb.bookSourceDao.getBookSource(book.origin)
+                }
+                source?.let {
+                    IntentData.source = it
+                    startActivity<ExploreShowActivity> {
+                        putExtra("exploreName", urlParts[0])
+                        putExtra("exploreUrl", urlParts[1])
+                    }
+                }
+            }
+            return
+        }
         IntentData.book = book
         when {
             !isClick || !AppConfig.devFeat -> startActivity<BookInfoActivity> {
