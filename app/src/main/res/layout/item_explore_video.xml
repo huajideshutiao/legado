@@ -58,8 +58,19 @@
             android:textStyle="bold"
             tools:ignore="RtlSymmetry" />
 
+        <io.legado.app.ui.widget.LabelsBar
+            android:id="@+id/ll_kind"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+        </io.legado.app.ui.widget.LabelsBar>
+
         <TextView
-            android:id="@+id/tv_pub_date"
+            android:id="@+id/tv_author"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"

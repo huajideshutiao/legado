@@ -45,6 +45,7 @@ import io.legado.app.help.http.postJson
 import io.legado.app.help.http.postMultipart
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
+import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
@@ -162,25 +163,8 @@ class AnalyzeUrl(
         analyzeUrl()
     }
 
-    private fun replaceDynamicOptions(curRuleUrl: String): String {
-        val regex = "<([^()<> \\s]+)\\(([^>]+)\\)>".toRegex()
-        return curRuleUrl.replace(regex) { match ->
-            val name = match.groupValues[1]
-            selectedOptions?.get(name)
-                ?: firstDynamicOptionValue(match.groupValues[2])
-                ?: match.value
-        }
-    }
-
-    private fun firstDynamicOptionValue(optionsStr: String): String? {
-        optionsStr.split(",").forEach { s ->
-            val split = s.split(":", limit = 2)
-            val first = split.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }
-                ?: return@forEach
-            return split.getOrNull(1)?.trim() ?: first
-        }
-        return null
-    }
+    private fun replaceDynamicOptions(curRuleUrl: String): String =
+        replaceExploreOptionsInUrl(curRuleUrl) { name -> selectedOptions?.get(name) }
 
     /**
      * 执行@js,<js></js>

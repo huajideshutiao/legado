@@ -147,7 +147,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             page = 1
             books.clear()
         }
-        val selectedOptions = exploreOptions.associate { it.name to it.selectedValue }
+        val selectedOptions = exploreOptions.associate { it.name to it.resolvedValue }
         Coroutine.async(viewModelScope) {
             getBookListAwait(
                 source, url, page, isSearch = false,

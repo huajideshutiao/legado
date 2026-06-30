@@ -76,7 +76,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import kotlin.math.abs
 
@@ -166,6 +165,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             R.id.menu_source_filter_rule -> showDialogFragment(
                 SourceFilterRuleListDialog(viewModel.searchScope.toString())
             )
+
             R.id.menu_log -> showDialogFragment(AppLogDialog())
             R.id.menu_1 -> {
                 viewModel.searchScope.update("")
@@ -519,17 +519,11 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         searchView.clearFocus()
         val urlParts = book.bookUrl.split("::", limit = 2)
         if (urlParts.size == 2) {
-            lifecycleScope.launch {
-                val source = withContext(IO) {
-                    appDb.bookSourceDao.getBookSource(book.origin)
-                }
-                source?.let {
-                    IntentData.source = it
-                    startActivity<ExploreShowActivity> {
-                        putExtra("exploreName", urlParts[0])
-                        putExtra("exploreUrl", urlParts[1])
-                    }
-                }
+            IntentData.source = null
+            startActivity<ExploreShowActivity> {
+                putExtra("exploreName", urlParts[0])
+                putExtra("exploreUrl", urlParts[1])
+                putExtra("sourceUrl", book.origin)
             }
             return
         }

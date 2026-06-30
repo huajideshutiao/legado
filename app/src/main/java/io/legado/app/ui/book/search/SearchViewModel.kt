@@ -100,7 +100,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
             }
             val merged = options.map { newOpt ->
                 searchOptions.find { it.name == newOpt.name }
-                    ?.let { existing -> newOpt.copy(selectedValue = existing.selectedValue) }
+                    ?.let { existing -> newOpt.apply { copySelectionFrom(existing) } }
                     ?: newOpt
             }
             searchOptions.clear()

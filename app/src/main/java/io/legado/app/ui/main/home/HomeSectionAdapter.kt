@@ -7,11 +7,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.databinding.ItemExploreVideoBinding
 import io.legado.app.databinding.ItemHomeCoverCardBinding
 import io.legado.app.databinding.ItemHomeRankBookBinding
 import io.legado.app.databinding.ViewHomeSectionTitleBinding
@@ -226,17 +228,26 @@ class HomeSectionAdapter(
     private inner class CoverCardAdapter(
         private val coverVideo: Boolean,
         private val onClick: (SearchBook, Boolean) -> Unit
-    ) : RecyclerView.Adapter<CoverCardVH>() {
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         private val books = mutableListOf<SearchBook>()
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-            CoverCardVH(ItemHomeCoverCardBinding.inflate(inflater, parent, false))
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            return if (coverVideo) {
+                VideoCoverCardVH(ItemExploreVideoBinding.inflate(inflater, parent, false))
+            } else {
+                CoverCardVH(ItemHomeCoverCardBinding.inflate(inflater, parent, false))
+            }
+        }
 
         override fun getItemCount() = books.size
 
-        override fun onBindViewHolder(holder: CoverCardVH, position: Int) =
-            holder.bind(books[position], coverVideo, onClick)
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (holder) {
+                is VideoCoverCardVH -> holder.bind(books[position], onClick)
+                is CoverCardVH -> holder.bind(books[position], coverVideo, onClick)
+            }
+        }
 
         // 整体替换数据集,用 notifyDataSetChanged 通知
         @SuppressLint("NotifyDataSetChanged")
@@ -317,6 +328,33 @@ class HomeSectionAdapter(
                 height = if (coverVideo) 120.dpToPx() else 160.dpToPx()
                 width = ViewGroup.LayoutParams.WRAP_CONTENT
             }
+            b.ivCover.load(book.coverUrl, book.name, book.author, false, book.origin)
+            b.root.setOnClickListener { onClick(book, false) }
+            b.root.setOnLongClickListener { onClick(book, true); true }
+        }
+    }
+
+    /**
+     * 横向封面行 + 视频比例封面专用：复用发现页的 item_explore_video 卡片。
+     * 根布局原本是 match_parent，在横向滚动里必须改成固定宽度，否则会撑满 RecyclerView。
+     */
+    private inner class VideoCoverCardVH(val b: ItemExploreVideoBinding) :
+        RecyclerView.ViewHolder(b.root) {
+        init {
+            b.root.layoutParams = b.root.layoutParams.apply {
+                width = 220.dpToPx()
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+        }
+
+        fun bind(book: SearchBook, onClick: (SearchBook, Boolean) -> Unit) {
+            b.tvTitle.text = book.name
+            b.tvAuthor.text = book.getRealAuthor()
+            b.tvAuthor.isVisible = b.tvAuthor.text.isNotBlank()
+            val kinds = book.getKindList()
+            b.llKind.isVisible = kinds.isNotEmpty()
+            if (kinds.isNotEmpty()) b.llKind.setLabels(kinds)
+            b.ivCover.coverRatio = BookCover.CoverRatio.VIDEO
             b.ivCover.load(book.coverUrl, book.name, book.author, false, book.origin)
             b.root.setOnClickListener { onClick(book, false) }
             b.root.setOnLongClickListener { onClick(book, true); true }

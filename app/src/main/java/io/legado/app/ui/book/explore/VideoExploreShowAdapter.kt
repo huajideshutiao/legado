@@ -19,8 +19,11 @@ class VideoExploreShowAdapter(context: Context, callBack: CallBack) :
     override fun bind(binding: ItemExploreVideoBinding, item: SearchBook) {
         binding.run {
             tvTitle.text = item.name
-            tvPubDate.text = item.wordCount
-            tvPubDate.isVisible = !item.wordCount.isNullOrBlank()
+            tvAuthor.text = item.getRealAuthor()
+            tvAuthor.isVisible = tvAuthor.text.isNotBlank()
+            val kinds = item.getKindList()
+            llKind.isVisible = kinds.isNotEmpty()
+            if (kinds.isNotEmpty()) llKind.setLabels(kinds)
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             if (item.coverUrl.isNullOrBlank()) {
                 ivCover.gone()

@@ -83,7 +83,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         var hasMore = false
         val pool = searchPool ?: return
         val isSingleSource = bookSources.size == 1
-        val selectedOptions = callBack.getSearchOptions().associate { it.name to it.selectedValue }
+        val selectedOptions = callBack.getSearchOptions().associate { it.name to it.resolvedValue }
         searchJob = scope.launch(pool) {
             flow {
                 bookSources.forEach { source ->
