@@ -195,35 +195,47 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         env->DeleteLocalRef(arrayListCls);
         return list;
     }
-    // JS Error 对象 -> ScriptException (是 Throwable, 对齐 rhino WrappedException)
-    // 让 JS catch(e) 后 e 能传给 Java 方法 (如 AppLog.put(String, Throwable, Boolean))。
-    // 注意: Java 异常经 jni_callbacks 修复后包装成 JavaObject, 走上面 isInstance 分支
-    // 还原原始 Throwable, 不会进到这里。这里只处理纯 JS throw 的 Error。
-    // 必须在 plain object 分支之前, 否则 Error 会被当普通对象塞进 NativeObject。
+    // JS Error 对象 -> NativeObject (对齐 rhino NativeError, 不转 Throwable)
+    //
+    // 设计: JS Error 作为返回值/参数时, 转成 NativeObject (含 message/name/stack),
+    // 对齐 rhino NativeError (ScriptableObject, 不是 Throwable)。Throwable 只在
+    // JS throw 时由 JS_IsException 分支 (上方行 112-123) 产生 (抛 ScriptException)。
+    //
+    // 为什么不转 ScriptException (Throwable):
+    // 1. rhino 从不把 JS Error 对象转 Throwable。eval("new Error()") 返回 NativeError,
+    //    只有 throw new Error() 才会包装成 JavaScriptException 抛出。
+    // 2. 转 ScriptException 后 return (不 throw), 会让 ScriptException 作为返回值
+    //    继续往后走, 导致 AnalyzeRule getElements 的 `it as List<Any>` ClassCastException。
+    // 3. catch(e) { AppLog.put(e, e, false) } 在 rhino 下第二参数 Throwable 也会失败
+    //    (NativeJavaObject.coerceTypeImpl 报 EvaluatorException), 不需要 QuickJS 越权转换。
+    //
+    // 为什么手动塞 message/name/stack (不复用下方 plain object 分支枚举):
+    // JS Error 的 message/name/stack 是 non-enumerable, 下方 JS_GPN_ENUM_ONLY 拿不到,
+    // 会塞进空 NativeObject, 业务拿不到 message。这里手动获取这 3 个标准属性塞入。
+    // enumerable 自有属性 (如 e.customField = "abc") 会被忽略, 这是已知取舍 (少见场景)。
+    //
+    // 必须在 plain object 分支之前, 否则 Error 会被当普通对象塞进空 NativeObject。
     if (JS_IsError(value)) {
-        std::string msgStr = buildExceptionMessage(ctx, value);
-        jclass excCls = env->FindClass("com/script/quickjs/ScriptException");
-        if (excCls) {
-            jmethodID ctor = env->GetMethodID(excCls, "<init>", "(Ljava/lang/String;)V");
-            if (ctor) {
-                jstring jmsg = env->NewStringUTF(msgStr.c_str());
-                jobject exc = env->NewObject(excCls, ctor, jmsg);
-                env->DeleteLocalRef(jmsg);
-                env->DeleteLocalRef(excCls);
-                if (exc && !env->ExceptionCheck()) {
-                    return exc;
-                }
-                if (env->ExceptionCheck()) env->ExceptionClear();
-                if (exc) env->DeleteLocalRef(exc);
-            } else {
-                env->DeleteLocalRef(excCls);
+        jobject map = env->NewObject(g_NativeObjectCls, g_NativeObjectInitI, (jint) 3);
+        if (!map) return nullptr;
+        static const char *const kErrKeys[] = {"message", "name", "stack"};
+        for (int k = 0; k < 3; k++) {
+            JSValue val = JS_GetPropertyStr(ctx, value, kErrKeys[k]);
+            jobject valObj = toJavaObject(ctx, env, val);
+            JS_FreeValue(ctx, val);
+            // 递归 toJavaObject 抛 JsNativeException 时必须立刻退出, 避免 pending
+            // exception 下的后续 JNI 调用污染 JNI 状态 (同上方 array 分支的处理)
+            if (env->ExceptionCheck()) {
+                if (valObj) env->DeleteLocalRef(valObj);
+                env->DeleteLocalRef(map);
+                return nullptr;
             }
+            jstring keyStr = env->NewStringUTF(kErrKeys[k]);
+            env->CallObjectMethod(map, g_NativeObjectPut, keyStr, valObj);
+            env->DeleteLocalRef(keyStr);
+            if (valObj) env->DeleteLocalRef(valObj);
         }
-        // 兜底 (ScriptException 构造失败或类找不到, 理论不会发生): 返回 message string
-        const char *str = JS_ToCString(ctx, value);
-        jstring jstr = env->NewStringUTF(str ? str : msgStr.c_str());
-        JS_FreeCString(ctx, str);
-        return jstr;
+        return map;
     }
     // plain JS object (非 function) -> NativeObject (递归转换)
     // 对齐 rhino NativeObject: 业务代码用 is NativeObject 区分 JS 返回的对象与 JsonPath 返回的 Map

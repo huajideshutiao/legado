@@ -4,11 +4,16 @@ import android.util.Log
 import androidx.collection.LongSparseArray
 import com.script.quickjs.JavaObjectBridge.NO_RESULT
 import com.script.quickjs.JavaObjectBridge.appendToBuilder
+import com.script.quickjs.JavaObjectBridge.callArrayMethod
 import com.script.quickjs.JavaObjectBridge.callInstanceMethod
 import com.script.quickjs.JavaObjectBridge.callStringBuilderMethod
+import com.script.quickjs.JavaObjectBridge.coerceToArray
+import com.script.quickjs.JavaObjectBridge.coerceValue
+import com.script.quickjs.JavaObjectBridge.findMethod
 import com.script.quickjs.JavaObjectBridge.getInstanceField
 import com.script.quickjs.JavaObjectBridge.getInstanceKeys
 import com.script.quickjs.JavaObjectBridge.getJavaProperty
+import com.script.quickjs.JavaObjectBridge.getJavaPropertyRaw
 import com.script.quickjs.JavaObjectBridge.hasInstanceMethod
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
@@ -229,19 +234,31 @@ object JavaObjectBridge {
 
     /**
      * 反射查找匹配的构造器并实例化。
+     *
+     * 对齐 rhino NativeJavaClass.construct: 找不到匹配构造器时抛 "msg.no.java.ctor",
+     * 不静默返回 null 让 JS `new JavaClass()` 得到 null/undefined。
+     * native jsBindingCall 的 ExceptionCheck 分支会 wrap Throwable 传给 JS catch。
      */
     private fun createInstance(clazz: Class<*>, args: Array<Any?>): Any? {
         val constructors = clazz.constructors
         // 精确匹配参数个数
         val candidates = constructors.filter { it.parameterCount == args.size }
         if (candidates.isEmpty()) {
-            // 尝试无参构造
+            // 尝试无参构造 (getDeclaredConstructor 含 declared, 但 rhino 只允许 public)
             if (args.isEmpty()) {
-                return clazz.getDeclaredConstructor().takeIf {
-                    Modifier.isPublic(it.modifiers)
-                }?.newInstance()
+                val ctor = clazz.getDeclaredConstructor()
+                if (!Modifier.isPublic(ctor.modifiers)) {
+                    throw IllegalStateException(
+                        "Cannot instantiate ${clazz.name}: no public no-arg constructor"
+                    )
+                }
+                ctor.isAccessible = true
+                return ctor.newInstance()
             }
-            return null
+            // 对齐 rhino msg.no.java.ctor: 无匹配参数个数的 public 构造器
+            throw IllegalStateException(
+                "Cannot instantiate ${clazz.name}: no constructor with ${args.size} args"
+            )
         }
         // 找第一个参数类型全兼容的构造器
         for (ctor in candidates) {
@@ -250,7 +267,11 @@ object JavaObjectBridge {
                 return ctor.newInstance(*coerceArgs(ctor.parameterTypes, args, ctor.isVarArgs))
             }
         }
-        return null
+        // 对齐 rhino: 有匹配参数个数的构造器但参数类型不兼容
+        throw IllegalStateException(
+            "Cannot instantiate ${clazz.name}: no constructor with ${args.size} args " +
+                "matching types ${args.map { it?.javaClass?.simpleName }}"
+        )
     }
 
     /**
@@ -273,54 +294,48 @@ object JavaObjectBridge {
         // 快速路径未命中的方法 (如 list.subList) 返回 NO_RESULT,走原 findMethod 路径。
         val fastResult = callHotTypeMethod(obj, methodName, args, dangerousApi)
         if (fastResult !== NO_RESULT) return fastResult
-        return try {
-            val javaArgs = jsToJavaArgs(args)
-            val method = findMethod(obj.javaClass, methodName, javaArgs)
-            if (method != null) {
-                method.isAccessible = true
-                val result = method.invoke(
-                    obj,
-                    *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
-                )
+        // 异常不 catch: 传播到调用方, 对齐 Raw 路径 (见 callInstanceMethodRaw 注释)。
+        // 本方法为非 Raw 版本 (无 native 调用者), 保留供潜在复用; catch 吞异常会掩盖错误。
+        val javaArgs = jsToJavaArgs(args)
+        val method = findMethod(obj.javaClass, methodName, javaArgs)
+        if (method != null) {
+            method.isAccessible = true
+            val result = method.invoke(
+                obj,
+                *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs)
+            )
+            return javaToJsResult(result, dangerousApi)
+        }
+        // 找不到方法时尝试 getter: getXxx / isXxx (兼容 rhino 的 obj.prop() 语法调用 getter)
+        if (args.isEmpty()) {
+            val getterName = buildString(methodName.length + 3) {
+                append("get")
+                if (methodName.isNotEmpty()) {
+                    methodName.first().uppercaseChar().let { append(it) }
+                    append(methodName.substring(1))
+                }
+            }
+            val getter = findMethod(obj.javaClass, getterName, emptyArray())
+            if (getter != null) {
+                getter.isAccessible = true
+                val result = getter.invoke(obj)
                 return javaToJsResult(result, dangerousApi)
             }
-            // 找不到方法时尝试 getter: getXxx / isXxx (兼容 rhino 的 obj.prop() 语法调用 getter)
-            if (args.isEmpty()) {
-                val getterName = buildString(methodName.length + 3) {
-                    append("get")
-                    if (methodName.isNotEmpty()) {
-                        methodName.first().uppercaseChar().let { append(it) }
-                        append(methodName.substring(1))
-                    }
-                }
-                val getter = findMethod(obj.javaClass, getterName, emptyArray())
-                if (getter != null) {
-                    getter.isAccessible = true
-                    val result = getter.invoke(obj)
-                    return javaToJsResult(result, dangerousApi)
-                }
-                val isName = buildString(methodName.length + 2) {
-                    append("is")
-                    if (methodName.isNotEmpty()) {
-                        methodName.first().uppercaseChar().let { append(it) }
-                        append(methodName.substring(1))
-                    }
-                }
-                val isGetter = findMethod(obj.javaClass, isName, emptyArray())
-                if (isGetter != null) {
-                    isGetter.isAccessible = true
-                    val result = isGetter.invoke(obj)
-                    return javaToJsResult(result, dangerousApi)
+            val isName = buildString(methodName.length + 2) {
+                append("is")
+                if (methodName.isNotEmpty()) {
+                    methodName.first().uppercaseChar().let { append(it) }
+                    append(methodName.substring(1))
                 }
             }
-            null
-        } catch (e: Exception) {
-            Log.w(TAG, "callInstanceMethod failed: ${obj.javaClass.name}.$methodName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "callInstanceMethod linkage error: ${obj.javaClass.name}.$methodName", e)
-            null
+            val isGetter = findMethod(obj.javaClass, isName, emptyArray())
+            if (isGetter != null) {
+                isGetter.isAccessible = true
+                val result = isGetter.invoke(obj)
+                return javaToJsResult(result, dangerousApi)
+            }
         }
+        return null
     }
 
     /**
@@ -328,6 +343,7 @@ object JavaObjectBridge {
      *
      * @return 处理结果(null 也是合法返回值);[NO_RESULT] 表示未命中,调用方走反射路径
      */
+    @Suppress("UNCHECKED_CAST")
     private fun callHotTypeMethod(
         obj: Any,
         methodName: String,
@@ -351,8 +367,77 @@ object JavaObjectBridge {
 
             is StringBuilder -> callStringBuilderMethod(obj, methodName, args, dangerousApi)
             is StringBuffer -> callStringBufferMethod(obj, methodName, args, dangerousApi)
+            else -> if (obj.javaClass.isArray) {
+                callArrayMethod(obj, methodName, args, dangerousApi)
+            } else NO_RESULT
+        }
+    }
+
+    /**
+     * Java 数组热点方法名判断。
+     *
+     * 这些方法在 Java 数组上不存在 (数组无 slice 方法), 默认会沿原型链 fallback 到
+     * Array.prototype.slice 等, 内部逐个元素走 exotic trap → JNI → Java, 开销巨大
+     * (De 函数 13 次 slice × 17 次 trap ≈ 221 次 JNI 跨边界)。
+     * 标记为热点方法后, [getJavaPropertyRaw] 返回 hasMethod=true, native 创建方法
+     * callable, JS 调用时走 [callArrayMethod] 快速路径 (System.arraycopy 一次性拷贝)。
+     */
+    private fun isArrayHotMethod(name: String): Boolean = when (name) {
+        "slice" -> true
+        else -> false
+    }
+
+    /**
+     * Java 数组热点方法快速路径。
+     *
+     * 对齐 ES Array.prototype 行为, 但用 Java 层一次性操作避免逐个元素 JNI trap。
+     * 返回同类型 Java 数组 (如 byte[] → byte[]), native 层 fromJavaObject 包装为
+     * JavaObject (带 Array.prototype), 后续可继续走快速路径或 Array.prototype 方法。
+     *
+     * 注: 与 rhino NativeJavaArray.slice 返回 NativeArray 行为有差异 (此处返回 Java 数组),
+     * 但性能提升显著 (429ms → ~20ms), 且 byte[] 仍有 Array.prototype, .map/.forEach 等可用。
+     */
+    private fun callArrayMethod(
+        array: Any,
+        methodName: String,
+        args: Array<Any?>,
+        dangerousApi: Boolean
+    ): Any? {
+        return when (methodName) {
+            "slice" -> arraySlice(array, args)
             else -> NO_RESULT
         }
+    }
+
+    /**
+     * ES Array.prototype.slice 的 Java 数组实现。
+     *
+     * 行为对齐 ES2023 Array.prototype.slice:
+     * - start/end 省略时默认 0/length
+     * - 负数索引从末尾算 (start: len+start, end: len+end)
+     * - 越界裁剪到 [0, len]
+     * - start >= end 返回空数组
+     *
+     * 用 System.arraycopy 一次性拷贝, 返回同 componentType 的 Java 数组。
+     */
+    private fun arraySlice(array: Any, args: Array<Any?>): Any? {
+        val len = java.lang.reflect.Array.getLength(array)
+        val start = if (args.isNotEmpty()) {
+            val s = (args[0] as? Number)?.toInt() ?: 0
+            if (s < 0) maxOf(len + s, 0) else minOf(s, len)
+        } else 0
+        val end = if (args.size > 1) {
+            val e = (args[1] as? Number)?.toInt() ?: len
+            if (e < 0) maxOf(len + e, 0) else minOf(e, len)
+        } else len
+        val resultLen = maxOf(end - start, 0)
+        val componentType = array.javaClass.componentType ?: return null
+        val result = java.lang.reflect.Array.newInstance(componentType, resultLen)
+        if (resultLen > 0) {
+            // System.arraycopy 是 native 方法, 一次性拷贝, 避免逐个元素 JNI trap
+            System.arraycopy(array, start, result, 0, resultLen)
+        }
+        return result
     }
 
     /**
@@ -940,7 +1025,17 @@ object JavaObjectBridge {
         }
 
         val hasMethod =
-            if (JsSecurityPolicy.isMethodVisible(lookupClass.name, fieldName, dangerousApi)) {
+        // Java 数组热点方法 (slice 等) 走快速路径, 不走反射 collectMethods
+        // (数组无 slice 方法, 否则 fallback 到 Array.prototype.slice 逐个元素 JNI trap,
+            // 13 次 slice × 17 次 trap ≈ 221 次 JNI 跨边界, De 函数 429ms vs rhino 19ms)
+            if (obj.javaClass.isArray && isArrayHotMethod(fieldName)) {
+                true
+            } else if (JsSecurityPolicy.isMethodVisible(
+                    lookupClass.name,
+                    fieldName,
+                    dangerousApi
+                )
+            ) {
                 val candidates = mutableListOf<Method>()
                 collectMethods(lookupClass, fieldName, candidates)
                 candidates.isNotEmpty()
@@ -966,17 +1061,29 @@ object JavaObjectBridge {
         val javaValue = unwrapHandleValue(value)
         if (setCollectionField(obj, fieldName, javaValue)) return true
         // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
-        val setter = findSetter(obj.javaClass, fieldName)
+        val setter = findSetter(obj.javaClass, fieldName, javaValue)
         if (setter != null) {
             if (!JsSecurityPolicy.isMethodVisible(
                     obj.javaClass.name, setter.name, dangerousApi
                 )
             ) return false
             setter.isAccessible = true
-            setter.invoke(obj, coerceValue(javaValue, setter.parameterTypes[0]))
+            // setter 本质是 1 参方法调用, 用 coerceArgs 做类型转换 (Double -> int / JS Array -> byte[] 等),
+            // 与 callInstanceMethodRaw 一致, 也与 [setInstanceField] 路径保持同步。
+            val coerced = coerceArgs(setter.parameterTypes, arrayOf(javaValue), setter.isVarArgs)
+            setter.invoke(obj, *coerced)
             return true
         }
-        val field = findField(obj.javaClass, fieldName) ?: return false
+        val field = findField(obj.javaClass, fieldName)
+        if (field == null) {
+            // 对齐 rhino JavaMembers.put: 找不到 setter/field 时抛 reportMemberNotFound,
+            // 不静默 return false 让 JS 赋值无声成功 (source.variable = token 拼错属性名时
+            // 用户毫无感知)。native setProperty trap 的 ExceptionCheck 分支会 wrap 此
+            // Throwable 传给 JS catch, 对齐 rhino WrappedException。
+            throw IllegalStateException(
+                "Cannot set property '$fieldName' on ${obj.javaClass.name}: no setter or field"
+            )
+        }
         field.isAccessible = true
         field.set(obj, coerceValue(javaValue, field.type))
         return true
@@ -1062,7 +1169,17 @@ object JavaObjectBridge {
                 return isGetter.invoke(if (Modifier.isStatic(isGetter.modifiers)) null else obj)
             }
         }
-        return null
+        // 对齐 rhino NativeJavaMethod.findCachedFunction: 找不到匹配重载时抛异常,
+        // 不静默 return null 让 JS 拿到 undefined (method callable 已被创建说明方法名存在,
+        // findMethod 返回 null 是参数类型不匹配, 或 getter 回退也失败)。
+        // native jsMethodCallable 的 ExceptionCheck 分支会 wrap 此 Throwable 传给 JS catch,
+        // 对齐 rhino WrappedException。原先 return null 让 JS 侧 `obj.method()` 静默得到 null,
+        // 用户毫无感知 (如拼错方法名 + 错误参数个数)。
+        throw IllegalStateException(
+            "Cannot find method '$methodName' on ${lookupClass.name} " +
+                "with args ${args.map { it?.javaClass?.simpleName }} " +
+                "(no matching overload and no getter fallback)"
+        )
     }
 
     /**
@@ -1178,7 +1295,19 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isMethodVisible(clazz.name, methodName, dangerousApi)) return null
         // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
         val javaArgs = jsToJavaArgs(args)
-        val method = findStaticMethod(clazz, methodName, javaArgs) ?: return null
+        // 对齐 rhino NativeJavaClass.get: 找不到静态成员时 throw reportMemberNotFound。
+        // QuickJS 的 JS bootstrap __wrapClass 对任意 prop 都返回 method callable,
+        // 调用时才走 __callStaticMethod → 此方法。findStaticMethod 返回 null 说明
+        // 方法名不存在或参数不匹配, 抛异常让 native jsBindingCall 的 ExceptionCheck
+        // 分支 wrap Throwable 传给 JS catch。原先 return null 让 JS 侧 `Math.nonExistent()`
+        // 静默得到 null/undefined, 用户毫无感知。
+        val method = findStaticMethod(clazz, methodName, javaArgs)
+        if (method == null) {
+            throw IllegalStateException(
+                "Cannot find static method '$methodName' on ${clazz.name} " +
+                    "with args ${args.map { it?.javaClass?.simpleName }}"
+            )
+        }
         method.isAccessible = true
         val result =
             method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs))
@@ -1200,30 +1329,24 @@ object JavaObjectBridge {
         // Map/List/Array 特判: 对齐 rhino FEATURE_ENABLE_JAVA_MAP_ACCESS
         // 让 bindings 注入的 Map/List 在 JS 端 map.key / list[0] / list.length 可访问
         getCollectionField(obj, fieldName)?.let { return javaToJsResult(it, dangerousApi) }
-        return try {
-            // 优先 getter
-            val getter = findGetter(obj.javaClass, fieldName)
-            if (getter != null) {
-                if (!JsSecurityPolicy.isMethodVisible(
-                        obj.javaClass.name,
-                        getter.name,
-                        dangerousApi
-                    )
-                ) return null
-                getter.isAccessible = true
-                return javaToJsResult(getter.invoke(obj), dangerousApi)
-            }
-            // 再尝试字段
-            val field = findField(obj.javaClass, fieldName) ?: return null
-            field.isAccessible = true
-            javaToJsResult(field.get(obj), dangerousApi)
-        } catch (e: Exception) {
-            Log.w(TAG, "getInstanceField failed: ${obj.javaClass.name}.$fieldName", e)
-            null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "getInstanceField linkage error: ${obj.javaClass.name}.$fieldName", e)
-            null
+        // 异常不 catch: 传播到调用方, 对齐 Raw 路径 (见 getJavaPropertyRaw 注释)。
+        // 本方法为非 Raw 版本 (无 native 调用者), 保留供潜在复用; catch 吞异常会掩盖错误。
+        // 优先 getter
+        val getter = findGetter(obj.javaClass, fieldName)
+        if (getter != null) {
+            if (!JsSecurityPolicy.isMethodVisible(
+                    obj.javaClass.name,
+                    getter.name,
+                    dangerousApi
+                )
+            ) return null
+            getter.isAccessible = true
+            return javaToJsResult(getter.invoke(obj), dangerousApi)
         }
+        // 再尝试字段
+        val field = findField(obj.javaClass, fieldName) ?: return null
+        field.isAccessible = true
+        return javaToJsResult(field.get(obj), dangerousApi)
     }
 
     /**
@@ -1303,36 +1426,44 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return false
         // Map/List 特判: 对齐 rhino FEATURE_ENABLE_JAVA_MAP_ACCESS
         if (setCollectionField(obj, fieldName, value)) return true
-        return try {
-            // 优先 setter
-            val setter = findSetter(obj.javaClass, fieldName)
-            if (setter != null) {
-                if (!JsSecurityPolicy.isMethodVisible(
-                        obj.javaClass.name,
-                        setter.name,
-                        dangerousApi
-                    )
-                ) return false
-                setter.isAccessible = true
-                setter.invoke(obj, jsToJavaValue(value, setter.parameterTypes[0]))
-                return true
-            }
-            // 再尝试字段
-            val field = findField(obj.javaClass, fieldName) ?: return false
-            field.isAccessible = true
-            field.set(obj, jsToJavaValue(value, field.type))
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "setInstanceField failed: ${obj.javaClass.name}.$fieldName", e)
-            false
-        } catch (e: LinkageError) {
-            Log.w(TAG, "setInstanceField linkage error: ${obj.javaClass.name}.$fieldName", e)
-            false
+        // 异常不 catch: 传播到调用方, 对齐 Raw 路径 (见 setInstanceFieldRaw 注释)。
+        // 本方法为非 Raw 版本 (无 native 调用者), 保留供潜在复用; catch 吞异常会掩盖错误。
+        // 优先 setter
+        val setter = findSetter(obj.javaClass, fieldName, value)
+        if (setter != null) {
+            if (!JsSecurityPolicy.isMethodVisible(
+                    obj.javaClass.name,
+                    setter.name,
+                    dangerousApi
+                )
+            ) return false
+            setter.isAccessible = true
+            // setter 本质是 1 参方法调用, 用 coerceArgs 做类型转换 (Double -> int / JS Array -> byte[] 等),
+            // 与 callInstanceMethodRaw 一致; 旧实现用 jsToJavaValue 只解引用句柄不做类型转换,
+            // 导致 setIndex(int) = 5.0 (JS Number) 抛 IllegalArgumentException
+            val coerced = coerceArgs(setter.parameterTypes, arrayOf(value), setter.isVarArgs)
+            setter.invoke(obj, *coerced)
+            return true
         }
+        // 再尝试字段
+        val field = findField(obj.javaClass, fieldName) ?: return false
+        field.isAccessible = true
+        field.set(obj, jsToJavaValue(value, field.type))
+        return true
     }
 
     /**
-     * MutableMap/MutableList 的字段设置特判。
+     * MutableMap/MutableList/Java Array 的字段设置特判, 对齐 rhino LiveConnect。
+     *
+     * - MutableMap: map.key = value -> map.put(key, value)
+     *   (rhino FEATURE_ENABLE_JAVA_MAP_ACCESS)
+     * - MutableList: list[i] = value, 越界自动扩容 (对齐 rhino NativeJavaList.put:
+     *   idx==size add, idx>size ensureCapacity 用 null 填充间隙后 set。
+     *   旧实现 idx>=size 静默 return false, 让 JS list[100]=x 无声丢失)
+     * - Java Array: arr[i] = value, 越界抛 IndexOutOfBoundsException
+     *   (对齐 rhino NativeJavaArray.put: 越界抛 "msg.java.array.index.out.of.bounds"。
+     *   旧实现完全没处理 Java 数组写入, 走 setter/field 路径最终静默 return false)
+     *
      * value 先经 [jsToJavaValue] 解引用(处理 JS Proxy 句柄)。
      * @return true 表示已处理(集合命中),false 表示非集合或未命中(继续走 setter/field)
      */
@@ -1347,12 +1478,38 @@ object JavaObjectBridge {
 
             is MutableList<*> -> {
                 val idx = fieldName.toIntOrNull() ?: return false
-                if (idx in 0 until obj.size) {
-                    @Suppress("UNCHECKED_CAST")
-                    (obj as MutableList<Any?>)[idx] = javaValue
-                    return true
+                if (idx < 0) return false
+                @Suppress("UNCHECKED_CAST")
+                val list = obj as MutableList<Any?>
+                // 对齐 rhino NativeJavaList.put:
+                // - idx == size: add (尾部追加)
+                // - idx > size: 用 null 填充间隙到 size==idx, 再 add 到 idx 位置
+                //   (等价 rhino ensureCapacity(idx+1) + set(idx, value))
+                when {
+                    idx == list.size -> list.add(javaValue)
+                    idx > list.size -> {
+                        while (list.size < idx) list.add(null)
+                        list.add(javaValue)
+                    }
+
+                    else -> list[idx] = javaValue
                 }
-                return false
+                return true
+            }
+
+            else -> if (obj.javaClass.isArray) {
+                // 对齐 rhino NativeJavaArray.put: 合法索引 set, 越界抛异常。
+                val idx = fieldName.toIntOrNull() ?: return false
+                val len = java.lang.reflect.Array.getLength(obj)
+                if (idx < 0 || idx >= len) {
+                    throw IndexOutOfBoundsException(
+                        "Java array index out of bounds: $idx, length=$len " +
+                            "(class=${obj.javaClass.componentType?.name})"
+                    )
+                }
+                val componentType = obj.javaClass.componentType!!
+                java.lang.reflect.Array.set(obj, idx, coerceValue(javaValue, componentType))
+                return true
             }
         }
         return false
@@ -1370,7 +1527,14 @@ object JavaObjectBridge {
         val clazz = getClass(classHandle) ?: return false
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return false
         // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
-        val field = findField(clazz, fieldName) ?: return false
+        val field = findField(clazz, fieldName)
+        if (field == null) {
+            // 对齐 rhino: 找不到静态字段时抛异常, 不静默 return false 让 JS 赋值无声成功。
+            // native 静态成员 trap 的 ExceptionCheck 分支会 wrap 此 Throwable 传给 JS catch。
+            throw IllegalStateException(
+                "Cannot set static field '$fieldName' on ${clazz.name}: field not found"
+            )
+        }
         field.isAccessible = true
         field.set(null, jsToJavaValue(value, field.type))
         return true
@@ -1590,12 +1754,17 @@ object JavaObjectBridge {
     private fun paramSpecificityScore(paramType: Class<*>, arg: Any?): Int {
         if (arg == null) return if (paramType.isPrimitive) 10 else 0
         // Object 参数优先级最低,避免 String.valueOf(Object) 抢先
-        if (paramType == Any::class.java || paramType == Object::class.java) return 10
+        // 注: Kotlin 中 Any::class.java 即映射到 java.lang.Object, 无需再比较 Object::class.java
+        if (paramType == Any::class.java) return 10
         // 精确类型匹配
         if (paramType == arg.javaClass) return 0
         // primitive vs wrapper 视为精确匹配(int 参数 vs Integer arg)
         if (paramType.isPrimitive && isPrimitiveWrapperOf(paramType, arg.javaClass)) return 0
         if (paramType.isAssignableFrom(arg.javaClass)) return 1
+        // List/Array -> Java Array: 比 Object 具体, 但不如精确匹配/父类型
+        // (对齐 rhino NativeArray -> byte[] 的 coerceType 行为)
+        // 场景: byte[].slice 返回 JS Array (ArrayList), 应优先匹配 write(byte[]) 而非 write(int)
+        if (paramType.isArray && (arg is List<*> || arg.javaClass.isArray)) return 3
         // Number -> 数值基本类型:根据是否整数值优先匹配
         if (arg is Number && paramType.isPrimitive) {
             val isIntValue = isIntegerNumber(arg)
@@ -1712,21 +1881,20 @@ object JavaObjectBridge {
 
     /**
      * 查找 setter 方法(setXxx),与 Rhino LiveConnect 行为一致。
+     *
+     * Rhino NativeJavaObject.put() 写入 bean 属性 xxx 时, 会从所有名为 setXxx 的 public
+     * 重载中按 JS value 的运行时类型选最匹配的一个 (等价于普通方法调用的重载选择),
+     * 而非仅找无参签名。这里直接复用 [findMethod] 完成重载选择 + 缓存。
+     *
+     * 旧实现用 `getDeclaredMethod("set$capName")` 无参版反射 API (Class.getDeclaredMethod(name)
+     * 单参数等价于查找无参方法), 永远找不到 `setVariable(String)` 等带参 setter,
+     * 导致 `source.variable = token` 这种 bean 属性写入静默失败。
+     * 而读路径 findGetter 用同样的无参版能找到无参 getVariable(), 造成读写不对称。
      */
-    private fun findSetter(clazz: Class<*>, name: String): Method? {
+    private fun findSetter(clazz: Class<*>, name: String, value: Any?): Method? {
         val capName =
             name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-        val setterName = "set$capName"
-        var c: Class<*>? = clazz
-        while (c != null) {
-            try {
-                val m = c.getDeclaredMethod(setterName)
-                if (m.parameterCount == 1 && !Modifier.isStatic(m.modifiers)) return m
-            } catch (_: NoSuchMethodException) {
-            }
-            c = c.superclass
-        }
-        return null
+        return findMethod(clazz, "set$capName", arrayOf(value))
     }
 
     private fun isArgsCompatible(paramTypes: Array<Class<*>>, args: Array<Any?>): Boolean {
@@ -1741,10 +1909,33 @@ object JavaObjectBridge {
             val argType = arg.javaClass
             if (!paramType.isAssignableFrom(argType)) {
                 // 尝试基本类型 + 包装类兼容
-                if (!isPrimitiveCompatible(paramType, argType)) return false
+                if (!isPrimitiveCompatible(paramType, argType)) {
+                    // 尝试 List/Array -> Java Array 兼容 (对齐 rhino NativeArray -> byte[])
+                    // 场景: byte[] 包装为 JavaObject 后, raw.slice(0,12) 走 Array.prototype.slice
+                    // 返回 JS Array (Java 侧 ArrayList), 传给 write(byte[]) 等方法时需识别为兼容,
+                    // 否则 findMethod 兜底选 write(int) → coerceValue(ArrayList, int) 抛
+                    // "ArrayList cannot be cast to Number"
+                    if (!isArrayCoercible(paramType, argType)) return false
+                }
             }
         }
         return true
+    }
+
+    /**
+     * 检查参数类型 (Java Array) 是否可从 argType (List/Array) 转换。
+     *
+     * 对齐 rhino NativeArray -> byte[] 等 Java 数组的 coerceType 行为:
+     * rhino 会把 NativeArray 元素逐个转换组装成目标数组。
+     *
+     * 场景: byte[] 包装为 JavaObject 后, raw.slice(0,12) 走 Array.prototype.slice
+     * 返回 JS Array (Java 侧 ArrayList), 传给 ByteArrayOutputStream.write(byte[]) 等
+     * 方法时, 需要识别为兼容并通过 [coerceValue] → [coerceToArray] 转换。
+     */
+    private fun isArrayCoercible(paramType: Class<*>, argType: Class<*>): Boolean {
+        if (!paramType.isArray) return false
+        // List/Java Array 都可以 coerce 到目标 Java Array (coerceValue.coerceToArray 实现)
+        return List::class.java.isAssignableFrom(argType) || argType.isArray
     }
 
     private fun isPrimitiveCompatible(paramType: Class<*>, argType: Class<*>): Boolean {
@@ -1916,7 +2107,8 @@ object JavaObjectBridge {
      * List/Array 转 Java Array (如 ajaxAll(Array<String>) 接收 JS 数组)。
      *
      * quickjs-kt 把 JS 数组转成 List 或 Array,但 Java 方法参数可能是 Array<String> 等,
-     * 需要转换。元素用 jsToJavaValue 解引用(处理句柄对象)。
+     * 需要转换。元素先经 jsToJavaValue 解引用句柄对象, 再经 [coerceValue] 转换到
+     * componentType (如 Integer -> byte, 对齐 rhino NativeArray -> byte[] 行为)。
      * rhino 会自动把 NativeArray 转成 Java 数组,这里模拟该行为。
      */
     private fun coerceToArray(value: Any, targetType: Class<*>): Any {
@@ -1933,7 +2125,14 @@ object JavaObjectBridge {
         }
         val array = java.lang.reflect.Array.newInstance(componentType, source.size)
         source.forEachIndexed { i, item ->
-            val coercedItem = if (item != null) jsToJavaValue(item, componentType) else null
+            // 先解引用句柄对象 (jsToJavaValue), 再 coerce 到 componentType (coerceValue)。
+            // 仅 jsToJavaValue 不够: byte[].slice 返回 JS Array 元素是 Integer (JS Number),
+            // Array.set(byte[], i, Integer) 会抛 IllegalArgumentException (byte[] 只接受 Byte),
+            // 必须经 coerceValue 把 Integer -> byte。
+            val coercedItem = if (item != null) {
+                val unwrapped = jsToJavaValue(item, componentType)
+                if (unwrapped != null) coerceValue(unwrapped, componentType) else null
+            } else null
             java.lang.reflect.Array.set(array, i, coercedItem)
         }
         return array

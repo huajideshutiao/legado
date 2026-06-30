@@ -327,6 +327,44 @@ class JsInteroperabilityTest {
         assertEquals(40, point.y)
     }
 
+    @Test
+    fun testBeanSetterViaPropertyAssignment() {
+        // 回归测试: bean 属性写入 obj.xxx = value 应调用 setXxx(value), 不能静默失败。
+        // 旧 findSetter 用无参版 getDeclaredMethod(name) 找不到带参的 setTime(long),
+        // 导致 date.time = 1000 写入无效; 而读 date.time 走 findGetter 能找到无参 getTime(),
+        // 造成读写不对称 (source.variable = token 同根因)。
+        // 用 java.util.Date 验证: 它有 getTime()/setTime(long) 这对 bean 方法, 但没有 public time 字段,
+        // 必须经 setter 才能写入。
+        val date = java.util.Date(0L)
+        QuickJsEngine.eval(
+            """
+            d.time = 1000;
+        """.trimIndent()
+        ) {
+            put("d", date)
+        }
+        assertEquals(1000L, date.time)
+    }
+
+    @Test
+    fun testBeanSetterAndGetterRoundtrip() {
+        // 回归测试: bean 属性写后读应一致, 覆盖
+        //   source.variable = token; java.log(source.variable)
+        // 这种读写组合场景。JS Number 1000 经 coerceArgs(Double -> long) 调 setTime(long),
+        // 读走 getTime() 返回 long -> JS Number, 两端值必须相等。
+        val date = java.util.Date(0L)
+        val result = QuickJsEngine.eval(
+            """
+            d.time = 9999;
+            d.time;
+        """.trimIndent()
+        ) {
+            put("d", date)
+        }
+        assertEquals(9999L, (result as Number).toLong())
+        assertEquals(9999L, date.time)
+    }
+
     // ============ Packages 深层路径访问 ============
 
     /**

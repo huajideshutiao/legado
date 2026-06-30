@@ -177,6 +177,57 @@ namespace {
         return false;
     }
 
+    // 判断 Java 对象是否为 Java 数组 (不含 List)
+    // 对齐 rhino: NativeJavaArray (Java 数组) 的 prototype 是 Array.prototype,
+    // NativeJavaList (List) 的 prototype 是 Object.prototype。设置 Array.prototype
+    // 时必须只针对真正的 Java 数组, 避免给 List 引入 rhino 没有的 slice/map/filter 行为。
+    bool isJavaArray(JNIEnv *env, jobject javaObj) {
+        if (!javaObj) return false;
+        if (!g_getClass || !g_isArray) return false;
+        jobject classObj = env->CallObjectMethod(javaObj, g_getClass);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            if (classObj) env->DeleteLocalRef(classObj);
+            return false;
+        }
+        jboolean isArray = env->CallBooleanMethod(classObj, g_isArray);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(classObj);
+            return false;
+        }
+        env->DeleteLocalRef(classObj);
+        return isArray == JNI_TRUE;
+    }
+
+    // 获取 Array.prototype (带 ctx 级缓存, 返回 DupValue, 调用方负责 FreeValue)
+    // 对齐 rhino NativeJavaArray.getPrototype(): Java 数组包装对象的 prototype 设为
+    // Array.prototype, 让 slice/map/filter/forEach/indexOf/join 等 Array.prototype
+    // 方法通过原型链可用。这些方法内部通过 this.length 和 this[i] 访问元素,
+    // 由 JavaObject exotic trap 处理 (getCollectionField 已支持 length/索引)。
+    // 缓存到 CtxOpaqueData::arrayProto, 避免每次 wrap 数组都查找 global.Array.prototype。
+    JSValue getArrayPrototype(JSContext *ctx) {
+        CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+        if (!data) return JS_UNDEFINED;
+        if (JS_IsUndefined(data->arrayProto)) {
+            JSValue global = JS_GetGlobalObject(ctx);
+            JSValue arrayCtor = JS_GetPropertyStr(ctx, global, "Array");
+            JS_FreeValue(ctx, global);
+            if (JS_IsException(arrayCtor) || JS_IsNull(arrayCtor) || JS_IsUndefined(arrayCtor)) {
+                return arrayCtor;
+            }
+            JSValue proto = JS_GetPropertyStr(ctx, arrayCtor, "prototype");
+            JS_FreeValue(ctx, arrayCtor);
+            if (JS_IsException(proto) || JS_IsNull(proto) || JS_IsUndefined(proto)) {
+                return proto;
+            }
+            // 缓存 (DupValue 增加引用计数, ctx 销毁时 freeCtxOpaque 释放)
+            data->arrayProto = JS_DupValue(ctx, proto);
+            return proto;  // proto 本身是 +1 (JS_GetPropertyStr 返回 DupValue)
+        }
+        return JS_DupValue(ctx, data->arrayProto);
+    }
+
     // Symbol.iterator 工厂函数: 把 Java List/Array 转成 JS Array 并返回其迭代器
     // for...of 会调用 obj[Symbol.iterator]() 获取迭代器, 本函数即为此调用的返回值。
     // this_val 是 Java List/Array 对象 (JavaObject class 实例)
@@ -335,10 +386,16 @@ void JavaObjectClass::unregisterRuntime(JSRuntime *rt) {
 
 JSValue JavaObjectClass::wrap(JSContext *ctx, JNIEnv *env, jobject javaObj) {
     if (classId == 0) {
+        // 旧实现 return JS_NULL 会让所有调用方(trap/callback 的 JS_Throw(errObj))
+        // 抛 null, JS catch(e) 拿到 null 二次抛 TypeError, 原始异常信息完全丢失。
+        // 改用 JS_ThrowInternalError: 自建 Error 对象 + JS_Throw 设到 current_exception,
+        // 返回 JS_EXCEPTION。调用方必须检查 JS_IsException 避免再 JS_Throw 覆盖
+        // (JS_Throw 不检测 JS_EXCEPTION, 会 JS_FreeValue(current_exception) 后赋值 JS_EXCEPTION,
+        // 清空已设的 Error 对象)。
         LOGE("JavaObjectClass not initialized");
-        return JS_NULL;
+        return JS_ThrowInternalError(ctx, "JavaObjectClass not initialized");
     }
-    if (!javaObj) return JS_NULL;
+    if (!javaObj) return JS_NULL;  // Java null 转 JS null (合理语义)
 
     // 创建全局引用,存入 opaque
     jobject globalRef = env->NewGlobalRef(javaObj);
@@ -347,11 +404,29 @@ JSValue JavaObjectClass::wrap(JSContext *ctx, JNIEnv *env, jobject javaObj) {
     JSValue obj = JS_NewObjectClass(ctx, classId);
     if (JS_IsException(obj)) {
         env->DeleteGlobalRef(globalRef);
-        return JS_NULL;
+        // JS_NewObjectClass 失败(通常 OOM)时 ctx 异常 slot 可能已设,
+        // JS_ThrowInternalError 会 JS_FreeValue 旧异常后设新 Error, 返回 JS_EXCEPTION。
+        LOGE("JS_NewObjectClass failed for JavaObject");
+        return JS_ThrowInternalError(ctx, "JS_NewObjectClass failed for JavaObject");
     }
 
     // 存全局引用到 opaque 槽
     JS_SetOpaque(obj, globalRef);
+
+    // 对齐 rhino NativeJavaArray.getPrototype(): Java 数组的 prototype 设为 Array.prototype,
+    // 让 slice/map/filter/forEach/indexOf/join 等数组方法通过原型链可用。
+    // 仅对真正的 Java 数组 (getClass().isArray()), 不对 List 设 (rhino NativeJavaList
+    // 的 prototype 是 Object.prototype, 不暴露 Array.prototype 方法)。
+    // 例: this.java.base64DecodeToByteArray(...) 返回 byte[], JS 中 raw.slice(0,12) 可用。
+    if (isJavaArray(env, javaObj)) {
+        JSValue proto = getArrayPrototype(ctx);
+        if (!JS_IsException(proto) && !JS_IsNull(proto) && !JS_IsUndefined(proto)) {
+            // JS_SetPrototype 内部会 DupValue, 这里释放 getArrayPrototype 返回的本地引用
+            JS_SetPrototype(ctx, obj, proto);
+        }
+        JS_FreeValue(ctx, proto);
+    }
+
     return obj;
 }
 
@@ -415,6 +490,9 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
         if (thr) {
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return -1;
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
             // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
             // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
@@ -423,6 +501,22 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
         }
         JS_ThrowInternalError(ctx, "Java hasProperty threw (no throwable)");
         return -1;
+    }
+    if (!result) {
+        // Java 侧属性不存在, 检查原型链 (对齐 rhino, 见 getProperty trap 中同类注释)
+        // 例: byte[] 数组 raw 的 'slice' in raw → Java 侧无 slice → 沿原型链找 Array.prototype.slice
+        JSValue proto = JS_GetPrototype(ctx, obj);
+        if (JS_IsException(proto)) {
+            return -1;
+        }
+        if (!JS_IsNull(proto)) {
+            // proto 非 exotic, JS_HasProperty 走标准路径, 不递归触发本 trap
+            int has = JS_HasProperty(ctx, proto, prop);
+            JS_FreeValue(ctx, proto);
+            return has;  // -1 异常, 0 不存在, 1 存在
+        }
+        JS_FreeValue(ctx, proto);
+        return 0;
     }
     return result ? 1 : 0;
 }
@@ -488,6 +582,9 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
         if (thr) {
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return JS_EXCEPTION;
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
             JS_Throw(ctx, errObj);
             return JS_EXCEPTION;
@@ -496,16 +593,37 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     }
 
     if (!info) {
-        // 属性不存在
+        // Java 侧属性不存在, 沿原型链查找 (对齐 rhino NativeJavaObject/NativeJavaArray):
+        // rhino 中 Java 对象的 prototype 是 Object.prototype (NativeJavaObject 默认)
+        // 或 Array.prototype (NativeJavaArray, 见 wrap 中的 JS_SetPrototype), 属性找不到时
+        // 沿原型链查找。QuickJS 的 exotic get_property trap 调用后直接返回, 不会自动沿
+        // 原型链, 需在此手动处理。
+        // 例: byte[] 数组 raw 的 raw.slice → Java 侧无 slice → 沿原型链找 Array.prototype.slice
+        JSValue proto = JS_GetPrototype(ctx, obj);
+        if (JS_IsException(proto)) {
+            return proto;  // 异常已设到 ctx, 直接返回
+        }
+        if (!JS_IsNull(proto)) {
+            // proto 是 Array.prototype (数组) 或 Object.prototype (普通对象),
+            // JS_GetProperty 在 proto 上做标准属性查找 (proto 非 exotic, 不递归触发本 trap)
+            JSValue val = JS_GetProperty(ctx, proto, atom);
+            JS_FreeValue(ctx, proto);
+            return val;
+        }
+        JS_FreeValue(ctx, proto);
         return JS_UNDEFINED;
     }
 
     // 解析 [fieldValue, fieldExists, hasMethod]
     jsize len = env->GetArrayLength(info);
     if (len < 3) {
+        // 协议违反: getPropertyInfo 应返回 3 元素数组或 null。
+        // 旧实现 LOGE + return JS_UNDEFINED 让 JS 拿到 undefined 且无法 try-catch,
+        // 对齐 rhino(Java 侧契约违反时抛 EvaluatorException)改为抛异常。
         LOGE("getProperty: info len=%d < 3", len);
         env->DeleteLocalRef(info);
-        return JS_UNDEFINED;
+        return JS_ThrowInternalError(
+                ctx, "getPropertyInfo returned array length %d < 3", len);
     }
 
     jobject fieldValue = env->GetObjectArrayElement(info, 0);
@@ -620,6 +738,9 @@ int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return -1;
             JS_Throw(ctx, errObj);
             return -1;
         }
@@ -636,16 +757,75 @@ int JavaObjectClass::deleteProperty(JSContext *ctx, JSValueConst obj, JSAtom pro
 
 int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
                                     JSValueConst obj, JSAtom prop) {
-    // 简化: 用 has_property + get_property 填充 descriptor
-    int has = hasProperty(ctx, obj, prop);
-    if (has <= 0) return has;
+    // 只查 Java 侧自有属性, 不沿原型链 (对齐 rhino: slice 等数组方法在原型链上, 不是自有属性)。
+    // 原 impl 调 hasProperty + getProperty, 但这俩现在会在 Java 侧返回"不存在"时沿原型链查找
+    // (对齐 rhino NativeJavaObject/NativeJavaArray), 导致 getOwnProperty 误把原型链属性当成
+    // 自有属性 (如 raw.hasOwnProperty('slice') 错误返回 true)。改为直接调 Java 侧 getPropertyInfo,
+    // info==null 时返回 0 (非自有属性), 不沿原型链。
+    JNIEnv *env = getJniEnv();
+    if (!env) {
+        JS_ThrowInternalError(ctx, "JNI env unavailable in getOwnProperty");
+        return -1;
+    }
+    ensureBridgeInited(env);
+    if (!g_getPropertyInfo) {
+        JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.getPropertyInfo not bound");
+        return -1;
+    }
 
+    jobject javaObj = getJavaObject(ctx, obj);
+    if (!javaObj) return 0;
+
+    const char *name = atomToCString(ctx, prop);
+    if (!name) {
+        // JS_AtomToCString 失败 (通常 OOM) 时 ctx 异常已设
+        return -1;
+    }
+    jstring jname = env->NewStringUTF(name);
+    JS_FreeCString(ctx, name);
+
+    bool dangerousApi = getDangerousApi(ctx);
+    jobjectArray info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
+                                                                   g_getPropertyInfo, javaObj,
+                                                                   jname,
+                                                                   dangerousApi ? JNI_TRUE
+                                                                                : JNI_FALSE);
+    env->DeleteLocalRef(jname);
+
+    if (env->ExceptionCheck()) {
+        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
+        jthrowable thr = env->ExceptionOccurred();
+        env->ExceptionClear();
+        if (info) env->DeleteLocalRef(info);
+        if (thr) {
+            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
+            env->DeleteLocalRef(thr);
+            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return -1;
+            JS_Throw(ctx, errObj);
+            return -1;
+        }
+        JS_ThrowInternalError(ctx, "Java getPropertyInfo threw (no throwable)");
+        return -1;
+    }
+
+    if (!info) {
+        // Java 侧无此属性, 不是自有属性 (不沿原型链, 对齐 rhino)
+        return 0;
+    }
+
+    // info 非空: Java 侧有此属性 (field/method/getter/collection field), 是自有属性
     if (desc) {
+        // 调 getProperty 获取值。info != null 时 getProperty 走 Java 侧分支返回值,
+        // 不会进入沿原型链分支, 不会重复调 Java 侧 (info != null 直接返回 method callable/field 值)
         JSValue val = getProperty(ctx, obj, prop, JS_UNDEFINED);
         if (JS_IsException(val)) {
             // 不能把 JS_EXCEPTION 写进 desc->value 后返回 1 (success),
             // 调用方会把它当成普通 value 使用, 后续 JS_DupValue/JS_FreeValue
             // 会污染异常 slot, 触发远处 JS_ToCString -> strv abort。
+            env->DeleteLocalRef(info);
             return -1;
         }
         desc->flags = JS_PROP_WRITABLE | JS_PROP_ENUMERABLE | JS_PROP_CONFIGURABLE;
@@ -653,6 +833,7 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
         desc->setter = JS_UNDEFINED;
         desc->value = val;
     }
+    env->DeleteLocalRef(info);
     return 1;
 }
 
@@ -700,6 +881,9 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return -1;
             JS_Throw(ctx, errObj);
             return -1;
         }

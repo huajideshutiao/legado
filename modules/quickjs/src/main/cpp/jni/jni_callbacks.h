@@ -31,6 +31,11 @@ struct CtxOpaqueData {
     // 循环里 sb.append 这样的写法每轮都要分配新 callable; 缓存后 JS 端命中走 JS_DupValue
     // (引用计数 +1) 即可。释放在 freeCtxOpaque 里统一 JS_FreeValue。
     std::unordered_map<std::string, JSValue> methodCallableCache;
+    // Array.prototype 缓存 (lazy init): Java 数组 wrap 时设置 prototype 为 Array.prototype,
+    // 对齐 rhino NativeJavaArray.getPrototype() 行为, 让 slice/map/filter/forEach/indexOf
+    // 等 Array.prototype 方法通过原型链可用。JS_UNDEFINED 表示未初始化。
+    // 释放在 freeCtxOpaque 里统一 JS_FreeValue。
+    JSValue arrayProto;
 };
 
 /**

@@ -136,6 +136,7 @@ void initCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
     CtxOpaqueData *data = new CtxOpaqueData();
     data->dangerousApi = false;
+    data->arrayProto = JS_UNDEFINED;  // lazy init, 首次 wrap Java 数组时填充
     JS_SetContextOpaque(ctx, data);
 }
 
@@ -148,6 +149,10 @@ void freeCtxOpaque(JSContext *ctx) {
             JS_FreeValue(ctx, kv.second);
         }
         data->methodCallableCache.clear();
+        // 释放缓存的 Array.prototype (若已初始化)
+        if (!JS_IsUndefined(data->arrayProto)) {
+            JS_FreeValue(ctx, data->arrayProto);
+        }
         delete data;
         JS_SetContextOpaque(ctx, nullptr);
     }
@@ -248,6 +253,9 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
             JS_FreeCString(ctx, methodName);
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return JS_EXCEPTION;
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
             // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
             // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
@@ -362,6 +370,9 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
         if (thr) {
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
+            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
+            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            if (JS_IsException(errObj)) return JS_EXCEPTION;
             // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 jsMethodCallable 注释)
             JS_Throw(ctx, errObj);
             return JS_EXCEPTION;
@@ -378,7 +389,13 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     JSValue ret;
     if (nameStr == "__newJavaInstance" || nameStr == "__newJavaAdapter") {
         if (result == nullptr) {
-            ret = JS_NULL;
+            // 对齐 rhino: 构造失败应抛异常而非静默返回 null。
+            // createInstance 已改为抛 IllegalStateException (对齐 rhino "msg.no.java.ctor"),
+            // 走 ExceptionCheck 分支 wrap Throwable; 此处 result==null 仅在安全拦截
+            // (isClassVisible/isObjectVisible 返回 false) 或 adapter 创建失败时发生,
+            // 同样抛 TypeError 让 JS 侧知晓, 不静默返回 JS_NULL 导致 `new JavaClass()` 得到 null
+            ret = JS_ThrowTypeError(ctx,
+                                    "Java instantiation failed (security blocked or no matching constructor)");
         } else {
             ret = JavaObjectClass::wrap(ctx, env, result);
         }

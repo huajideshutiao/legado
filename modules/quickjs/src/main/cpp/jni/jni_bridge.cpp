@@ -373,7 +373,21 @@ Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jobject 
     if (!ctxPtr || !javaObj) return nullptr;
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JavaObjectClass::wrap(ctx, env, javaObj);
-    if (JS_IsNull(val)) return nullptr;
+    if (JS_IsNull(val)) return nullptr;  // javaObj 为 null (理论不会, 开头已检查)
+    if (JS_IsException(val)) {
+        // wrap 失败 (classId==0/OOM): JS_ThrowInternalError 已设 Error 到 current_exception
+        // 取出异常抛 JsNativeException, 对齐 nativeEval/nativeEvalBytecode/nativeCompile 模式;
+        // 否则 Error 残留 ctx, 下次 eval 会误报, 且 Java 侧拿到 nullptr 不知是包装失败
+        JSValue exc = JS_GetException(ctx);
+        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        JS_FreeValue(ctx, exc);
+        jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
+        if (excCls) {
+            env->ThrowNew(excCls, msgStr.c_str());
+            env->DeleteLocalRef(excCls);
+        }
+        return nullptr;
+    }
     int64_t handle = JsHandleTable::instance().store(ctx, val);
     jclass longCls = env->FindClass("java/lang/Long");
     jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
@@ -505,7 +519,18 @@ Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jobject cl
     env->ReleaseByteArrayElements(bytecode, data, JNI_ABORT);
 
     if (JS_IsException(funVal)) {
+        // 对齐 nativeCompile(行 464-479): JS_ReadObject 失败(bytecode 损坏/版本不兼容)时
+        // ctx 异常 slot 已设, 获取异常信息抛 JsNativeException, 避免返回 null 让 Kotlin 侧
+        // 只能抛通用 "Eval bytecode failed" 丢失原始错误信息(如 "bytecode header mismatch")
+        JSValue exc = JS_GetException(ctx);
+        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, funVal);
+        jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
+        if (excCls) {
+            env->ThrowNew(excCls, msgStr.c_str());
+            env->DeleteLocalRef(excCls);
+        }
         return nullptr;
     }
 
