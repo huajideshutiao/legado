@@ -43,9 +43,9 @@ class ScriptException : Exception {
      */
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.append(message ?: "")
+        sb.append(message?.trim() ?: "")
         if (fileName != null && lineNumber != -1) {
-            sb.append(" at ").append(fileName).append(':').append(lineNumber)
+            sb.append("at ").append(fileName).append(':').append(lineNumber)
             if (columnNumber != -1) {
                 sb.append(':').append(columnNumber)
             }
