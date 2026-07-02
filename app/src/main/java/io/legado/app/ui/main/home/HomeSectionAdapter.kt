@@ -18,7 +18,9 @@ import io.legado.app.databinding.ItemHomeCoverCardBinding
 import io.legado.app.databinding.ItemHomeRankBookBinding
 import io.legado.app.databinding.ViewHomeSectionTitleBinding
 import io.legado.app.model.BookCover
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.widget.recycler.LoadMoreView
+import io.legado.app.ui.widget.setUpExploreOptions
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.visible
 import kotlin.math.abs
@@ -48,6 +50,7 @@ class HomeSectionAdapter(
             val holder = SectionHolder(section)
             holders[section.id] = holder
             container.addView(holder.root)
+            holder.updateOptions(callback.sectionOptions(section.id))
             holder.updateBooks(booksMap[section.id] ?: emptyList())
             holder.updateLoading(callback.isLoading(section.id))
         }
@@ -63,6 +66,10 @@ class HomeSectionAdapter(
 
     fun updateSectionError(sectionId: String) {
         holders[sectionId]?.showError(context.getString(R.string.home_source_invalid))
+    }
+
+    fun updateSectionOptions(sectionId: String, options: List<ExploreOption>) {
+        holders[sectionId]?.updateOptions(options)
     }
 
     private fun onBook(section: HomeSection, book: SearchBook, longClick: Boolean) {
@@ -86,12 +93,29 @@ class HomeSectionAdapter(
             llTitle.setOnClickListener { callback.onMoreClick(section) }
         }
 
+        /**
+         * 参数选择控件容器（与 activity_explore_show.xml 的 ll_filter 一致）。
+         * 默认隐藏，setUpExploreOptions 内部按 options 是否为空切 isVisible。
+         */
+        private val llFilter = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            visibility = View.GONE
+        }
+
         private var adapter: RecyclerView.Adapter<*>? = null
         private var rv: RecyclerView? = null
         private var stateView: LoadMoreView? = null
 
         init {
+            // titleBinding 已 inflate 到 root 索引 0;llFilter 插到索引 1
+            // 无限流也显示参数选择行(书籍在 gridAdapter 网格项里,header 只放 title+llFilter)
+            root.addView(llFilter, 1)
             if (section.style != HomeSection.STYLE_INFINITE_GRID) {
+                // 随后 rv/stateView 追加到末尾,最终顺序: title → llFilter → rv → stateView
                 rv = RecyclerView(context).apply {
                     setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
                     clipToPadding = false
@@ -190,6 +214,18 @@ class HomeSectionAdapter(
             is RankBookAdapter -> a.itemCount
             is FourColumnAdapter -> a.itemCount
             else -> 0
+        }
+
+        /**
+         * 渲染参数选择 chip 行。复用 [setUpExploreOptions] 扩展：
+         * 内部 removeAllViews + 按 options 渲染 chip + 切换 isVisible。
+         * 用户点 chip 时扩展内部直接改 option.selectedValue,这里只回调通知 VM 重载。
+         * 无限流同样适用(书籍在 gridAdapter 网格项里,参数行在 header)。
+         */
+        fun updateOptions(options: List<ExploreOption>) {
+            llFilter.setUpExploreOptions(options) {
+                callback.onOptionSelected(section)
+            }
         }
 
         fun updateBooks(books: List<SearchBook>) {
@@ -412,5 +448,11 @@ class HomeSectionAdapter(
         fun onBookClick(book: SearchBook, section: HomeSection, longClick: Boolean)
         fun onMoreClick(section: HomeSection)
         fun isLoading(sectionId: String): Boolean
+
+        /** 取该展示项的参数选项（可变 ExploreOption 实例，用于渲染 chip 行） */
+        fun sectionOptions(sectionId: String): List<ExploreOption>
+
+        /** 用户切换了某个参数，通知 VM 重载该展示项 */
+        fun onOptionSelected(section: HomeSection)
     }
 }

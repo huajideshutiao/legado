@@ -112,6 +112,12 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
         }
 
         override fun isLoading(sectionId: String) = viewModel.isLoading(tabTitle, sectionId)
+
+        override fun sectionOptions(sectionId: String) =
+            viewModel.sectionOptions(tabTitle, sectionId)
+
+        override fun onOptionSelected(section: HomeSection) =
+            viewModel.onSectionOptionSelected(tabTitle, section)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -156,6 +162,13 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
             } else {
                 sectionViews.updateSectionBooks(sectionId, books)
             }
+        }
+        viewModel.sectionOptionsChanged.observe(viewLifecycleOwner) { (changedTab, sectionId) ->
+            if (changedTab != tabTitle) return@observe
+            sectionViews.updateSectionOptions(
+                sectionId,
+                viewModel.sectionOptions(tabTitle, sectionId)
+            )
         }
         viewModel.sectionLoadingChanged.observe(viewLifecycleOwner) { (changedTab, sectionId) ->
             if (changedTab != tabTitle) return@observe

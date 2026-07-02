@@ -10,7 +10,9 @@ import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.HomeTabHelp
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +30,9 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
         var initialized: Boolean = false
         val sectionBooksMap = mutableMapOf<String, List<SearchBook>>()
         val loadingSet = mutableSetOf<String>()
+
+        /** 每个展示项的参数选项（可变 ExploreOption 实例，VM/Adapter/控件三处共享，用户点 chip 直接改实例字段） */
+        val sectionOptionsMap = mutableMapOf<String, List<ExploreOption>>()
         var infiniteSection: HomeSection? = null
         var infinitePage: Int = 1
         var infiniteHasMore: Boolean = true
@@ -49,6 +54,9 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
     /** 携带 tabTitle + sectionId：该展示项书源失效，UI 需展示错误占位 */
     val sectionErrorChanged = MutableLiveData<Pair<String, String>>()
 
+    /** 携带 tabTitle + sectionId：该展示项的参数选项已就绪/已变更，UI 需重渲染 chip 行 */
+    val sectionOptionsChanged = MutableLiveData<Pair<String, String>>()
+
     private val tabStates = mutableMapOf<String, TabState>()
 
     fun stateOf(tabTitle: String): TabState = tabStates.getOrPut(tabTitle) { TabState() }
@@ -62,6 +70,9 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
 
     fun sectionBooks(tabTitle: String, sectionId: String): List<SearchBook> =
         stateOf(tabTitle).sectionBooksMap[sectionId] ?: emptyList()
+
+    fun sectionOptions(tabTitle: String, sectionId: String): List<ExploreOption> =
+        stateOf(tabTitle).sectionOptionsMap[sectionId] ?: emptyList()
 
     // ─── 加载入口 ────────────────────────────────────────────────────────
 
@@ -87,11 +98,17 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
     }
 
     private fun loadSection(tabTitle: String, section: HomeSection) {
+        val state = stateOf(tabTitle)
+        // 首次或 url 变更后(map 被清空)才解析;用户切参数时 map 非空,跳过以保留选择
+        // 无限流也走这里:解析后存入 map,loadInfinite 读取 selectedOptions
+        if (state.sectionOptionsMap[section.id] == null) {
+            state.sectionOptionsMap[section.id] = parseExploreOptionsFromUrl(section.exploreUrl)
+            sectionOptionsChanged.postValue(tabTitle to section.id)
+        }
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             loadInfinite(tabTitle, resetPage = true)
             return
         }
-        val state = stateOf(tabTitle)
         state.loadingSet.add(section.id)
         sectionLoadingChanged.postValue(tabTitle to section.id)
         execute {
@@ -100,7 +117,14 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
                 sectionErrorChanged.postValue(tabTitle to section.id)
                 return@execute
             }
-            val result = getBookListAwait(source, section.exploreUrl, 1, isSearch = false)
+            // 与 ExploreShowViewModel.explore 一致:把 resolvedValue 通过 selectedOptions 传出
+            val selectedOptions = state.sectionOptionsMap[section.id]
+                ?.takeIf { it.isNotEmpty() }
+                ?.associate { it.name to it.resolvedValue }
+            val result = getBookListAwait(
+                source, section.exploreUrl, 1, isSearch = false,
+                selectedOptions = selectedOptions
+            )
             state.sectionBooksMap[section.id] = result.books
             sectionUpdated.postValue(tabTitle to section.id)
         }.onError {
@@ -110,6 +134,18 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
             state.loadingSet.remove(section.id)
             sectionLoadingChanged.postValue(tabTitle to section.id)
         }
+    }
+
+    /**
+     * 用户在 chip 行切换参数后调用。option 实例的 selectedValue 已被 setUpExploreOptions
+     * 内部点击监听修改,这里只负责清空旧 books 并重新加载第 1 页。
+     * 不重新解析 options(避免重置用户选择)。
+     */
+    fun onSectionOptionSelected(tabTitle: String, section: HomeSection) {
+        val state = stateOf(tabTitle)
+        state.sectionBooksMap.remove(section.id)
+        sectionUpdated.postValue(tabTitle to section.id)
+        loadSection(tabTitle, section)
     }
 
     fun loadInfinite(tabTitle: String, resetPage: Boolean = false) {
@@ -128,8 +164,13 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
         execute {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@execute
+            // 与 ExploreShowViewModel.explore 一致:把 resolvedValue 通过 selectedOptions 传出
+            val selectedOptions = state.sectionOptionsMap[section.id]
+                ?.takeIf { it.isNotEmpty() }
+                ?.associate { it.name to it.resolvedValue }
             val result = getBookListAwait(
-                source, section.exploreUrl, state.infinitePage, isSearch = false
+                source, section.exploreUrl, state.infinitePage, isSearch = false,
+                selectedOptions = selectedOptions
             )
             state.infiniteBookSet.addAll(result.books)
             state.infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
@@ -177,6 +218,7 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
                 state.infiniteHasMore = true
             } else {
                 state.sectionBooksMap.remove(section.id)
+                state.sectionOptionsMap.remove(section.id)
             }
             loadSection(tabTitle, section)
         }
@@ -186,6 +228,7 @@ class HomeViewModel(application: Application) : BaseViewModel(application) {
         val state = stateOf(tabTitle)
         state.sectionBooksMap.remove(section.id)
         state.loadingSet.remove(section.id)
+        state.sectionOptionsMap.remove(section.id)
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             state.infiniteSection = null
             state.infiniteBookSet.clear()
