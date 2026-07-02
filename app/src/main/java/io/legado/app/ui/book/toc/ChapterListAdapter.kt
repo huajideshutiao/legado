@@ -28,10 +28,15 @@ import java.util.concurrent.ConcurrentHashMap
 class ChapterListAdapter(context: Context, val callback: Callback) :
     DiffRecyclerAdapter<BookChapter, ItemChapterListBinding>(context) {
 
+    companion object {
+        private const val PAYLOAD_COLLAPSE = "collapse"
+    }
+
     val cacheFileNames = hashSetOf<String>()
     private val displayTitleMap = ConcurrentHashMap<String, String>()
     private val handler = Handler(Looper.getMainLooper())
-    private var allChapters: List<BookChapter> = emptyList()
+    internal var allChapters: List<BookChapter> = emptyList()
+        private set
     private val collapsedVolumeIndices = hashSetOf<Int>()
     private var pendingChapterListReset = false
 
@@ -42,7 +47,8 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                 oldItem: BookChapter,
                 newItem: BookChapter
             ): Boolean {
-                return oldItem.index == newItem.index
+                // index 会因反转/折叠而重排，不能作为身份；url 是主键的一部分
+                return oldItem.url == newItem.url
             }
 
             override fun areContentsTheSame(
@@ -97,7 +103,12 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
         if (!collapsedVolumeIndices.add(volume.index)) {
             collapsedVolumeIndices.remove(volume.index)
         }
+        // 折叠状态不属于 BookChapter，DiffUtil 感知不到，需显式刷新箭头
+        val position = getItems().indexOfFirst { it === volume }
         setItems(buildDisplayList())
+        if (position >= 0) {
+            notifyItemChanged(position, PAYLOAD_COLLAPSE)
+        }
     }
 
     fun clearDisplayTitle() {

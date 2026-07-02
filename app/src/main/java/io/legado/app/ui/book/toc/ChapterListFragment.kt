@@ -150,6 +150,16 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         }
     }
 
+    override fun reverseChapterList() {
+        val current = adapter.allChapters
+        if (current.isEmpty()) return
+        val reversed = current.reversed().apply {
+            forEachIndexed { i, c -> c.index = i }
+        }
+        adapter.setChapterList(reversed)
+        viewModel.reverseToc(reversed)
+    }
+
     override fun clearDisplayTitle() {
         adapter.clearDisplayTitle()
         adapter.upDisplayTitles(mLayoutManager.findFirstVisibleItemPosition())

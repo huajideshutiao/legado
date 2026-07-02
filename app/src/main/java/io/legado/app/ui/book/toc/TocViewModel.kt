@@ -9,6 +9,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
 import io.legado.app.model.ReadBook
@@ -51,19 +52,17 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun reverseToc(success: (book: Book) -> Unit) {
+    fun reverseToc(newToc: List<BookChapter>) {
+        if (newToc.isEmpty()) return
         execute {
-            bookData.value?.apply {
-                config.reverseToc = !config.reverseToc
-                val toc = appDb.bookChapterDao.getChapterList(bookUrl)
-                val newToc = toc.reversed()
-                newToc.forEachIndexed { index, bookChapter ->
-                    bookChapter.index = index
+            bookData.value?.let { book ->
+                book.config.reverseToc = !book.config.reverseToc
+                // 非书架书可能没有 books 行，FK 约束会让 INSERT 抛异常，
+                // 尽力持久化即可，UI 已由调用方直接反转。
+                runCatching {
+                    appDb.bookChapterDao.insert(*newToc.toTypedArray())
                 }
-                appDb.bookChapterDao.insert(*newToc.toTypedArray())
             }
-        }.onSuccess {
-            it?.let(success)
         }
     }
 
@@ -123,6 +122,8 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
 
     interface ChapterListCallBack {
         fun upChapterList(searchKey: String?)
+
+        fun reverseChapterList()
 
         fun clearDisplayTitle()
 

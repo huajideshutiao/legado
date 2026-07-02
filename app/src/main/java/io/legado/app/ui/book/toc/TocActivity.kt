@@ -2,7 +2,6 @@
 
 package io.legado.app.ui.book.toc
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -138,13 +137,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
                 }
             }
 
-            R.id.menu_reverse_toc -> viewModel.reverseToc {
-                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
-                setResult(RESULT_OK, Intent().apply {
-                    putExtra("index", it.durChapterIndex)
-                    putExtra("chapterPos", 0)
-                })
-            }
+            R.id.menu_reverse_toc -> viewModel.chapterListCallBack?.reverseChapterList()
 
             R.id.menu_use_replace -> {
                 AppConfig.tocUiUseReplace = !item.isChecked
