@@ -90,8 +90,9 @@ namespace {
             g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
                                                         "(Ljava/lang/Object;Z)[Ljava/lang/String;");
 
-            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames) {
-                LOGE("JavaObjectBridgeNative methods not found");
+            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
+                !g_BooleanCls || !g_BooleanValue) {
+                LOGE("JavaObjectBridgeNative methods or Boolean class not found");
                 env->ExceptionClear();
             }
 
@@ -207,7 +208,7 @@ namespace {
     // 由 JavaObject exotic trap 处理 (getCollectionField 已支持 length/索引)。
     // 缓存到 CtxOpaqueData::arrayProto, 避免每次 wrap 数组都查找 global.Array.prototype。
     JSValue getArrayPrototype(JSContext *ctx) {
-        CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+        auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
         if (!data) return JS_UNDEFINED;
         if (JS_IsUndefined(data->arrayProto)) {
             JSValue global = JS_GetGlobalObject(ctx);
@@ -235,7 +236,7 @@ namespace {
     // (Array 的默认迭代器), 复用 QuickJS 内置 Array 迭代器逻辑。
     // 注意: 用 JSCFunction 签名 (而非 JSCFunctionData), 因为 this_val 已携带
     // Java 对象引用, 无需额外 func_data。
-    static JSValue jsJavaListSymbolIterator(JSContext *ctx, JSValueConst this_val,
+    JSValue jsJavaListSymbolIterator(JSContext *ctx, JSValueConst this_val,
                                             int argc, JSValueConst *argv) {
         JNIEnv *env = getJniEnv();
         if (!env) {
@@ -566,7 +567,7 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
 
     bool dangerousApi = getDangerousApi(ctx);
     // getPropertyInfo 返回 [fieldValue, fieldExists, hasMethod] 或 null
-    jobjectArray info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
+    auto info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
                                                                    g_getPropertyInfo, javaObj,
                                                                    jname,
                                                                    dangerousApi ? JNI_TRUE
@@ -655,13 +656,12 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     JSValue ret = JS_UNDEFINED;
     if (hasMethod) {
         // method 优先 (对齐 rhino FieldAndMessages)
-        // 优化: 创建 callable 后用 JS_DefinePropertyValue 固化为对象自有属性,
-        // 后续访问直接走属性路径 (不再触发 trap), 避免每次都 hash 查 methodName。
+        // 注意: 不要在 exotic get_property trap 内用 JS_DefinePropertyValue 固化 callable。
+        // trap 被引擎调用时会持有 obj->shape 指针, trap 内改 obj 会触发 shape 迁移,
+        // 老 shape 被释放后引擎读到悬垂指针, 会在后续 JS_GetPrototype 里 SEGV。
         const char *methodName = atomToCString(ctx, atom);
         if (methodName) {
             ret = getOrCreateMethodCallable(ctx, methodName);
-            // 把 callable 写为对象自有属性 (JS_PROP_CONFIGURABLE 允许 delete)
-            JS_DefinePropertyValue(ctx, obj, atom, JS_DupValue(ctx, ret), JS_PROP_CONFIGURABLE);
             JS_FreeCString(ctx, methodName);
         }
         // fieldValue 不再需要, 释放
@@ -785,7 +785,7 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
     JS_FreeCString(ctx, name);
 
     bool dangerousApi = getDangerousApi(ctx);
-    jobjectArray info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
+    auto info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
                                                                    g_getPropertyInfo, javaObj,
                                                                    jname,
                                                                    dangerousApi ? JNI_TRUE
@@ -865,7 +865,7 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
     }
 
     bool dangerousApi = getDangerousApi(ctx);
-    jobjectArray names = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
+    auto names = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
                                                                     g_getPropertyNames, javaObj,
                                                                     dangerousApi ? JNI_TRUE
                                                                                  : JNI_FALSE);
@@ -909,10 +909,10 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
     *plen = len;
 
     for (jsize i = 0; i < len; i++) {
-        jstring name = (jstring) env->GetObjectArrayElement(names, i);
+        auto name = (jstring) env->GetObjectArrayElement(names, i);
         const char *cname = env->GetStringUTFChars(name, nullptr);
         (*ptab)[i].atom = JS_NewAtom(ctx, cname ? cname : "");
-        (*ptab)[i].is_enumerable = 1;
+        (*ptab)[i].is_enumerable = true;
         env->ReleaseStringUTFChars(name, cname);
         env->DeleteLocalRef(name);
     }
@@ -921,7 +921,7 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
 }
 
 void JavaObjectClass::finalizer(JSRuntime *rt, JSValueConst val) {
-    jobject globalRef = (jobject) JS_GetOpaque(val, classId);
+    auto globalRef = (jobject) JS_GetOpaque(val, classId);
     if (!globalRef || !cachedJvm) return;
 
     JNIEnv *env = nullptr;

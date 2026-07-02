@@ -181,13 +181,21 @@ object QuickJsEngine {
      * 只存在于子 scope, 于是 `cache` 解析为 undefined, 复刻 rhino 行为时就破功。
      *
      * SharedJsScope 的 ctx 本身就是 ThreadLocal 线程独占的 (见 SharedJsScope.threadCache),
-     * topScope 不存在跨线程共享, 所以直接走"注入到 globalThis + 执行后清理"是安全的:
+     * topScope 不存在跨线程共享, 所以直接走"注入到 globalThis + 执行后恢复"是安全的:
      * - bindings 进入 globalThis ⇒ user JS 和 jsLib 函数都能通过普通自由变量查找命中
-     * - 执行结束后 [cleanupBindings] 删除注入的键, 避免 binding 在 jsLib 函数之间跨 evalJS 残留
+     * - 执行结束后 pop 快照, 把 globalThis 上的 binding 恢复到 push 前的值
+     *
+     * 对齐 rhino 子 scope 的 push/pop 语义:
+     * - rhino 用 `bindings.prototype = topScope` + 词法环境,子 scope 出栈后父 scope 变量不变
+     * - quickjs 无 prototype 链,改用"快照当前值 → 注入 → 执行 → 恢复快照"
+     * - 关键场景: 外层 evalJS 在 java.ajax() 里触发内层 evalJS (如 header <js>),
+     *   内层的 push/pop 只影响内层生命周期, 内层 pop 把 globalThis.java 恢复为外层注入的值,
+     *   避免历史上"内层 cleanup 直接 delete → 外层 java undefined → De(java.ajax(...))
+     *   在 java.ajax() 求值期间就把外层的 java 抹掉"这类跨栈污染。
      *
      * @param compiled [compileForSubScope] 编译出的 wrapJsForEval 包装后的 bytecode
      * @param scope SharedJsScope 缓存的 topScope (线程独占)
-     * @param bindings 变量注入到 topScope 的 globalThis, 执行后清理
+     * @param bindings 变量注入到 topScope 的 globalThis, 执行后按快照恢复
      */
     fun evalInSubScope(
         compiled: CompiledScript,
@@ -195,12 +203,43 @@ object QuickJsEngine {
         bindings: ScriptBindings,
         coroutineContext: CoroutineContext?
     ): Any? {
-        val injectedKeys = injectBindings(scope, bindings)
+        val keys = bindings.keys.filter { isValidVarName(it) }
+        pushBindingSnapshot(scope, keys)
         try {
+            injectBindings(scope, bindings)
             return evalBytecode(compiled.bytecode, scope, coroutineContext)
         } finally {
-            cleanupBindings(scope, injectedKeys)
+            if (keys.isNotEmpty()) popBindingSnapshot(scope)
         }
+    }
+
+    /**
+     * 把 globalThis 上 [keys] 的当前值快照到 `__bindingSnapshots__` 栈顶。
+     *
+     * 用哨兵 `__NA__` 标记"原本不存在", 省掉 existed 副表。栈用普通数组挂在 globalThis,
+     * `__` 前缀命名约定避免与 user JS 冲突。
+     */
+    private fun pushBindingSnapshot(scope: QuickJsContext, keys: List<String>) {
+        if (keys.isEmpty()) return
+        val keysLiteral = keys.joinToString(",") { "\"$it\"" }
+        val script = "(function(){var ks=[$keysLiteral],g=globalThis," +
+            "s=g.__bindingSnapshots__||(g.__bindingSnapshots__=[]),snap={_k:ks};" +
+            "for(var i=0;i<ks.length;i++){var k=ks[i];" +
+            "snap[k]=Object.prototype.hasOwnProperty.call(g,k)?g[k]:snap;}" +
+            "s.push(snap);})();"
+        QuickJsNative.nativeEval(scope.ctxPtr, script)
+    }
+
+    /**
+     * 弹出栈顶快照, 恢复到 push 前状态。哨兵 (snap 自身) 表示原本不存在 → delete。
+     */
+    private fun popBindingSnapshot(scope: QuickJsContext) {
+        val script = "(function(){var g=globalThis,s=g.__bindingSnapshots__;" +
+            "if(!s||!s.length)return;var snap=s.pop(),ks=snap._k;" +
+            "for(var i=0;i<ks.length;i++){var k=ks[i];" +
+            "if(snap[k]===snap){try{delete g[k];}catch(e){}}else{g[k]=snap[k];}}" +
+            "})();"
+        QuickJsNative.nativeEval(scope.ctxPtr, script)
     }
 
     /**
