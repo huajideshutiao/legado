@@ -3,8 +3,6 @@ package io.legado.app.model.fileBook
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.ScriptBindings
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -32,6 +30,8 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.remote.RemoteBook
+import io.legado.app.model.script.JsBindings
+import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -294,8 +294,8 @@ object FileBook : BaseFileBook {
                 //在用户脚本后添加捕获author、name的代码，只要脚本中author、name有值就会被捕获
                 val js = "$jsCode\nJSON.stringify({author:author,name:name})"
                 //在脚本中定义如何分解文件名成书名、作者名
-                val jsonStr = QuickJsEngine.run {
-                    val bindings = ScriptBindings().apply { put("src", tempFileName) }
+                val jsonStr = JsEngines.get().run {
+                    val bindings = JsBindings().apply { put("src", tempFileName) }
                     eval(js, bindings)
                 }.toString()
                 val bookMess = GSON.fromJsonObject<Map<String, String>>(jsonStr).getOrNull()

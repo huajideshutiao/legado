@@ -2,9 +2,6 @@ package io.legado.app.data.entities
 
 import androidx.appcompat.app.AppCompatActivity
 import cn.hutool.crypto.symmetric.AES
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.ScriptBindings
-import com.script.quickjs.buildScriptBindings
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -18,6 +15,9 @@ import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
+import io.legado.app.model.script.JsBindings
+import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.ui.login.SourceLoginDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
@@ -272,7 +272,7 @@ interface BaseSource : JsExtensions {
      * 执行JS
      */
     @Throws(Exception::class)
-    fun evalJS(jsStr: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
+    fun evalJS(jsStr: String, bindingsConfig: JsBindings.() -> Unit = {}): Any? {
         // 空字符串早返回，避免不必要的编译执行开销
         if (jsStr.isBlank()) return null
         val bindings = buildScriptBindings { bindings ->
@@ -290,12 +290,12 @@ interface BaseSource : JsExtensions {
         //   bindings 注入该 topScope 的 globalThis 后再执行, evalInSubScope 内部清理,
         //   保证 jsLib 自由函数能命中 cache/book 等 binding。
         return if (sharedScope == null) {
-            val scope = QuickJsEngine.getRuntimeScope(bindings)
-            val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-            QuickJsEngine.eval(wrappedJs, scope, null)
+            val scope = JsEngines.get().getRuntimeScope(bindings)
+            val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
+            JsEngines.get().eval(wrappedJs, scope, null)
         } else {
-            val compiled = QuickJsEngine.compileForSubScope(jsStr)
-            QuickJsEngine.evalInSubScope(compiled, sharedScope, bindings, null)
+            val compiled = JsEngines.get().compileForSubScope(jsStr)
+            JsEngines.get().evalInSubScope(compiled, sharedScope, bindings, null)
         }
     }
 

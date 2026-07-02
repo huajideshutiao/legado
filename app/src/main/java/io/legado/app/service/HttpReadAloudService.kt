@@ -25,7 +25,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
-import com.script.quickjs.ScriptException
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -39,6 +38,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.script.ScriptException
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils

@@ -1,10 +1,10 @@
 package io.legado.app.utils
 
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.ScriptBindings
 import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.script.JsBindings
+import io.legado.app.model.script.JsEngines
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -36,10 +36,10 @@ fun CharSequence.replace(regex: Regex, replacement: String, timeout: Long): Stri
                         // isJs 路径: 循环外创建共享 scope + 预编译 bytecode,
                         // 避免每次匹配都重新初始化 bootstrap (性能优化,应对长文本大量匹配)
                         val jsScope = if (isJs) {
-                            val bindings = ScriptBindings().apply { this["result"] = "" }
-                            val scope = QuickJsEngine.getRuntimeScope(bindings)
-                            val compiled = QuickJsEngine.compile(
-                                QuickJsEngine.wrapJsForEval(replacement1), scope
+                            val bindings = JsBindings().apply { this["result"] = "" }
+                            val scope = JsEngines.get().getRuntimeScope(bindings)
+                            val compiled = JsEngines.get().compile(
+                                JsEngines.get().wrapJsForEval(replacement1), scope
                             )
                             Pair(scope, compiled)
                         } else null
@@ -48,11 +48,11 @@ fun CharSequence.replace(regex: Regex, replacement: String, timeout: Long): Stri
                                 if (isJs) {
                                     val (scope, compiled) = jsScope!!
                                     // 更新 result 变量并注入到共享 scope
-                                    val bindings = ScriptBindings().apply {
+                                    val bindings = JsBindings().apply {
                                         this["result"] = matcher.group()
                                         dangerousApi = false
                                     }
-                                    QuickJsEngine.injectBindings(scope, bindings)
+                                    JsEngines.get().injectBindings(scope, bindings)
                                     val jsResult = compiled.eval(scope, null)?.toString() ?: ""
                                     val quotedResult = Matcher.quoteReplacement(jsResult)
                                     matcher.appendReplacement(stringBuffer, quotedResult)

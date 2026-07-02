@@ -157,6 +157,7 @@ object PreferKey {
     const val bookInfoHorizontalLayout = "bookInfoHorizontalLayout"
     const val disableMangaPageAnim = "disableMangaPageAnim"
     const val autoCheckNewBackup = "autoCheckNewBackup"
+    const val jsEngine = "jsEngine"
 
     const val cPrimary = "colorPrimary"
     const val cAccent = "colorAccent"

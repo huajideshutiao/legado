@@ -9,6 +9,16 @@
         app:entries="@array/language"
         app:entryValues="@array/language_value" />
 
+    <!-- JS 引擎开关: 运行时切换 Rhino/QuickJS, 不重启 App, 立即生效 -->
+    <io.legado.app.lib.prefs.NameListPreference
+        android:defaultValue="quickjs"
+        android:key="jsEngine"
+        android:summary="@string/js_engine_summary"
+        android:title="@string/js_engine_title"
+        app:entries="@array/js_engine"
+        app:entryValues="@array/js_engine_value"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="bookshelf"
         android:key="defaultHomePage"

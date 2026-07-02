@@ -13,7 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isGone
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.recyclerview.widget.RecyclerView
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -29,6 +28,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.activity
 import io.legado.app.utils.dpToPx

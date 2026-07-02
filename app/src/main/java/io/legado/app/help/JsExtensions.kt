@@ -4,9 +4,6 @@ import android.content.Intent
 import android.webkit.WebSettings
 import androidx.annotation.Keep
 import cn.hutool.core.codec.Base64
-import com.script.quickjs.JsFunction
-import com.script.quickjs.quickJsContext
-import com.script.quickjs.quickJsContextOrNull
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.dateFormat
 import io.legado.app.constant.AppLog
@@ -24,6 +21,9 @@ import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
+import io.legado.app.model.script.JsFn
+import io.legado.app.model.script.jsContext
+import io.legado.app.model.script.jsContextOrNull
 import io.legado.app.ui.association.JsActivity1
 import io.legado.app.ui.association.JsActivity2
 import io.legado.app.ui.association.OpenUrlConfirmDialog
@@ -89,7 +89,7 @@ interface JsExtensions : JsEncodeUtils {
     fun getSource(): BaseSource?
 
     private val context: CoroutineContext
-        get() = quickJsContext.coroutineContext ?: EmptyCoroutineContext
+        get() = jsContext.coroutineContext ?: EmptyCoroutineContext
 
     /**
      * 访问网络,返回String
@@ -104,7 +104,7 @@ interface JsExtensions : JsEncodeUtils {
         return kotlin.runCatching {
             analyzeUrl.getStrResponse().body
         }.onFailure {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             AppLog.put("ajax(${urlStr}) error\n${it.localizedMessage}", it)
         }.getOrElse {
             it.stackTraceStr
@@ -139,7 +139,7 @@ interface JsExtensions : JsEncodeUtils {
         return kotlin.runCatching {
             analyzeUrl.getStrResponse()
         }.onFailure {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             AppLog.put("connect(${urlStr}) error\n${it.localizedMessage}", it)
         }.getOrElse {
             StrResponse(analyzeUrl.url, it.stackTraceStr)
@@ -157,7 +157,7 @@ interface JsExtensions : JsEncodeUtils {
         return kotlin.runCatching {
             analyzeUrl.getStrResponse()
         }.onFailure {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             AppLog.put("ajax($urlStr,$header) error\n${it.localizedMessage}", it)
         }.getOrElse {
             StrResponse(analyzeUrl.url, it.stackTraceStr)
@@ -253,7 +253,7 @@ interface JsExtensions : JsEncodeUtils {
      * @param title 浏览器页面的标题
      */
     fun startBrowser(url: String, title: String) {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         SourceVerificationHelp.startBrowser(getSource(), url, title, refetchAfterSuccess = false)
     }
 
@@ -261,7 +261,7 @@ interface JsExtensions : JsEncodeUtils {
      * 使用内置浏览器打开链接，并等待网页结果
      */
     fun startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean): StrResponse {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         val body = SourceVerificationHelp.getVerificationResult(
             getSource(), url, title, true, refetchAfterSuccess
         )
@@ -276,7 +276,7 @@ interface JsExtensions : JsEncodeUtils {
      * 打开图片验证码对话框，等待返回验证结果
      */
     fun getVerificationCode(imageUrl: String): String {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         return SourceVerificationHelp.getVerificationResult(getSource(), imageUrl, "", false)
     }
 
@@ -338,7 +338,7 @@ interface JsExtensions : JsEncodeUtils {
      * @return 下载的文件相对路径
      */
     fun downloadFile(url: String): String {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         val analyzeUrl = AnalyzeUrl(url, source = getSource(), coroutineContext = context)
         val type = analyzeUrl.type ?: UrlUtil.getSuffix(url)
         val path = FileUtils.getPath(
@@ -373,7 +373,7 @@ interface JsExtensions : JsEncodeUtils {
         ReplaceWith("downloadFile(url)")
     )
     fun downloadFile(content: String, url: String): String {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         val type = AnalyzeUrl(url, source = getSource(), coroutineContext = context).type
             ?: return ""
         val path = FileUtils.getPath(
@@ -399,7 +399,7 @@ interface JsExtensions : JsEncodeUtils {
         } else headers
         val rateLimiter = ConcurrentRateLimiter(getSource())
         val response = rateLimiter.withLimitBlocking {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             Jsoup.connect(urlStr)
                 .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
@@ -420,7 +420,7 @@ interface JsExtensions : JsEncodeUtils {
         } else headers
         val rateLimiter = ConcurrentRateLimiter(getSource())
         val response = rateLimiter.withLimitBlocking {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             Jsoup.connect(urlStr)
                 .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
@@ -441,7 +441,7 @@ interface JsExtensions : JsEncodeUtils {
         } else headers
         val rateLimiter = ConcurrentRateLimiter(getSource())
         val response = rateLimiter.withLimitBlocking {
-            quickJsContext.ensureActive()
+            jsContext.ensureActive()
             Jsoup.connect(urlStr)
                 .sslContext(SSLHelper.unsafeSslContext)
                 .ignoreContentType(true)
@@ -963,7 +963,7 @@ interface JsExtensions : JsEncodeUtils {
      * 弹窗提示
      */
     fun toast(msg: Any?) {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         appCtx.toastOnUi("${getSource()?.getTag()}: ${msg.toString()}")
     }
 
@@ -971,7 +971,7 @@ interface JsExtensions : JsEncodeUtils {
      * 弹窗提示 停留时间较长
      */
     fun longToast(msg: Any?) {
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         appCtx.longToastOnUi("${getSource()?.getTag()}: ${msg.toString()}")
     }
 
@@ -979,7 +979,7 @@ interface JsExtensions : JsEncodeUtils {
      * 输出调试日志
      */
     fun log(msg: Any?): Any? {
-        quickJsContextOrNull?.ensureActive()
+        jsContextOrNull?.ensureActive()
         getSource()?.let {
             Debug.log(it.getKey(), msg.toString())
         } ?: Debug.log(msg.toString())
@@ -1009,7 +1009,7 @@ interface JsExtensions : JsEncodeUtils {
     // 新增 mimeType 参数，默认为 null（保持兼容性）
     fun openUrl(url: String, mimeType: String? = null) {
         require(url.length < 64 * 1024) { "openUrl parameter url too long" }
-        quickJsContext.ensureActive()
+        jsContext.ensureActive()
         val source = getSource() ?: throw NoStackTraceException("openUrl source cannot be null")
         OpenUrlConfirmDialog.display(
             url,
@@ -1025,8 +1025,8 @@ interface JsExtensions : JsEncodeUtils {
      * @param action js函数
      * @param isTransparent 是否透明
      */
-    fun startJsActivity(action: JsFunction, isTransparent: Boolean = true) {
-        val cx = quickJsContext
+    fun startJsActivity(action: JsFn, isTransparent: Boolean = true) {
+        val cx = jsContext
         if (isMainThread) return
         cx.ensureActive()
         val currentThread = Thread.currentThread()
@@ -1047,5 +1047,5 @@ interface JsExtensions : JsEncodeUtils {
         error?.let { throw it }
     }
 
-    fun startJsActivity(action: JsFunction) = startJsActivity(action, true)
+    fun startJsActivity(action: JsFn) = startJsActivity(action, true)
 }

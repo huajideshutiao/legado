@@ -26,6 +26,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
+import io.legado.app.model.SharedJsScope
 import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -73,6 +74,7 @@ class OtherConfigFragment : PreferenceFragment(),
         }
         upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
         upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
+        upPreferenceSummary(PreferKey.jsEngine, AppConfig.jsEngine)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -189,6 +191,13 @@ class OtherConfigFragment : PreferenceFragment(),
 
             PreferKey.bitmapCacheSize -> {
                 upPreferenceSummary(key, AppConfig.bitmapCacheSize.toString())
+            }
+
+            PreferKey.jsEngine -> {
+                // 切换引擎: 清空两侧 SharedJsScope 缓存避免 stale scope 泄漏,
+                // JsEngines.get() 下次访问会按新 type 自动重建引擎实例
+                SharedJsScope.clearAll()
+                upPreferenceSummary(key, AppConfig.jsEngine)
             }
         }
     }

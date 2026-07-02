@@ -783,6 +783,8 @@
     <string name="error">Error</string>
     <string name="show_brightness_view">Show brightness widget</string>
     <string name="language">Language</string>
+    <string name="js_engine_title">JS engine</string>
+    <string name="js_engine_summary">%s</string>
     <string name="import_rss_source">Import rss source</string>
     <string name="donate_summary">Your donation makes this app better</string>
     <string name="read_record">Read record</string>

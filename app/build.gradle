@@ -240,6 +240,10 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.json.path)
     implementation(project(path: ':modules:quickjs'))
+    // rhino 引擎: 抽象层 rhino 适配(RhinoJsEngine/RhinoJsTypes/RhinoSharedJsScopeProvider)及
+    // JsEngines 双判谓词直接 import com.script.* 和 org.mozilla.javascript.*,
+    // 必须在编译期可见。切换开关后运行时分派,两个模块同时打包进 APK。
+    implementation(project(path: ':modules:rhino'))
 
     implementation(libs.okhttp)
     implementation(libs.play.services.cronet)

@@ -9,7 +9,6 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Build
-import com.script.quickjs.QuickJsEngine
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
@@ -35,6 +34,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.model.BookCover
+import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
 import kotlinx.coroutines.launch
@@ -196,8 +196,8 @@ class App : Application() {
 
     @Suppress("UnusedExpression")
     private fun initQuickJs() {
-        // 触发 QuickJsEngine 单例初始化,预加载 bootstrap
-        QuickJsEngine
+        // 触发当前 JS 引擎单例初始化,预加载 bootstrap (quickjs 预编译 bytecode / rhino 加载类)
+        JsEngines.get()
     }
 
     companion object {

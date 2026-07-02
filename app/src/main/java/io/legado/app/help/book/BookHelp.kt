@@ -3,7 +3,6 @@ package io.legado.app.help.book
 import android.graphics.BitmapFactory
 import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
@@ -16,6 +15,7 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.EscapeUtils

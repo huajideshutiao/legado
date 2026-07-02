@@ -3,7 +3,6 @@ package io.legado.app.service
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
-import com.script.quickjs.ScriptException
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -23,6 +22,7 @@ import io.legado.app.help.setLiveProgress
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
+import io.legado.app.model.script.ScriptException
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.utils.activityPendingIntent

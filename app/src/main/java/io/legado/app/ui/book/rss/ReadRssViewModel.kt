@@ -2,7 +2,6 @@ package io.legado.app.ui.book.rss
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book
@@ -10,6 +9,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.toastOnUi

@@ -41,6 +41,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var themeMode by cachedStringPref(PreferKey.themeMode, "0")
     var useDefaultCover by cachedBoolPref(PreferKey.useDefaultCover, false)
     var recordLog by cachedBoolPref(PreferKey.recordLog)
+    var jsEngine by cachedStringPref(PreferKey.jsEngine, "quickjs")
     var clickActionTL by cachedIntPref(PreferKey.clickActionTL, 2)
     var clickActionTC by cachedIntPref(PreferKey.clickActionTC, 2)
     var clickActionTR by cachedIntPref(PreferKey.clickActionTR, 1)

@@ -16,7 +16,6 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.imagePathKey
@@ -31,6 +30,7 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.browser.BaseWebViewClient
 import io.legado.app.ui.browser.CommonWebChromeClient

@@ -7,7 +7,6 @@ import com.bumptech.glide.load.Options
 import com.bumptech.glide.load.data.DataFetcher
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.util.ContentLengthInputStream
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
@@ -16,6 +15,7 @@ import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isWifiConnect
 import kotlinx.coroutines.CoroutineScope

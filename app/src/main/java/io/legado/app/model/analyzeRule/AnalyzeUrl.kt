@@ -14,8 +14,6 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializer
 import com.google.gson.reflect.TypeToken
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.buildScriptBindings
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppConst.timeLimit
@@ -45,6 +43,8 @@ import io.legado.app.help.http.postJson
 import io.legado.app.help.http.postMultipart
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
+import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.GSON
@@ -318,12 +318,12 @@ class AnalyzeUrl(
         //   bindings 注入该 topScope 的 globalThis 后再执行, evalInSubScope 内部清理,
         //   保证 jsLib 自由函数 (如 lk) 能命中 cache/book 等 binding。
         return if (sharedScope == null) {
-            val scope = QuickJsEngine.getRuntimeScope(bindings)
-            val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-            QuickJsEngine.eval(wrappedJs, scope, coroutineContext)
+            val scope = JsEngines.get().getRuntimeScope(bindings)
+            val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
+            JsEngines.get().eval(wrappedJs, scope, coroutineContext)
         } else {
-            val compiled = QuickJsEngine.compileForSubScope(jsStr)
-            QuickJsEngine.evalInSubScope(compiled, sharedScope, bindings, coroutineContext)
+            val compiled = JsEngines.get().compileForSubScope(jsStr)
+            JsEngines.get().evalInSubScope(compiled, sharedScope, bindings, coroutineContext)
         }
     }
 

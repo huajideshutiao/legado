@@ -2,11 +2,6 @@ package io.legado.app.model.analyzeRule
 
 import android.text.TextUtils
 import androidx.annotation.Keep
-import com.script.quickjs.CompiledScript
-import com.script.quickjs.NativeObject
-import com.script.quickjs.QuickJsContext
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.buildScriptBindings
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseBook
@@ -19,6 +14,10 @@ import io.legado.app.help.JsExtensions
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
+import io.legado.app.model.script.JsCompiledScript
+import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.JsScope
+import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.GSON
@@ -72,8 +71,8 @@ class AnalyzeRule(
 
     private val stringRuleCache = hashMapOf<String, List<SourceRule>>()
     private val regexCache = hashMapOf<String, Regex?>()
-    private val scriptCache = hashMapOf<String, CompiledScript>()
-    private var topScopeRef: QuickJsContext? = null
+    private val scriptCache = hashMapOf<String, JsCompiledScript>()
+    private var topScopeRef: JsScope? = null
 
     var coroutineContext: CoroutineContext = EmptyCoroutineContext
         set(value) {
@@ -180,16 +179,17 @@ class AnalyzeRule(
             result = content
             // JS 返回的对象在 Kotlin 侧是 NativeObject (对齐 rhino NativeObject)
             // JsonPath 返回的普通 Map 走 else 分支, 执行后续 JS/JsonPath 等
-            if (result is NativeObject) {
+            val jsObj = JsEngines.asJsObject(result)
+            if (jsObj != null) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
-                sourceRule.makeUpRule(result)
+                sourceRule.makeUpRule(jsObj)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
                 } else {
                     // 键值直接访问
-                    result[sourceRule.rule]
+                    jsObj[sourceRule.rule]
                 }
                 result?.let {
                     if (sourceRule.replaceRegex.isNotEmpty() && it is List<*>) {
@@ -277,16 +277,17 @@ class AnalyzeRule(
             // JS 返回的对象在 Kotlin 侧是 NativeObject (对齐 rhino NativeObject)
             // JsonPath 返回的普通 Map 走 else 分支, 执行后续 JS/JsonPath 等
             // 否则 `$.postTime<js>格式化</js>` 这类规则只取到原始时间戳,JS 被跳过。
-            if (result is NativeObject) {
+            val jsObj = JsEngines.asJsObject(result)
+            if (jsObj != null) {
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
-                sourceRule.makeUpRule(result)
+                sourceRule.makeUpRule(jsObj)
                 result = if (sourceRule.getParamSize() > 1) {
                     // get {{}}
                     sourceRule.rule
                 } else {
                     // 键值直接访问
-                    result[sourceRule.rule]?.toString()
+                    jsObj[sourceRule.rule]?.toString()
                 }?.let {
                     replaceRegex(it, sourceRule)
                 }
@@ -788,9 +789,9 @@ class AnalyzeRule(
      *   (避免重复执行报 "redeclaration of 'xxx'")
      * - return 在 IIFE 函数内生效(对齐 rhino 顶层 return 扩展)
      * - eval 返回末尾表达式值(对齐 rhino script.exec 返回最后一个表达式)
-     * - bindings 通过 [QuickJsEngine.injectBindings] 写入 globalThis, jsLib 里
+     * - bindings 通过 [io.legado.app.model.script.JsEngine.injectBindings] 写入 globalThis, jsLib 里
      *   定义在 topScope 上的自由函数 (如 `lk`) 内部访问 `cache` 等 binding 也能命中,
-     *   执行后由 [QuickJsEngine.evalInSubScope] 调 cleanupBindings 删除, 避免残留。
+     *   执行后由 [io.legado.app.model.script.JsEngine.evalInSubScope] 调 cleanupBindings 删除, 避免残留。
      *
      * 注: jsLib 在 topScope(SharedJsScope)上执行,是共享的,不需要包裹。
      * 这里只包裹 AnalyzeRule 的即开即走 JS。
@@ -819,12 +820,12 @@ class AnalyzeRule(
         //   bindings 也注入到该 topScope 的 globalThis, 执行后由 evalInSubScope 自行清理,
         //   既能让 jsLib 自由函数命中 binding, 又不会跨 evalJS 残留。
         return if (topScope == null) {
-            val scope = QuickJsEngine.getRuntimeScope(bindings)
+            val scope = JsEngines.get().getRuntimeScope(bindings)
             topScopeRef = scope
-            val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
+            val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
             compileScriptCache(wrappedJs).eval(scope, coroutineContext)
         } else {
-            QuickJsEngine.evalInSubScope(
+            JsEngines.get().evalInSubScope(
                 compileSubScopeCache(jsStr),
                 topScope,
                 bindings,
@@ -833,16 +834,16 @@ class AnalyzeRule(
         }
     }
 
-    private fun compileScriptCache(jsStr: String): CompiledScript {
+    private fun compileScriptCache(jsStr: String): JsCompiledScript {
         return scriptCache.getOrPutLimit(jsStr, 16) {
-            QuickJsEngine.compile(jsStr)
+            JsEngines.get().compile(jsStr)
         }
     }
 
-    private fun compileSubScopeCache(jsStr: String): CompiledScript {
+    private fun compileSubScopeCache(jsStr: String): JsCompiledScript {
         // 与 compileScriptCache 共用 LRU, 但 key 用 "sub:" 前缀避免与 wrapJsForEval 路径冲突
         return scriptCache.getOrPutLimit("sub:$jsStr", 16) {
-            QuickJsEngine.compileForSubScope(jsStr)
+            JsEngines.get().compileForSubScope(jsStr)
         }
     }
 
@@ -894,7 +895,7 @@ class AnalyzeRule(
      * 释放 AnalyzeRule 持有的 native 资源。
      *
      * 仅 [topScopeRef] 需显式 close: 当 source 为 null (DictRule/DirectLinkUpload 等无书源构造) 时,
-     * evalJS 会走 [QuickJsEngine.getRuntimeScope] 自建 scope 并缓存到 [topScopeRef],
+     * evalJS 会走 [JsEngines.get().getRuntimeScope] 自建 scope 并缓存到 [topScopeRef],
      * 该 scope 不在 SharedJsScope 的 LruCache 中, 无显式释放路径会泄漏 native QuickJs 实例。
      *
      * 有 source 路径走 SharedJsScope 共享 scope, 由其 LruCache 淘汰时 close, 此处 topScopeRef 为 null, close 是空操作。

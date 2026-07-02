@@ -7,7 +7,6 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
@@ -23,6 +22,7 @@ import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.positiveButton
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint

@@ -10,7 +10,6 @@ import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.RequestManager
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
@@ -18,6 +17,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.isUri

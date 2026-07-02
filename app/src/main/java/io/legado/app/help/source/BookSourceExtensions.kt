@@ -1,6 +1,5 @@
 package io.legado.app.help.source
 
-import com.script.quickjs.runScriptWithContext
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
@@ -8,6 +7,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils

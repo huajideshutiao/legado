@@ -1,8 +1,6 @@
 package io.legado.app.model.webBook
 
 import android.text.TextUtils
-import com.script.quickjs.QuickJsEngine
-import com.script.quickjs.ScriptBindings
 import io.legado.app.R
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -17,6 +15,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.script.JsBindings
+import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.currentCoroutineContext
@@ -130,21 +130,21 @@ object BookChapterList {
             // 循环外创建共享 scope,避免每次 eval 都重新初始化 bootstrap (性能优化)
             // 复用 scope 编译 bytecode,避免每次 eval 都重新解析 JS
             // wrapJsForEval 用 IIFE + eval 隔离 let/const,避免重复声明
-            val initBindings = ScriptBindings().apply {
+            val initBindings = JsBindings().apply {
                 this["gInt"] = 0
                 this["index"] = 0
                 this["chapter"] = list.firstOrNull()
                 this["title"] = list.firstOrNull()?.title
             }
-            val scope = QuickJsEngine.getRuntimeScope(initBindings)
-            val compiled = QuickJsEngine.compile(QuickJsEngine.wrapJsForEval(formatJs), scope)
+            val scope = JsEngines.get().getRuntimeScope(initBindings)
+            val compiled = JsEngines.get().compile(JsEngines.get().wrapJsForEval(formatJs), scope)
             try {
                 list.forEachIndexed { index, bookChapter ->
                     // 更新变量值并重新注入(覆盖上次的值)
                     initBindings["index"] = index + 1
                     initBindings["chapter"] = bookChapter
                     initBindings["title"] = bookChapter.title
-                    QuickJsEngine.injectBindings(scope, initBindings)
+                    JsEngines.get().injectBindings(scope, initBindings)
                     try {
                         compiled.eval(scope, null)?.toString()?.let {
                             bookChapter.title = it
