@@ -133,6 +133,9 @@ object JsSecurityPolicy {
      */
     fun isObjectVisible(obj: Any, dangerousApi: Boolean): Boolean {
         if (dangerousApi) return true
+        // NativeObject 是 JS 对象跨语言存活的载体(cache.putMemory / evalJS 返回值),
+        // com.script 黑名单本意是防反射引擎内部,不该殃及数据。
+        if (obj is NativeObject) return true
         when (obj) {
             is ClassLoader,
             is Class<*>,

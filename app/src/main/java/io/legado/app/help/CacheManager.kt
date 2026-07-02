@@ -6,7 +6,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Cache
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.utils.ACache
-import io.legado.app.utils.memorySize
 
 private val queryTTFMap = LruCache<String, QueryTTF>(4)
 
@@ -16,9 +15,25 @@ private val queryTTFMap = LruCache<String, QueryTTF>(4)
 private val memoryLruCache = object : LruCache<String, Any>(1024 * 1024 * 50) {
 
     override fun sizeOf(key: String, value: Any): Int {
-        return value.toString().memorySize()
+        return estimateMemorySize(value)
     }
 
+}
+
+/**
+ * sizeOf 估算: 类型分派, 避免 LinkedHashMap 子类走 AbstractMap.toString() 递归展开成大字符串。
+ * Map/Collection 只按 size 浅算, 不精确但省 O(total chars) 开销。
+ */
+private fun estimateMemorySize(value: Any?): Int {
+    return when (value) {
+        null -> 0
+        is CharSequence -> 40 + 2 * value.length
+        is Number, is Boolean, is Char -> 24
+        is ByteArray -> 16 + value.size
+        is Map<*, *> -> 40 + value.size * 40
+        is Collection<*> -> 40 + value.size * 40
+        else -> 40 + 2 * value.toString().length
+    }
 }
 
 object AppCacheManager {
