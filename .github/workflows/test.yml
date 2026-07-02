@@ -3,7 +3,7 @@ name: Test Build
 on:
   push:
     branches:
-      - master
+      - '**'
     paths:
       - '**'
       # - '!**/assets/**'
@@ -15,7 +15,7 @@ on:
       - '**/modules/web/**'
   workflow_run:
     workflows: [Build Web]
-    branches: [master]
+    branches: [ '**' ]
     types:
       - completed
   workflow_dispatch:
@@ -109,6 +109,10 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           echo "## 更新日志" > RELEASE_NOTES.md
+          if [ "${{ github.ref_name }}" != "master" ]; then
+            echo "⚠️ **注意：当前分支为 ${{ github.ref_name }}，包含实验性功能，可能有破坏性变更。**" >> RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+          fi
           if [ "${{ github.event_name }}" == "push" ]; then
             git log ${{ github.event.before }}..${{ github.event.after }} --pretty=format:"- %<(72,trunc)%s (%h)" | head -20 >> RELEASE_NOTES.md
           else
@@ -130,7 +134,9 @@ jobs:
         with:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
-          context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (原包名)"
+          context: |
+            #阅读 #Legado #Beta ${{ env.VERSIONL }} (原包名)
+            ${{ github.ref_name != 'master' && format('⚠️ 实验性分支: {0}', github.ref_name) || '' }}
           path: apk/*.apk
           method: sendFile
 
@@ -187,7 +193,9 @@ jobs:
         with:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
-          context: "#阅读 #Legado #Beta ${{ env.VERSIONL }} (共存)"
+          context: |
+            #阅读 #Legado #Beta ${{ env.VERSIONL }} (共存)
+            ${{ github.ref_name != 'master' && format('⚠️ 实验性分支: {0}', github.ref_name) || '' }}
           path: apk/*releaseA*.apk
           method: sendFile
 
