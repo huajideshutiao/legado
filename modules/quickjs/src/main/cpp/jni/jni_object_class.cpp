@@ -90,12 +90,6 @@ namespace {
             g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
                                                         "(Ljava/lang/Object;Z)[Ljava/lang/String;");
 
-            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
-                !g_BooleanCls || !g_BooleanValue) {
-                LOGE("JavaObjectBridgeNative methods or Boolean class not found");
-                env->ExceptionClear();
-            }
-
             // java.util.List (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
             // JavaObjectBridge.kt 的 callHotTypeMethod 已对 List 做快速路径,
             // 但 JS for...of 需要对象实现 Symbol.iterator 协议, native 层在此补充。
@@ -137,6 +131,13 @@ namespace {
                                                           "(Z)Ljava/lang/Boolean;");
                 g_BooleanValue = env->GetMethodID(g_BooleanCls, "booleanValue", "()Z");
             } else {
+                env->ExceptionClear();
+            }
+
+            // 汇总检查放到 lambda 末尾: Boolean 在上面才初始化, 提前判会误报。
+            if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
+                !g_BooleanCls || !g_BooleanValue) {
+                LOGE("JavaObjectBridgeNative methods or Boolean class not found");
                 env->ExceptionClear();
             }
         });

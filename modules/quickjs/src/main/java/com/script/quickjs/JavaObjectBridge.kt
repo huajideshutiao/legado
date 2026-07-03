@@ -71,13 +71,37 @@ object JavaObjectBridge {
      * LinkedHashMap accessOrder=true 实现 LRU, removeEldestEntry 淘汰最旧条目。
      * 手动 synchronized 保证线程安全 (Collections.synchronizedMap 不支持 accessOrder)。
      */
-    private val methodCache = object : LinkedHashMap<String, Method>(128, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Method>?) =
-            size > 1000
-    }
-    private val methodMissCache = object : LinkedHashMap<String, Boolean>(128, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) =
-            size > 1000
+    /** 缓存命中/未命中统一哨兵 */
+    private val CACHE_MISS = Any()
+
+    private val methodCache = java.util.concurrent.ConcurrentHashMap<String, Any>()
+    private val collectMethodsCache =
+        java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, List<Method>>()
+    private val findFieldCache =
+        java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, Any>()
+    private val findGetterCache =
+        java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, Any>()
+
+    /**
+     * 复合属性缓存: (Class, fieldName, dangerousApi) -> PropertyResult
+     * 消除 getJavaProperty 中的多次反射和逻辑判定。
+     */
+    private val propertyInfoCache =
+        java.util.concurrent.ConcurrentHashMap<Triple<Class<*>, String, Boolean>, PropertyResult>()
+
+    private data class PropertyResult(
+        val fieldExists: Boolean = false,
+        val hasMethod: Boolean = false,
+        val getter: Method? = null,
+        val field: java.lang.reflect.Field? = null,
+        val innerClass: Class<*>? = null
+    )
+
+    /** 简单的容量控制，防止内存泄露 (10000+ 书源场景) */
+    private fun <K : Any, V : Any> java.util.concurrent.ConcurrentHashMap<K, V>.checkCapacity(
+        maxSize: Int = 1000
+    ) {
+        if (size > maxSize) clear()
     }
 
     /**
@@ -85,7 +109,6 @@ object JavaObjectBridge {
      * Class 结构运行时不变, 缓存跨 scope 复用, 避免每次 coerceValue 重复反射扫描。
      */
     private val samInterfaceCache = java.util.concurrent.ConcurrentHashMap<Class<*>, Boolean>()
-    private val cacheLock = Any()
 
     /**
      * 快速路径未命中哨兵对象。callHotTypeMethod 返回此值表示该 methodName 未处理,
@@ -903,61 +926,72 @@ object JavaObjectBridge {
         val obj = getObject(objHandle) ?: return null
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
 
-        var fieldExists = false
-        // Field 部分: 复用 getInstanceField 的查找顺序 (Map/List/Array → getter → field)
+        // 集合类（Map/List/Array）是动态的，不走属性元数据缓存
+        val collectionVal = getCollectionField(obj, fieldName)
+        if (collectionVal != null) {
+            return javaToJsResult(collectionVal, dangerousApi)
+        }
+        if (obj is Map<*, *>) {
+            // Map: 任意 key 都可能后续被 setInstanceField 注入,标 fieldExists 阻断缓存
+            return listOf(null, true, false)
+        }
+
+        // 非集合类，使用 Triple 复合缓存加速
+        val cacheKey = Triple(obj.javaClass, fieldName, dangerousApi)
+        val info = propertyInfoCache.getOrPut(cacheKey) {
+            propertyInfoCache.checkCapacity()
+            val getterFound = findGetter(obj.javaClass, fieldName)
+            var fExists = false
+            var g: Method? = null
+            var f: java.lang.reflect.Field? = null
+
+            if (getterFound != null && JsSecurityPolicy.isMethodVisible(
+                    obj.javaClass.name,
+                    getterFound.name,
+                    dangerousApi
+                )
+            ) {
+                fExists = true
+                g = getterFound
+            } else {
+                val fieldFound = findField(obj.javaClass, fieldName)
+                if (fieldFound != null) {
+                    fExists = true
+                    f = fieldFound
+                }
+            }
+
+            val hasMethod =
+                if (JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)) {
+                    val candidates = mutableListOf<Method>()
+                    collectMethods(obj.javaClass, fieldName, candidates)
+                    candidates.isNotEmpty()
+                } else false
+
+            PropertyResult(fExists, hasMethod, g, f)
+        }
+
         val fieldValue: Any? = try {
-            val collectionVal = getCollectionField(obj, fieldName)
-            if (collectionVal != null) {
-                fieldExists = true
-                javaToJsResult(collectionVal, dangerousApi)
-            } else when {
-                // Map: 任意 key 都可能后续被 setInstanceField 注入,标 fieldExists 阻断缓存
-                obj is Map<*, *> -> {
-                    fieldExists = true
-                    null
+            when {
+                info.getter != null -> {
+                    info.getter.isAccessible = true
+                    javaToJsResult(info.getter.invoke(obj), dangerousApi)
                 }
-                // List/Array: 非数字 prop 永远不会被 setInstanceField 接收 (setCollectionField
-                // 只认数字索引),非数字 prop 走 method 分支后可以让 JS 安全缓存 callable
-                else -> {
-                    val getter = findGetter(obj.javaClass, fieldName)
-                    if (getter != null
-                        && JsSecurityPolicy.isMethodVisible(
-                            obj.javaClass.name, getter.name, dangerousApi
-                        )
-                    ) {
-                        fieldExists = true
-                        getter.isAccessible = true
-                        javaToJsResult(getter.invoke(obj), dangerousApi)
-                    } else {
-                        val field = findField(obj.javaClass, fieldName)
-                        if (field != null) {
-                            fieldExists = true
-                            field.isAccessible = true
-                            javaToJsResult(field.get(obj), dangerousApi)
-                        } else null
-                    }
+
+                info.field != null -> {
+                    info.field.isAccessible = true
+                    javaToJsResult(info.field.get(obj), dangerousApi)
                 }
+
+                else -> null
             }
         } catch (e: Exception) {
             Log.w(TAG, "getJavaProperty field failed: ${obj.javaClass.name}.$fieldName", e)
             null
-        } catch (e: LinkageError) {
-            Log.w(TAG, "getJavaProperty linkage error: ${obj.javaClass.name}.$fieldName", e)
-            null
         }
 
-        // Method 部分: 复用 hasInstanceMethod 的逻辑
-        val hasMethod = if (
-            JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)
-        ) {
-            val candidates = mutableListOf<Method>()
-            collectMethods(obj.javaClass, fieldName, candidates)
-            candidates.isNotEmpty()
-        } else false
-
-        // 三重未命中: 返回 null 让 JS 一行结束 (省一次解构开销)
-        if (fieldValue == null && !fieldExists && !hasMethod) return null
-        return listOf(fieldValue, fieldExists, hasMethod)
+        if (fieldValue == null && !info.fieldExists && !info.hasMethod) return null
+        return listOf(fieldValue, info.fieldExists, info.hasMethod)
     }
 
     /**
@@ -976,65 +1010,22 @@ object JavaObjectBridge {
     ): Array<Any?>? {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
 
-        var fieldExists = false
-        // 对齐 rhino NativeJavaClass: obj 是 Class 对象时, 用其表示的类查找静态成员/内部类,
-        // 而非 Class 类本身。例: Bitmap.Config → Bitmap 内部类; Bitmap.Config.ARGB_8888
-        // → Bitmap$Config 静态字段; Bitmap.createBitmap → Bitmap 静态方法。
-        // 原先 obj.javaClass 当 obj 是 Class<*> 时返回 Class 类本身, 查不到 Bitmap 的成员。
-        val lookupClass = if (obj is Class<*>) obj else obj.javaClass
-        // 异常不 catch: 传播到 native 层, 由 jni_object_class.cpp getProperty trap 用
-        // JavaObjectClass::wrap 把 Throwable 包装成 JavaObject 传给 JS catch,
-        // 对齐 rhino WrappedException。原先 catch 返回 null 让 JS 侧拿到 undefined
-        // 完全不知出错, 且让 native 的 ExceptionCheck 分支成为死代码。
-        val fieldValue: Any? = run {
-            val collectionVal = getCollectionField(obj, fieldName)
-            if (collectionVal != null) {
-                fieldExists = true
-                collectionVal // 原始对象, 不调 javaToJsResult
-            } else when {
-                obj is Map<*, *> -> {
-                    // 对齐 rhino FEATURE_ENABLE_JAVA_MAP_ACCESS:
-                    // - key 存在: 返回 map.get(key) (即使 value=null, fieldExists=true)
-                    // - key 不存在: fieldExists=false, fieldValue=null
-                    //   (让 native 层 getProperty trap 返回 JS_UNDEFINED, 而非 JS_NULL)
-                    if (obj.containsKey(fieldName)) {
-                        fieldExists = true
-                        obj[fieldName] // 可能是 null (value=null)
-                    } else null
-                }
-
-                else -> {
-                    val getter = findGetter(lookupClass, fieldName)
-                    if (getter != null && JsSecurityPolicy.isMethodVisible(
-                            lookupClass.name, getter.name, dangerousApi
-                        )
-                    ) {
-                        fieldExists = true
-                        getter.isAccessible = true
-                        getter.invoke(if (obj is Class<*>) null else obj)
-                    } else {
-                        val field = findField(lookupClass, fieldName)
-                        if (field != null) {
-                            fieldExists = true
-                            field.isAccessible = true
-                            field.get(if (obj is Class<*>) null else obj)
-                        } else if (obj is Class<*>) {
-                            // 内部类查找 (对齐 rhino NativeJavaClass):
-                            // Java 反射不把内部类作为字段暴露 (getField/getDeclaredField 都
-                            // 找不到), 需用 getDeclaredClasses 按 simpleName 匹配, 或
-                            // Class.forName("Outer$Inner") 兜底。
-                            findInnerClass(obj, fieldName)?.also { fieldExists = true }
-                        } else null
-                    }
-                }
-            }
+        val collectionVal = getCollectionField(obj, fieldName)
+        if (collectionVal != null) {
+            return arrayOf(collectionVal, true, false)
         }
 
-        val hasMethod =
-        // Java 数组热点方法 (slice 等) 走快速路径, 不走反射 collectMethods
-        // (数组无 slice 方法, 否则 fallback 到 Array.prototype.slice 逐个元素 JNI trap,
-            // 13 次 slice × 17 次 trap ≈ 221 次 JNI 跨边界, De 函数 429ms vs rhino 19ms)
-            if (obj.javaClass.isArray && isArrayHotMethod(fieldName)) {
+        if (obj is Map<*, *>) {
+            return if (obj.containsKey(fieldName)) {
+                arrayOf(obj[fieldName], true, false)
+            } else null
+        }
+
+        val lookupClass = if (obj is Class<*>) obj else obj.javaClass
+        val cacheKey = Triple(lookupClass, fieldName, dangerousApi)
+        val info = propertyInfoCache.getOrPut(cacheKey) {
+            propertyInfoCache.checkCapacity()
+            val hasMethod = if (obj.javaClass.isArray && isArrayHotMethod(fieldName)) {
                 true
             } else if (JsSecurityPolicy.isMethodVisible(
                     lookupClass.name,
@@ -1047,8 +1038,54 @@ object JavaObjectBridge {
                 candidates.isNotEmpty()
             } else false
 
-        if (fieldValue == null && !fieldExists && !hasMethod) return null
-        return arrayOf(fieldValue, fieldExists, hasMethod)
+            var fExists = false
+            var g: Method? = null
+            var f: java.lang.reflect.Field? = null
+            var inner: Class<*>? = null
+
+            val getterFound = findGetter(lookupClass, fieldName)
+            if (getterFound != null && JsSecurityPolicy.isMethodVisible(
+                    lookupClass.name,
+                    getterFound.name,
+                    dangerousApi
+                )
+            ) {
+                fExists = true
+                g = getterFound
+            } else {
+                val fieldFound = findField(lookupClass, fieldName)
+                if (fieldFound != null) {
+                    fExists = true
+                    f = fieldFound
+                } else if (obj is Class<*>) {
+                    inner = findInnerClass(obj, fieldName)
+                    if (inner != null) fExists = true
+                }
+            }
+            PropertyResult(fExists, hasMethod, g, f, inner)
+        }
+
+        val fieldValue: Any? = try {
+            when {
+                info.getter != null -> {
+                    info.getter.isAccessible = true
+                    info.getter.invoke(if (obj is Class<*>) null else obj)
+                }
+
+                info.field != null -> {
+                    info.field.isAccessible = true
+                    info.field.get(if (obj is Class<*>) null else obj)
+                }
+
+                info.innerClass != null -> info.innerClass
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+
+        if (fieldValue == null && !info.fieldExists && !info.hasMethod) return null
+        return arrayOf(fieldValue, info.fieldExists, info.hasMethod)
     }
 
     /**
@@ -1634,31 +1671,25 @@ object JavaObjectBridge {
             scopeHandles.clear()
         }
         // 方法缓存与 ClassLoader 强相关,测试场景需重置避免跨用例污染
-        synchronized(cacheLock) {
-            methodCache.clear()
-            methodMissCache.clear()
-        }
+        methodCache.clear()
+        collectMethodsCache.clear()
+        findFieldCache.clear()
+        findGetterCache.clear()
+        propertyInfoCache.clear()
     }
 
     // ============ 反射辅助 ============
 
     private fun findMethod(clazz: Class<*>, name: String, args: Array<Any?>): Method? {
-        // 缓存查找:Class 结构运行时不变,同一 (类,方法,参数类型签名) 解析结果相同
         val cacheKey = buildMethodCacheKey(clazz, name, args)
-        synchronized(cacheLock) {
-            methodCache[cacheKey]?.let { return it }
-            if (methodMissCache.containsKey(cacheKey)) return null
+        val cached = methodCache[cacheKey]
+        if (cached != null) {
+            return if (cached === CACHE_MISS) null else cached as Method
         }
 
-        // 反射查找放在锁外,避免长时间持锁阻塞并发调用
         val method = findMethodImpl(clazz, name, args)
-        synchronized(cacheLock) {
-            if (method != null) {
-                methodCache[cacheKey] = method
-            } else {
-                methodMissCache[cacheKey] = true
-            }
-        }
+        methodCache.checkCapacity()
+        methodCache[cacheKey] = method ?: CACHE_MISS
         return method
     }
 
@@ -1812,12 +1843,23 @@ object JavaObjectBridge {
     }
 
     private fun collectMethods(clazz: Class<*>, name: String, out: MutableList<Method>) {
-        try {
-            clazz.methods.forEach { m ->
-                if (m.name == name) out.add(m)
-            }
-        } catch (_: Throwable) {
+        val key = clazz to name
+        collectMethodsCache[key]?.let {
+            out.addAll(it)
+            return
         }
+        // clazz.methods 每次都会 clone Method[], 循环里逐属性访问会不断触发。
+        // 空列表表示 miss, 也写进缓存, 避免重复扫。
+        val list = try {
+            val tmp = ArrayList<Method>()
+            clazz.methods.forEach { m -> if (m.name == name) tmp.add(m) }
+            if (tmp.isEmpty()) emptyList() else tmp
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        collectMethodsCache.checkCapacity()
+        collectMethodsCache[key] = list
+        out.addAll(list)
     }
 
     private fun findStaticMethod(clazz: Class<*>, name: String, args: Array<Any?>): Method? {
@@ -1826,17 +1868,27 @@ object JavaObjectBridge {
     }
 
     private fun findField(clazz: Class<*>, name: String): java.lang.reflect.Field? {
+        val key = clazz to name
+        val cached = findFieldCache[key]
+        if (cached != null) {
+            return if (cached === CACHE_MISS) null else cached as java.lang.reflect.Field
+        }
+
+        // 不限制 public: Kotlin data class 的 backing field 通常是 private,
+        // 调用方会 setAccessible(true)。与 Rhino LiveConnect 行为一致(通过 getter/setter 访问)
         var c: Class<*>? = clazz
+        var found: java.lang.reflect.Field? = null
         while (c != null) {
             try {
-                // 不限制 public: Kotlin data class 的 backing field 通常是 private,
-                // 调用方会 setAccessible(true)。与 Rhino LiveConnect 行为一致(通过 getter/setter 访问)
-                return c.getDeclaredField(name)
+                found = c.getDeclaredField(name)
+                break
             } catch (_: NoSuchFieldException) {
             }
             c = c.superclass
         }
-        return null
+        findFieldCache.checkCapacity()
+        findFieldCache[key] = found ?: CACHE_MISS
+        return found
     }
 
     /**
@@ -1868,21 +1920,33 @@ object JavaObjectBridge {
      * 直接反射字段需要 setAccessible。优先用 getter 访问更符合 JavaBean 规范。
      */
     private fun findGetter(clazz: Class<*>, name: String): Method? {
+        val key = clazz to name
+        val cached = findGetterCache[key]
+        if (cached != null) {
+            return if (cached === CACHE_MISS) null else cached as Method
+        }
+
         val capName =
             name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         val getterNames = listOf("get$capName", "is$capName")
         var c: Class<*>? = clazz
-        while (c != null) {
+        var found: Method? = null
+        outer@ while (c != null) {
             for (getterName in getterNames) {
                 try {
                     val m = c.getDeclaredMethod(getterName)
-                    if (m.parameterCount == 0 && !Modifier.isStatic(m.modifiers)) return m
+                    if (m.parameterCount == 0 && !Modifier.isStatic(m.modifiers)) {
+                        found = m
+                        break@outer
+                    }
                 } catch (_: NoSuchMethodException) {
                 }
             }
             c = c.superclass
         }
-        return null
+        findGetterCache.checkCapacity()
+        findGetterCache[key] = found ?: CACHE_MISS
+        return found
     }
 
     /**
