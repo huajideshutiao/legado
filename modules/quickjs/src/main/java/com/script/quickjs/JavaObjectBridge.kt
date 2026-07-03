@@ -2,7 +2,9 @@ package com.script.quickjs
 
 import android.util.Log
 import androidx.collection.LongSparseArray
+import com.script.quickjs.JavaObjectBridge.METHOD_MARKER
 import com.script.quickjs.JavaObjectBridge.NO_RESULT
+import com.script.quickjs.JavaObjectBridge.NULL_FIELD_MARKER
 import com.script.quickjs.JavaObjectBridge.appendToBuilder
 import com.script.quickjs.JavaObjectBridge.callArrayMethod
 import com.script.quickjs.JavaObjectBridge.callInstanceMethod
@@ -12,9 +14,9 @@ import com.script.quickjs.JavaObjectBridge.coerceValue
 import com.script.quickjs.JavaObjectBridge.findMethod
 import com.script.quickjs.JavaObjectBridge.getInstanceField
 import com.script.quickjs.JavaObjectBridge.getInstanceKeys
-import com.script.quickjs.JavaObjectBridge.getJavaProperty
 import com.script.quickjs.JavaObjectBridge.getJavaPropertyRaw
 import com.script.quickjs.JavaObjectBridge.hasInstanceMethod
+import com.script.quickjs.JavaObjectBridge.javaToJsResult
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
 import com.script.quickjs.JavaObjectBridge.loadJavaClass
@@ -116,6 +118,23 @@ object JavaObjectBridge {
      * 不能用 null 区分,null 是合法返回值(如 Map.get 不存在的 key 返回 null)。
      */
     private val NO_RESULT = Any()
+
+    /**
+     * [getJavaPropertyRaw] 返回值哨兵。native trap 用 IsSameObject 与全局引用比对,
+     * 免掉原先 `Array<Any?>{fieldValue, fieldExists, hasMethod}` 的数组分配 + Boolean 装箱
+     * (getPropertyInfo 每次属性访问都跑一遍, 是热路径分配大头之一)。
+     *
+     * 协议:
+     * - 返回 null: 属性不存在, native 沿原型链查 (JS_UNDEFINED / proto lookup)
+     * - 返回 [METHOD_MARKER]: 有同名方法, native 创建 method callable
+     * - 返回 [NULL_FIELD_MARKER]: field/getter 存在但值为 null, native 返回 JS_NULL
+     * - 返回其他非 null 对象: 该对象即 fieldValue, native 直接走 fromJavaObject
+     */
+    @JvmField
+    val METHOD_MARKER: Any = Any()
+
+    @JvmField
+    val NULL_FIELD_MARKER: Any = Any()
 
     /**
      * 把 handle 记录到当前线程的 scope,close 时批量释放。
@@ -997,35 +1016,40 @@ object JavaObjectBridge {
     /**
      * native 版本专用: 查 field + method, 返回原始 Java 对象 (不经过 javaToJsResult 包装)。
      *
-     * 与 [getJavaProperty] 逻辑相同, 但 fieldValue 是原始 Java 对象,
-     * 供 native exotic trap 回调后由 native 层用 JavaObjectClass.wrap 包装为 JSValue。
+     * 使用哨兵协议 (见 [METHOD_MARKER] / [NULL_FIELD_MARKER]) 返回单个对象,
+     * 免掉原先返回 `Array<Any?>[fieldValue, fieldExists, hasMethod]` 每次都分配
+     * 3 槽数组 + 装箱 2 个 Boolean 的开销 (getPropertyInfo 是 hot trap)。
      *
-     * @return null 表示 field 与 method 均不存在;
-     *         否则返回 `[fieldValue(原始对象), fieldExists, hasMethod]` 三元素 Array
+     * @return
+     *   - `null`: field 与 method 均不存在, native 沿原型链查
+     *   - [METHOD_MARKER]: 有同名方法 (method 优先, 对齐 rhino FieldAndMessages)
+     *   - [NULL_FIELD_MARKER]: field/getter/innerClass 存在但值为 null
+     *   - 其它非 null 对象: 该对象即 fieldValue (native 走 fromJavaObject)
      */
     internal fun getJavaPropertyRaw(
         obj: Any,
         fieldName: String,
         dangerousApi: Boolean
-    ): Array<Any?>? {
+    ): Any? {
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
 
         val collectionVal = getCollectionField(obj, fieldName)
         if (collectionVal != null) {
-            return arrayOf(collectionVal, true, false)
+            // collectionVal 非 null (getCollectionField 用 null 表示不适用), 直接返回原对象
+            return collectionVal
         }
 
-        if (obj is Map<*, *>) {
-            return if (obj.containsKey(fieldName)) {
-                arrayOf(obj[fieldName], true, false)
-            } else null
+        if (obj is Map<*, *> && obj.containsKey(fieldName)) {
+            val v = obj[fieldName]
+            return v ?: NULL_FIELD_MARKER
         }
+        // 键不存在时回落到下面的 field/method 查找 (对齐 rhino NativeJavaMap.get -> super.get)
 
         val lookupClass = if (obj is Class<*>) obj else obj.javaClass
         val cacheKey = Triple(lookupClass, fieldName, dangerousApi)
         val info = propertyInfoCache.getOrPut(cacheKey) {
             propertyInfoCache.checkCapacity()
-            val hasMethod = if (obj.javaClass.isArray && isArrayHotMethod(fieldName)) {
+            var hasMethod = if (obj.javaClass.isArray && isArrayHotMethod(fieldName)) {
                 true
             } else if (JsSecurityPolicy.isMethodVisible(
                     lookupClass.name,
@@ -1037,6 +1061,14 @@ object JavaObjectBridge {
                 collectMethods(lookupClass, fieldName, candidates)
                 candidates.isNotEmpty()
             } else false
+
+            if (!hasMethod && obj is Class<*> && lookupClass != Class::class.java) {
+                if (JsSecurityPolicy.isMethodVisible("java.lang.Class", fieldName, dangerousApi)) {
+                    val candidates = mutableListOf<Method>()
+                    collectMethods(Class::class.java, fieldName, candidates)
+                    hasMethod = candidates.isNotEmpty()
+                }
+            }
 
             var fExists = false
             var g: Method? = null
@@ -1059,22 +1091,41 @@ object JavaObjectBridge {
                     f = fieldFound
                 } else if (obj is Class<*>) {
                     inner = findInnerClass(obj, fieldName)
-                    if (inner != null) fExists = true
+                    if (inner != null) {
+                        fExists = true
+                    } else if (lookupClass != Class::class.java) {
+                        // 尝试作为 java.lang.Class 的实例属性 (如 name, simpleName)
+                        val classGetter = findGetter(Class::class.java, fieldName)
+                        if (classGetter != null && JsSecurityPolicy.isMethodVisible(
+                                "java.lang.Class",
+                                classGetter.name,
+                                dangerousApi
+                            )
+                        ) {
+                            fExists = true
+                            g = classGetter
+                        }
+                    }
                 }
             }
             PropertyResult(fExists, hasMethod, g, f, inner)
         }
 
+        // method 优先 (对齐 rhino FieldAndMessages): 即便 field 存在也不去读, 让 method callable 生效。
+        if (info.hasMethod) return METHOD_MARKER
+
         val fieldValue: Any? = try {
             when {
                 info.getter != null -> {
                     info.getter.isAccessible = true
-                    info.getter.invoke(if (obj is Class<*>) null else obj)
+                    val target = if (Modifier.isStatic(info.getter.modifiers)) null else obj
+                    info.getter.invoke(target)
                 }
 
                 info.field != null -> {
                     info.field.isAccessible = true
-                    info.field.get(if (obj is Class<*>) null else obj)
+                    val target = if (Modifier.isStatic(info.field.modifiers)) null else obj
+                    info.field.get(target)
                 }
 
                 info.innerClass != null -> info.innerClass
@@ -1084,8 +1135,9 @@ object JavaObjectBridge {
             null
         }
 
-        if (fieldValue == null && !info.fieldExists && !info.hasMethod) return null
-        return arrayOf(fieldValue, info.fieldExists, info.hasMethod)
+        if (fieldValue != null) return fieldValue
+        if (info.fieldExists) return NULL_FIELD_MARKER  // field 存在但值为 null
+        return null  // 什么都没有
     }
 
     /**
@@ -1166,9 +1218,11 @@ object JavaObjectBridge {
         if (!JsSecurityPolicy.isMethodVisible(lookupClass.name, methodName, dangerousApi)) {
             return null
         }
-        // 热点类型快速路径
+        // 热点类型快速路径 — callHotTypeMethod 内部走 javaToJsResult 会把 Java 对象包成
+        // {__java_handle__: h} 句柄 Map, native 侧拿到还得再解包一次。此处直接反解, 让
+        // Raw 变体真正返回原始对象, native 层 fromJavaObject 一步到位。
         val fastResult = callHotTypeMethod(obj, methodName, args, dangerousApi)
-        if (fastResult !== NO_RESULT) return fastResult
+        if (fastResult !== NO_RESULT) return unwrapHotResult(fastResult)
         // 异常不 catch: 传播到 native 层, 由 jni_callbacks.cpp jsMethodCallable 用
         // JavaObjectClass::wrap 把 Throwable 包装成 JavaObject 传给 JS catch,
         // 对齐 rhino WrappedException。原先 catch 返回 null 让 JS 侧拿到 null
@@ -1212,6 +1266,21 @@ object JavaObjectBridge {
                 return isGetter.invoke(if (Modifier.isStatic(isGetter.modifiers)) null else obj)
             }
         }
+
+        // 尝试作为 java.lang.Class 的实例方法 (针对 Class 对象实例)
+        if (obj is Class<*> && lookupClass != Class::class.java) {
+            val classMethod = findMethod(Class::class.java, methodName, javaArgs)
+            if (classMethod != null && !Modifier.isStatic(classMethod.modifiers)) {
+                if (JsSecurityPolicy.isMethodVisible("java.lang.Class", methodName, dangerousApi)) {
+                    classMethod.isAccessible = true
+                    return classMethod.invoke(
+                        obj,
+                        *coerceArgs(classMethod.parameterTypes, javaArgs, classMethod.isVarArgs)
+                    )
+                }
+            }
+        }
+
         // 对齐 rhino NativeJavaMethod.findCachedFunction: 找不到匹配重载时抛异常,
         // 不静默 return null 让 JS 拿到 undefined (method callable 已被创建说明方法名存在,
         // findMethod 返回 null 是参数类型不匹配, 或 getter 回退也失败)。
@@ -1220,7 +1289,7 @@ object JavaObjectBridge {
         // 用户毫无感知 (如拼错方法名 + 错误参数个数)。
         throw IllegalStateException(
             "Cannot find method '$methodName' on ${lookupClass.name} " +
-                "with args ${args.map { it?.javaClass?.simpleName }} " +
+                "with args ${javaArgs.map { it?.javaClass?.simpleName }} " +
                 "(no matching overload and no getter fallback)"
         )
     }
@@ -1235,6 +1304,20 @@ object JavaObjectBridge {
             if (obj != null) return obj
         }
         return value
+    }
+
+    /**
+     * 反解 [javaToJsResult] 生成的句柄 Map ({__java_handle__: h}) 为原始 Java 对象。
+     * 供 Raw 路径消化 callHotTypeMethod 的 wrapping 结果, 让 native 端拿到裸对象。
+     */
+    private fun unwrapHotResult(result: Any?): Any? {
+        if (result is Map<*, *>) {
+            val handle = result["__java_handle__"]
+            if (handle is Long && handle != 0L) {
+                return getObject(handle)
+            }
+        }
+        return result
     }
 
     /**
@@ -1344,17 +1427,35 @@ object JavaObjectBridge {
         // 方法名不存在或参数不匹配, 抛异常让 native jsBindingCall 的 ExceptionCheck
         // 分支 wrap Throwable 传给 JS catch。原先 return null 让 JS 侧 `Math.nonExistent()`
         // 静默得到 null/undefined, 用户毫无感知。
-        val method = findStaticMethod(clazz, methodName, javaArgs)
-        if (method == null) {
-            throw IllegalStateException(
-                "Cannot find static method '$methodName' on ${clazz.name} " +
-                    "with args ${args.map { it?.javaClass?.simpleName }}"
+        val staticMethod = findStaticMethod(clazz, methodName, javaArgs)
+        if (staticMethod != null) {
+            staticMethod.isAccessible = true
+            val result = staticMethod.invoke(
+                null,
+                *coerceArgs(staticMethod.parameterTypes, javaArgs, staticMethod.isVarArgs)
             )
+            return javaToJsResult(result, dangerousApi)
         }
-        method.isAccessible = true
-        val result =
-            method.invoke(null, *coerceArgs(method.parameterTypes, javaArgs, method.isVarArgs))
-        return javaToJsResult(result, dangerousApi)
+
+        // 尝试作为 java.lang.Class 的实例方法 (如 isInstance, isAssignableFrom)
+        // 对齐 rhino: java.lang.String.isInstance(obj) 可行
+        val classMethod = findMethod(Class::class.java, methodName, javaArgs)
+        if (classMethod != null && !Modifier.isStatic(classMethod.modifiers)) {
+            if (!JsSecurityPolicy.isMethodVisible("java.lang.Class", methodName, dangerousApi)) {
+                return null
+            }
+            classMethod.isAccessible = true
+            val result = classMethod.invoke(
+                clazz,
+                *coerceArgs(classMethod.parameterTypes, javaArgs, classMethod.isVarArgs)
+            )
+            return javaToJsResult(result, dangerousApi)
+        }
+
+        throw IllegalStateException(
+            "Cannot find static method '$methodName' on ${clazz.name} " +
+                    "with args ${args.map { it?.javaClass?.simpleName }}"
+        )
     }
 
     /**

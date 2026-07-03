@@ -73,6 +73,12 @@ public:
     // public 以便匿名命名空间的 getJniEnv() 访问
     static JavaVM *cachedJvm;
 
+    /**
+     * JNI_OnLoad 阶段预热 BridgeNative / List / Class.isArray / Boolean 缓存。
+     * 幂等; 内部保 std::call_once, 保护 trap 首次触发在极端情况早于 OnLoad 的场景。
+     */
+    static void initBridgeCache(JNIEnv *env);
+
 private:
     static JSClassID classId;
     // 已注册 JavaObject class 的 runtime 集合

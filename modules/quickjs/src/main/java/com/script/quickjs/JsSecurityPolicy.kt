@@ -25,7 +25,6 @@ object JsSecurityPolicy {
 
     private val protectedClassNamesMatcher by lazy {
         listOf(
-            "java.lang.Class",
             "java.lang.ClassLoader",
             "java.net.URLClassLoader",
             "java.lang.Runtime",
@@ -103,10 +102,38 @@ object JsSecurityPolicy {
         Collections.unmodifiableSet(hashSetOf("load", "loadLibrary", "exit"))
     }
 
+    /**
+     * Class 类特殊屏蔽的方法名。
+     */
+    val classProtectedName: Set<String> by lazy {
+        Collections.unmodifiableSet(
+            hashSetOf(
+                "getClassLoader",
+                "newInstance",
+                "asSubclass",
+                "cast",
+                "getProtectionDomain",
+                "getResource",
+                "getResourceAsStream",
+                "getConstructor",
+                "getConstructors",
+                "getDeclaredConstructor",
+                "getDeclaredConstructors",
+                "getField",
+                "getFields",
+                "getDeclaredField",
+                "getDeclaredFields",
+                "getMethod",
+                "getMethods",
+                "getDeclaredMethod",
+                "getDeclaredMethods"
+            )
+        )
+    }
+
     private val protectedClasses by lazy {
         arrayOf(
             ClassLoader::class.java,
-            Class::class.java,
             Member::class.java,
             ObjectInputStream::class.java,
             ObjectOutputStream::class.java,
@@ -138,7 +165,6 @@ object JsSecurityPolicy {
         if (obj is NativeObject) return true
         when (obj) {
             is ClassLoader,
-            is Class<*>,
             is Member,
             is ObjectInputStream,
             is ObjectOutputStream,
@@ -151,7 +177,7 @@ object JsSecurityPolicy {
             is FileSystem,
             is Path -> return false
         }
-        return isClassVisible(obj.javaClass.name, dangerousApi)
+        return isClassVisible(obj.javaClass.name, false)
     }
 
     /**
@@ -164,7 +190,7 @@ object JsSecurityPolicy {
                 return false
             }
         }
-        return isClassVisible(clazz.name, dangerousApi)
+        return isClassVisible(clazz.name, false)
     }
 
     /**
@@ -173,6 +199,9 @@ object JsSecurityPolicy {
     fun isMethodVisible(className: String, methodName: String, dangerousApi: Boolean): Boolean {
         if (dangerousApi) return true
         if (className == "java.lang.System" && methodName in systemClassProtectedName) {
+            return false
+        }
+        if (className == "java.lang.Class" && methodName in classProtectedName) {
             return false
         }
         return true

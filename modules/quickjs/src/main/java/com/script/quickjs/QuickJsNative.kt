@@ -1,7 +1,9 @@
 package com.script.quickjs
 
 import com.script.quickjs.QuickJsNative.nativeCallFunction
+import com.script.quickjs.QuickJsNative.nativeDefineBinding
 import com.script.quickjs.QuickJsNative.nativeSetProperty
+import com.script.quickjs.QuickJsNative.nativeSetPropertyHandle
 
 
 /**
@@ -107,6 +109,14 @@ object QuickJsNative {
     /** 检查对象是否有某属性。 */
     external fun nativeHasProperty(ctxPtr: Long, objHandle: Long, name: String): Boolean
 
+    /**
+     * 删除对象属性 (走 JS_DeleteProperty, 语义等价于 JS `delete obj[name]`)。
+     *
+     * Configurable:false 的属性 (bootstrap `var`/`function` 声明的 java/Packages/JavaImporter 等)
+     * delete 静默失败, 返回 false; 调用方需自行走 [nativeSetPropertyHandle] 恢复初值句柄。
+     */
+    external fun nativeDeleteProperty(ctxPtr: Long, objHandle: Long, name: String): Boolean
+
     // ============ 类型查询与转换 ============
 
     /**
@@ -206,6 +216,18 @@ object QuickJsNative {
      * @return true 成功, false 失败
      */
     external fun nativeDefineBinding(ctxPtr: Long, name: String): Boolean
+
+    /**
+     * 批量注册 binding (优化: 一次 JNI 调用替代 N 次 [nativeDefineBinding])。
+     *
+     * 在 native 层遍历 names 数组调用 [defineBinding], 省掉 N-1 次 JNI 跨边界往返。
+     * 用于 [QuickJsEngine.registerBindings] 初始化 12 个 binding 的场景。
+     *
+     * @param ctxPtr ctx 指针
+     * @param names binding 名称数组
+     * @return true 表示全部成功, false 表示任一失败
+     */
+    external fun nativeDefineBindings(ctxPtr: Long, names: Array<String>): Boolean
 
     // ============ dangerousApi 管理 ============
 

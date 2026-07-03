@@ -22,6 +22,10 @@ namespace {
     jmethodID g_getPropertyInfo = nullptr;
     jmethodID g_setProperty = nullptr;
     jmethodID g_getPropertyNames = nullptr;
+    // 哨兵单例 (JavaObjectBridge.METHOD_MARKER / NULL_FIELD_MARKER 的 global ref)
+    // trap 用 IsSameObject 与之对比, 免掉原先 3 槽数组 + 装箱 2 Boolean 的开销。
+    jobject g_methodMarker = nullptr;
+    jobject g_nullFieldMarker = nullptr;
     // Tier 2: method callable 改为共享 + 从 this_val 取对象后, 不再需要 getHandle (已删)
     // 用 std::once_flag 保证 init body 只执行一次, 且执行完成后对其它线程可见
     // (call_once 内部 release/acquire 屏障替代了原裸 bool 的 publish-after-write 隐患:
@@ -46,6 +50,13 @@ namespace {
     jclass g_BooleanCls = nullptr;
     jmethodID g_BooleanValueOf = nullptr;
     jmethodID g_BooleanValue = nullptr;
+
+    // java.lang.reflect.Array 缓存 (List/Array 索引 fast path 和 Symbol.iterator 用)
+    // 原实现 Symbol.iterator 时每次都 FindClass + GetStaticMethodID, 索引 fast path
+    // 未启用时无损耗, 但一旦启用就是 hot loop 里的关键调用 (每 list[i] 至少 1 次调用)
+    jclass g_reflectArrayCls = nullptr;
+    jmethodID g_reflectArrayGetLength = nullptr;
+    jmethodID g_reflectArrayGet = nullptr;
 
     // 获取 JNIEnv (从 JS 执行线程)
     JNIEnv *getJniEnv() {
@@ -80,9 +91,9 @@ namespace {
             // hasProperty(obj, name, dangerousApi): Boolean
             g_hasProperty = env->GetStaticMethodID(g_bridgeCls, "hasProperty",
                                                    "(Ljava/lang/Object;Ljava/lang/String;Z)Z");
-            // getPropertyInfo(obj, name, dangerousApi): Array<Any?>?  (返回 [fieldValue, fieldExists, hasMethod])
+            // getPropertyInfo(obj, name, dangerousApi): Any? (哨兵协议, 见 g_methodMarker/g_nullFieldMarker)
             g_getPropertyInfo = env->GetStaticMethodID(g_bridgeCls, "getPropertyInfo",
-                                                       "(Ljava/lang/Object;Ljava/lang/String;Z)[Ljava/lang/Object;");
+                                                       "(Ljava/lang/Object;Ljava/lang/String;Z)Ljava/lang/Object;");
             // setProperty(obj, name, value, dangerousApi): Boolean
             g_setProperty = env->GetStaticMethodID(g_bridgeCls, "setProperty",
                                                    "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;Z)Z");
@@ -122,7 +133,7 @@ namespace {
                 env->ExceptionClear();
             }
 
-            // java.lang.Boolean 缓存 (getProperty 解包 Boolean / 调用 valueOf)
+            // java.lang.Boolean 缓存 (setProperty 等分支仍会用到 Boolean.valueOf/booleanValue)
             jclass localBool = env->FindClass("java/lang/Boolean");
             if (localBool) {
                 g_BooleanCls = (jclass) env->NewGlobalRef(localBool);
@@ -134,24 +145,141 @@ namespace {
                 env->ExceptionClear();
             }
 
-            // 汇总检查放到 lambda 末尾: Boolean 在上面才初始化, 提前判会误报。
+            // java.lang.reflect.Array (整数索引 fast path 用 getLength/get)
+            jclass localRefArr = env->FindClass("java/lang/reflect/Array");
+            if (localRefArr) {
+                g_reflectArrayCls = (jclass) env->NewGlobalRef(localRefArr);
+                env->DeleteLocalRef(localRefArr);
+                g_reflectArrayGetLength = env->GetStaticMethodID(
+                        g_reflectArrayCls, "getLength", "(Ljava/lang/Object;)I");
+                g_reflectArrayGet = env->GetStaticMethodID(
+                        g_reflectArrayCls, "get", "(Ljava/lang/Object;I)Ljava/lang/Object;");
+            } else {
+                env->ExceptionClear();
+            }
+
+            // 读取 JavaObjectBridge 的哨兵单例并转 GlobalRef。
+            // METHOD_MARKER / NULL_FIELD_MARKER 是 Kotlin object 里 @JvmField 的 val, 生成为 static 字段。
+            jmethodID getMethodMarker = env->GetStaticMethodID(
+                    g_bridgeCls, "getMethodMarker", "()Ljava/lang/Object;");
+            jmethodID getNullFieldMarker = env->GetStaticMethodID(
+                    g_bridgeCls, "getNullFieldMarker", "()Ljava/lang/Object;");
+            if (getMethodMarker && getNullFieldMarker) {
+                jobject methodLocal = env->CallStaticObjectMethod(g_bridgeCls, getMethodMarker);
+                if (methodLocal) {
+                    g_methodMarker = env->NewGlobalRef(methodLocal);
+                    env->DeleteLocalRef(methodLocal);
+                }
+                jobject nullLocal = env->CallStaticObjectMethod(g_bridgeCls, getNullFieldMarker);
+                if (nullLocal) {
+                    g_nullFieldMarker = env->NewGlobalRef(nullLocal);
+                    env->DeleteLocalRef(nullLocal);
+                }
+            }
+            if (env->ExceptionCheck()) env->ExceptionClear();
+
+            // 汇总检查放到 lambda 末尾: Boolean 与 sentinel 在上面才初始化, 提前判会误报。
             if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
-                !g_BooleanCls || !g_BooleanValue) {
-                LOGE("JavaObjectBridgeNative methods or Boolean class not found");
+                    !g_BooleanCls || !g_BooleanValue ||
+                    !g_methodMarker || !g_nullFieldMarker) {
+                LOGE("JavaObjectBridgeNative methods/Boolean/sentinel not found");
                 env->ExceptionClear();
             }
         });
     }
 
-    // 检测 atom 是否为 Symbol.iterator (well-known symbol)
-    // JS_AtomToCString 对 well-known symbol 返回其描述字符串 "Symbol.iterator"
-    // 用字符串比较避免依赖 quickjs-ng 内部 atom enum (未在公开头文件导出)
-    bool isSymbolIterator(JSContext *ctx, JSAtom atom) {
-        const char *name = JS_AtomToCString(ctx, atom);
-        if (!name) return false;
-        bool result = (strcmp(name, "Symbol.iterator") == 0);
-        JS_FreeCString(ctx, name);
-        return result;
+    // 让 trap 用简短的调用点保持源可读性。
+    inline void ensureBridgeInitedFast(JNIEnv *env) { ensureBridgeInited(env); }
+
+    // 检测 atom 是否为 Symbol.iterator (well-known symbol)。
+    // 缓存在 CtxOpaqueData::symbolIteratorAtom (initCtxOpaque 时 JS_NewAtom 一次),
+    // 后续属性访问只做一次 JSAtom (uint32_t) 数值比较, 免掉 JS_AtomToCString + strcmp + JS_FreeCString。
+    inline bool isSymbolIterator(JSContext *ctx, JSAtom atom) {
+        auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+        return data && atom == data->symbolIteratorAtom;
+    }
+
+    // atom 是否为 tagged int 编码 (数组索引): 最高位 (1<<31) 置位, 低 31 位即 uint32 索引。
+    // 这是 quickjs-ng 内部约定 (__JS_AtomIsTaggedInt 是 static inline, 未公开导出),
+    // 属性访问相关的字节码/JS_GetPropertyValue 全都基于此编码, 长期稳定。为省
+    // atomToCString + NewStringUTF + JNI 往返 + Kotlin 侧 propertyInfoCache lookup + toIntOrNull
+    // 一整套开销 (每 list[i] 访问都要跑一遍), 在 trap 入口做一次纯 CPU 位测试。
+    // 若未来 quickjs-ng 改动 atom 编码, 这里会退化为"永远不走 fast path", 慢路径仍完整可用。
+    inline bool isIndexAtom(JSAtom atom, uint32_t *out) {
+        constexpr uint32_t kTagInt = 1U << 31;
+        if (atom & kTagInt) {
+            *out = atom & ~kTagInt;
+            return true;
+        }
+        return false;
+    }
+
+    // 整数索引 fast path: 仅当 javaObj 是 List 或 Java 数组时命中, 否则返回 false 落慢路径。
+    // 命中时 *out 已装入结果 (可能是 JS_UNDEFINED, 表示越界), 调用方直接 return。
+    //
+    // 安全性: JsSecurityPolicy 的 isObjectVisible 对 List / 数组 (非 protectedClasses) 永远返回 true,
+    // 慢路径的 gate 也不会拦截 list[i], 这里跳过重复调用等价。
+    bool tryFastIndexGet(JSContext *ctx, JNIEnv *env, jobject javaObj, uint32_t idx, JSValue *out) {
+        // List: 走 List.size() / List.get(i)
+        if (g_listCls && env->IsInstanceOf(javaObj, g_listCls)) {
+            jint size = env->CallIntMethod(javaObj, g_listSize);
+            if (env->ExceptionCheck()) {
+                // 慢路径也会遇到并处理, 让上层继续
+                env->ExceptionClear();
+                return false;
+            }
+            if (idx >= (uint32_t) size) {
+                *out = JS_UNDEFINED;
+                return true;
+            }
+            jobject elem = env->CallObjectMethod(javaObj, g_listGet, (jint) idx);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (elem) env->DeleteLocalRef(elem);
+                return false;
+            }
+            *out = JniValueConvert::fromJavaObject(ctx, env, elem);
+            if (elem) env->DeleteLocalRef(elem);
+            return true;
+        }
+        // Java 数组: 走 reflect.Array.getLength / reflect.Array.get
+        if (g_reflectArrayCls && g_getClass && g_isArray) {
+            jobject classObj = env->CallObjectMethod(javaObj, g_getClass);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (classObj) env->DeleteLocalRef(classObj);
+                return false;
+            }
+            if (!classObj) return false;
+            jboolean isArr = env->CallBooleanMethod(classObj, g_isArray);
+            env->DeleteLocalRef(classObj);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                return false;
+            }
+            if (isArr != JNI_TRUE) return false;
+            jint size = env->CallStaticIntMethod(g_reflectArrayCls, g_reflectArrayGetLength,
+                                                 javaObj);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                return false;
+            }
+            if (idx >= (uint32_t) size) {
+                *out = JS_UNDEFINED;
+                return true;
+            }
+            jobject elem = env->CallStaticObjectMethod(
+                    g_reflectArrayCls, g_reflectArrayGet, javaObj, (jint) idx);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (elem) env->DeleteLocalRef(elem);
+                return false;
+            }
+            *out = JniValueConvert::fromJavaObject(ctx, env, elem);
+            if (elem) env->DeleteLocalRef(elem);
+            return true;
+        }
+        return false;
     }
 
     // 判断 Java 对象是否为 List 或 Java 数组 (用于 Symbol.iterator 支持)
@@ -280,32 +408,21 @@ namespace {
                 if (elem) env->DeleteLocalRef(elem);
             }
         } else {
-            // Java 数组: 用 java.lang.reflect.Array
-            jclass arrayCls = env->FindClass("java/lang/reflect/Array");
-            if (!arrayCls) {
-                env->ExceptionClear();
+            // Java 数组: 用 java.lang.reflect.Array (类和方法 ID 已在 ensureBridgeInited 缓存)
+            if (!g_reflectArrayCls || !g_reflectArrayGetLength || !g_reflectArrayGet) {
                 JS_FreeValue(ctx, arr);
-                return JS_ThrowInternalError(ctx, "java.lang.reflect.Array class not found");
+                return JS_ThrowInternalError(ctx, "java.lang.reflect.Array not bound");
             }
-            jmethodID arrayGetLength = env->GetStaticMethodID(
-                    arrayCls, "getLength", "(Ljava/lang/Object;)I");
-            jmethodID arrayGet = env->GetStaticMethodID(
-                    arrayCls, "get", "(Ljava/lang/Object;I)Ljava/lang/Object;");
-            if (!arrayGetLength || !arrayGet) {
-                env->ExceptionClear();
-                env->DeleteLocalRef(arrayCls);
-                JS_FreeValue(ctx, arr);
-                return JS_ThrowInternalError(ctx, "Array.getLength/get method not found");
-            }
-            jint size = env->CallStaticIntMethod(arrayCls, arrayGetLength, javaObj);
+            jint size = env->CallStaticIntMethod(g_reflectArrayCls, g_reflectArrayGetLength,
+                                                 javaObj);
             if (env->ExceptionCheck()) {
                 env->ExceptionClear();
-                env->DeleteLocalRef(arrayCls);
                 JS_FreeValue(ctx, arr);
                 return JS_ThrowInternalError(ctx, "Array.getLength threw");
             }
             for (jint i = 0; i < size; i++) {
-                jobject elem = env->CallStaticObjectMethod(arrayCls, arrayGet, javaObj, i);
+                jobject elem = env->CallStaticObjectMethod(g_reflectArrayCls, g_reflectArrayGet,
+                                                           javaObj, i);
                 if (env->ExceptionCheck()) {
                     env->ExceptionClear();
                     if (elem) env->DeleteLocalRef(elem);
@@ -315,7 +432,6 @@ namespace {
                 JS_SetPropertyUint32(ctx, arr, jsIndex++, elemVal);
                 if (elem) env->DeleteLocalRef(elem);
             }
-            env->DeleteLocalRef(arrayCls);
         }
 
         // 返回 Array 的 [Symbol.iterator]() 结果
@@ -384,6 +500,11 @@ void JavaObjectClass::unregisterRuntime(JSRuntime *rt) {
     if (!rt) return;
     std::lock_guard<std::mutex> lock(registryMutex);
     registeredRuntimes.erase(rt);
+}
+
+void JavaObjectClass::initBridgeCache(JNIEnv *env) {
+    // 委托匿名命名空间里的 std::call_once, 只在 OnLoad 阶段被打一次。
+    ensureBridgeInited(env);
 }
 
 JSValue JavaObjectClass::wrap(JSContext *ctx, JNIEnv *env, jobject javaObj) {
@@ -554,6 +675,20 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     jobject javaObj = getJavaObject(ctx, obj);
     if (!javaObj) return JS_UNDEFINED;
 
+    // 整数索引 fast path: list[i] / arr[i] 是极热循环 (书源常见 pattern).
+    // 直接从 atom 位测得到 uint32 索引, 若 javaObj 是 List/Array, 走 List.get(i) /
+    // Array.get(arr,i), 省掉 atomToCString + NewStringUTF + JNI 往返 + Kotlin 侧
+    // propertyInfoCache lookup + toIntOrNull. 慢路径 (getJavaPropertyRaw) 已通过
+    // getCollectionField 处理这两类, fast path 是等价捷径。
+    uint32_t fastIdx;
+    if (isIndexAtom(atom, &fastIdx)) {
+        JSValue fastOut;
+        if (tryFastIndexGet(ctx, env, javaObj, fastIdx, &fastOut)) {
+            return fastOut;
+        }
+        // 非 List/Array 的整数索引 (罕见): 落慢路径, 让 Kotlin 侧决定 (通常返回 null)
+    }
+
     const char *name = atomToCString(ctx, atom);
     if (!name) {
         // JS_AtomToCString 失败 (通常 OOM) 时 quickjs 已设过 ctx 异常,
@@ -567,12 +702,16 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     JS_FreeCString(ctx, name);
 
     bool dangerousApi = getDangerousApi(ctx);
-    // getPropertyInfo 返回 [fieldValue, fieldExists, hasMethod] 或 null
-    auto info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
-                                                                   g_getPropertyInfo, javaObj,
-                                                                   jname,
-                                                                   dangerousApi ? JNI_TRUE
-                                                                                : JNI_FALSE);
+    // getPropertyInfo 返回单个 Any? (哨兵协议):
+    //   null                    -> 属性不存在, 沿原型链查
+    //   g_methodMarker (单例)   -> 有同名方法, 走 method callable
+    //   g_nullFieldMarker (单例) -> field 存在但值为 null, 返回 JS_NULL
+    //   其他 jobject            -> 该对象即 fieldValue, 直接 fromJavaObject
+    // 用 IsSameObject 与 GlobalRef 单例对比, 免掉原先 3 槽数组 + 2 次 Boolean 装箱/解包。
+    jobject info = env->CallStaticObjectMethod(g_bridgeCls,
+                                               g_getPropertyInfo, javaObj,
+                                               jname,
+                                               dangerousApi ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
@@ -616,66 +755,21 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
         return JS_UNDEFINED;
     }
 
-    // 解析 [fieldValue, fieldExists, hasMethod]
-    jsize len = env->GetArrayLength(info);
-    if (len < 3) {
-        // 协议违反: getPropertyInfo 应返回 3 元素数组或 null。
-        // 旧实现 LOGE + return JS_UNDEFINED 让 JS 拿到 undefined 且无法 try-catch,
-        // 对齐 rhino(Java 侧契约违反时抛 EvaluatorException)改为抛异常。
-        LOGE("getProperty: info len=%d < 3", len);
-        env->DeleteLocalRef(info);
-        return JS_ThrowInternalError(
-                ctx, "getPropertyInfo returned array length %d < 3", len);
-    }
-
-    jobject fieldValue = env->GetObjectArrayElement(info, 0);
-    jobject fieldExistsObj = env->GetObjectArrayElement(info, 1);
-    jobject hasMethodObj = env->GetObjectArrayElement(info, 2);
-
-    // fieldExists 和 hasMethod 是 Boolean, 解包 (用缓存的 g_BooleanValue, 避免热路径 FindClass)
-    bool fieldExists = false;
-    bool hasMethod = false;
-    if (fieldExistsObj) {
-        fieldExists = env->CallBooleanMethod(fieldExistsObj, g_BooleanValue) == JNI_TRUE;
-        env->DeleteLocalRef(fieldExistsObj);
-    }
-    if (hasMethodObj) {
-        hasMethod = env->CallBooleanMethod(hasMethodObj, g_BooleanValue) == JNI_TRUE;
-        env->DeleteLocalRef(hasMethodObj);
-    }
-
-    // 决策逻辑 (对齐 rhino LiveConnect FieldAndMessages 行为):
-    // rhino 中 field 和 method 同名时, method 优先 (返回 method callable)。
-    // 例: ArrayList 有 private int size 字段, 也有 int size() 方法,
-    //     rhino 返回 method callable, 因此 list.size() 调用方法返回 int,
-    //     list.size 也返回 method callable (而非字段值)。
-    //
-    // 1. hasMethod=true: 返回 method callable (即使 field 存在且值非 null)
-    // 2. hasMethod=false 且 fieldValue!=null: 返回 field 值
-    // 3. hasMethod=false, fieldValue=null, fieldExists=true: 返回 JS_NULL
-    // 4. 都不存在: 返回 undefined
-    JSValue ret = JS_UNDEFINED;
-    if (hasMethod) {
-        // method 优先 (对齐 rhino FieldAndMessages)
-        // 注意: 不要在 exotic get_property trap 内用 JS_DefinePropertyValue 固化 callable。
-        // trap 被引擎调用时会持有 obj->shape 指针, trap 内改 obj 会触发 shape 迁移,
-        // 老 shape 被释放后引擎读到悬垂指针, 会在后续 JS_GetPrototype 里 SEGV。
-        const char *methodName = atomToCString(ctx, atom);
-        if (methodName) {
-            ret = getOrCreateMethodCallable(ctx, methodName);
-            JS_FreeCString(ctx, methodName);
-        }
-        // fieldValue 不再需要, 释放
-        if (fieldValue) env->DeleteLocalRef(fieldValue);
-    } else if (fieldValue != nullptr) {
-        // hasMethod=false 且 field 值非 null, 返回转换后的 JSValue
-        ret = JniValueConvert::fromJavaObject(ctx, env, fieldValue);
-        env->DeleteLocalRef(fieldValue);
-    } else if (fieldExists) {
-        // hasMethod=false, field 存在但值为 null, 返回 JS_NULL
+    // 决策 (对齐 rhino LiveConnect FieldAndMessages 行为):
+    // rhino 中 field 和 method 同名时, method 优先 —— 因此 Kotlin 侧 getJavaPropertyRaw
+    // 检出同名方法就直接返回 METHOD_MARKER, 不再回退看 field。
+    // 注意: 不要在 exotic get_property trap 内用 JS_DefinePropertyValue 固化 callable。
+    // trap 被引擎调用时会持有 obj->shape 指针, trap 内改 obj 会触发 shape 迁移,
+    // 老 shape 被释放后引擎读到悬垂指针, 会在后续 JS_GetPrototype 里 SEGV。
+    JSValue ret;
+    if (env->IsSameObject(info, g_methodMarker)) {
+        // 同名方法在所有实例间共享 callable, this 由调用点自动绑定 (rhino 一致)。
+        ret = getOrCreateMethodCallable(ctx, atom);
+    } else if (env->IsSameObject(info, g_nullFieldMarker)) {
         ret = JS_NULL;
+    } else {
+        ret = JniValueConvert::fromJavaObject(ctx, env, info);
     }
-
     env->DeleteLocalRef(info);
     return ret;
 }
@@ -786,11 +880,11 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
     JS_FreeCString(ctx, name);
 
     bool dangerousApi = getDangerousApi(ctx);
-    auto info = (jobjectArray) env->CallStaticObjectMethod(g_bridgeCls,
-                                                                   g_getPropertyInfo, javaObj,
-                                                                   jname,
-                                                                   dangerousApi ? JNI_TRUE
-                                                                                : JNI_FALSE);
+    // 哨兵协议: 同 getProperty 描述。
+    jobject info = env->CallStaticObjectMethod(g_bridgeCls,
+                                               g_getPropertyInfo, javaObj,
+                                               jname,
+                                               dangerousApi ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
@@ -818,10 +912,18 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
     }
 
     // info 非空: Java 侧有此属性 (field/method/getter/collection field), 是自有属性
+    // 直接从 info 转换 value, 不再回调 getProperty 二次跑 JNI:
+    // 原实现调 getProperty 会重复 atomToCString + NewStringUTF + CallStaticObjectMethod,
+    // 一次属性枚举 (Object.keys / hasOwnProperty) 相当于两倍 JNI 开销。
     if (desc) {
-        // 调 getProperty 获取值。info != null 时 getProperty 走 Java 侧分支返回值,
-        // 不会进入沿原型链分支, 不会重复调 Java 侧 (info != null 直接返回 method callable/field 值)
-        JSValue val = getProperty(ctx, obj, prop, JS_UNDEFINED);
+        JSValue val;
+        if (env->IsSameObject(info, g_methodMarker)) {
+            val = getOrCreateMethodCallable(ctx, prop);
+        } else if (env->IsSameObject(info, g_nullFieldMarker)) {
+            val = JS_NULL;
+        } else {
+            val = JniValueConvert::fromJavaObject(ctx, env, info);
+        }
         if (JS_IsException(val)) {
             // 不能把 JS_EXCEPTION 写进 desc->value 后返回 1 (success),
             // 调用方会把它当成普通 value 使用, 后续 JS_DupValue/JS_FreeValue
@@ -909,13 +1011,28 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
     }
     *plen = len;
 
-    for (jsize i = 0; i < len; i++) {
-        auto name = (jstring) env->GetObjectArrayElement(names, i);
-        const char *cname = env->GetStringUTFChars(name, nullptr);
-        (*ptab)[i].atom = JS_NewAtom(ctx, cname ? cname : "");
-        (*ptab)[i].is_enumerable = true;
-        env->ReleaseStringUTFChars(name, cname);
-        env->DeleteLocalRef(name);
+    // PushLocalFrame 批量回收循环内 GetObjectArrayElement 产生的 local ref,
+    // 省掉每轮 DeleteLocalRef 调用; +16 冗余给 GetStringUTFChars 内部可能产生的
+    // 短周期 local ref (Android JNI 实现细节, 保守值)
+    if (len > 0 && env->PushLocalFrame(len + 16) == 0) {
+        for (jsize i = 0; i < len; i++) {
+            auto name = (jstring) env->GetObjectArrayElement(names, i);
+            const char *cname = env->GetStringUTFChars(name, nullptr);
+            (*ptab)[i].atom = JS_NewAtom(ctx, cname ? cname : "");
+            (*ptab)[i].is_enumerable = true;
+            env->ReleaseStringUTFChars(name, cname);
+        }
+        env->PopLocalFrame(nullptr);
+    } else {
+        // PushLocalFrame 失败退化到逐个 DeleteLocalRef (保持原语义)
+        for (jsize i = 0; i < len; i++) {
+            auto name = (jstring) env->GetObjectArrayElement(names, i);
+            const char *cname = env->GetStringUTFChars(name, nullptr);
+            (*ptab)[i].atom = JS_NewAtom(ctx, cname ? cname : "");
+            (*ptab)[i].is_enumerable = true;
+            env->ReleaseStringUTFChars(name, cname);
+            env->DeleteLocalRef(name);
+        }
     }
     env->DeleteLocalRef(names);
     return 0;

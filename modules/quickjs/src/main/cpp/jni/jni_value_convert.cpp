@@ -46,7 +46,7 @@ namespace {
     // 触发 JNI 内部 abort 或写错位置, 与远处 JSString header 损坏对得上。
     std::once_flag g_initFlag;
 
-    void ensureClassCache(JNIEnv *env) {
+    void doInitClassCache(JNIEnv *env) {
         std::call_once(g_initFlag, [env]() {
             // Boolean
             jclass localBool = env->FindClass("java/lang/Boolean");
@@ -103,7 +103,13 @@ namespace {
                                                  "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
         });
     }
+
+    // 保持 inline hint 让编译器把已 warm 的 call_once 检查压得更薄。
+    inline void ensureClassCache(JNIEnv *env) { doInitClassCache(env); }
 }
+
+// JNI_OnLoad 提前一次性完成初始化。
+void initJniValueConvertCache(JNIEnv *env) { doInitClassCache(env); }
 
 jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value) {
     ensureClassCache(env);
@@ -320,19 +326,22 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
         return JS_NULL;
     }
 
-    // 热路径优化: 书源 JS 大量返回 String / Integer / 自定义 Java 对象。
-    // 先做 String 判断 (高频, 且字符串拼接/拷贝是常见瓶颈), 再 Integer (循环计数器、
-    // size/length 返回), 然后其他基本类型, 最后落到自定义 Java 对象 wrap 分支。
-    // String
-    // 用 UTF-16 路径 (GetStringChars + JS_NewStringUTF16), 与 toJavaObject 对称。
-    // 原 GetStringUTFChars 返回 modified UTF-8 (NUL 编码为 0xC0 0x80), 传给
-    // JS_NewString (标准 UTF-8 解析) 时 0xC0 0x80 是 overlong encoding (无效),
-    // QuickJS 会替换为 U+FFFD; 且 JS_NewString 用 strlen, Java String 含 NUL 时
-    // modified UTF-8 虽无 0x00 字节但 overlong 序列解析异常。
-    // GetStringChars 返回原生 UTF-16 (jchar), JS_NewStringUTF16 直接消费, 零损耗。
-    if (env->IsInstanceOf(javaObj, g_StringCls)) {
+    // 类型分派: 一次 GetObjectClass + N 次 IsSameObject 指针比较, 替代原先 8 次
+    // IsInstanceOf 链。boxed 类型 (Boolean/Integer/Long/Double/Float/Byte/Short/String)
+    // 都是 final, GetObjectClass + IsSameObject 与 IsInstanceOf 语义等价; 差别在于
+    // IsInstanceOf 每次都要在 ART 里做类层次比对 (即便 final 也要 resolve class + 匹配),
+    // 而这里 resolve 一次后仅数值比较 GlobalRef 指针, 未命中时也不会跑 8 遍 hierarchy 遍历。
+    // wrap 分支 (自定义 Java 对象) 是常见的 non-boxed 路径, 免掉 8 次 miss 后再进 wrap。
+    jclass cls = env->GetObjectClass(javaObj);
+
+    // String (热路径最前, 书源大量返回字符串; UTF-16 路径见旧注释保留在下方 String 分支内)
+    if (env->IsSameObject(cls, g_StringCls)) {
+        env->DeleteLocalRef(cls);
+        // 用 UTF-16 (GetStringChars + JS_NewStringUTF16) 与 toJavaObject 对称。
+        // GetStringUTFChars 返回 modified UTF-8, 含 NUL 时 JS_NewString 会截断或
+        // 触发 overlong 替换为 U+FFFD; UTF-16 路径零损耗。
         jstring jstr = (jstring) javaObj;
-        jsize len = env->GetStringLength(jstr);  // UTF-16 code unit 数 (非字节数)
+        jsize len = env->GetStringLength(jstr);
         if (len == 0) {
             return JS_NewString(ctx, "");
         }
@@ -344,42 +353,49 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
         env->ReleaseStringChars(jstr, chars);
         return val;
     }
-    // Integer
-    if (env->IsInstanceOf(javaObj, g_IntegerCls)) {
+    // Integer (循环计数器、size/length 返回)
+    if (env->IsSameObject(cls, g_IntegerCls)) {
+        env->DeleteLocalRef(cls);
         jint v = env->CallIntMethod(javaObj, g_IntegerValue);
         return JS_NewInt32(ctx, v);
     }
     // Boolean
-    if (env->IsInstanceOf(javaObj, g_BooleanCls)) {
+    if (env->IsSameObject(cls, g_BooleanCls)) {
+        env->DeleteLocalRef(cls);
         jboolean b = env->CallBooleanMethod(javaObj, g_BooleanValue);
         return JS_NewBool(ctx, b == JNI_TRUE);
     }
     // Double
-    if (env->IsInstanceOf(javaObj, g_DoubleCls)) {
+    if (env->IsSameObject(cls, g_DoubleCls)) {
+        env->DeleteLocalRef(cls);
         jdouble v = env->CallDoubleMethod(javaObj, g_DoubleValue);
         return JS_NewFloat64(ctx, v);
     }
-    // Long -> JS Number (用 float64 避免溢出, Long 句柄可能超过 int32 范围)
-    // 重要: binding 返回的 classHandle/objHandle 是 Long, 需要作为 JS Number 传递
-    if (env->IsInstanceOf(javaObj, g_LongCls)) {
+    // Long -> JS Number (float64 避免溢出, binding 返回的 handle 可能超过 int32)
+    if (env->IsSameObject(cls, g_LongCls)) {
+        env->DeleteLocalRef(cls);
         jlong v = env->CallLongMethod(javaObj, g_LongValue);
         return JS_NewFloat64(ctx, (double) v);
     }
     // Float
-    if (env->IsInstanceOf(javaObj, g_FloatCls)) {
+    if (env->IsSameObject(cls, g_FloatCls)) {
+        env->DeleteLocalRef(cls);
         jfloat v = env->CallFloatMethod(javaObj, g_FloatValue);
         return JS_NewFloat64(ctx, (double) v);
     }
     // Byte (byte[] 元素访问)
-    if (env->IsInstanceOf(javaObj, g_ByteCls)) {
+    if (env->IsSameObject(cls, g_ByteCls)) {
+        env->DeleteLocalRef(cls);
         jbyte v = env->CallByteMethod(javaObj, g_ByteValue);
         return JS_NewInt32(ctx, (int32_t) v);
     }
     // Short
-    if (env->IsInstanceOf(javaObj, g_ShortCls)) {
+    if (env->IsSameObject(cls, g_ShortCls)) {
+        env->DeleteLocalRef(cls);
         jshort v = env->CallShortMethod(javaObj, g_ShortValue);
         return JS_NewInt32(ctx, (int32_t) v);
     }
+    env->DeleteLocalRef(cls);
 
     // 其他 Java 对象 -> JavaObjectClass.wrap (走 exotic trap)
     return JavaObjectClass::wrap(ctx, env, javaObj);

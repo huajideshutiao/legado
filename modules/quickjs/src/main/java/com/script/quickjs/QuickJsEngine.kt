@@ -1,12 +1,15 @@
 package com.script.quickjs
 
+import com.script.quickjs.QuickJsEngine.cacheBootstrapGlobals
+import com.script.quickjs.QuickJsEngine.cacheBootstrapHelpers
 import com.script.quickjs.QuickJsEngine.cleanupBindings
-import com.script.quickjs.QuickJsEngine.compileForSubScope
 import com.script.quickjs.QuickJsEngine.compilerCtx
 import com.script.quickjs.QuickJsEngine.createNativeCtx
+import com.script.quickjs.QuickJsEngine.enterBindings
 import com.script.quickjs.QuickJsEngine.eval
 import com.script.quickjs.QuickJsEngine.evalBytecode
 import com.script.quickjs.QuickJsEngine.evalInSubScope
+import com.script.quickjs.QuickJsEngine.exitBindings
 import com.script.quickjs.QuickJsEngine.getRuntimeScope
 import com.script.quickjs.QuickJsEngine.injectBindings
 import com.script.quickjs.QuickJsEngine.wrapJsForEval
@@ -173,29 +176,11 @@ object QuickJsEngine {
     }
 
     /**
-     * 在 SharedJsScope 缓存的 topScope 上执行用户 JS bytecode。
+     * 在 SharedJsScope 的 topScope 上执行 bytecode, bindings 压入 `__bindingsStack__` 子 scope 栈,
+     * 由 [wrapJsForEval] 的 `with(__currentBindings())` 让 user JS 走栈顶命中, 不污染 topScope
+     * (对齐 rhino `childScope.prototype = topScope` 语义)。
      *
-     * 早期版本曾尝试用子 scope object + `with(__b)` 包装来"隔离 bindings 不污染 topScope",
-     * 但那种写法会让 jsLib 里定义在 topScope 上的函数(如 `lk`)在执行时拿不到 binding:
-     * `lk` 的词法作用域 = topScope, 内部访问自由变量 `cache` 只会走 topScope, 而 binding
-     * 只存在于子 scope, 于是 `cache` 解析为 undefined, 复刻 rhino 行为时就破功。
-     *
-     * SharedJsScope 的 ctx 本身就是 ThreadLocal 线程独占的 (见 SharedJsScope.threadCache),
-     * topScope 不存在跨线程共享, 所以直接走"注入到 globalThis + 执行后恢复"是安全的:
-     * - bindings 进入 globalThis ⇒ user JS 和 jsLib 函数都能通过普通自由变量查找命中
-     * - 执行结束后 pop 快照, 把 globalThis 上的 binding 恢复到 push 前的值
-     *
-     * 对齐 rhino 子 scope 的 push/pop 语义:
-     * - rhino 用 `bindings.prototype = topScope` + 词法环境,子 scope 出栈后父 scope 变量不变
-     * - quickjs 无 prototype 链,改用"快照当前值 → 注入 → 执行 → 恢复快照"
-     * - 关键场景: 外层 evalJS 在 java.ajax() 里触发内层 evalJS (如 header <js>),
-     *   内层的 push/pop 只影响内层生命周期, 内层 pop 把 globalThis.java 恢复为外层注入的值,
-     *   避免历史上"内层 cleanup 直接 delete → 外层 java undefined → De(java.ajax(...))
-     *   在 java.ajax() 求值期间就把外层的 java 抹掉"这类跨栈污染。
-     *
-     * @param compiled [compileForSubScope] 编译出的 wrapJsForEval 包装后的 bytecode
-     * @param scope SharedJsScope 缓存的 topScope (线程独占)
-     * @param bindings 变量注入到 topScope 的 globalThis, 执行后按快照恢复
+     * jsLib 里 topScope 自由函数看不到 bindings; 共享函数写 jsLib, 业务变量走参数。
      */
     fun evalInSubScope(
         compiled: CompiledScript,
@@ -203,44 +188,63 @@ object QuickJsEngine {
         bindings: ScriptBindings,
         coroutineContext: CoroutineContext?
     ): Any? {
-        val keys = bindings.keys.filter { isValidVarName(it) }
-        pushBindingSnapshot(scope, keys)
+        scope.dangerousApi = bindings.dangerousApi
+        // nativeCallJsHandle 的 fromJavaObject 绕过 isObjectVisible, 先在 Kotlin 侧过滤
+        val kvs = buildBindingKvs(bindings)
+        val previousThreadContext = QuickJsContext.threadLocalContext.get()
+        QuickJsContext.threadLocalContext.set(scope)
         try {
-            injectBindings(scope, bindings)
-            return evalBytecode(compiled.bytecode, scope, coroutineContext)
+            syncDangerousApiIfNeeded(scope)
+            enterBindings(scope, kvs)
+            try {
+                return evalBytecode(compiled.bytecode, scope, coroutineContext)
+            } finally {
+                exitBindings(scope)
+            }
         } finally {
-            if (keys.isNotEmpty()) popBindingSnapshot(scope)
+            QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
     }
 
     /**
-     * 把 globalThis 上 [keys] 的当前值快照到 `__bindingSnapshots__` 栈顶。
-     *
-     * 用哨兵 `__NA__` 标记"原本不存在", 省掉 existed 副表。栈用普通数组挂在 globalThis,
-     * `__` 前缀命名约定避免与 user JS 冲突。
+     * 把 bindings 铺成 `[k1,v1,k2,v2,...]` 传给 `__enterBindings`。
+     * 非法变量名 / 不可见 Java 对象跳过 (基本类型/null 保留)。
      */
-    private fun pushBindingSnapshot(scope: QuickJsContext, keys: List<String>) {
-        if (keys.isEmpty()) return
-        val keysLiteral = keys.joinToString(",") { "\"$it\"" }
-        val script = "(function(){var ks=[$keysLiteral],g=globalThis," +
-            "s=g.__bindingSnapshots__||(g.__bindingSnapshots__=[]),snap={_k:ks};" +
-            "for(var i=0;i<ks.length;i++){var k=ks[i];" +
-            "snap[k]=Object.prototype.hasOwnProperty.call(g,k)?g[k]:snap;}" +
-            "s.push(snap);})();"
-        QuickJsNative.nativeEval(scope.ctxPtr, script)
+    private fun buildBindingKvs(bindings: ScriptBindings): Array<Any?> {
+        val dangerousApi = bindings.dangerousApi
+        val out = ArrayList<Any?>(bindings.size * 2)
+        for ((key, value) in bindings) {
+            if (!isValidVarName(key)) continue
+            if (value != null && value !is String && value !is Boolean && value !is Number) {
+                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) continue
+            }
+            out.add(key)
+            out.add(value)
+        }
+        return out.toTypedArray()
     }
 
-    /**
-     * 弹出栈顶快照, 恢复到 push 前状态。哨兵 (snap 自身) 表示原本不存在 → delete。
-     */
-    private fun popBindingSnapshot(scope: QuickJsContext) {
-        val script = "(function(){var g=globalThis,s=g.__bindingSnapshots__;" +
-            "if(!s||!s.length)return;var snap=s.pop(),ks=snap._k;" +
-            "for(var i=0;i<ks.length;i++){var k=ks[i];" +
-            "if(snap[k]===snap){try{delete g[k];}catch(e){}}else{g[k]=snap[k];}}" +
-            "})();"
-        QuickJsNative.nativeEval(scope.ctxPtr, script)
+    private fun enterBindings(scope: QuickJsContext, kvs: Array<Any?>) {
+        // 懒加载: 单次 eval 路径不进入 evalInSubScope, 此处首次访问时才抓取 helper 句柄,
+        // 避免 createNativeCtx 阶段对所有 ctx 都跑一遍 (省 4 次 JNI/ctx)。
+        if (!scope.bootstrapHelpersCached) {
+            cacheBootstrapHelpers(scope)
+            scope.bootstrapHelpersCached = true
+        }
+        val handle = scope.enterBindingsHandle
+        if (handle == 0L) return
+        QuickJsNative.nativeCallJsHandle(handle, kvs)
     }
+
+    private fun exitBindings(scope: QuickJsContext) {
+        // enterBindings 已触发 helper 抓取 (同 scope 内), 此处直接读, 不再判标志。
+        val handle = scope.exitBindingsHandle
+        if (handle == 0L) return
+        QuickJsNative.nativeCallJsHandle(handle, EMPTY_ARGS)
+    }
+
+    /** [exitBindings] / [cleanupBindings] 空参调用复用. */
+    private val EMPTY_ARGS: Array<Any?> = emptyArray()
 
     /**
      * 注入 bindings 变量到已有 scope 的全局作用域,返回注入的键列表(用于后续清理)。
@@ -258,15 +262,33 @@ object QuickJsEngine {
             // 同步 dangerousApi (仅变化时调用 nativeSetDangerousApi)
             scope.dangerousApi = bindings.dangerousApi
             syncDangerousApiIfNeeded(scope)
-            for ((key, value) in bindings) {
-                if (injectVariable(scope.ctxPtr, key, value, bindings.dangerousApi)) {
-                    injectedKeys.add(key)
+            val globalHandle = fetchGlobalHandle(scope.ctxPtr)
+            try {
+                for ((key, value) in bindings) {
+                    if (injectVariable(
+                            scope.ctxPtr,
+                            globalHandle,
+                            key,
+                            value,
+                            bindings.dangerousApi
+                        )
+                    ) {
+                        injectedKeys.add(key)
+                    }
                 }
+            } finally {
+                if (globalHandle != 0L) QuickJsNative.nativeFreeHandle(scope.ctxPtr, globalHandle)
             }
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
         return injectedKeys
+    }
+
+    /** 抓取一次 globalThis 句柄, 供批量注入时复用 (免每 key 一次 GetGlobalObject + FreeHandle) */
+    private fun fetchGlobalHandle(ctxPtr: Long): Long {
+        val globalObj = QuickJsNative.nativeGetGlobalObject(ctxPtr)
+        return (globalObj as? Number)?.toLong() ?: 0L
     }
 
     /**
@@ -276,26 +298,47 @@ object QuickJsEngine {
      * 避免下次复用 scope 时变量泄漏(如不同书源切换时,旧 source 还可见)。
      *
      * 对应 rhino 的子 scope 关闭时 bindings 自动清理。
+     *
+     * 精简版 (方案B): 移除 JS 层 __cleanupBindings, 直接在 Kotlin 层处理。
+     * - bootstrap globals (java/Packages/JavaImporter 等) 是 [[Configurable]]:false,
+     *   delete 静默失败, 走 nativeSetPropertyHandle 恢复缓存的初值句柄 ([[Writable]]:true 允许);
+     * - 其它 (cache/book/source 等) 是 injectVariable 创建的 [[Configurable]]:true,
+     *   走 nativeDeleteProperty (等价 `delete globalThis[k]`), 让 `typeof k` 回到 `undefined`.
      */
     fun cleanupBindings(scope: QuickJsContext, keys: List<String>) {
         if (keys.isEmpty()) return
         val validKeys = keys.filter { isValidVarName(it) }
         if (validKeys.isEmpty()) return
+        // 懒加载: 单次 eval 路径不调用 cleanup, 此处首次进入时才抓取 bootstrap globals 初值,
+        // 避免 createNativeCtx 阶段对所有 ctx 都跑一遍 (省 ~25 次 JNI/ctx)。
+        if (!scope.bootstrapGlobalsCached) {
+            cacheBootstrapGlobals(scope)
+            scope.bootstrapGlobalsCached = true
+        }
         val previousThreadContext = QuickJsContext.threadLocalContext.get()
         QuickJsContext.threadLocalContext.set(scope)
         try {
-            // bootstrap 用 var/function 创建的全局 (java/Packages/JavaImporter 等) 是
-            // [[Configurable]]:false, delete 静默失败会让 injectBindings 写入的 BaseSource
-            // 等残留 -> 下次 jsLib 函数访问 java.lang.X 拿到 BaseSource.lang = undefined,
-            // 不同书源 BaseSource 还会跨调用串味. 这些名字必须重写赋值恢复初值
-            // ([[Writable]]:true 允许); 其它 (cache/book/source 等) 是 injectVariable
-            // 时 setProperty 创建的 configurable:true, delete 即可.
-            // 一次 eval 批量处理所有 key, 避免逐键 nativeEval 解析开销.
-            val keysLiteral = validKeys.joinToString(",") { "\"$it\"" }
-            val script = "(function(){var ks=[$keysLiteral],b=__bootstrapGlobals__,g=globalThis;" +
-                "for(var i=0;i<ks.length;i++){var k=ks[i];" +
-                "if(Object.prototype.hasOwnProperty.call(b,k)){g[k]=b[k];}else{delete g[k];}}})();"
-            QuickJsNative.nativeEval(scope.ctxPtr, script)
+            val globalHandle = fetchGlobalHandle(scope.ctxPtr)
+            if (globalHandle == 0L) return
+            try {
+                for (key in validKeys) {
+                    val cachedHandle = scope.bootstrapGlobalsHandles[key]
+                    if (cachedHandle != null && cachedHandle != 0L) {
+                        // bootstrap 名字: 恢复缓存的初值句柄 (Configurable:false 无法 delete)
+                        QuickJsNative.nativeSetPropertyHandle(
+                            scope.ctxPtr,
+                            globalHandle,
+                            key,
+                            cachedHandle
+                        )
+                    } else {
+                        // 业务注入名字: 真删除 (Configurable:true)
+                        QuickJsNative.nativeDeleteProperty(scope.ctxPtr, globalHandle, key)
+                    }
+                }
+            } finally {
+                QuickJsNative.nativeFreeHandle(scope.ctxPtr, globalHandle)
+            }
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
@@ -362,8 +405,13 @@ object QuickJsEngine {
             ctx.dangerousApi = bindings.dangerousApi
             syncDangerousApiIfNeeded(ctx)
             // 注入 bindings 里的变量 (java/source/baseUrl/cookie/cache 等)
-            for ((key, value) in bindings) {
-                injectVariable(ctx.ctxPtr, key, value, bindings.dangerousApi)
+            val globalHandle = fetchGlobalHandle(ctx.ctxPtr)
+            try {
+                for ((key, value) in bindings) {
+                    injectVariable(ctx.ctxPtr, globalHandle, key, value, bindings.dangerousApi)
+                }
+            } finally {
+                if (globalHandle != 0L) QuickJsNative.nativeFreeHandle(ctx.ctxPtr, globalHandle)
             }
         } finally {
             QuickJsContext.threadLocalContext.set(previous)
@@ -391,6 +439,10 @@ object QuickJsEngine {
      * 创建 native JSRuntime + JSContext 并注入 bootstrap + 注册 binding。
      *
      * 优先用预编译 bytecode,避免每次重新解析 bootstrap 源码 (~6KB)。
+     *
+     * 性能优化 (懒加载): [cacheBootstrapHelpers] / [cacheBootstrapGlobals] 不在此立即调用,
+     * 改为在 [enterBindings] / [cleanupBindings] 首次进入时按需触发。
+     * 单次 [eval] 一次性场景从不走 evalInSubScope/cleanupBindings, 可省 ~29 次 JNI。
      */
     private fun createNativeCtx(): QuickJsContext {
         val rtPtr = QuickJsNative.nativeCreateRuntime()
@@ -402,13 +454,68 @@ object QuickJsEngine {
             QuickJsNative.nativeFreeRuntime(rtPtr)
             throw ScriptException("Failed to create JSContext", null)
         }
+        // 先注册所有 binding, 再执行 bootstrap (bootstrap 中使用了这些 binding 函数)
+        registerBindings(ctxPtr)
         // evaluate bootstrap bytecode (首次启动时编译并缓存, 后续直接复用)
         val bytecode = getBootstrapBytecode()
         QuickJsNative.nativeEvalBytecode(ctxPtr, bytecode)
-        // 注册所有 binding
-        registerBindings(ctxPtr)
-        return QuickJsContext(rtPtr, ctxPtr)
+        val ctx = QuickJsContext(rtPtr, ctxPtr)
+        // bootstrap helper / globals 句柄懒加载: 仅在 evalInSubScope / cleanupBindings
+        // 首次进入时抓取, 单次 eval 路径不访问, 省掉 29 次 JNI (4 + 25)。
+        return ctx
     }
+
+    /**
+     * bootstrap 全局变量名列表 (用于缓存初值)。
+     */
+    private val BOOTSTRAP_GLOBAL_NAMES = arrayOf(
+        "Packages", "java", "javax", "android", "org", "com", "io", "cn",
+        "JavaImporter", "JavaAdapter", "importClass", "importPackage"
+    )
+
+    /**
+     * 缓存 bootstrap globals 的初值句柄。
+     *
+     * 精简版 (方案B): cleanup 移到 Kotlin 层, 需要抓取初值用于恢复。
+     * bootstrap 执行后通过 nativeGetProperty 抓取每个 global 的句柄,
+     * 存储到 ctx.bootstrapGlobalsHandles。
+     */
+    private fun cacheBootstrapGlobals(ctx: QuickJsContext) {
+        val ctxPtr = ctx.ctxPtr
+        val globalHandle = fetchGlobalHandle(ctxPtr)
+        if (globalHandle == 0L) return
+        try {
+            for (name in BOOTSTRAP_GLOBAL_NAMES) {
+                val handle = getFuncHandle(ctxPtr, globalHandle, name)
+                if (handle != 0L) {
+                    ctx.bootstrapGlobalsHandles[name] = handle
+                }
+            }
+        } finally {
+            QuickJsNative.nativeFreeHandle(ctxPtr, globalHandle)
+        }
+    }
+
+    /**
+     * 一次性抓取 bootstrap 里 binding 生命周期 helper 的函数句柄, 缓存到 [QuickJsContext] 上,
+     * 后续通过 [QuickJsNative.nativeCallJsHandle] 直接调用, 免掉每次 nativeEval 解析。
+     *
+     * 精简版 (方案B): 只抓取 enter/exitBindings, cleanup 已移到 Kotlin 层。
+     */
+    private fun cacheBootstrapHelpers(ctx: QuickJsContext) {
+        val ctxPtr = ctx.ctxPtr
+        val globalHandle = fetchGlobalHandle(ctxPtr)
+        if (globalHandle == 0L) return
+        try {
+            ctx.enterBindingsHandle = getFuncHandle(ctxPtr, globalHandle, "__enterBindings")
+            ctx.exitBindingsHandle = getFuncHandle(ctxPtr, globalHandle, "__exitBindings")
+        } finally {
+            QuickJsNative.nativeFreeHandle(ctxPtr, globalHandle)
+        }
+    }
+
+    private fun getFuncHandle(ctxPtr: Long, globalHandle: Long, name: String): Long =
+        (QuickJsNative.nativeGetProperty(ctxPtr, globalHandle, name) as? Number)?.toLong() ?: 0L
 
     /**
      * 获取预编译的 bootstrap bytecode,懒加载。
@@ -443,60 +550,40 @@ object QuickJsEngine {
     /**
      * 注入单个 bindings 变量到 native ctx 全局作用域。
      *
-     * - null/基本类型 (String/Number/Boolean) 直接拼字面量, 用 nativeEval 设置
+     * - null/基本类型 (String/Number/Boolean) 直接走 nativeSetProperty
+     *   (fromJavaObject 把 Java 值转 JS 值), 免掉 JS 解析开销
      * - Java 对象通过 [QuickJsNative.nativeWrapJavaObject] 包装为 JSValue,
-     *   再用 nativeSetProperty 设置到 globalThis
+     *   再用 nativeSetPropertyHandle 设置到 globalThis
      *
-     * 注意: 用 `globalThis.$key = ...` 而非 `var $key = ...`,
-     * 因为 QuickJS 中 `var` 与书源 JS 的 `let`/`const` 同名会报 "redeclaration",
-     * rhino 允许此行为。属性赋值不创建词法绑定,不会冲突。
-     * (如 ruleBookInfo.init 里有 `let url=...`,bindings 注入 `url` 变量)
+     * 走属性赋值不创建词法绑定, 不会与书源 JS 的 `let`/`const` 冲突 (对齐 rhino 行为)。
      *
-     * @return true 表示注入成功(变量名合法),false 表示跳过(变量名非法或对象不可见)
+     * @param globalHandle 调用方预先抓取好的 globalThis 句柄, 复用避免逐 key 重取
+     * @return true 表示注入成功 (变量名合法), false 表示跳过 (变量名非法或对象不可见)
      */
     private fun injectVariable(
         ctxPtr: Long,
+        globalHandle: Long,
         key: String,
         value: Any?,
         dangerousApi: Boolean
     ): Boolean {
         if (!isValidVarName(key)) return false
+        if (globalHandle == 0L) return false
         when {
-            value == null -> {
-                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = null;")
-            }
-
-            value is String -> {
-                val jsLiteral = JsStringUtils.escape(value)
-                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $jsLiteral;")
-            }
-
-            value is Boolean -> {
-                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $value;")
-            }
-
-            value is Number -> {
-                // Number 直接拼字面量 (Int/Long/Double/Float 都用 toString)
-                // 注意: Long 在 JS 中是 float64, 但值小于 2^53 时精度无损
-                QuickJsNative.nativeEval(ctxPtr, "globalThis.$key = $value;")
+            // null/String/Boolean/Number: fromJavaObject 直接转 JS 值, 不走 JS 解析
+            value == null || value is String || value is Boolean || value is Number -> {
+                QuickJsNative.nativeSetProperty(ctxPtr, globalHandle, key, value)
             }
             else -> {
-                // Java 对象通过 nativeWrapJavaObject 包装为 JavaObject
+                // Java 对象: 显式安全检查 + wrap + SetPropertyHandle
+                // (nativeSetProperty 走 fromJavaObject 会自动 wrap, 但那绕过 isObjectVisible)
                 if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
-                // nativeWrapJavaObject 返回 JSValue 句柄 (Long)
                 val jsValueHandle = QuickJsNative.nativeWrapJavaObject(ctxPtr, value)
-                // 用 nativeSetPropertyHandle 设置到 globalThis
-                // 重要: 不能用 nativeSetProperty, 因为 fromJavaObject 会把 Long 句柄当数字
-                val globalObj = QuickJsNative.nativeGetGlobalObject(ctxPtr)
-                val globalHandle = (globalObj as? Number)?.toLong() ?: 0L
                 val valueHandle = (jsValueHandle as? Number)?.toLong() ?: 0L
-                if (globalHandle != 0L && valueHandle != 0L) {
-                    QuickJsNative.nativeSetPropertyHandle(ctxPtr, globalHandle, key, valueHandle)
-                    // 释放 globalObj 句柄 (避免泄漏)
-                    QuickJsNative.nativeFreeHandle(ctxPtr, globalHandle)
-                    // jsValueHandle 由 globalObj 持有 (SetPropertyStr 内部 DupValue), 这里 Free 安全
-                    QuickJsNative.nativeFreeHandle(ctxPtr, valueHandle)
-                }
+                if (valueHandle == 0L) return false
+                QuickJsNative.nativeSetPropertyHandle(ctxPtr, globalHandle, key, valueHandle)
+                // SetPropertyHandle 内部 DupValue, 这里安全 Free
+                QuickJsNative.nativeFreeHandle(ctxPtr, valueHandle)
             }
         }
         return true
@@ -515,51 +602,30 @@ object QuickJsEngine {
     /**
      * 同步 dangerousApi 到 native ctx opaque (仅当 scope.dangerousApi 与上次同步的值不同时)。
      *
-     * 通过 [QuickJsContext.lastSyncedDangerousApi] 跟踪上次同步值,
-     * 避免每次 eval 都调用 [QuickJsNative.nativeSetDangerousApi]。
-     * 同一 scope 连续多次 eval 同一书源时 (dangerousApi 不变), 仅首次同步。
+     * 精简版 (方案B): 移除 JS 全局变量同步, dangerousApi 从 ctx opaque 读取 (__getDangerousApi binding)。
+     * 只需调用 nativeSetDangerousApi 设置 ctx opaque, JS 层的 __getDangerousApi() 自动返回正确值。
      */
     private fun syncDangerousApiIfNeeded(scope: QuickJsContext) {
         if (scope.lastSyncedDangerousApi == scope.dangerousApi) return
         QuickJsNative.nativeSetDangerousApi(scope.ctxPtr, scope.dangerousApi)
-        // 同步 JS 端 __dangerousApi__ 全局变量 (bootstrap 中定义, 供 binding 调用时传参)
-        // 仅 native opaque 同步不够, JS 代码读取的是 __dangerousApi__ 变量
-        QuickJsNative.nativeEval(scope.ctxPtr, "__dangerousApi__ = ${scope.dangerousApi};")
         scope.lastSyncedDangerousApi = scope.dangerousApi
     }
 
     /**
-     * 用 IIFE + eval 包裹用户 JS,模拟 rhino 的 bindings scope 隔离。
+     * `(function(){with(__currentBindings()){return eval(<源码>);}})()` 三层包装:
+     * - `with(__currentBindings())`: bindings 走 [evalInSubScope] 压栈成栈顶对象, user JS 里
+     *   `java`/`cache`/`source` 走 with 命中; 空栈时穿透到 globalThis。
+     * - IIFE 隔离 `let`/`const`/`var`, 不污染 topScope (避免 "redeclaration")。
+     * - eval + return: 返回末尾表达式值, 顶层 return 生效 (对齐 rhino script.exec)。
      *
-     * rhino: `bindings.prototype = topScope`,JS 在 bindings scope 执行,
-     * `let`/`const` 留在 bindings 词法环境,不污染 topScope。
-     *
-     * quickjs 没有 prototype 链,用 IIFE + eval 包裹:
-     * - `let`/`const` 留在 eval 词法环境(或 IIFE 函数作用域),不污染 topScope
-     *   (避免重复执行报 "redeclaration of 'xxx'")
-     * - `return` 在 IIFE 函数内生效(模拟 rhino 顶层 return 扩展)
-     * - eval 返回末尾表达式值(模拟 rhino script.exec 返回最后一个表达式)
-     *
-     * 用于 AnalyzeRule/AnalyzeUrl/BaseSource 等复用 sharedScope 的场景。
-     * SharedJsScope 的 jslib 执行不需要包裹(本身就在 topScope 上定义)。
+     * 用于复用 sharedScope 的场景; jsLib 本身在 topScope 上定义, 不需要包裹。
      */
     fun wrapJsForEval(jsStr: String): String {
         val jsLiteral = JsStringUtils.escape(jsStr)
-        return "(function(){return eval($jsLiteral);})()"
+        return "(function(){with(__currentBindings()){return eval($jsLiteral);}})()"
     }
 
-    /**
-     * 把用户 JS 包装后编译为 bytecode, 供 [evalInSubScope] 在 SharedJsScope 的 topScope 上执行。
-     *
-     * 走 [wrapJsForEval] 的 `(function(){return eval(<源码>);})()` 包装:
-     * - let/const/var 留在 IIFE 函数作用域, 不污染 topScope (避免重复执行报 "redeclaration")
-     * - 顶层 return 在 IIFE 内生效 (对齐 rhino script.exec 顶层 return 扩展)
-     * - eval 返回末尾表达式值 (对齐 rhino script.exec 返回最后一个表达式)
-     *
-     * 与早期 native 端 `(function(__b){...with(__b){...}})` 包装的区别: 这里不再创建子 scope,
-     * binding 由 [evalInSubScope] 直接注入 globalThis, jsLib 里定义在 topScope 上的自由函数
-     * 也能命中 binding (对齐 rhino 行为, 见 [evalInSubScope] 注释)。
-     */
+    /** [wrapJsForEval] 包装后编译为 bytecode, 供 [evalInSubScope] 执行。 */
     fun compileForSubScope(jsStr: String): CompiledScript = compile(wrapJsForEval(jsStr))
 
     /**
@@ -606,8 +672,10 @@ object QuickJsEngine {
      * - __newJavaInstance / __callStaticMethod / __getStaticField / __setStaticField (静态成员)
      * - __newJavaAdapter / __registerJsFunctionNative (JavaAdapter)
      * - __wrapJavaHandle (句柄包装, 供 JsFunctionHandle 用)
+     * - __getDangerousApi (从 ctx opaque 读取 dangerousApi, native 层直接处理不走 Kotlin)
      */
     private fun registerBindings(ctxPtr: Long) {
+        // 性能优化: 一次 JNI 调用批量注册 (替代原 12 次 nativeDefineBinding 循环, 省 11 次 JNI)。
         val bindings = arrayOf(
             "__loadJavaClass",
             "__classExists",
@@ -618,11 +686,10 @@ object QuickJsEngine {
             "__setStaticField",
             "__newJavaAdapter",
             "__registerJsFunctionNative",
-            "__wrapJavaHandle"
+            "__wrapJavaHandle",
+            "__getDangerousApi"
         )
-        for (name in bindings) {
-            QuickJsNative.nativeDefineBinding(ctxPtr, name)
-        }
+        QuickJsNative.nativeDefineBindings(ctxPtr, bindings)
     }
 
     /**

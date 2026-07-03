@@ -107,7 +107,7 @@ class QuickJsEngineTest {
 
     @Test
     fun testEvalWithDangerousApiFlag() {
-        val result = QuickJsEngine.eval("__dangerousApi__") {
+        val result = QuickJsEngine.eval("__getDangerousApi()") {
             dangerousApi = true
         }
         assertEquals(true, result)
@@ -818,20 +818,20 @@ class QuickJsEngineTest {
 
             // 切换到 true,eval 后应同步
             scope.dangerousApi = true
-            QuickJsEngine.eval("__dangerousApi__", scope, null)
+            QuickJsEngine.eval("__getDangerousApi()", scope, null)
             assertEquals(true, scope.lastSyncedDangerousApi)
-            val r1 = QuickJsEngine.eval("__dangerousApi__", scope, null)
+            val r1 = QuickJsEngine.eval("__getDangerousApi()", scope, null)
             assertEquals(true, r1)
 
             // 保持 true,再次 eval 不应触发同步(无 evaluate 调用,但结果应一致)
             scope.dangerousApi = true
-            val r2 = QuickJsEngine.eval("__dangerousApi__", scope, null)
+            val r2 = QuickJsEngine.eval("__getDangerousApi()", scope, null)
             assertEquals(true, r2)
             assertEquals(true, scope.lastSyncedDangerousApi)
 
             // 切换回 false,应再次同步
             scope.dangerousApi = false
-            QuickJsEngine.eval("__dangerousApi__", scope, null)
+            QuickJsEngine.eval("__getDangerousApi()", scope, null)
             assertEquals(false, scope.lastSyncedDangerousApi)
         } finally {
             scope.close()

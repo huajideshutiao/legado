@@ -14,8 +14,9 @@
 namespace {
     // JavaObjectBridgeNative (method callable 回调)
     jclass g_bridgeNativeCls = nullptr;
-    jmethodID g_callMethod = nullptr;
-    jmethodID g_callMethodByObj = nullptr;  // Tier 2: 不走 handle, 直接传 jobject
+    // Tier 2: 全局 method callable 共享, 从 this_val 取 jobject 直接传 Kotlin,
+    // 不再走 handle-based callMethod (已删除)
+    jmethodID g_callMethodByObj = nullptr;
 
     // BindingHandler (binding 回调)
     jclass g_bindingHandlerCls = nullptr;
@@ -26,7 +27,7 @@ namespace {
     jclass g_objectCls = nullptr;
 
     // 用 std::once_flag 替代裸 bool: call_once 内置 release/acquire 屏障,
-    // 保证 g_bridgeNativeCls / g_callMethod / g_bindingHandlerCls / g_bindingCall
+    // 保证 g_bridgeNativeCls / g_callMethodByObj / g_bindingHandlerCls / g_bindingCall
     // 这些写入对其它线程 happen-before 可见。原裸 bool 可能被 thread A 先观察到 true,
     // 但 method ID 仍是 nullptr, 走入"未绑定"分支 return JS_EXCEPTION 时 ctx 异常 slot
     // 未设, 后续 JS_GetException 拿 stale 引发的 ref_count 错乱表现为 JSString header
@@ -58,13 +59,6 @@ namespace {
             }
             g_bridgeNativeCls = (jclass) env->NewGlobalRef(bridgeCls);
             env->DeleteLocalRef(bridgeCls);
-            // callMethod(objHandle, methodName, args, dangerousApi): Any?
-            g_callMethod = env->GetStaticMethodID(g_bridgeNativeCls, "callMethod",
-                                                  "(JLjava/lang/String;[Ljava/lang/Object;Z)Ljava/lang/Object;");
-            if (!g_callMethod) {
-                LOGE("JavaObjectBridgeNative.callMethod not found");
-                env->ExceptionClear();
-            }
             // callMethodByObj(obj, methodName, args, dangerousApi): Any?
             // Tier 2: 全局 method callable 共享 (按 methodName 缓存), 不再持有 objHandle,
             // 改为从 this_val 取 jobject 直接传 Kotlin, 省掉 getHandle JNI 往返与 identityHandles 查询。
@@ -103,6 +97,12 @@ namespace {
             }
         });
     }
+}
+
+// JNI_OnLoad 阶段预热调用。
+void initJniCallbacksCache(JNIEnv *env) { ensureCallbacksInited(env); }
+
+namespace {
 
     // 把 JS args 转换为 Java Object[] (用 JniValueConvert::toJavaObject)
     jobjectArray jsArgsToJavaArray(JSContext *ctx, JNIEnv *env, int argc, JSValueConst *argv) {
@@ -134,24 +134,32 @@ namespace {
 
 void initCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
-    CtxOpaqueData *data = new CtxOpaqueData();
+    auto *data = new CtxOpaqueData();
     data->dangerousApi = false;
     data->arrayProto = JS_UNDEFINED;  // lazy init, 首次 wrap Java 数组时填充
+    // Symbol.iterator atom 只依赖 ctx (well-known symbol 描述字符串), ctx 生命周期内不变。
+    // 直接 JS_NewAtom("Symbol.iterator") 会命中 atom 表已有条目 (well-known symbol), 只是一次表查。
+    data->symbolIteratorAtom = JS_NewAtom(ctx, "Symbol.iterator");
     JS_SetContextOpaque(ctx, data);
 }
 
 void freeCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
-    CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+    auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
     if (data) {
-        // 释放缓存的 method callable JSValue (callable 是 ctx 持有的 +1 引用)
+        // 释放 method callable 缓存 (atom + value 都持有引用)
         for (auto &kv: data->methodCallableCache) {
+            JS_FreeAtom(ctx, kv.first);
             JS_FreeValue(ctx, kv.second);
         }
         data->methodCallableCache.clear();
         // 释放缓存的 Array.prototype (若已初始化)
         if (!JS_IsUndefined(data->arrayProto)) {
             JS_FreeValue(ctx, data->arrayProto);
+        }
+        // 释放 Symbol.iterator atom
+        if (data->symbolIteratorAtom != JS_ATOM_NULL) {
+            JS_FreeAtom(ctx, data->symbolIteratorAtom);
         }
         delete data;
         JS_SetContextOpaque(ctx, nullptr);
@@ -160,20 +168,20 @@ void freeCtxOpaque(JSContext *ctx) {
 
 void setDangerousApi(JSContext *ctx, bool dangerousApi) {
     if (!ctx) return;
-    CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+    auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
     if (!data) {
-        data = new CtxOpaqueData();
-        data->dangerousApi = dangerousApi;
-        JS_SetContextOpaque(ctx, data);
-    } else {
-        data->dangerousApi = dangerousApi;
+        // 走 initCtxOpaque 补全所有字段 (symbolIteratorAtom / arrayProto), 避免留半初始化数据。
+        initCtxOpaque(ctx);
+        data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+        if (!data) return;
     }
+    data->dangerousApi = dangerousApi;
 }
 
 bool getDangerousApi(JSContext *ctx) {
     if (!ctx) return false;
-    CtxOpaqueData *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
-    return data ? data->dangerousApi : false;
+    auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+    return data != nullptr && data->dangerousApi;
 }
 
 // ============ method callable ============
@@ -202,9 +210,8 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.callMethodByObj not bound");
     }
 
-    // this_val 必须是 JavaObject 实例 (由 obj.method(...) 调用点绑定)
-    // 用户写 `var f = sb.append; f("x")` 这种丢失 this 的写法会拿到 undefined this_val,
-    // 这时报错而不是猜对象 — 与 rhino 行为基本对齐 (rhino 也要求 LiveConnect 调用带正确 this)。
+    // this_val 由 JS 调用点绑定; `var fn = obj.method; fn(x)` 提取调用会丢 this,
+    // 与 rhino NativeJavaMethod 语义一致, 抛 TypeError。
     jobject javaObj = JavaObjectClass::getJavaObject(ctx, this_val);
     if (!javaObj) {
         return JS_ThrowTypeError(ctx, "Java method called without Java object as 'this'");
@@ -286,31 +293,30 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-JSValue getOrCreateMethodCallable(JSContext *ctx, const char *methodName) {
-    if (!ctx || !methodName) return JS_UNDEFINED;
+JSValue getOrCreateMethodCallable(JSContext *ctx, JSAtom atom) {
+    if (!ctx || atom == JS_ATOM_NULL) return JS_UNDEFINED;
 
-    CtxOpaqueData *opaque = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
-    if (opaque) {
-        auto it = opaque->methodCallableCache.find(methodName);
-        if (it != opaque->methodCallableCache.end()) {
-            // 命中: 调用方负责 FreeValue, 这里 DupValue
+    auto *opq = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
+    if (opq) {
+        auto it = opq->methodCallableCache.find(atom);
+        if (it != opq->methodCallableCache.end()) {
+            // JS 端命中只需刷引用计数, 免掉 JS_NewCFunctionData + JS_NewString 分配。
             return JS_DupValue(ctx, it->second);
         }
     }
 
-    // func_data 只存 methodName, objHandle 通过 this_val 传递
+    const char *methodName = JS_AtomToCString(ctx, atom);
+    if (!methodName) return JS_EXCEPTION;
+
     JSValue data[1];
     data[0] = JS_NewString(ctx, methodName);
+    JS_FreeCString(ctx, methodName);
     JSValue fn = JS_NewCFunctionData(ctx, jsMethodCallable, 0, 0, 1, data);
-    JS_FreeValue(ctx, data[0]);  // JS_NewCFunctionData 内部 DupValue data
+    JS_FreeValue(ctx, data[0]);  // JS_NewCFunctionData 内部 DupValue
 
-    if (JS_IsException(fn)) {
-        return fn;
-    }
-
-    // 写入 cache (cache 持 1 引用, 调用方再 DupValue 拿到独立的 +1)
-    if (opaque) {
-        opaque->methodCallableCache.emplace(std::string(methodName), JS_DupValue(ctx, fn));
+    if (opq && !JS_IsException(fn)) {
+        // 缓存持有 atom 与 fn 各一份引用, 释放在 freeCtxOpaque。
+        opq->methodCallableCache.emplace(JS_DupAtom(ctx, atom), JS_DupValue(ctx, fn));
     }
     return fn;
 }
@@ -341,6 +347,13 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     // 保存 binding name 副本, 供后续判断是否需要强制 wrap (newJavaInstance 等)
     std::string nameStr(name);
     JS_FreeCString(ctx, name);
+
+    // 特殊处理: __getDangerousApi 直接从 ctx opaque 读取并返回 Boolean
+    // 避免 JNI 往返 Kotlin, 提升 Proxy get trap 性能 (每次属性访问都会调用)
+    if (nameStr == "__getDangerousApi") {
+        bool dangerousApi = getDangerousApi(ctx);
+        return JS_NewBool(ctx, dangerousApi);
+    }
 
     // 转换 args 为 Java Object[]
     jobjectArray javaArgs = jsArgsToJavaArray(ctx, env, argc, argv);

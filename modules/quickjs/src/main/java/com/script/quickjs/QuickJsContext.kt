@@ -64,11 +64,56 @@ class QuickJsContext(
      * 用于 [QuickJsEngine.syncDangerousApiIfNeeded] 判断是否需要重新调用 nativeSetDangerousApi:
      * 仅当 [dangerousApi] 与此值不同时才同步, 避免每次 eval 都重复 native 调用。
      *
-     * 初始值 false, 与 [JsBootstrap] 中 `var __dangerousApi__ = false;` 一致。
+     * 初始值 false, 与 native ctx opaque 默认值一致 (nativeCreateContext 归零)。
      * [QuickJsEngine.getRuntimeScope] 在初始化 bindings 后会更新此值。
      */
     @Volatile
     var lastSyncedDangerousApi: Boolean = false
+
+    /**
+     * bootstrap 里 binding helper 的 JsHandleTable 句柄, 供 [QuickJsNative.nativeCallJsHandle] 直接调用。
+     *
+     * - [enterBindingsHandle] / [exitBindingsHandle]: [QuickJsEngine.evalInSubScope] 用,
+     *   bindings 装入独立 JS 对象压/出 `__bindingsStack__` (rhino 子 scope 语义, 不写 globalThis)。
+     *
+     * 精简版 (方案B): cleanup 移到 Kotlin 层用 nativeDeleteProperty / nativeSetPropertyHandle 处理。
+     *
+     * 0 表示未抓取到 (bootstrap 缺函数), 调用方兜底 return。
+     * 无需显式释放: [close] 时 nativeFreeContext 走 JsHandleTable::releaseByCtx 统一清理。
+     */
+    var enterBindingsHandle: Long = 0L
+    var exitBindingsHandle: Long = 0L
+
+    /**
+     * [cacheBootstrapHelpers] 是否已执行过。
+     *
+     * 懒加载优化: helper (enter/exitBindings) 仅 [QuickJsEngine.evalInSubScope] 路径用到,
+     * 单次 [QuickJsEngine.eval] 一次性场景从不访问, 跳过避免 ~4 次 JNI 浪费。
+     * 第一次进入 evalInSubScope 时触发抓取。
+     */
+    @Volatile
+    var bootstrapHelpersCached: Boolean = false
+
+    /**
+     * bootstrap 全局变量初值句柄缓存。
+     *
+     * 精简版 (方案B): cleanup 移到 Kotlin 层, 需要缓存 bootstrap globals 的初值用于恢复。
+     * bootstrap 执行后通过 nativeGetProperty 抓取 Packages/java/... 的句柄并存储。
+     * cleanup 时用 nativeSetPropertyHandle 恢复 (bootstrap 名字 Configurable:false, 无法 delete)。
+     *
+     * 无需显式释放: 句柄来自 JsHandleTable, close 时统一清理。
+     */
+    val bootstrapGlobalsHandles: MutableMap<String, Long> = mutableMapOf()
+
+    /**
+     * [cacheBootstrapGlobals] 是否已执行过。
+     *
+     * 懒加载优化: globals 初值仅 [QuickJsEngine.cleanupBindings] 路径用到,
+     * 单次 [QuickJsEngine.eval] 一次性场景从不调用 cleanup, 跳过避免 ~25 次 JNI 浪费。
+     * 第一次进入 cleanupBindings 时触发抓取。
+     */
+    @Volatile
+    var bootstrapGlobalsCached: Boolean = false
 
     /**
      * Java 对象身份 → 句柄复用映射 (优化 3.2)。

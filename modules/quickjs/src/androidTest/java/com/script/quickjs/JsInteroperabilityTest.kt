@@ -3,6 +3,7 @@ package com.script.quickjs
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,36 +51,33 @@ class JsInteroperabilityTest {
     }
 
     @Test
-    fun testMethodCallableExtractedAndInvoked() {
-        // 核心测试: 把方法提取为变量后调用, this 绑定必须正确
-        // 修复前 (旧 JS Proxy 实现): var fn = obj.method 会丢失 this 绑定
-        // 修复后 (native method callable): func_data 持有 objHandle, this 正确绑定
+    fun testExtractedMethodLosesThisThrows() {
+        // Tier 2 共享 callable 设计: 同名方法跨实例共享, this 由调用点提供。
+        // `var fn = obj.method; fn(x)` 提取调用丢失 this, 应抛 TypeError,
+        // 与 rhino NativeJavaMethod 语义一致。
         val sb = StringBuilder("prefix-")
-        val result = QuickJsEngine.eval(
-            """
-            var fn = sb.append;
-            fn('-middle');
-            fn('-suffix');
-            sb.toString();
-        """.trimIndent()
-        ) {
-            put("sb", sb)
+        assertThrows(Throwable::class.java) {
+            QuickJsEngine.eval(
+                """
+                var fn = sb.append;
+                fn('-middle');
+            """.trimIndent()
+            ) {
+                put("sb", sb)
+            }
         }
-        assertEquals("prefix--middle-suffix", result.toString())
     }
 
     @Test
     fun testMethodCallablePreservedAcrossMultipleAccess() {
-        // 多次访问同一方法名应返回可调用的 callable (验证 method callable 缓存)
+        // 多次访问同一方法名, 通过 obj.method(x) 形式调用可正常工作 (this 由调用点提供)。
         val list = ArrayList<String>()
         val result = QuickJsEngine.eval(
             """
-            var add = lst.add;
-            add('a');
-            add('b');
-            add('c');
-            var size = lst.size;
-            size();
+            lst.add('a');
+            lst.add('b');
+            lst.add('c');
+            lst.size();
         """.trimIndent()
         ) {
             put("lst", list)
@@ -90,15 +88,13 @@ class JsInteroperabilityTest {
 
     @Test
     fun testMethodCallableWithArguments() {
-        // method callable 带参数调用 (验证 args 传递)
+        // 通过 obj.method(args) 形式调用带参数方法 (this 由调用点提供)。
         val sb = StringBuilder()
         QuickJsEngine.eval(
             """
-            var append = sb.append;
-            var str = sb.append;
-            append('Hello');
-            append(' ');
-            append('World');
+            sb.append('Hello');
+            sb.append(' ');
+            sb.append('World');
             null;
         """.trimIndent()
         ) {

@@ -52,14 +52,8 @@ object QuickJsJsEngine : JsEngine {
         QuickJsJsCompiledScript(QuickJsEngine.compileForSubScope(jsStr))
 
     /**
-     * 在共享 topScope 上执行包装后的 compiled，bindings 注入子 scope。
-     *
-     * 直接转发 [QuickJsEngine.evalInSubScope]，内部已含：
-     * pushBindingSnapshot → injectBindings → evalBytecode → popBindingSnapshot
-     * （quickjs 无 prototype 链，用快照/恢复模拟 rhino 子 scope 隔离）。
-     *
-     * 注意：不能在此处再手动调 injectBindings/cleanupBindings，会与 evalInSubScope
-     * 内部的 snapshot 机制冲突。
+     * 在共享 topScope 上执行包装后的 compiled, bindings 走 [QuickJsEngine.evalInSubScope]
+     * 的子 scope 栈隔离 (对齐 rhino childScope.prototype=topScope)。
      */
     override fun evalInSubScope(
         compiled: JsCompiledScript,

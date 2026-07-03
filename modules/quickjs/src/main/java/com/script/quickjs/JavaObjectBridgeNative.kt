@@ -1,7 +1,5 @@
 package com.script.quickjs
 
-import com.script.quickjs.JavaObjectBridgeNative.callMethod
-
 
 /**
  * Java 对象反射桥接, 供 native exotic trap 回调。
@@ -13,7 +11,7 @@ import com.script.quickjs.JavaObjectBridgeNative.callMethod
  * - 属性访问 (hasProperty/getPropertyInfo/setProperty/getPropertyNames) 接受原始 obj,
  *   内部调用 JavaObjectBridge 的 Raw 方法, 返回原始 Java 对象 (非句柄 Map),
  *   供 native 层用 JavaObjectClass.wrap 包装为 JSValue。
- * - method callable 回调 (callMethod) 接受 objHandle, 返回原始 Java 对象。
+ * - method callable 回调 (callMethodByObj) 接受 jobject, 返回原始 Java 对象。
  * - 静态成员/JavaAdapter 供 Phase 3 bootstrap 调用。
  *
  * 类型处理:
@@ -23,48 +21,43 @@ import com.script.quickjs.JavaObjectBridgeNative.callMethod
  */
 object JavaObjectBridgeNative {
 
-    // ============ 句柄管理 ============
-
-    /**
-     * 获取 Java 对象的句柄 (身份去重)。
-     * method callable 创建时调用, 存储到 JS_NewCFunctionData 的 func_data 中。
-     */
-    @JvmStatic
-    fun getHandle(obj: Any): Long = JavaObjectBridge.getOrRegisterIdentityHandle(obj)
-
-    /**
-     * 按 handle 查找 Java 对象 (method callable 回调时用)。
-     */
-    @JvmStatic
-    fun getObject(handle: Long): Any? = JavaObjectBridge.getObject(handle)
-
     // ============ native exotic trap 回调 ============
 
     /**
      * hasProperty trap: 检查属性是否存在。
+     * 哨兵协议下 getJavaPropertyRaw 返回 null 就是不存在, 任何非 null (包括 sentinel) 都是存在。
      */
     @JvmStatic
     fun hasProperty(obj: Any, name: String, dangerousApi: Boolean): Boolean {
-        // 复用 getPropertyInfo, 检查 fieldExists 或 hasMethod
-        val info = JavaObjectBridge.getJavaPropertyRaw(obj, name, dangerousApi) ?: return false
-        val fieldExists = info[1] as? Boolean ?: false
-        val hasMethod = info[2] as? Boolean ?: false
-        return fieldExists || hasMethod
+        return JavaObjectBridge.getJavaPropertyRaw(obj, name, dangerousApi) != null
     }
 
     /**
-     * getProperty trap: 查询属性, 返回 [fieldValue, fieldExists, hasMethod]。
+     * getProperty trap: 查询属性, 返回值使用哨兵协议 (见 [JavaObjectBridge.METHOD_MARKER] /
+     * [JavaObjectBridge.NULL_FIELD_MARKER]), native 侧用 IsSameObject 与全局引用对比。
      *
-     * - fieldValue: 原始 Java 对象 (可能为 null), native 层用 JniValueConvert.fromJavaObject 转换
-     * - fieldExists: 字段空间是否可能存在 (用于 method callable 缓存判断)
-     * - hasMethod: 是否有同名实例方法 (native 层据此创建 method callable)
-     *
-     * @return null 表示属性不存在; 否则返回三元素 Array
+     * 协议:
+     * - null → 属性不存在, native 沿原型链查
+     * - METHOD_MARKER → 有同名方法, native 创建 method callable
+     * - NULL_FIELD_MARKER → field 存在但值为 null, native 返回 JS_NULL
+     * - 其他 → 该对象即 fieldValue, native 直接 fromJavaObject
      */
     @JvmStatic
-    fun getPropertyInfo(obj: Any, name: String, dangerousApi: Boolean): Array<Any?>? {
+    fun getPropertyInfo(obj: Any, name: String, dangerousApi: Boolean): Any? {
         return JavaObjectBridge.getJavaPropertyRaw(obj, name, dangerousApi)
     }
+
+    /**
+     * native 侧 JNI_OnLoad 用: 读取 METHOD_MARKER 全局引用, 缓存供 IsSameObject 判定。
+     */
+    @JvmStatic
+    fun getMethodMarker(): Any = JavaObjectBridge.METHOD_MARKER
+
+    /**
+     * native 侧 JNI_OnLoad 用: 读取 NULL_FIELD_MARKER 全局引用, 缓存供 IsSameObject 判定。
+     */
+    @JvmStatic
+    fun getNullFieldMarker(): Any = JavaObjectBridge.NULL_FIELD_MARKER
 
     /**
      * setProperty trap: 设置属性值。
@@ -86,41 +79,15 @@ object JavaObjectBridgeNative {
     // ============ method callable 回调 ============
 
     /**
-     * method callable 回调: 调用实例方法。
+     * method callable 回调 (Tier 2 共享 callable 唯一路径)。
      *
-     * native 层的 method callable JS 函数被调用时, 通过 JNI 回调此方法。
-     * args 中的 Long 句柄会被 JavaObjectBridge.callInstanceMethodRaw 自动解包。
+     * native 层的共享 method callable JS 函数被调用时, 通过 JNI 回调此方法。
+     * 从 this_val 取 jobject 直接传入, 省掉 handle 往返与 IdentityHashMap 查询。
      *
-     * 重要: callInstanceMethodRaw 内部的 callHotTypeMethod 用 javaToJsResult 包装返回值,
-     * 对于非基本类型对象 (如 StringBuilder) 返回句柄 Map ({__java_handle__=handle})。
-     * 如果不解包, native 层 fromJavaObject 会把句柄 Map 当成普通 Map 包装为 JavaObject,
-     * 导致 JS 侧拿到 Map 而非原始 Java 对象 (如 sb.append 返回的 StringBuilder)。
-     * 因此必须用 unwrapResult 解包句柄 Map 为原始 Java 对象。
+     * callInstanceMethodRaw 内部已把 callHotTypeMethod 返回的句柄 Map 反解为原始对象,
+     * 此处不需再 unwrap。native 层 fromJavaObject 直接消化 raw 结果。
      *
      * @return 原始 Java 对象 (native 层用 JniValueConvert.fromJavaObject 转换)
-     */
-    @JvmStatic
-    fun callMethod(
-        objHandle: Long,
-        methodName: String,
-        args: Array<Any?>,
-        dangerousApi: Boolean
-    ): Any? {
-        val obj = JavaObjectBridge.getObject(objHandle) ?: return null
-        val result = JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
-        return unwrapResult(result)
-    }
-
-    /**
-     * method callable 回调 (无句柄版本, Tier 2 共享 callable 走这条路径)。
-     *
-     * 与 [callMethod] 等价, 但接收 Java 对象本身而非 handle, 省掉:
-     * - 属性访问时 native 侧 getHandle JNI 往返
-     * - JavaObjectBridge.identityHandles 的 IdentityHashMap 查找/注册
-     * - getObject(handle) 的 LongSparseArray 查找
-     *
-     * 这条调用约定要求 native 侧从 this_val 取 jobject (通过 JavaObjectClass::getJavaObject),
-     * 而非靠 func_data 携带的 objHandle, 因而 callable JSValue 可在所有 Java 对象间共享。
      */
     @JvmStatic
     fun callMethodByObj(
@@ -129,8 +96,7 @@ object JavaObjectBridgeNative {
         args: Array<Any?>,
         dangerousApi: Boolean
     ): Any? {
-        val result = JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
-        return unwrapResult(result)
+        return JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
     }
 
     // ============ 静态成员 (Phase 3 JavaClass trap 用) ============

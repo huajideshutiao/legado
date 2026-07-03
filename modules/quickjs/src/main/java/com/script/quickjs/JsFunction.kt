@@ -44,13 +44,11 @@ class JsFunction(
             val previous = QuickJsContext.threadLocalContext.get()
             QuickJsContext.threadLocalContext.set(context)
             try {
-                // 同步 dangerousApi: native opaque + JS 端 __dangerousApi__ 全局变量
-                // (JS 端 __dangerousApi__ 用于 binding 调用时传参, 见 JsBootstrap;
-                //  仅同步 native opaque 会导致 JS 端 __dangerousApi__ 仍是旧值, 安全名单误拦)
+                // 同步 dangerousApi 到 native ctx opaque, 由 __getDangerousApi binding 从 opaque 读取,
+                // 不再往 JS globalThis 挂 __dangerousApi__ (旧路径, bootstrap 已改走 binding)
                 context.dangerousApi = dangerousApi
                 if (context.lastSyncedDangerousApi != dangerousApi) {
                     QuickJsNative.nativeSetDangerousApi(ctxPtr, dangerousApi)
-                    QuickJsNative.nativeEval(ctxPtr, "__dangerousApi__ = $dangerousApi;")
                     context.lastSyncedDangerousApi = dangerousApi
                 }
                 QuickJsNative.nativeEval(ctxPtr, jsCode)

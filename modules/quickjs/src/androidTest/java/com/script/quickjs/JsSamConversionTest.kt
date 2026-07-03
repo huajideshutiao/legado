@@ -68,6 +68,8 @@ class JsSamConversionTest {
             })
             """
         ) {
+            // TagBean 在 com.script.quickjs 包下, 需 dangerousApi 旁路安全名单
+            dangerousApi = true
             put("tags", tags)
             put("sb", collected)
         }
@@ -110,6 +112,8 @@ class JsSamConversionTest {
             r.join('|')
             """
         ) {
+            // ResultBean/BookBean/TagBean 在 com.script.quickjs 包下, 需 dangerousApi 旁路安全名单
+            dangerousApi = true
             put("result", result)
             put("book", book)
             put("page", page)
@@ -136,6 +140,8 @@ class JsSamConversionTest {
             helper.applyFunction(s => s.toUpperCase(), 'hello')
             """
         ) {
+            // SamTestHelper 在 com.script.quickjs 包下, 需 dangerousApi 旁路安全名单
+            dangerousApi = true
             put("helper", helper)
         }
         assertEquals("HELLO", helper.functionResult)
@@ -152,6 +158,8 @@ class JsSamConversionTest {
             helper.applyFunction(s => '[' + s + ']', 'world')
             """
         ) {
+            // SamTestHelper 在 com.script.quickjs 包下, 需 dangerousApi 旁路安全名单
+            dangerousApi = true
             put("helper", helper)
         }
         assertEquals("[world]", helper.functionResult)

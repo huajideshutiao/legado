@@ -20,6 +20,17 @@ static JavaVM *g_jvm = nullptr;
 // ============ JNI_OnLoad ============
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     g_jvm = vm;
+    // 主动 attach OnLoad 线程 (System.loadLibrary 调用线程通常已 attached)
+    // 提前完成所有 FindClass / GetMethodID / GetStaticMethodID 缓存,让首次进入 trap
+    // 时不再触发 std::call_once 的 lambda 首刷 (Boolean/Integer/Long/String/…/BridgeNative/BindingHandler),
+    // 也让 g_LongCls/g_LongValueOf 对 nativeNew* 立即可用, 不用再靠 ensureClassCache 触发。
+    // 失败时降级为 lazy init (原路径), 不阻塞 library load。
+    JNIEnv *env = nullptr;
+    if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) == JNI_OK && env) {
+        initJniValueConvertCache(env);
+        JavaObjectClass::initBridgeCache(env);
+        initJniCallbacksCache(env);
+    }
     LOGI("legado_quickjs native loaded");
     return JNI_VERSION_1_6;
 }
@@ -233,6 +244,25 @@ Java_com_script_quickjs_QuickJsNative_nativeHasProperty(JNIEnv *env, jobject cla
     return ret > 0 ? JNI_TRUE : JNI_FALSE;
 }
 
+// 删除对象属性 (走 JS_DeleteProperty, 语义等价于 JS `delete obj[name]`)
+// Configurable:false 的属性 (bootstrap var/function 声明) delete 静默失败, 返回 false
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_script_quickjs_QuickJsNative_nativeDeleteProperty(JNIEnv *env, jobject clazz,
+                                                           jlong ctxPtr, jlong objHandle,
+                                                           jstring name) {
+    if (!ctxPtr || !objHandle || !name) return JNI_FALSE;
+    auto *ctx = (JSContext *) ctxPtr;
+    JSValue obj = JsHandleTable::instance().get(objHandle);
+    if (JS_IsNull(obj)) return JNI_FALSE;
+
+    const char *cname = env->GetStringUTFChars(name, nullptr);
+    JSAtom atom = JS_NewAtom(ctx, cname);
+    int ret = JS_DeleteProperty(ctx, obj, atom, 0);
+    JS_FreeAtom(ctx, atom);
+    env->ReleaseStringUTFChars(name, cname);
+    return ret > 0 ? JNI_TRUE : JNI_FALSE;
+}
+
 // ============ 类型查询与转换 ============
 
 extern "C" JNIEXPORT jint JNICALL
@@ -299,6 +329,9 @@ Java_com_script_quickjs_QuickJsNative_nativeToString(JNIEnv *env, jobject clazz,
 
 // ============ 从 Java 值创建 JSValue ============
 
+// 复用 g_LongCls / g_LongValueOf (JNI_OnLoad 初始化, 见 jni_value_convert.cpp)。
+// 原 FindClass("java/lang/Long") + GetStaticMethodID + DeleteLocalRef 每个 nativeNew*
+// 每次调用都要锁 ClassLoader 一遍, 是 injectVariable 热路径的可观测开销。
 extern "C" JNIEXPORT jobject JNICALL
 Java_com_script_quickjs_QuickJsNative_nativeNewBoolean(JNIEnv *env, jobject clazz,
                                                        jlong ctxPtr, jboolean value) {
@@ -306,11 +339,7 @@ Java_com_script_quickjs_QuickJsNative_nativeNewBoolean(JNIEnv *env, jobject claz
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewBool(ctx, value == JNI_TRUE);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 extern "C" JNIEXPORT jobject JNICALL
@@ -320,11 +349,7 @@ Java_com_script_quickjs_QuickJsNative_nativeNewInt32(JNIEnv *env, jobject clazz,
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewInt32(ctx, value);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 extern "C" JNIEXPORT jobject JNICALL
@@ -334,11 +359,7 @@ Java_com_script_quickjs_QuickJsNative_nativeNewFloat64(JNIEnv *env, jobject claz
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewFloat64(ctx, value);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 extern "C" JNIEXPORT jobject JNICALL
@@ -350,11 +371,7 @@ Java_com_script_quickjs_QuickJsNative_nativeNewString(JNIEnv *env, jobject clazz
     JSValue val = JS_NewString(ctx, str ? str : "");
     env->ReleaseStringUTFChars(value, str);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 extern "C" JNIEXPORT jobject JNICALL
@@ -363,11 +380,7 @@ Java_com_script_quickjs_QuickJsNative_nativeNewArray(JNIEnv *env, jobject clazz,
     auto *ctx = (JSContext *) ctxPtr;
     JSValue val = JS_NewArray(ctx);
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 // ============ JavaObject 包装 ============
@@ -394,11 +407,7 @@ Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jobject 
         return nullptr;
     }
     int64_t handle = JsHandleTable::instance().store(ctx, val);
-    jclass longCls = env->FindClass("java/lang/Long");
-    jmethodID valueOf = env->GetStaticMethodID(longCls, "valueOf", "(J)Ljava/lang/Long;");
-    jobject result = env->CallStaticObjectMethod(longCls, valueOf, (jlong) handle);
-    env->DeleteLocalRef(longCls);
-    return result;
+    return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
 }
 
 // ============ 异常处理 ============
@@ -436,15 +445,21 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject cl
 
     JSValue thisVal = thisHandle ? JsHandleTable::instance().get(thisHandle) : JS_UNDEFINED;
 
-    // 准备参数
+    // 准备参数: 小参数量 (常见 <= 8) 走栈, 避免 std::vector 的堆分配 + 析构 + 触发全局 allocator 锁。
+    // JS_Call 只读 args 内容, 不持有数组本身, 栈上生命周期覆盖 JS_Call 即可。
     jsize argCount = argHandles ? env->GetArrayLength(argHandles) : 0;
-    std::vector<JSValue> args;
-    args.reserve(argCount);
-    if (argHandles) {
+    constexpr jsize kStackArgs = 8;
+    JSValue stackArgs[kStackArgs];
+    JSValue *args = stackArgs;
+    std::vector<JSValue> heapArgs;
+    if (argCount > kStackArgs) {
+        heapArgs.resize(argCount);
+        args = heapArgs.data();
+    }
+    if (argHandles && argCount > 0) {
         jlong *handles = env->GetLongArrayElements(argHandles, nullptr);
         for (jsize i = 0; i < argCount; i++) {
-            JSValue arg = JsHandleTable::instance().get(handles[i]);
-            args.push_back(arg);
+            args[i] = JsHandleTable::instance().get(handles[i]);
         }
         env->ReleaseLongArrayElements(argHandles, handles, JNI_ABORT);
     }
@@ -452,7 +467,7 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject cl
     // 更新 stack_top 为当前线程栈指针 (跨线程使用 ctx 时栈检查需基于当前线程)
     JS_UpdateStackTop(JS_GetRuntime(ctx));
 
-    JSValue result = JS_Call(ctx, func, thisVal, argCount, args.data());
+    JSValue result = JS_Call(ctx, func, thisVal, argCount, args);
     jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
     JS_FreeValue(ctx, result);
     return ret;
@@ -472,9 +487,16 @@ Java_com_script_quickjs_QuickJsNative_nativeCallJsHandle(JNIEnv *env, jobject cl
     if (JS_IsNull(func)) return nullptr;
 
     // 1. Java Object[] -> 临时 JSValue[] (fromJavaObject 返回需 FreeValue)
+    // 常见调用 <= 8 参数走栈上数组, 省掉 std::vector 分配; 超出退回堆分配。
     jsize argCount = argObjects ? env->GetArrayLength(argObjects) : 0;
-    std::vector<JSValue> args;
-    args.reserve(argCount);
+    constexpr jsize kStackArgs = 8;
+    JSValue stackArgs[kStackArgs];
+    JSValue *args = stackArgs;
+    std::vector<JSValue> heapArgs;
+    if (argCount > kStackArgs) {
+        heapArgs.resize(argCount);
+        args = heapArgs.data();
+    }
     for (jsize i = 0; i < argCount; i++) {
         jobject argObj = argObjects ? env->GetObjectArrayElement(argObjects, i) : nullptr;
         JSValue arg = JniValueConvert::fromJavaObject(ctx, env, argObj);
@@ -496,7 +518,7 @@ Java_com_script_quickjs_QuickJsNative_nativeCallJsHandle(JNIEnv *env, jobject cl
             JS_FreeValue(ctx, arg);
             return nullptr;  // pending JNI 异常会传播到 Java 调用方
         }
-        args.push_back(arg);
+        args[i] = arg;
     }
 
     // 2. 更新 stack_top (跨线程栈检查必需, 对齐 nativeCallFunction)
@@ -505,7 +527,7 @@ Java_com_script_quickjs_QuickJsNative_nativeCallJsHandle(JNIEnv *env, jobject cl
     // 3. 用全局对象作 thisVal (对齐 nativeEval 的 JS_EVAL_TYPE_GLOBAL sloppy mode,
     //    避免普通 function 的 this=undefined 导致严格模式行为不一致)
     JSValue global = JS_GetGlobalObject(ctx);
-    JSValue result = JS_Call(ctx, func, global, argCount, args.data());
+    JSValue result = JS_Call(ctx, func, global, argCount, args);
     JS_FreeValue(ctx, global);
 
     // 4. 释放临时 args (fromJavaObject 返回的 JSValue 需 FreeValue)
@@ -620,6 +642,37 @@ Java_com_script_quickjs_QuickJsNative_nativeDefineBinding(JNIEnv *env, jobject c
     bool ok = defineBinding(ctx, cname);
     env->ReleaseStringUTFChars(name, cname);
     return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+// 批量注册 binding (优化: 一次 JNI 调用替代 N 次 nativeDefineBinding)。
+// 原 Kotlin 侧 for-loop 12 次 nativeDefineBinding = 12 次 JNI 跨边界,
+// 改为 1 次 JNI 进入 native, 在 C++ 层遍历数组调用 defineBinding, 省掉 11 次 JNI 往返。
+// 返回 true 仅当全部注册成功; 任一失败返回 false (与原逻辑一致: 任一失败应视为初始化异常)。
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_script_quickjs_QuickJsNative_nativeDefineBindings(JNIEnv *env, jobject clazz,
+                                                           jlong ctxPtr, jobjectArray names) {
+    if (!ctxPtr || !names) return JNI_FALSE;
+    auto *ctx = (JSContext *) ctxPtr;
+    jsize count = env->GetArrayLength(names);
+    bool allOk = true;
+    for (jsize i = 0; i < count; i++) {
+        jstring name = (jstring) env->GetObjectArrayElement(names, i);
+        if (!name) {
+            allOk = false;
+            continue;
+        }
+        const char *cname = env->GetStringUTFChars(name, nullptr);
+        if (!cname) {
+            env->DeleteLocalRef(name);
+            allOk = false;
+            continue;
+        }
+        bool ok = defineBinding(ctx, cname);
+        env->ReleaseStringUTFChars(name, cname);
+        env->DeleteLocalRef(name);
+        if (!ok) allOk = false;
+    }
+    return allOk ? JNI_TRUE : JNI_FALSE;
 }
 
 // ============ dangerousApi 管理 ============
