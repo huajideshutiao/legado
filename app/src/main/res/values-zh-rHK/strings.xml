@@ -1209,4 +1209,165 @@
     <string name="auto_check_new_backup_t">自動檢查新備份</string>
     <string name="auto_check_new_backup_s">開啟軟體時檢查是否有新備份，有新備份時提示是否更新</string>
     <string name="sys_image_picker">系統圖片選擇器</string>
+
+    <!--Home page strings (新增)-->
+    <string name="home">首頁</string>
+    <string name="home_add_section">添加組件</string>
+    <string name="home_edit_section">編輯組件</string>
+    <string name="home_section_title">組件標題</string>
+    <string name="home_select_source">選擇書源</string>
+    <string name="home_select_category">選擇分類</string>
+    <string name="home_pick_favorite">從收藏中選擇</string>
+    <string name="current_selection">已選擇：%s</string>
+    <string name="home_no_favorite">沒有收藏的分類</string>
+    <string name="home_style_cover_row">橫向封面</string>
+    <string name="home_style_rank_list">排行榜</string>
+    <string name="home_style_four_row">四行橫向滾動</string>
+    <string name="home_style_infinite_grid">瀑布流格</string>
+    <string name="home_style">樣式</string>
+    <string name="home_section_delete">刪除此組件</string>
+    <string name="home_empty">還沒有組件，點擊右上角+添加</string>
+    <string name="home_more">更多</string>
+    <string name="home_source_no_explore">此書源沒有分類</string>
+    <string name="home_title_empty">標題不能為空</string>
+    <string name="home_infinite_only_one">只能添加一個瀑布流格</string>
+    <string name="home_source_invalid">書源無效</string>
+    <string name="home_section_options">組件選項</string>
+    <string name="home_manage">管理組件</string>
+    <string name="home_cover_video">影片封面 (16:9)</string>
+    <string name="home_tab_manage">管理分組</string>
+    <string name="home_tab_add">添加分組</string>
+    <string name="home_tab_edit">編輯分組</string>
+    <string name="home_tab_title">分組名稱</string>
+    <string name="home_tab_name_duplicate">分組名稱已存在</string>
+    <string name="home_tab_section_count">%1$d個組件</string>
+    <string name="home_tab_empty">此分組沒有組件，點擊右上角+添加</string>
+    <string name="home_tab_delete_confirm">刪除分組"%1$s"？</string>
+    <string name="home_tab_delete_confirm_with_sections">分組"%1$s"包含%2$d個組件，將會全部刪除</string>
+    <string name="home_manage_for_tab">管理"%1$s"的組件</string>
+    <string name="home_manage_empty">此分組沒有組件，點擊右上角+添加</string>
+
+    <!--Explore style strings (新增)-->
+    <string name="explore_style">樣式</string>
+    <string name="explore_style_normal">普通</string>
+    <string name="explore_style_list">列表</string>
+    <string name="explore_style_card_cols">%1$d列卡片</string>
+    <string name="explore_style_video_cols">%1$d列影片</string>
+    <string name="explore_cols">列數</string>
+    <string name="explore_cols_one_label">1 (格：列表 / 影片：大卡片)</string>
+    <string name="explore_style_video">影片</string>
+
+    <!--Review strings (缺失補充)-->
+    <string name="rule_review_list">段評列表 (reviewList)</string>
+    <string name="rule_review_count">章節評論數規則 (reviewCountRule)</string>
+    <string name="rule_review_total_count">評論總數規則 (totalCountRule)</string>
+    <string name="rule_review_name">段評作者名稱 (nameRule)</string>
+    <string name="rule_review_extra">段評附加信息 (extraRule)</string>
+    <string name="rule_review_images">段評圖片列表 (imagesRule)</string>
+    <string name="rule_vote_up_count">點讚數 (voteUpCountRule)</string>
+    <string name="rule_reply_count">回覆數 (replyCountRule)</string>
+    <string name="review_post_hint">想說點什麼？</string>
+    <string name="review_replies_count">全部 %1$d 條回覆 ></string>
+    <string name="review_replies_detail_title">評論詳情</string>
+    <string name="review_replies_section_title">全部回覆 · %1$d</string>
+    <string name="review_list_section_title">全部評論 · %1$s</string>
+    <string name="review_sort_hot">熱門</string>
+    <string name="review_sort_latest">最新</string>
+    <string name="review_expand">展開</string>
+    <string name="review_collapse">收起</string>
+    <string name="enable_review">啟用段評功能</string>
+    <string name="confirm_delete_review">刪除此評論？</string>
+    <string name="review_list_empty">暫無評論</string>
+    <string name="post_review">發布</string>
+    <string name="reply_review">回覆</string>
+    <string name="reply_review_to">回覆：%1$s</string>
+    <string name="vote_up">讚</string>
+    <string name="vote_down">踩</string>
+    <string name="source_tab_review">評論</string>
+
+    <!--Other missing strings-->
+    <string name="rule_has_more">是否有更多 (hasMoreRule)</string>
+    <string name="contrast">對比度</string>
+    <string name="play_mode">播放模式</string>
+    <string name="manga_gif_auto_next">GIF 播放完成後自動翻頁</string>
+    <string name="show_home">顯示首頁</string>
+    <string name="dev_feat">開發功能</string>
+    <string name="book_url">書籍路徑</string>
+    <string name="enable_dangerous_api">危險 API</string>
+    <string name="dev_feat_summary">啟用一些實驗性功能，如 16:9 影片縮略圖和直接播放影片書</string>
+    <string name="enable_dangerous_api_confirm">警告：允許未知來源使用危險 API 可能導致不可預測的結果。最壞情況下，可能導致應用數據被清除或洩漏，以及本地可訪問文件被暴露。請確保您已審查代碼並信任該來源，否則不要啟用。</string>
+    <string name="filter_book_type">按類型過濾</string>
+    <string name="book_type_novel">小說</string>
+    <string name="book_type_comic">漫畫</string>
+    <string name="rule_need_pay">需要付費規則 (needPay)</string>
+    <string name="rule_should_override_url_loading">拦截網絡請求 (shouldOverrideUrlLoading)</string>
+    <string name="rule_web_js">WebViewJs (webJs)</string>
+    <string name="rule_sub_content">附加內容規則 (subContent)</string>
+    <string name="rule_music_cover">音樂封面 URL 規則</string>
+
+    <!--UI Tweaks strings (新增)-->
+    <string name="ui_tweaks">界面調整</string>
+    <string name="bottom_nav_config">底部導航欄</string>
+    <string name="bottom_nav_config_summary">欄高度、圖標大小、標籤可見性</string>
+    <string name="bottom_bar_height">欄高度</string>
+    <string name="bottom_bar_icon_size">圖標大小</string>
+    <string name="bottom_bar_label_mode">標籤可見性</string>
+    <string name="bottom_bar_label_unlabeled">隱藏</string>
+    <string name="bottom_bar_label_labeled">始終顯示</string>
+    <string name="bottom_bar_label_selected">僅选中時</string>
+    <string name="bottom_bar_label_auto">自動</string>
+    <string name="bookshelf_list_style">書架列表樣式</string>
+    <string name="bookshelf_list_style_summary">在列表佈局中顯示分類/簡介</string>
+    <string name="bookshelf_list_show_kind">顯示分類</string>
+    <string name="bookshelf_list_show_intro">顯示簡介</string>
+    <string name="bookshelf_list_intro_lines">簡介行數</string>
+    <string name="bookshelf_cover_width">列表模式封面寬度</string>
+    <string name="bookshelf_cover_width_summary">當前：%s</string>
+    <string name="click_book_open_read">直接播放影片書</string>
+    <string name="click_book_open_read_summary">在搜索/發現中點擊影片書直接播放，跳過詳情頁</string>
+    <string name="book_info_horizontal_layout">寬屏書籍詳情佈局</string>
+    <string name="book_info_horizontal_layout_summary">在詳情頁中左側放置封面，右側放置書籍信息</string>
+    <string name="bookshelf_show_group_count">在分組上顯示書籍數量</string>
+
+    <!--Source filter rule strings (新增)-->
+    <string name="source_filter_rule">屏蔽規則</string>
+    <string name="source_filter_rule_empty">沒有規則。點擊+添加。</string>
+    <string name="source_filter_rule_no_match">沒有屏蔽規則適用於此範圍。</string>
+    <string name="source_filter_rule_manage">管理全部</string>
+    <string name="source_filter_rule_name">名稱</string>
+    <string name="source_filter_rule_pattern">正則表達式模式</string>
+    <string name="source_filter_rule_fields">應用於字段（任一匹配→丟棄）</string>
+    <string name="source_filter_rule_scope_label">應用於</string>
+    <string name="source_filter_rule_scope_summary_all">所有書源</string>
+    <string name="source_filter_rule_scope_all">範圍：所有書源</string>
+    <string name="source_filter_rule_scope_fmt">範圍：%s</string>
+    <string name="source_filter_rule_invalid_pattern">無效的正則表達式</string>
+    <string name="source_filter_rule_no_field">請至少選擇一個字段</string>
+    <string name="source_filter_rule_filtered_count">已過濾%d本書</string>
+    <string name="source_filter_rule_delete_all_confirm">刪除所有屏蔽規則？</string>
+    <string name="import_source_filter_rule">導入屏蔽規則</string>
+    <string name="source_filter_field_name">標題</string>
+    <string name="source_filter_field_author">作者</string>
+    <string name="source_filter_field_intro">簡介</string>
+    <string name="source_filter_field_kind">分類</string>
+    <string name="source_filter_field_word_count">字數</string>
+
+    <!--Additional strings from English version-->
+    <string name="default_home_page">默認主頁</string>
+    <string name="js_engine_title">JS 引擎</string>
+    <string name="cronet_enabled">Cronet 已啟用</string>
+    <string name="cronet_download_failed">Cronet 下載失敗</string>
+    <string name="resolution">分辨率</string>
+    <string name="default_cover_count">%1$d張圖片</string>
+    <string name="today_read_time">今日</string>
+    <string name="week_read_time">本周</string>
+    <string name="month_read_time">本月</string>
+    <string name="read_heatmap_title">閲讀熱力圖</string>
+    <string name="month_label_format">%1$d.%2$02d</string>
+    <string name="prev_month">上個月</string>
+    <string name="next_month">下個月</string>
+    <string name="day_read_time_toast">%1$d-%2$02d-%3$02d: %4$s</string>
+    <string name="filter_by_day_label">%1$d-%2$02d-%3$02d  ✕</string>
+    <string name="book_info_delete_alert_title">刪除書籍前確認</string>
+    <string name="book_info_delete_alert_summary">從書架移除書籍時顯示確認對話框</string>
 </resources>
