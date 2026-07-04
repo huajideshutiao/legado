@@ -11,7 +11,6 @@ import androidx.core.view.indices
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.base.AppContextWrapper
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogBookshelfConfigBinding
@@ -81,7 +80,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_theme)
         upPreferenceSummary(PreferKey.bgImage)
         upPreferenceSummary(PreferKey.bgImageN)
-        upPreferenceSummary(PreferKey.barElevation)
         upPreferenceSummary(PreferKey.fontScale)
         upPreferenceSummary(PreferKey.sourceEditMaxLine)
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
@@ -141,7 +139,6 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bgImageN,
             PreferKey.sourceEditMaxLine -> upPreferenceSummary(key)
 
-            PreferKey.barElevation,
             PreferKey.fontScale -> {
                 upPreferenceSummary(key)
                 recreateActivities()
@@ -155,17 +152,6 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (val key = preference.key) {
-            PreferKey.barElevation -> showNumberPicker(
-                requireContext(),
-                titleResId = R.string.bar_elevation,
-                max = 32, min = 0, value = AppConfig.elevation,
-                neutralButton = R.string.btn_default_s to {
-                    AppConfig.elevation = AppConst.sysElevation
-                }
-            ) {
-                AppConfig.elevation = it
-            }
-
             PreferKey.fontScale -> showNumberPicker(
                 requireContext(),
                 titleResId = R.string.font_scale,
@@ -314,11 +300,6 @@ class ThemeConfigFragment : PreferenceFragment(),
     private fun upPreferenceSummary(preferenceKey: String, value: String? = null) {
         val preference = findPreference<Preference>(preferenceKey) ?: return
         when (preferenceKey) {
-            PreferKey.barElevation -> {
-                val elevation = value ?: AppConfig.elevation.toString()
-                preference.summary = getString(R.string.bar_elevation_s, elevation)
-            }
-
             PreferKey.fontScale -> {
                 val fontScale = AppContextWrapper.getFontScale(requireContext())
                 preference.summary = getString(R.string.font_scale_summary, fontScale)

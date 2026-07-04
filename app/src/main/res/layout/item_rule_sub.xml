@@ -24,7 +24,7 @@
         android:layout_height="wrap_content"
         android:padding="3dp"
         android:textSize="12sp"
-        app:radius="2dp"
+        app:radius="@dimen/arco_radius_sm"
         app:layout_constraintTop_toBottomOf="@+id/tv_name"
         app:layout_constraintLeft_toLeftOf="parent"
         tools:text="type" />

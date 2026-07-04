@@ -37,7 +37,6 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.onDismiss
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
@@ -200,7 +199,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         viewPagerMain.offscreenPageLimit = 3
         viewPagerMain.adapter = adapter
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
-        bottomNavigationView.elevation = elevation
+        // Arco 风格：移除 bottomNavigationView 的 elevation 阴影
         bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
         bottomNavigationView.setOnNavigationItemReselectedListener(this@MainActivity)
         if (AppConfig.isEInkMode) {
@@ -387,6 +386,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             "my" -> binding.viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), false)
             else -> binding.viewPagerMain.setCurrentItem(bookshelfPos, false)
         }
+        // setCurrentItem(pos, false) 在 pos 未变化时不触发 onPageSelected，需手动同步一次初始选中项
+        selectBottomMenu(binding.viewPagerMain.currentItem)
+    }
+
+    private fun selectBottomMenu(position: Int) {
+        pagePosition = position
+        val menuId = when (realPositions[position]) {
+            idHome -> R.id.menu_home
+            idExplore -> R.id.menu_discovery
+            idMy -> R.id.menu_my_config
+            else -> R.id.menu_bookshelf
+        }
+        binding.bottomNavigationView.menu.findItem(menuId).isChecked = true
     }
 
     private fun getFragmentId(position: Int): Int {
@@ -400,14 +412,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private inner class PageChangeCallback : ViewPager.SimpleOnPageChangeListener() {
 
         override fun onPageSelected(position: Int) {
-            pagePosition = position
-            val menuId = when (realPositions[position]) {
-                idHome -> R.id.menu_home
-                idExplore -> R.id.menu_discovery
-                idMy -> R.id.menu_my_config
-                else -> R.id.menu_bookshelf
-            }
-            binding.bottomNavigationView.menu.findItem(menuId).isChecked = true
+            selectBottomMenu(position)
         }
 
     }

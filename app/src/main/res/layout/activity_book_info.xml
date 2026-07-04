@@ -9,7 +9,6 @@
         android:id="@+id/refresh_layout"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/view_divider"
         app:layout_constraintTop_toTopOf="parent">
 
         <io.legado.app.ui.widget.NoChildScrollNestedScrollView
@@ -42,21 +41,14 @@
                     android:orientation="vertical"
                     app:layout_constraintTop_toTopOf="@+id/bg_book">
 
-                    <androidx.cardview.widget.CardView
-                        android:id="@+id/cv_cover"
+                    <io.legado.app.ui.widget.image.CoverImageView
+                        android:id="@+id/iv_cover"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="144dp"
                         android:layout_gravity="center"
-                        app:cardCornerRadius="5dp"
-                        app:cardElevation="8dp"
-                        app:cardUseCompatPadding="true">
-
-                        <io.legado.app.ui.widget.image.CoverImageView
-                            android:id="@+id/iv_cover"
-                            android:layout_width="wrap_content"
-                            android:layout_height="144dp" />
-
-                    </androidx.cardview.widget.CardView>
+                        android:layout_margin="8dp"
+                        android:background="@drawable/bg_arco_card"
+                        android:clipToOutline="true" />
 
                     <LinearLayout
                         android:id="@+id/ll_info_top"
@@ -191,36 +183,24 @@
         android:id="@+id/title_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:elevation="0dp"
         app:layout_constraintTop_toTopOf="parent"
         app:themeMode="dark"
         app:title="@string/book_info" />
-
-    <View
-        android:id="@+id/view_divider"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/bg_divider_line"
-        app:layout_constraintBottom_toTopOf="@id/fl_action" />
 
     <LinearLayout
         android:id="@+id/fl_action"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_menu"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <TextView
+        <Button
             android:id="@+id/tv_shelf"
             android:layout_width="0dp"
-            android:layout_height="50dp"
+            android:layout_height="48dp"
+            android:layout_margin="8dp"
             android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:includeFontPadding="false"
+            android:background="@color/ate_button_disabled_light"
             android:text="@string/remove_from_bookshelf"
             android:textColor="@color/primaryText"
             android:textSize="15sp" />
@@ -228,12 +208,14 @@
         <io.legado.app.ui.widget.text.AccentBgTextView
             android:id="@+id/tv_read"
             android:layout_width="0dp"
-            android:layout_height="50dp"
+            android:layout_height="48dp"
+            android:layout_margin="8dp"
             android:layout_weight="1"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="@string/reading"
-            android:textSize="15sp" />
+            android:textSize="15sp"
+            app:radius="@dimen/arco_radius_lg" />
 
     </LinearLayout>
 

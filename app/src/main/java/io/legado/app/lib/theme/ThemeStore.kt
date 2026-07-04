@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.annotation.ColorInt
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
+import io.legado.app.lib.theme.ThemeStore.saveTheme
 import splitties.init.appCtx
 
 /**
@@ -96,7 +97,8 @@ object ThemeStore {
                 ThemeUtils.resolveColor(
                     appCtx,
                     androidx.appcompat.R.attr.colorAccent,
-                    "#263238".toColorInt()
+                    // Arco: 极端兜底色对齐 arcoblue-6（colorAccent attr 解析失败时才触发）
+                    "#165DFF".toColorInt()
                 )
             ),
             backgroundColor = bgColor,

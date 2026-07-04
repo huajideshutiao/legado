@@ -610,7 +610,6 @@
     <string name="rss_source">Fonte de assinatura</string>
     <string name="rss_source_edit">Editar a fonte de assinatura</string>
     <string name="screen">Filtrar</string>
-    <string name="screen_find">Search Discovery sources</string>
     <string name="dur_pos">Localização atual：</string>
     <string name="precision_search">Busca precisa</string>
     <string name="service_starting">Iniciação do serviço</string>
@@ -685,8 +684,6 @@
     <string name="no_default_path">Nenhum pasta padrão</string>
     <string name="change_group">Configurações de grupo</string>
     <string name="view_toc">Ver os capítulos</string>
-    <string name="bar_elevation">Sombra na barra de navegação</string>
-    <string name="bar_elevation_s">Tamanho da sombra atual(elevação): %s</string>
     <string name="btn_default_s">Padrão</string>
     <string name="main_menu">Menu principal</string>
     <string name="request_permission">Toque para conceder permissão</string>

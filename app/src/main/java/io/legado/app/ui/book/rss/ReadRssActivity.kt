@@ -213,7 +213,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
             onSave = { saveImage(it) },
             onSelectFolder = { selectSaveFolder(null) }
         )
-        WebViewUtil.setupDownloadListener(binding.webView, binding.llView, this)
+        WebViewUtil.setupDownloadListener(binding.webView, this)
 
     }
 
@@ -324,7 +324,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
                 }
             }
             if (url.scheme == "jsbridge") return false
-            return WebViewUtil.shouldOverrideUrl(url, this@ReadRssActivity, binding.root)
+            return WebViewUtil.shouldOverrideUrl(url, this@ReadRssActivity)
         }
 
         override fun onPageFinished(view: WebView, url: String) {

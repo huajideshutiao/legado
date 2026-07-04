@@ -2,14 +2,12 @@
 
 package io.legado.app.lib.theme
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import io.legado.app.R
-import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 
@@ -88,20 +86,6 @@ val Context.secondaryTextColor: Int
 
 val Context.isDarkTheme: Boolean
     get() = ColorUtils.isColorLight(ThemeStore.backgroundColor)
-
-val Context.elevation: Float
-    @SuppressLint("PrivateResource")
-    get() {
-        return if (AppConfig.elevation < 0) {
-            ThemeUtils.resolveFloat(
-                this,
-                android.R.attr.elevation,
-                resources.getDimension(com.google.android.material.R.dimen.design_appbar_elevation)
-            )
-        } else {
-            AppConfig.elevation.toFloat().dpToPx()
-        }
-    }
 
 val Context.filletBackground: GradientDrawable
     get() {

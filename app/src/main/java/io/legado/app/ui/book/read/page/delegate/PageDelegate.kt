@@ -6,11 +6,11 @@ import android.view.MotionEvent
 import android.view.animation.LinearInterpolator
 import android.widget.Scroller
 import androidx.annotation.CallSuper
-import com.google.android.material.snackbar.Snackbar
 import io.legado.app.R
 import io.legado.app.ui.book.read.page.PageView
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.utils.toastOnUi
 import kotlin.math.abs
 
 abstract class PageDelegate(protected val readView: ReadView) {
@@ -38,10 +38,6 @@ abstract class PageDelegate(protected val readView: ReadView) {
 
     protected val scroller: Scroller by lazy {
         Scroller(readView.context, LinearInterpolator())
-    }
-
-    private val snackBar: Snackbar by lazy {
-        Snackbar.make(readView, "", Snackbar.LENGTH_SHORT)
     }
 
     var isMoved = false
@@ -158,10 +154,8 @@ abstract class PageDelegate(protected val readView: ReadView) {
     fun hasPrev(): Boolean {
         val hasPrev = readView.pageFactory.hasPrev()
         if (!hasPrev) {
-            if (!snackBar.isShown) {
-                snackBar.setText(R.string.no_prev_page)
-                snackBar.show()
-            }
+            // Arco: 纯消息 Snackbar 换成 toast
+            context.toastOnUi(R.string.no_prev_page)
         }
         return hasPrev
     }
@@ -173,19 +167,10 @@ abstract class PageDelegate(protected val readView: ReadView) {
         val hasNext = readView.pageFactory.hasNext()
         if (!hasNext) {
             readView.callBack.autoPageStop()
-            if (!snackBar.isShown) {
-                snackBar.setText(R.string.no_next_page)
-                snackBar.show()
-            }
+            // Arco: 纯消息 Snackbar 换成 toast
+            context.toastOnUi(R.string.no_next_page)
         }
         return hasNext
-    }
-
-    fun dismissSnackBar() {
-        // 判断snackBar是否显示，并关闭
-        if (snackBar.isShown) {
-            snackBar.dismiss()
-        }
     }
 
     fun postInvalidate() {

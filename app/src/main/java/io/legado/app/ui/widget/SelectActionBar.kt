@@ -17,7 +17,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryDisabledTextColor
 import io.legado.app.utils.ColorUtils
@@ -49,7 +48,7 @@ class SelectActionBar @JvmOverloads constructor(
             } else {
                 setBackgroundColor(Color.TRANSPARENT)
             }
-            elevation = context.elevation
+            // Arco 风格：移除 elevation 阴影
             binding.cbSelectedAll.setTextColor(primaryTextColor)
             TintHelper.setTint(binding.cbSelectedAll, context.accentColor, !bgIsLight)
             binding.ivMenuMore.setColorFilter(disabledColor, PorterDuff.Mode.SRC_IN)

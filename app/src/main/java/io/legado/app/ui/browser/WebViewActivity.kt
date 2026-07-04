@@ -26,7 +26,7 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.snackbar
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -113,7 +113,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 if (viewModel.isLogin) {
                     if (!checking) {
                         checking = true
-                        binding.titleBar.snackbar(R.string.check_host_cookie)
+                        toastOnUi(R.string.check_host_cookie)
                         binding.webView.reload()
                     }
                 } else if (viewModel.sourceVerificationEnable) {
@@ -188,7 +188,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             onSave = { saveImage(it) },
             onSelectFolder = { saveImage.launch {} }
         )
-        WebViewUtil.setupDownloadListener(binding.webView, binding.llView, this)
+        WebViewUtil.setupDownloadListener(binding.webView, this)
     }
 
     private fun saveImage(webPic: String) {
@@ -213,7 +213,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
     inner class CustomWebViewClient : BaseWebViewClient() {
         override fun interceptUrl(url: Uri): Boolean {
-            return WebViewUtil.shouldOverrideUrl(url, this@WebViewActivity, binding.root)
+            return WebViewUtil.shouldOverrideUrl(url, this@WebViewActivity)
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {

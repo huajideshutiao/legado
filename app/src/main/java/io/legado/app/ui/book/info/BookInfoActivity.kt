@@ -366,7 +366,7 @@ class BookInfoActivity :
             titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Auto)
 
             llTop.orientation = LinearLayout.HORIZONTAL
-            cvCover.updateLayoutParams<LinearLayout.LayoutParams> {
+            ivCover.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = LinearLayout.LayoutParams.WRAP_CONTENT
             }
             llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
@@ -388,7 +388,7 @@ class BookInfoActivity :
 
             if (!isLandscape) {
                 llTop.orientation = LinearLayout.VERTICAL
-                cvCover.updateLayoutParams<LinearLayout.LayoutParams> {
+                ivCover.updateLayoutParams<LinearLayout.LayoutParams> {
                     width = LinearLayout.LayoutParams.WRAP_CONTENT
                 }
                 llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {

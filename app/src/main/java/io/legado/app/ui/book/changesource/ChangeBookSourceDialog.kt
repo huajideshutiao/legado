@@ -28,7 +28,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.read.ReadBookActivity
@@ -119,7 +118,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
         binding.toolBar.subtitle = viewModel.author
         binding.toolBar.navigationIcon =
             getCompatDrawable(androidx.appcompat.R.drawable.abc_ic_ab_back_material)
-        binding.toolBar.elevation = requireContext().elevation
+        // Arco 风格：移除 toolBar elevation 阴影
     }
 
     private fun initMenu() {

@@ -382,7 +382,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private fun click(action: Int) {
         when (action) {
             0 -> {
-                pageDelegate?.dismissSnackBar()
                 callBack.showActionMenu()
             }
 

@@ -28,7 +28,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.elevation
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -150,7 +149,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
         binding.ivHideToc.setOnClickListener {
             binding.clToc.gone()
         }
-        binding.flHideToc.elevation = requireContext().elevation
+        // Arco 风格：移除 flHideToc elevation 阴影
     }
 
     private fun initRecyclerView() {

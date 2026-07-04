@@ -21,6 +21,9 @@ import androidx.fragment.app.commit
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.cancelButton
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.Download
 import io.legado.app.ui.association.FileAssociationFragment
@@ -28,7 +31,6 @@ import io.legado.app.ui.widget.anima.RefreshProgressBar
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.keepScreenOn
-import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.toggleSystemBar
@@ -118,17 +120,21 @@ object WebViewUtil {
         }
     }
 
-    fun setupDownloadListener(webView: WebView, hostView: View, activity: AppCompatActivity) {
+    fun setupDownloadListener(webView: WebView, activity: AppCompatActivity) {
         webView.setDownloadListener { url, _, contentDisposition, _, _ ->
             var fileName = URLUtil.guessFileName(url, contentDisposition, null)
             fileName = URLDecoder.decode(fileName, "UTF-8")
-            hostView.longSnackbar(fileName, activity.getString(R.string.action_download)) {
-                Download.start(activity, url, fileName)
+            // Arco: 可交互 Snackbar 换成对话框
+            activity.alert(fileName) {
+                positiveButton(R.string.action_download) {
+                    Download.start(activity, url, fileName)
+                }
+                cancelButton()
             }
         }
     }
 
-    fun shouldOverrideUrl(url: Uri, activity: AppCompatActivity, snackbarHost: View): Boolean {
+    fun shouldOverrideUrl(url: Uri, activity: AppCompatActivity): Boolean {
         when (url.scheme) {
             "http", "https" -> return false
             "legado", "yuedu" -> {
@@ -139,8 +145,12 @@ object WebViewUtil {
             }
 
             else -> {
-                snackbarHost.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
-                    activity.openUrl(url)
+                // Arco: 可交互 Snackbar 换成对话框
+                activity.alert(R.string.jump_to_another_app) {
+                    positiveButton(R.string.confirm) {
+                        activity.openUrl(url)
+                    }
+                    cancelButton()
                 }
                 return true
             }

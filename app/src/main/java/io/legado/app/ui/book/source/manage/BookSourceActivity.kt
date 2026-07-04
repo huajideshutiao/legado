@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.View
 import android.view.WindowManager
+import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
@@ -16,7 +18,6 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.ItemTouchHelper
-import com.google.android.material.snackbar.Snackbar
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
@@ -57,6 +58,7 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
+import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -69,6 +71,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -105,7 +108,8 @@ class BookSourceActivity :
         private set
     override var sortAscending = true
         private set
-    private var snackBar: Snackbar? = null
+    private var checkSourceProgressView: View? = null
+    private var tvCheckSourceMsg: TextView? = null
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
 
@@ -140,6 +144,7 @@ class BookSourceActivity :
         upBookSource()
         initLiveDataGroup()
         initSelectActionBar()
+        initCheckSourceProgress()
         resumeCheckSource()
         if (!LocalConfig.bookSourcesHelpVersionIsLast) {
             showHelp("SourceMBookHelp")
@@ -581,19 +586,13 @@ class BookSourceActivity :
 
     override fun observeLiveBus() {
         observeEvent<String>(EventBus.CHECK_SOURCE) { msg ->
-            snackBar?.setText(msg) ?: let {
-                snackBar = Snackbar
-                    .make(binding.root, msg, Snackbar.LENGTH_INDEFINITE)
-                    .setAction(R.string.cancel) {
-                        CheckSource.stop(this)
-                        Debug.finishChecking()
-                    }.apply { show() }
-            }
+            // Arco: 底部进度控件显示校验情况
+            tvCheckSourceMsg?.text = msg
+            checkSourceProgressView?.visible()
         }
         observeEvent<Int>(EventBus.CHECK_SOURCE_DONE) {
             keepScreenOn(false)
-            snackBar?.dismiss()
-            snackBar = null
+            checkSourceProgressView?.gone()
             adapter.notifyItemRangeChanged(
                 0,
                 adapter.itemCount,
@@ -608,6 +607,23 @@ class BookSourceActivity :
                 }
             }
         }
+    }
+
+    private fun initCheckSourceProgress() {
+        // Arco: 底部进度控件，替代底部可交互 Snackbar
+        val parent = binding.root
+        val view = layoutInflater.inflate(
+            R.layout.view_check_source_progress, parent, false
+        )
+        val index = parent.indexOfChild(binding.selectActionBar)
+        parent.addView(view, index)
+        checkSourceProgressView = view
+        tvCheckSourceMsg = view.findViewById(R.id.tv_check_source_msg)
+        view.findViewById<TextView>(R.id.btn_check_source_cancel)
+            .setOnClickListener {
+                CheckSource.stop(this)
+                Debug.finishChecking()
+            }
     }
 
     private fun startCheckMessageRefreshJob(firstItem: Int, lastItem: Int) {

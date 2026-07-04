@@ -606,7 +606,6 @@
     <string name="rss_source">Nguồn RSS</string>
     <string name="rss_source_edit">Sửa nguồn RSS</string>
     <string name="screen">Bộ lọc</string>
-    <string name="screen_find">Search Discovery sources</string>
     <string name="dur_pos">Vị trí hiện tại：</string>
     <string name="precision_search">Tìm kiếm chính xác</string>
     <string name="service_starting">Đang khởi động dịch vụ</string>
@@ -682,8 +681,6 @@
     <string name="no_default_path">Không có đường dẫn mặc định</string>
     <string name="change_group">Cài đặt nhóm</string>
     <string name="view_toc">Xem chương</string>
-    <string name="bar_elevation">Bóng thanh điều hướng</string>
-    <string name="bar_elevation_s">Kích thước bóng hiện tại (độ cao): %s</string>
     <string name="btn_default_s">Mặc định</string>
     <string name="main_menu">Menu chính</string>
     <string name="request_permission">Chạm để cấp quyền</string>

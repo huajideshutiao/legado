@@ -51,6 +51,21 @@ class BookAdapter(context: Context, val callBack: CallBack) :
         payloads: MutableList<Any>
     ) {
         binding.apply {
+            // 局部刷新时跳过封面重新加载，避免图片闪烁
+            // payload 场景：选中状态变化(Bundle "selected")、下载状态变化(Boolean true)
+            if (payloads.isNotEmpty()) {
+                checkbox.isChecked = selectedBooks.contains(item)
+                upDownloadIv(ivDownload, item)
+                if (!item.isLocal) {
+                    val cs = callBack.cacheChapters[item.bookUrl]
+                    tvDownload.text = if (cs == null) {
+                        context.getString(R.string.loading)
+                    } else {
+                        context.getString(R.string.download_count, cs.size, item.totalChapterNum)
+                    }
+                }
+                return
+            }
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             tvName.text = item.name
             tvAuthor.text = item.getRealAuthor()

@@ -5,25 +5,20 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.Menu
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.widget.ImageView
+import android.widget.LinearLayout
 import androidx.annotation.ColorInt
 import androidx.annotation.StyleRes
 import androidx.appcompat.widget.Toolbar
-import androidx.core.graphics.alpha
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
-import com.google.android.material.appbar.AppBarLayout
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.elevation
 import io.legado.app.utils.activity
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
@@ -33,7 +28,7 @@ import splitties.views.topPadding
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 class TitleBar @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
-) : AppBarLayout(context, attrs) {
+) : LinearLayout(context, attrs) {
 
     val toolbar: Toolbar
     val menu: Menu
@@ -65,6 +60,8 @@ class TitleBar @JvmOverloads constructor(
     // init 块内 inflate/toolbar 等使用 this 指向 TitleBar,
     // 转 withStyledAttributes 会改变 this 语义,不适合转换
     init {
+        // Arco: AppBarLayout 换成普通 LinearLayout，需显式设置垂直方向
+        orientation = VERTICAL
         @Suppress("UseKtx")
         val a = context.obtainStyledAttributes(
             attrs, R.styleable.TitleBar, R.attr.titleBarStyle, 0
@@ -188,12 +185,6 @@ class TitleBar @JvmOverloads constructor(
                     setBackgroundColor(Color.TRANSPARENT)
                 }
             }
-            stateListAnimator = null
-            // AppBarLayout 默认 outline 会受 paddingTop(状态栏高度) 影响,
-            // 使得 elevation 阴影画到 TitleBar 内部(状态栏与 toolbar 之间)。
-            // 显式改用 BOUNDS,让阴影投在 TitleBar 外边缘。
-            outlineProvider = ViewOutlineProvider.BOUNDS
-            elevation = context.elevation
         }
         a.recycle()
     }
@@ -241,24 +232,6 @@ class TitleBar @JvmOverloads constructor(
         toolbar.children.firstOrNull { it is ImageView }?.background?.colorFilter = colorFilter
         toolbar.navigationIcon?.colorFilter = colorFilter
         toolbar.overflowIcon?.colorFilter = colorFilter
-    }
-
-    override fun setBackgroundColor(color: Int) {
-        if (color.alpha < 255) {
-            //这里不能改为0f,改为0f在横屏模式下文字和图标颜色会变
-            elevation = 0.1f
-        }
-        super.setBackgroundColor(color)
-    }
-
-    override fun setBackground(background: Drawable?) {
-        if (background is ColorDrawable) {
-            if (background.alpha < 255) {
-                //这里不能改为0f,改为0f在横屏模式下文字和图标颜色会变
-                elevation = 0.1f
-            }
-        }
-        super.setBackground(background)
     }
 
     fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, fullScreen: Boolean) {

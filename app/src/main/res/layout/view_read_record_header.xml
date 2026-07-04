@@ -7,19 +7,13 @@
     android:orientation="vertical">
 
     <!-- 统计卡：2x2 网格 -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/cv_stats"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
-        app:cardCornerRadius="10dp"
-        app:cardElevation="1dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingVertical="14dp">
+        android:background="@drawable/bg_arco_card"
+        android:orientation="vertical"
+        android:paddingVertical="14dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -190,24 +184,16 @@
 
         </LinearLayout>
 
-    </androidx.cardview.widget.CardView>
-
     <!-- 月度热力图卡 -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/cv_heatmap"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginLeft="12dp"
         android:layout_marginRight="12dp"
         android:layout_marginBottom="12dp"
-        app:cardCornerRadius="10dp"
-        app:cardElevation="1dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="10dp">
+        android:background="@drawable/bg_arco_card"
+        android:orientation="vertical"
+        android:padding="10dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -265,7 +251,5 @@
                 android:layout_marginTop="4dp" />
 
         </LinearLayout>
-
-    </androidx.cardview.widget.CardView>
 
 </LinearLayout>

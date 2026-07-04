@@ -14,7 +14,6 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.filletBackground
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -75,11 +74,6 @@ abstract class BaseDialogFragment(
         if (!AppConfig.isEInkMode && applyFilletBackground) {
             view.background = requireContext().filletBackground
             view.clipToOutline = true
-        }
-        val toolbar = view.findViewById<View>(R.id.tool_bar)
-        if (toolbar != null && !AppConfig.isEInkMode) {
-            toolbar.stateListAnimator = null
-            toolbar.elevation = requireContext().elevation
         }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()

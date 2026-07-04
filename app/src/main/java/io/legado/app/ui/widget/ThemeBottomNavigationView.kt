@@ -29,9 +29,12 @@ class ThemeBottomNavigationView(context: Context, attrs: AttributeSet) :
         val textIsDark =
             ColorUtils.isColorLight(if (bg.isNullOrBlank()) bgColor else context.backgroundColor)
         val textColor = context.getSecondaryTextColor(textIsDark)
+        // NavigationBarItemView 把 checked 透到子 icon/label 时用的是 setSelected，
+        // 所以子 view 上匹配的是 state_selected；父容器则是 state_checked。两个都设为 accentColor。
         val colorStateList = Selector.colorBuild()
             .setDefaultColor(textColor)
-            .setSelectedColor(ThemeStore.accentColor).create()
+            .setSelectedColor(ThemeStore.accentColor)
+            .setCheckedColor(ThemeStore.accentColor).create()
         itemIconTintList = colorStateList
         itemTextColor = colorStateList
 

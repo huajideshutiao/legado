@@ -13,6 +13,7 @@ import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
@@ -37,6 +38,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
+import io.legado.app.utils.removePref
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
@@ -60,6 +62,8 @@ class App : Application() {
             LogUtils.logDeviceInfo()
             createNotificationChannels()
             DefaultData.upVersion()
+            // Arco: 清理旧版本遗留的 barElevation 偏好值（elevation 已移除）
+            appCtx.removePref(PreferKey.barElevation)
             AppFreezeMonitor.init(this@App)
             DispatchersMonitor.init()
         }

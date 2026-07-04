@@ -68,7 +68,7 @@
                 android:text="TXT"
                 android:maxLines="1"
                 android:maxWidth="50dp"
-                app:radius="2dp"
+                app:radius="@dimen/arco_radius_sm"
                 tools:ignore="HardcodedText,RtlHardcoded" />
 
             <TextView

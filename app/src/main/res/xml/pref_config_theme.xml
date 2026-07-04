@@ -25,12 +25,6 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
-        android:key="barElevation"
-        android:summary="@string/bar_elevation_s"
-        android:title="@string/bar_elevation"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
         android:key="fontScale"
         android:summary="@string/font_scale_summary"
         android:title="@string/font_scale"

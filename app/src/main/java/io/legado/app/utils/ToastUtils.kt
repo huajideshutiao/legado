@@ -4,11 +4,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import io.legado.app.BuildConfig
-import io.legado.app.databinding.ViewToastBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
-import splitties.systemservices.layoutInflater
 
 private var toast: Toast? = null
 
@@ -22,15 +18,8 @@ fun Context.toastOnUi(message: CharSequence?, duration: Int = Toast.LENGTH_SHORT
     runOnUI {
         kotlin.runCatching {
             toast?.cancel()
-            toast = Toast(this)
-            val isLight = ColorUtils.isColorLight(bottomBackground)
-            ViewToastBinding.inflate(layoutInflater).run {
-                toast?.view = root
-                cvToast.setCardBackgroundColor(bottomBackground)
-                tvText.setTextColor(getPrimaryTextColor(isLight))
-                tvText.text = message
-            }
-            toast?.duration = duration
+            // Arco: 迁移到标准 Toast，避免自定义 view 的 deprecated API
+            toast = Toast.makeText(this, message, duration)
             toast?.show()
         }
     }

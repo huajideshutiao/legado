@@ -621,7 +621,6 @@
     <string name="rss_source">RSS source</string>
     <string name="rss_source_edit">Edit RSS source</string>
     <string name="screen">Filter</string>
-    <string name="screen_find">Search Discovery sources</string>
     <string name="dur_pos">Current location：</string>
     <string name="precision_search">Precise search</string>
     <string name="service_starting">Starting service</string>
@@ -697,8 +696,6 @@
     <string name="no_default_path">No default path</string>
     <string name="change_group">Group settings</string>
     <string name="view_toc">View Chapters</string>
-    <string name="bar_elevation">Navigation bar shadow</string>
-    <string name="bar_elevation_s">Current shadow size(elevation): %s</string>
     <string name="btn_default_s">Default</string>
     <string name="main_menu">Main menu</string>
     <string name="request_permission">Tap to grant permission</string>

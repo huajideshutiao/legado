@@ -16,7 +16,12 @@
 
     <dimen name="desc_icon_size">18sp</dimen>
 
-    <dimen name="toolbar_elevation">4dp</dimen>
+    <!-- ==================== Arco Design 圆角体系 ==================== -->
+    <dimen name="arco_radius_xs">2dp</dimen>
+    <dimen name="arco_radius_sm">4dp</dimen>
+    <dimen name="arco_radius_md">6dp</dimen>
+    <dimen name="arco_radius_lg">8dp</dimen>
+    <dimen name="arco_radius_xl">16dp</dimen>
 
     <dimen name="fastscroll_bubble_radius">25dp</dimen>
     <dimen name="fastscroll_bubble_size">50dp</dimen>

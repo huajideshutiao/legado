@@ -4,7 +4,6 @@ import android.content.SharedPreferences
 import android.os.Build
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
@@ -172,15 +171,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var chineseConverterType by intPref(PreferKey.chineseConverterType)
     var systemTypefaces by intPref(PreferKey.systemTypefaces)
-
-    var elevation: Int
-        get() = if (isEInkMode) 0 else appCtx.getPrefInt(
-            PreferKey.barElevation,
-            AppConst.sysElevation,
-        )
-        set(value) {
-            appCtx.putPrefInt(PreferKey.barElevation, value)
-        }
 
     var readUrlInBrowser by boolPref(PreferKey.readUrlOpenInBrowser)
 

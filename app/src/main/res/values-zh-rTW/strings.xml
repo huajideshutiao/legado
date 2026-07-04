@@ -614,7 +614,6 @@
     <string name="rss_source">訂閱源</string>
     <string name="rss_source_edit">編輯訂閱源</string>
     <string name="screen">篩選</string>
-    <string name="screen_find">篩選發現源</string>
     <string name="dur_pos">目前位置：</string>
     <string name="precision_search">精準搜尋</string>
     <string name="service_starting">正在啟動服務</string>
@@ -689,8 +688,6 @@
     <string name="no_default_path">沒有預設路徑</string>
     <string name="change_group">設定分組</string>
     <string name="view_toc">查看目錄</string>
-    <string name="bar_elevation">導航欄陰影</string>
-    <string name="bar_elevation_s">目前陰影大小(elevation)：%s</string>
     <string name="btn_default_s">預設</string>
     <string name="main_menu">主選單</string>
     <string name="request_permission">點擊授予權限</string>

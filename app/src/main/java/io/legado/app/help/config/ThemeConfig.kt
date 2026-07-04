@@ -233,11 +233,20 @@ object ThemeConfig {
 
     fun saveDayTheme(context: Context, name: String) {
         val accent =
-            context.getPrefInt(PreferKey.cAccent, context.getCompatColor(R.color.md_red_600))
+            context.getPrefInt(
+                PreferKey.cAccent,
+                context.getCompatColor(R.color.arco_default_accent)
+            )
         val background =
-            context.getPrefInt(PreferKey.cBackground, context.getCompatColor(R.color.md_grey_100))
+            context.getPrefInt(
+                PreferKey.cBackground,
+                context.getCompatColor(R.color.arco_default_bg)
+            )
         val bBackground =
-            context.getPrefInt(PreferKey.cBBackground, context.getCompatColor(R.color.md_grey_200))
+            context.getPrefInt(
+                PreferKey.cBBackground,
+                context.getCompatColor(R.color.arco_default_bbg)
+            )
         val config = Config(
             themeName = name,
             isNightTheme = false,
@@ -253,12 +262,18 @@ object ThemeConfig {
         val accent =
             context.getPrefInt(
                 PreferKey.cNAccent,
-                context.getCompatColor(R.color.md_deep_orange_800)
+                context.getCompatColor(R.color.arco_default_accent)
             )
         val background =
-            context.getPrefInt(PreferKey.cNBackground, context.getCompatColor(R.color.md_grey_900))
+            context.getPrefInt(
+                PreferKey.cNBackground,
+                context.getCompatColor(R.color.arco_default_bg)
+            )
         val bBackground =
-            context.getPrefInt(PreferKey.cNBBackground, context.getCompatColor(R.color.md_grey_850))
+            context.getPrefInt(
+                PreferKey.cNBBackground,
+                context.getCompatColor(R.color.arco_default_bbg)
+            )
         val config = Config(
             themeName = name,
             isNightTheme = true,
@@ -281,15 +296,15 @@ object ThemeConfig {
 
             AppConfig.isNightTheme -> {
                 val accent =
-                    getPrefInt(PreferKey.cNAccent, getCompatColor(R.color.md_deep_orange_800))
+                    getPrefInt(PreferKey.cNAccent, getCompatColor(R.color.arco_default_accent))
                 var background =
-                    getPrefInt(PreferKey.cNBackground, getCompatColor(R.color.md_grey_900))
+                    getPrefInt(PreferKey.cNBackground, getCompatColor(R.color.arco_default_bg))
                 if (ColorUtils.isColorLight(background)) {
-                    background = getCompatColor(R.color.md_grey_900)
+                    background = getCompatColor(R.color.arco_default_bg)
                     putPrefInt(PreferKey.cNBackground, background)
                 }
                 val bBackground =
-                    getPrefInt(PreferKey.cNBBackground, getCompatColor(R.color.md_grey_850))
+                    getPrefInt(PreferKey.cNBBackground, getCompatColor(R.color.arco_default_bbg))
                 ThemeStore.saveTheme(
                     ColorUtils.withAlpha(background, 1f),
                     ColorUtils.withAlpha(accent, 1f),
@@ -300,15 +315,15 @@ object ThemeConfig {
 
             else -> {
                 val accent =
-                    getPrefInt(PreferKey.cAccent, getCompatColor(R.color.md_red_600))
+                    getPrefInt(PreferKey.cAccent, getCompatColor(R.color.arco_default_accent))
                 var background =
-                    getPrefInt(PreferKey.cBackground, getCompatColor(R.color.md_grey_100))
+                    getPrefInt(PreferKey.cBackground, getCompatColor(R.color.arco_default_bg))
                 if (!ColorUtils.isColorLight(background)) {
-                    background = getCompatColor(R.color.md_grey_100)
+                    background = getCompatColor(R.color.arco_default_bg)
                     putPrefInt(PreferKey.cBackground, background)
                 }
                 val bBackground =
-                    getPrefInt(PreferKey.cBBackground, getCompatColor(R.color.md_grey_200))
+                    getPrefInt(PreferKey.cBBackground, getCompatColor(R.color.arco_default_bbg))
                 ThemeStore.saveTheme(
                     ColorUtils.withAlpha(background, 1f),
                     ColorUtils.withAlpha(accent, 1f),

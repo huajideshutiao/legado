@@ -61,11 +61,6 @@ object AppConst {
         "androidx.appcompat.view.menu.ListMenuItemView"
     )
 
-    @SuppressLint("PrivateResource")
-    val sysElevation = appCtx.resources
-        .getDimension(com.google.android.material.R.dimen.design_appbar_elevation)
-        .toInt()
-
     val androidId: String by lazy {
         Settings.System.getString(appCtx.contentResolver, Settings.Secure.ANDROID_ID) ?: "null"
     }

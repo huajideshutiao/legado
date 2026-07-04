@@ -40,22 +40,13 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <androidx.cardview.widget.CardView
-                android:id="@+id/cv_cover"
+            <io.legado.app.ui.widget.image.CoverImageView
+                android:id="@+id/iv_cover"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="144dp"
                 android:layout_gravity="center"
-                app:cardCornerRadius="5dp"
-                app:cardElevation="8dp"
-                app:cardUseCompatPadding="true">
-
-                <io.legado.app.ui.widget.image.CoverImageView
-                    android:id="@+id/iv_cover"
-                    android:layout_width="wrap_content"
-                    android:layout_height="144dp"
-                    android:adjustViewBounds="true" />
-
-            </androidx.cardview.widget.CardView>
+                android:layout_margin="8dp"
+                android:adjustViewBounds="true" />
 
             <LinearLayout
                 android:id="@+id/ll_info_top"
@@ -122,7 +113,6 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="@android:color/transparent"
-        app:elevation="0dp"
         app:layout_constraintEnd_toStartOf="@+id/guideline_vertical"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"

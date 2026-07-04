@@ -620,7 +620,6 @@
     <string name="rss_source">订阅源</string>
     <string name="rss_source_edit">编辑订阅源</string>
     <string name="screen">筛选</string>
-    <string name="screen_find">筛选发现源</string>
     <string name="dur_pos">当前位置：</string>
     <string name="precision_search">精准搜索</string>
     <string name="service_starting">正在启动服务</string>
@@ -695,8 +694,6 @@
     <string name="no_default_path">没有默认路径</string>
     <string name="change_group">设置分组</string>
     <string name="view_toc">查看目录</string>
-    <string name="bar_elevation">导航栏阴影</string>
-    <string name="bar_elevation_s">当前阴影大小（elevation）：%s</string>
     <string name="btn_default_s">默认</string>
     <string name="main_menu">主菜单</string>
     <string name="request_permission">点击授予权限</string>
