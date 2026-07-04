@@ -137,9 +137,25 @@ void initCtxOpaque(JSContext *ctx) {
     auto *data = new CtxOpaqueData();
     data->dangerousApi = false;
     data->arrayProto = JS_UNDEFINED;  // lazy init, 首次 wrap Java 数组时填充
-    // Symbol.iterator atom 只依赖 ctx (well-known symbol 描述字符串), ctx 生命周期内不变。
-    // 直接 JS_NewAtom("Symbol.iterator") 会命中 atom 表已有条目 (well-known symbol), 只是一次表查。
-    data->symbolIteratorAtom = JS_NewAtom(ctx, "Symbol.iterator");
+    // Symbol.iterator 是 well-known symbol (JS_ATOM_TYPE_SYMBOL), 不是普通 string atom。
+    // JS_NewAtom(ctx, "Symbol.iterator") 只在 STRING atom 表 (__JS_FindAtom 强制
+    // JS_ATOM_TYPE_STRING) 里查, 命不中 well-known 的 JS_ATOM_Symbol_iterator, 会新建
+    // 一个描述相同但类型不同的 STRING atom, 与 for..of 内部用来查 property 的 atom
+    // 数值不等 → 比较永远失败 → for..of 报 "not iterable"。
+    // 走 globalThis.Symbol.iterator 拿真正的 symbol value, JS_ValueToAtom 内部走
+    // JS_TAG_SYMBOL 分支 (js_get_atom_index) 才能拿到内部使用的那个 atom。
+    data->symbolIteratorAtom = JS_ATOM_NULL;
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue symbolObj = JS_GetPropertyStr(ctx, global, "Symbol");
+    JS_FreeValue(ctx, global);
+    if (JS_IsObject(symbolObj)) {
+        JSValue iterSymbol = JS_GetPropertyStr(ctx, symbolObj, "iterator");
+        if (JS_VALUE_GET_TAG(iterSymbol) == JS_TAG_SYMBOL) {
+            data->symbolIteratorAtom = JS_ValueToAtom(ctx, iterSymbol);
+        }
+        JS_FreeValue(ctx, iterSymbol);
+    }
+    JS_FreeValue(ctx, symbolObj);
     JS_SetContextOpaque(ctx, data);
 }
 

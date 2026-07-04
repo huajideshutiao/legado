@@ -628,6 +628,57 @@ class JsInteroperabilityTest {
     }
 
     @Test
+    fun testListIterationWithForOf() {
+        // 回归测试: for..of 需要 Symbol.iterator well-known symbol, 不是普通 string atom;
+        // 若 initCtxOpaque 用 JS_NewAtom("Symbol.iterator") 缓存 (STRING 类型 atom), 与
+        // for..of 内部使用的 JS_ATOM_Symbol_iterator (SYMBOL 类型) 数值不等, 会报 "not iterable"。
+        val list = ArrayList<String>().apply { add("a"); add("b"); add("c") }
+        val result = QuickJsEngine.eval(
+            """
+            var items = [];
+            for (var v of lst) items.push(v);
+            items.join('|');
+        """.trimIndent()
+        ) {
+            put("lst", list)
+        }
+        assertEquals("a|b|c", result.toString())
+    }
+
+    @Test
+    fun testListIterationWithForOfOnMethodReturn() {
+        // for..of 直接迭代 Java 方法返回的 List (无中间变量), 覆盖典型书源写法:
+        //   let content = java.getStringList(...); for (i of content) yy.push(i.slice(...))
+        val result = QuickJsEngine.eval(
+            """
+            var list = new java.util.ArrayList();
+            list.add('id.gdt@a@href1');
+            list.add('id.gdt@a@href2');
+            var yy = [];
+            for (var i of list) yy.push(i.slice(0, 8));
+            yy.join(',');
+        """.trimIndent()
+        )
+        assertEquals("id.gdt@,id.gdt@", result.toString())
+    }
+
+    @Test
+    fun testArrayIterationWithForOf() {
+        // Java 数组也应支持 for..of (走同一 Symbol.iterator 分支)
+        val arr = arrayOf("x", "y", "z")
+        val result = QuickJsEngine.eval(
+            """
+            var items = [];
+            for (var v of arr) items.push(v);
+            items.join('|');
+        """.trimIndent()
+        ) {
+            put("arr", arr)
+        }
+        assertEquals("x|y|z", result.toString())
+    }
+
+    @Test
     fun testListObjectEntriesReflection() {
         // Object.entries 对 List 应返回索引-值对 (rhino NativeJavaList 行为)
         val result = QuickJsEngine.eval(

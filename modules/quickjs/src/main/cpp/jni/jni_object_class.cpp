@@ -192,12 +192,20 @@ namespace {
     inline void ensureBridgeInitedFast(JNIEnv *env) { ensureBridgeInited(env); }
 
     // 检测 atom 是否为 Symbol.iterator (well-known symbol)。
-    // 缓存在 CtxOpaqueData::symbolIteratorAtom (initCtxOpaque 时 JS_NewAtom 一次),
+    // 缓存在 CtxOpaqueData::symbolIteratorAtom (initCtxOpaque 时经 globalThis.Symbol.iterator
+    // + JS_ValueToAtom 拿到真正的 SYMBOL 类型 well-known atom, 不能用 JS_NewAtom "Symbol.iterator"),
     // 后续属性访问只做一次 JSAtom (uint32_t) 数值比较, 免掉 JS_AtomToCString + strcmp + JS_FreeCString。
     inline bool isSymbolIterator(JSContext *ctx, JSAtom atom) {
         auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
-        return data && atom == data->symbolIteratorAtom;
+        // 排除 JS_ATOM_NULL: 初始化失败时 symbolIteratorAtom 保留 JS_ATOM_NULL, 别把
+        // 传入的普通 null atom 误判为 Symbol.iterator。
+        return data && data->symbolIteratorAtom != JS_ATOM_NULL &&
+               atom == data->symbolIteratorAtom;
     }
+    // 已知: hasProperty / getOwnProperty trap 未接同一分支, 所以
+    // `'Symbol.iterator' in list` / `Reflect.has` / `getOwnPropertyDescriptor` 会返回 false。
+    // for..of / [...list] / 解构 / Array.from 等真实迭代都走 getProperty, 不受影响;
+    // 书源无人写此类自检, 暂不修。
 
     // atom 是否为 tagged int 编码 (数组索引): 最高位 (1<<31) 置位, 低 31 位即 uint32 索引。
     // 这是 quickjs-ng 内部约定 (__JS_AtomIsTaggedInt 是 static inline, 未公开导出),

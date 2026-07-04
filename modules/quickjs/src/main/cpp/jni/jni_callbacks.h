@@ -43,6 +43,9 @@ struct CtxOpaqueData {
     // Symbol.iterator atom 缓存: getProperty trap 需要判断当前 atom 是否为 well-known
     // Symbol.iterator (让 Java List/Array 支持 JS for...of)。原先每次属性访问都做
     // JS_AtomToCString + strcmp + JS_FreeCString, atom 比较是数值相等, 免掉字符串往返。
+    // 注意: 必须通过 globalThis.Symbol.iterator → JS_ValueToAtom 拿, 不能用
+    // JS_NewAtom("Symbol.iterator") — 后者只在 STRING atom 表里查, 与 well-known 的
+    // SYMBOL 类型 atom 数值不等 (见 initCtxOpaque 注释)。
     // 释放在 freeCtxOpaque 里 JS_FreeAtom。
     JSAtom symbolIteratorAtom;
 };
