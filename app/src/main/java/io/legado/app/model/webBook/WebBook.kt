@@ -159,7 +159,7 @@ object WebBook {
                         url = book.tocUrl
                     )
                 )
-                return@runCatching BookChapterList.updateBook(bookSource, book, chapterList)
+                return@runCatching BookChapterList.updateBook(book, chapterList)
             } else if (book.bookUrl == book.tocUrl && !book.tocHtml.isNullOrEmpty()) {
                 BookChapterList.analyzeChapterList(
                     bookSource = bookSource,

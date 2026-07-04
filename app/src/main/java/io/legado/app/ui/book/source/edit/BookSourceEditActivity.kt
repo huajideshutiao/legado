@@ -408,11 +408,9 @@ class BookSourceEditActivity :
             add(EditEntity("chapterList", tr.chapterList, R.string.rule_chapter_list))
             add(EditEntity("chapterName", tr.chapterName, R.string.rule_chapter_name))
             add(EditEntity("chapterUrl", tr.chapterUrl, R.string.rule_chapter_url))
-            add(EditEntity("formatJs", tr.formatJs, R.string.format_js_rule))
             add(EditEntity("isVolume", tr.isVolume, R.string.rule_is_volume))
             add(EditEntity("updateTime", tr.updateTime, R.string.rule_update_time))
-            add(EditEntity("isVip", tr.isVip, R.string.rule_is_vip))
-            add(EditEntity("isPay", tr.isPay, R.string.rule_is_pay))
+            add(EditEntity("needPay", tr.needPay, R.string.rule_need_pay))
             add(EditEntity("nextTocUrl", tr.nextTocUrl, R.string.rule_next_toc_url))
         }
         // 正文页
@@ -420,6 +418,7 @@ class BookSourceEditActivity :
         contentEntities.clear()
         contentEntities.apply {
             add(EditEntity("content", cr.content, R.string.rule_book_content))
+            add(EditEntity("subContent", cr.subContent, R.string.rule_sub_content))
             add(EditEntity("title", cr.title, R.string.rule_chapter_name))
             add(EditEntity("nextContentUrl", cr.nextContentUrl, R.string.rule_next_content))
             add(
@@ -443,7 +442,6 @@ class BookSourceEditActivity :
             )
             add(EditEntity("imageDecode", cr.imageDecode, R.string.rule_image_decode))
             add(EditEntity("payAction", cr.payAction, R.string.rule_pay_action))
-            add(EditEntity("lrcRule", cr.lrcRule, R.string.rule_lrc_rule))
             add(EditEntity("musicCover", cr.musicCover, R.string.rule_music_cover))
         }
         // 段评
@@ -572,11 +570,9 @@ class BookSourceEditActivity :
                 "chapterList" -> tocRule.chapterList = it.text
                 "chapterName" -> tocRule.chapterName = it.text
                 "chapterUrl" -> tocRule.chapterUrl = it.text
-                "formatJs" -> tocRule.formatJs = it.text
                 "isVolume" -> tocRule.isVolume = it.text
                 "updateTime" -> tocRule.updateTime = it.text
-                "isVip" -> tocRule.isVip = it.text
-                "isPay" -> tocRule.isPay = it.text
+                "needPay" -> tocRule.needPay = it.text
                 "nextTocUrl" -> tocRule.nextTocUrl = it.text
             }
         }
@@ -592,7 +588,7 @@ class BookSourceEditActivity :
                 "imageStyle" -> contentRule.imageStyle = it.text
                 "imageDecode" -> contentRule.imageDecode = it.text
                 "payAction" -> contentRule.payAction = it.text
-                "lrcRule" -> contentRule.lrcRule = it.text
+                "subContent" -> contentRule.subContent = it.text
                 "musicCover" -> contentRule.musicCover = it.text
             }
         }

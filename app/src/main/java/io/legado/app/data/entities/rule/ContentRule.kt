@@ -2,6 +2,7 @@ package io.legado.app.data.entities.rule
 
 import android.os.Parcelable
 import com.google.gson.JsonDeserializer
+import com.google.gson.annotations.SerializedName
 import io.legado.app.utils.INITIAL_GSON
 import kotlinx.parcelize.Parcelize
 
@@ -19,8 +20,9 @@ data class ContentRule(
     var imageStyle: String? = null,   //默认大小居中,FULL最大宽度
     var imageDecode: String? = null, //图片bytes二次解密js, 返回解密后的bytes
     var payAction: String? = null,    //购买操作,js或者包含{{js}}的url
-    var lrcRule : String? = null, //lrc文件获取
-    var musicCover : String? = null, //音乐封面
+    @SerializedName("subContent", alternate = ["lrcRule"])
+    var subContent: String? = null, //附加内容规则
+    var musicCover: String? = null, //音乐封面
     var shouldOverrideUrlLoading: String? = null, // 拦截网页内的跳转, 用于订阅源迁移为书源后
 ) : Parcelable {
 

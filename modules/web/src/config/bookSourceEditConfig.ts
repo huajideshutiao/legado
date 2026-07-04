@@ -360,13 +360,6 @@ export default {
         hint: '选择章节链接 (规则结果为String类型的Url)',
       },
       {
-        title: '标题处理',
-        namespace: 'ruleToc',
-        id: 'formatJs',
-        type: 'String',
-        hint: '遍历去重后的章节列表的回调，提供index(章节序号从1开始)、title(章节标题)变量，额外提供gInt(初始值0)，返回值作为新的标题',
-      },
-      {
         title: '卷名标识',
         namespace: 'ruleToc',
         id: 'isVolume',
@@ -383,16 +376,9 @@ export default {
       {
         title: '收费标识',
         namespace: 'ruleToc',
-        id: 'isVip',
+        id: 'needPay',
         type: 'String',
-        hint: '章节是否为VIP章节 (规则结果为Bool)',
-      },
-      {
-        title: '购买标识',
-        namespace: 'ruleToc',
-        id: 'isPay',
-        type: 'String',
-        hint: '章节是否为已购买 (规则结果为Bool)',
+        hint: '章节是否需要购买 (规则结果为Bool)',
       },
       {
         title: '翻页规则',
@@ -412,6 +398,13 @@ export default {
         id: 'content',
         type: 'String',
         hint: '选择正文内容 (规则结果为String)',
+      },
+      {
+        title: '附加内容',
+        namespace: 'ruleContent',
+        id: 'subContent',
+        type: 'String',
+        hint: '附加内容规则，如歌词等 (规则结果为String)',
       },
       {
         title: '标题规则',

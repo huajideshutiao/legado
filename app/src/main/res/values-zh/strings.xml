@@ -437,7 +437,7 @@
     <string name="rule_chapter_name">章节名称规则（ChapterName）</string>
     <string name="rule_chapter_url">章节 URL 规则（chapterUrl）</string>
     <string name="rule_is_volume">Volume 标识（isVolume）</string>
-    <string name="rule_is_vip">VIP 标识（isVip）</string>
+    <string name="rule_need_pay">是否需要购买规则（needPay）</string>
     <string name="rule_update_time">更新时间（ChapterInfo）</string>
     <string name="pre_update_js">更新之前 JS（preUpdateJs）</string>
     <string name="rule_book_content">正文规则（content）</string>
@@ -1276,7 +1276,7 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
-    <string name="rule_lrc_rule">歌词规则（lrcRule）</string>
+    <string name="rule_sub_content">附加内容规则（subContent）</string>
     <string name="rule_music_cover">音乐封面URL规则（musicCoverUrl）</string>
     <string name="dev_feat">实验特性</string>
     <string name="book_url">书籍地址</string>

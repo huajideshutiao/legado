@@ -15,8 +15,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.script.JsBindings
-import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.currentCoroutineContext
@@ -108,11 +106,10 @@ object BookChapterList {
         if (!reverse) {
             chapterList.reverse()
         }
-        return updateBook(bookSource, book, chapterList)
+        return updateBook(book, chapterList)
     }
 
-    suspend fun updateBook(bookSource: BookSource, book: Book, chapterList: List<BookChapter>): List<BookChapter> {
-        val tocRule = bookSource.tocRule
+    suspend fun updateBook(book: Book, chapterList: List<BookChapter>): List<BookChapter> {
         currentCoroutineContext().ensureActive()
         //去重
         val lh = LinkedHashSet(chapterList)
@@ -124,38 +121,6 @@ object BookChapterList {
         currentCoroutineContext().ensureActive()
         list.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
-        }
-        val formatJs = tocRule.formatJs
-        if (!formatJs.isNullOrBlank()) {
-            // 循环外创建共享 scope,避免每次 eval 都重新初始化 bootstrap (性能优化)
-            // 复用 scope 编译 bytecode,避免每次 eval 都重新解析 JS
-            // wrapJsForEval 用 IIFE + eval 隔离 let/const,避免重复声明
-            val initBindings = JsBindings().apply {
-                this["gInt"] = 0
-                this["index"] = 0
-                this["chapter"] = list.firstOrNull()
-                this["title"] = list.firstOrNull()?.title
-            }
-            val scope = JsEngines.get().getRuntimeScope(initBindings)
-            val compiled = JsEngines.get().compile(JsEngines.get().wrapJsForEval(formatJs), scope)
-            try {
-                list.forEachIndexed { index, bookChapter ->
-                    // 更新变量值并重新注入(覆盖上次的值)
-                    initBindings["index"] = index + 1
-                    initBindings["chapter"] = bookChapter
-                    initBindings["title"] = bookChapter.title
-                    JsEngines.get().injectBindings(scope, initBindings)
-                    try {
-                        compiled.eval(scope, null)?.toString()?.let {
-                            bookChapter.title = it
-                        }
-                    } catch (e: Throwable) {
-                        Debug.log(book.origin, "格式化标题出错, ${e.localizedMessage}")
-                    }
-                }
-            } finally {
-                scope.close()
-            }
         }
         val replaceRules = ContentProcessor.get(book).getTitleReplaceRules()
         book.durChapterTitle = list.getOrElse(book.durChapterIndex) { list.last() }
@@ -217,8 +182,7 @@ object BookChapterList {
             Debug.log(bookSource.bookSourceUrl, "┌解析目录列表", log)
             val nameRule = analyzeRule.splitSourceRule(tocRule.chapterName)
             val urlRule = analyzeRule.splitSourceRule(tocRule.chapterUrl)
-            val vipRule = analyzeRule.splitSourceRule(tocRule.isVip)
-            val payRule = analyzeRule.splitSourceRule(tocRule.isPay)
+            val needPayRule = analyzeRule.splitSourceRule(tocRule.needPay)
             val upTimeRule = analyzeRule.splitSourceRule(tocRule.updateTime)
             val isVolumeRule = analyzeRule.splitSourceRule(tocRule.isVolume)
             elements.forEachIndexed { index, item ->
@@ -247,13 +211,8 @@ object BookChapterList {
                     }
                 }
                 if (bookChapter.title.isNotEmpty()) {
-                    val isVip = analyzeRule.getString(vipRule)
-                    val isPay = analyzeRule.getString(payRule)
-                    if (isVip.isTrue()) {
+                    if (analyzeRule.getString(needPayRule).isTrue()) {
                         bookChapter.isVip = true
-                    }
-                    if (isPay.isTrue()) {
-                        bookChapter.isPay = true
                     }
                     chapterList.add(bookChapter)
                 }

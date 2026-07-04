@@ -438,7 +438,7 @@
     <string name="rule_chapter_name">Chapter name(chapterName)</string>
     <string name="rule_chapter_url">Chapter url(chapterUrl)</string>
     <string name="rule_is_volume">Is volume(isVolume)</string>
-    <string name="rule_is_vip">Is vip(isVip)</string>
+    <string name="rule_need_pay">Need pay rule(needPay)</string>
     <string name="rule_update_time">Chapter info(ChapterInfo)</string>
     <string name="pre_update_js">Js before update(preUpdateJs)</string>
     <string name="rule_book_content">Content(content)</string>
@@ -1279,7 +1279,7 @@
     <string name="auto_check_new_backup_t">Auto check for new backup</string>
     <string name="auto_check_new_backup_s">Check for new backups when opening the app, prompt to update if available</string>
     <string name="sys_image_picker">System image picker</string>
-    <string name="rule_lrc_rule">lyrics rule(lrcRule)</string>
+    <string name="rule_sub_content">Additional Content Rule(subContent)</string>
     <string name="rule_music_cover">music cover url rule</string>
     <string name="dev_feat">Development Features</string>
     <string name="book_url">Book Path</string>

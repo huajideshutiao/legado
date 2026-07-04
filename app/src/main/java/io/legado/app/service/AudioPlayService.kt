@@ -772,7 +772,7 @@ class AudioPlayService : BaseService(), Player.Listener {
     }
 
     /**
-     * 用书源的 lrcRule 规则计算歌词数据。
+     * 用书源的 subContent 规则计算歌词数据。
      */
     private fun loadLrcData(
         bookSource: BookSource,
@@ -780,14 +780,14 @@ class AudioPlayService : BaseService(), Player.Listener {
         chapter: BookChapter
     ): Coroutine<List<Pair<Int, String>>> {
         return execute {
-            val lrcRule = bookSource.contentRule.lrcRule
-            if (lrcRule.isNullOrBlank()) return@execute emptyList()
+            val subContent = bookSource.contentRule.subContent
+            if (subContent.isNullOrBlank()) return@execute emptyList()
             val rule = AnalyzeRule(book, bookSource).apply {
                 coroutineContext = currentCoroutineContext()
                 setBaseUrl(chapter.url)
                 this.chapter = chapter
             }
-            val raw = rule.evalJS(lrcRule) as? List<*> ?: return@execute emptyList()
+            val raw = rule.evalJS(subContent) as? List<*> ?: return@execute emptyList()
             LrcParser.parse(raw)
         }.onSuccess {
             if (it.isEmpty()) return@onSuccess

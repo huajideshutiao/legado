@@ -302,14 +302,14 @@ object Debug {
         if (bookSource.ruleReview.isNullOrEmpty()) {
             log(debugSource, "≡未配置段评规则,跳过")
             log(debugSource, showTime = false)
-            lrcDebug(scope, bookSource, book, bookChapter)
+            subContentDebug(scope, bookSource, book, bookChapter)
             return
         }
         val rule = bookSource.reviewRule
         if (rule.reviewUrl.isNullOrBlank()) {
             log(debugSource, "≡未配置段评规则,跳过")
             log(debugSource, showTime = false)
-            lrcDebug(scope, bookSource, book, bookChapter)
+            subContentDebug(scope, bookSource, book, bookChapter)
             return
         }
         log(debugSource, "︾开始解析段评")
@@ -343,11 +343,11 @@ object Debug {
             } else {
                 log(debugSource, "≡未找到带回复的段评或未配置 replyListUrl 规则,跳过回复解析")
                 log(debugSource, showTime = false)
-                lrcDebug(scope, bookSource, book, bookChapter)
+                subContentDebug(scope, bookSource, book, bookChapter)
             }
         }.onError {
             log(debugSource, "段评解析出错:${it.localizedMessage}")
-            lrcDebug(scope, bookSource, book, bookChapter)
+            subContentDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
     }
@@ -369,49 +369,49 @@ object Debug {
             log(debugSource, "≡回复条数:${page.reviews.size}")
             log(debugSource, "︽段评回复解析完成")
             log(debugSource, showTime = false)
-            lrcDebug(scope, bookSource, book, bookChapter)
+            subContentDebug(scope, bookSource, book, bookChapter)
         }.onError {
             log(debugSource, "段评回复解析出错:${it.localizedMessage}")
-            lrcDebug(scope, bookSource, book, bookChapter)
+            subContentDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
     }
 
-    private fun lrcDebug(
+    private fun subContentDebug(
         scope: CoroutineScope,
         bookSource: BookSource,
         book: Book,
         bookChapter: BookChapter
     ) {
-        val lrcRule = bookSource.contentRule.lrcRule
-        if (lrcRule.isNullOrBlank()) {
+        val subContent = bookSource.contentRule.subContent
+        if (subContent.isNullOrBlank()) {
             musicCoverDebug(scope, bookSource, book, bookChapter)
             return
         }
-        log(debugSource, "︾开始解析歌词规则")
+        log(debugSource, "︾开始解析附加内容规则")
         val task = Coroutine.async(scope) {
             val rule = AnalyzeRule(book, bookSource)
             rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(bookChapter.url)
             rule.chapter = bookChapter
-            rule.evalJS(lrcRule)
+            rule.evalJS(subContent)
         }.onSuccess { raw ->
             when (raw) {
                 is List<*> -> {
-                    log(debugSource, "≡歌词行数:${raw.size}")
+                    log(debugSource, "≡内容行数:${raw.size}")
                     for (i in 0 until raw.size) {
                         log(debugSource, raw[i]?.toString().orEmpty(), showTime = false)
                     }
                 }
 
-                null -> log(debugSource, "≡歌词为空")
-                else -> log(debugSource, "≡歌词数据:$raw")
+                null -> log(debugSource, "≡附加内容为空")
+                else -> log(debugSource, "≡附加内容:$raw")
             }
-            log(debugSource, "︽歌词解析完成")
+            log(debugSource, "︽附加内容解析完成")
             log(debugSource, showTime = false)
             musicCoverDebug(scope, bookSource, book, bookChapter)
         }.onError {
-            log(debugSource, "歌词解析出错:${it.localizedMessage}")
+            log(debugSource, "附加内容解析出错:${it.localizedMessage}")
             musicCoverDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
