@@ -49,7 +49,7 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
 
     override fun getSyncProgressMsg(): String = "已同步最新音频播放进度"
 
-    fun initData(intent: Intent) = AudioPlay.apply {
+    fun initData(intent: Intent, onReady: (() -> Unit)? = null) = AudioPlay.apply {
         execute {
             val book =
                 (if (intent.action != "activity") IntentData.book else book) ?: return@execute
@@ -61,6 +61,8 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
             titleData.postValue(book.name)
             if (status == Status.STOP) loadOrUpPlayUrl()
             curBook?.takeIf { inBookshelf }?.let { syncBookProgress(it) }
+        }.onFinally {
+            onReady?.invoke()
         }
     }
 
@@ -83,7 +85,7 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
 
     fun prev() = AudioPlay.prev()
 
-    fun skipTo(index: Int) = AudioPlay.skipTo(index)
+    fun skipTo(index: Int, startPos: Int = 0) = AudioPlay.skipTo(index, startPos)
 
     fun adjustSpeed(speed: Float) = AudioPlay.adjustSpeed(speed)
 

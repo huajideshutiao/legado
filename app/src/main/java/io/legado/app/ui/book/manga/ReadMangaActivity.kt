@@ -28,6 +28,7 @@ import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ActivityMangaBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
@@ -38,6 +39,7 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.receiver.NetworkChangedListener
+import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaColorFilterDialog
@@ -629,8 +631,25 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             }
 
             R.id.menu_review -> viewModel.openCommentDialog(this)
+
+            R.id.menu_add_bookmark -> addBookmark()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun addBookmark() {
+        val book = viewModel.curBook ?: return
+        val chapters = viewModel.chapterListData.value
+        val chapter = chapters?.getOrNull(viewModel.durChapterIndex)
+        val pos = viewModel.durChapterPos
+        val imageCount = viewModel.curMangaChapter?.imageCount ?: 0
+        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+            chapterIndex = viewModel.durChapterIndex
+            chapterPos = pos
+            chapterName = chapter?.title ?: book.durChapterTitle ?: ""
+            content = "第${pos + 1}页 / 共${if (imageCount > 0) "${imageCount}页" else "未知"}"
+        }
+        showDialogFragment(BookmarkDialog(bookmark))
     }
 
     override fun openBookInfoActivity() {

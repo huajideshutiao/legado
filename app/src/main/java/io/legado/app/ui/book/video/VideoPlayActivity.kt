@@ -40,6 +40,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ActivityVideoPlayBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
@@ -51,6 +52,7 @@ import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
@@ -59,6 +61,7 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.toDurationTime
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
@@ -258,7 +261,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        viewModel.initData()
+        viewModel.initData(intent)
         viewModel.videoUrl.observe(this) {
             refreshPlayer(it)
             updateResolutionButtonText()
@@ -494,9 +497,26 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
             R.id.menu_review -> viewModel.openCommentDialog(this)
 
+            R.id.menu_add_bookmark -> addBookmark()
+
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun addBookmark() {
+        val book = viewModel.curBook ?: return
+        val pos = player?.currentPosition?.toInt() ?: book.durChapterPos
+        val dur = player?.duration?.takeIf { it > 0 }?.toInt() ?: 0
+        val chapters = viewModel.chapterListData.value
+        val chapter = chapters?.getOrNull(book.durChapterIndex)
+        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+            chapterIndex = book.durChapterIndex
+            chapterPos = pos
+            chapterName = chapter?.title ?: book.durChapterTitle ?: ""
+            content = "${pos.toDurationTime()} / ${if (dur > 0) dur.toDurationTime() else "未知"}"
+        }
+        showDialogFragment(BookmarkDialog(bookmark))
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

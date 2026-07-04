@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
@@ -31,6 +32,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isAudio
@@ -43,6 +45,7 @@ import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
@@ -83,8 +86,14 @@ class AudioPlayActivity :
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
-            if (it.first != AudioPlay.book?.durChapterIndex || it.second == 0) {
-                viewModel.skipTo(it.first)
+            val targetIndex = it.first
+            val targetPos = it.second
+            when {
+                targetIndex != AudioPlay.durChapterIndex -> viewModel.skipTo(targetIndex, targetPos)
+                targetPos > 0 && targetPos != AudioPlay.durChapterPos ->
+                    viewModel.adjustProgress(targetPos)
+
+                targetPos == 0 -> viewModel.skipTo(targetIndex)
             }
         }
     }
@@ -100,8 +109,25 @@ class AudioPlayActivity :
         viewModel.titleData.observe(this) {
             binding.titleBar.title = it
         }
-        viewModel.initData(intent)
+        viewModel.initData(intent) { applyBookmarkPosition(intent) }
         initView()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        applyBookmarkPosition(intent)
+    }
+
+    private fun applyBookmarkPosition(intent: Intent) {
+        val targetIndex = intent.getIntExtra("chapterIndex", -1)
+        if (targetIndex < 0) return
+        val targetPos = intent.getIntExtra("chapterPos", 0)
+        intent.removeExtra("chapterIndex")
+        intent.removeExtra("chapterPos")
+        when {
+            targetIndex != AudioPlay.durChapterIndex -> viewModel.skipTo(targetIndex, targetPos)
+            targetPos != AudioPlay.durChapterPos -> viewModel.adjustProgress(targetPos)
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -143,9 +169,26 @@ class AudioPlayActivity :
 
             R.id.menu_review -> viewModel.openCommentDialog(this)
 
+            R.id.menu_add_bookmark -> addBookmark()
+
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun addBookmark() {
+        val book = AudioPlay.book ?: return
+        val chapter = AudioPlay.durChapter
+        val pos = AudioPlay.durChapterPos
+        val total = binding.playerProgress.max
+        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+            chapterIndex = AudioPlay.durChapterIndex
+            chapterPos = pos
+            chapterName = chapter?.title ?: book.durChapterTitle ?: ""
+            content =
+                "${pos.toDurationTime()} / ${if (total > 0) total.toDurationTime() else "未知"}"
+        }
+        showDialogFragment(BookmarkDialog(bookmark))
     }
 
     private fun initView() {

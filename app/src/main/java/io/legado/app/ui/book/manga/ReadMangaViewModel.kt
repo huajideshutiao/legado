@@ -569,8 +569,19 @@ class ReadMangaViewModel(application: Application) :
             when {
                 book != null -> {
                     chapterChanged = intent.getBooleanExtra("chapterChanged", false)
+                    val overrideIndex = intent.getIntExtra("chapterIndex", -1)
+                    val overridePos = intent.getIntExtra("chapterPos", 0)
+                    if (overrideIndex >= 0) {
+                        intent.removeExtra("chapterIndex")
+                        intent.removeExtra("chapterPos")
+                    }
                     val isSameBook = curBook?.bookUrl == book.bookUrl
                     upBook(book)
+                    // upBook 结束后 curBook 已是 Book, 这里再改 durChapter*, 让 initMangaData 走清缓存分支
+                    if (overrideIndex >= 0) {
+                        curBook?.durChapterIndex = overrideIndex
+                        curBook?.durChapterPos = overridePos
+                    }
                     initManga(curBook!!, isSameBook)
                 }
 

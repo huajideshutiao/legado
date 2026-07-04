@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.video
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.AppLog
@@ -51,10 +52,19 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
 
     override fun getSyncProgressMsg(): String = "已同步最新视频播放进度"
 
-    fun initData() {
+    fun initData(intent: Intent? = null) {
         execute {
             upBook(IntentData.book ?: return@execute)
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, curBook!!.name)
+            val overrideIndex = intent?.getIntExtra("chapterIndex", -1) ?: -1
+            if (overrideIndex >= 0) {
+                val overridePos = intent!!.getIntExtra("chapterPos", 0)
+                intent.removeExtra("chapterIndex")
+                intent.removeExtra("chapterPos")
+                curBook!!.durChapterIndex = overrideIndex
+                curBook!!.durChapterPos = overridePos
+                saveRead(overridePos.toLong())
+            }
             position = curBook!!.durChapterPos.toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook!!.durChapterIndex])

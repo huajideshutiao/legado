@@ -208,12 +208,15 @@ object AudioPlay {
         }
     }
 
-    fun skipTo(index: Int) {
+    fun skipTo(index: Int, startPos: Int = 0) {
         if (index !in 0..<simulatedChapterSize) return
         ReadTimeRecorder.flushAll()
         stopPlay()
         durChapterIndex = index
-        durChapterPos = 0
+        durChapterPos = startPos
+        // 同步落到 book, 否则 Service 读 book.durChapterPos 会拿到旧值(saveRead 是 async 落库)
+        book?.durChapterPos = startPos
+        book?.durChapterIndex = index
         durPlayUrl = ""
         saveRead()
         sendAction(IntentAction.loadPlayUrl, requireRunning = false)

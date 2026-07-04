@@ -85,4 +85,9 @@
         android:title="@string/review"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_add_bookmark"
+        android:title="@string/bookmark_add"
+        app:showAsAction="never" />
+
 </menu>

@@ -47,6 +47,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_add_bookmark"
+        android:title="@string/bookmark_add"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_log"
         android:title="@string/log"
         app:showAsAction="never" />
