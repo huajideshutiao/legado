@@ -7,6 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.IntentData
@@ -34,6 +35,22 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
         curBookSource = book.getBookSource()
     }
 
+    override fun applyProgress(progress: BookProgress) {
+        val book = curBook ?: return
+        if (progress.durChapterIndex >= (chapterListData.value?.size ?: 0)) return
+        val chapterChanged = book.durChapterIndex != progress.durChapterIndex
+        book.durChapterIndex = progress.durChapterIndex
+        book.durChapterPos = progress.durChapterPos
+        book.durChapterTitle = progress.durChapterTitle
+        position = progress.durChapterPos.toLong()
+        saveRead(position)
+        if (chapterChanged) {
+            chapterListData.value?.getOrNull(progress.durChapterIndex)?.let { initChapter(it) }
+        }
+    }
+
+    override fun getSyncProgressMsg(): String = "已同步最新视频播放进度"
+
     fun initData() {
         execute {
             upBook(IntentData.book ?: return@execute)
@@ -41,6 +58,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
             position = curBook!!.durChapterPos.toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook!!.durChapterIndex])
+            curBook?.takeIf { inBookshelf }?.let { syncBookProgress(it) }
         }
     }
 

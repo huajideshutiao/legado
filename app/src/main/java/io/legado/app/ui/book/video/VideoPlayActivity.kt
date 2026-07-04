@@ -623,6 +623,9 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             if ((currentPlayer?.currentPosition ?: 0) > (currentPlayer?.duration ?: 1) - 1000) 0L
             else currentPlayer?.currentPosition ?: 0L
         )
+        if (viewModel.inBookshelf) {
+            viewModel.curBook?.let { viewModel.uploadProgress(it) }
+        }
     }
 
     override fun onDestroy() {

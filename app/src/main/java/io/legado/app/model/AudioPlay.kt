@@ -192,6 +192,22 @@ object AudioPlay {
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
+    /**
+     * 应用云端进度: 章节变化则 skipTo 并保留新的 pos, 同章节仅调 adjustProgress
+     */
+    fun setProgress(progress: io.legado.app.data.entities.BookProgress) {
+        if (progress.durChapterIndex >= simulatedChapterSize) return
+        if (durChapterIndex == progress.durChapterIndex
+            && durChapterPos == progress.durChapterPos
+        ) return
+        if (durChapterIndex != progress.durChapterIndex) {
+            skipTo(progress.durChapterIndex)
+            durChapterPos = progress.durChapterPos
+        } else {
+            adjustProgress(progress.durChapterPos)
+        }
+    }
+
     fun skipTo(index: Int) {
         if (index !in 0..<simulatedChapterSize) return
         ReadTimeRecorder.flushAll()

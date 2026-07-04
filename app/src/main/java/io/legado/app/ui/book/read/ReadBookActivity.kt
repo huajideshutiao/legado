@@ -339,7 +339,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         networkChangedListener.onNetworkChanged = {
             // 当网络是可用状态且无需初始化时同步进度（初始化中已有同步进度逻辑）
             if (AppConfig.syncBookProgressPlus && NetworkUtils.isAvailable() && !justInitData && ReadBook.inBookshelf) {
-                ReadBook.syncProgress({ progress -> sureNewProgress(progress) })
+                ReadBook.book?.let { book ->
+                    viewModel.syncProgress(
+                        book,
+                        newProgressAction = { progress -> sureNewProgress(progress) })
+                }
             }
         }
     }
@@ -355,7 +359,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         upSystemUiVisibility()
         if (!BuildConfig.DEBUG && ReadBook.inBookshelf) {
             if (AppConfig.syncBookProgressPlus) {
-                ReadBook.syncProgress()
+                ReadBook.book?.let { viewModel.syncProgress(it) }
             } else {
                 ReadBook.uploadProgress()
             }
@@ -1095,16 +1099,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun sureSyncProgress(progress: BookProgress) {
-        alert(R.string.get_book_progress) {
-            setMessage(R.string.current_progress_exceeds_cloud)
-            okButton {
-                ReadBook.setProgress(progress)
-            }
-            noButton()
-        }
-    }
-
     /* 进度条跳转到指定章节 */
     override fun skipToChapter(index: Int) {
         ReadBook.saveCurrentBookProgress() //退出章节跳转恢复此时进度
@@ -1203,7 +1197,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun sureNewProgress(progress: BookProgress) {
         syncDialog?.dismiss()
-        syncDialog = alert(R.string.get_book_progress) {
+        syncDialog = alert(R.string.sync_book_progress_t) {
             setMessage(R.string.cloud_progress_exceeds_current)
             okButton {
                 ReadBook.setProgress(progress)
@@ -1431,7 +1425,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                         R.id.menu_enable_replace -> item.isChecked = book.getUseReplaceRule()
                         R.id.menu_re_segment -> item.isChecked = book.config.reSegment
 
-                        R.id.menu_reverse_content -> item.isVisible = onLine
                         R.id.menu_del_ruby_tag -> item.isChecked =
                             book.config.delTag and Book.rubyTag == Book.rubyTag
 
@@ -1444,8 +1437,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 val show = ReadBook.inBookshelf && withContext(IO) {
                     AppWebDav.isOk
                 }
-                menu.findItem(R.id.menu_get_progress)?.isVisible = show
-                menu.findItem(R.id.menu_cover_progress)?.isVisible = show
+                menu.findItem(R.id.menu_sync_progress)?.isVisible = show
             }
         }
 
@@ -1560,10 +1552,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     TxtTocRuleDialog(ReadBook.book?.tocUrl)
                 )
 
-                R.id.menu_reverse_content -> ReadBook.book?.let {
-                    viewModel.reverseContent(it)
-                }
-
                 R.id.menu_set_charset -> showCharsetConfig()
                 R.id.menu_image_style -> {
                     val imgStyles =
@@ -1584,14 +1572,14 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                 }
 
-                R.id.menu_get_progress -> ReadBook.book?.let {
-                    viewModel.syncBookProgress(it) { progress ->
-                        sureSyncProgress(progress)
-                    }
-                }
-
-                R.id.menu_cover_progress -> ReadBook.book?.let {
-                    ReadBook.uploadProgress(true) { toastOnUi(R.string.upload_book_success) }
+                R.id.menu_sync_progress -> ReadBook.book?.let { book ->
+                    viewModel.syncProgress(
+                        book = book,
+                        newProgressAction = { progress -> sureNewProgress(progress) },
+                        uploadSuccessAction = { toastOnUi(R.string.upload_book_success) },
+                        syncSuccessAction = { toastOnUi(R.string.sync_book_progress_success) },
+                        manual = true,
+                    )
                 }
 
                 R.id.menu_same_title_removed -> {

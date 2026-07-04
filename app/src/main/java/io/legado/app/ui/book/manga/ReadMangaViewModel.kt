@@ -11,7 +11,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
@@ -21,7 +20,6 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadTimeRecorder
@@ -470,52 +468,17 @@ class ReadMangaViewModel(application: Application) :
             .onError { loadFailLiveData.postValue(appCtx.getString(R.string.error_load_toc) to true) }
     }
 
-    fun uploadProgress(successAction: (() -> Unit)? = null) {
-        curBook?.let {
-            execute {
-                AppWebDav.uploadBookProgress(it) {
-                    successAction?.invoke()
-                }
-                ensureActive()
-                it.update()
-            }
-        }
-    }
 
     /**
-     * 同步阅读进度
-     * 如果当前进度快于服务器进度或者没有进度进行上传，如果慢与服务器进度则执行传入动作
+     * 同步阅读进度, 逻辑在 [BaseReadViewModel.syncProgress]
      */
     fun syncProgress(
         newProgressAction: ((progress: BookProgress) -> Unit)? = null,
         uploadSuccessAction: (() -> Unit)? = null,
         syncSuccessAction: (() -> Unit)? = null,
     ) {
-        if (!AppConfig.syncBookProgress) return
         val book = curBook ?: return
-        execute {
-            AppWebDav.getBookProgress(book)
-        }.onError {
-            AppLog.put("拉取阅读进度失败", it)
-        }.onSuccess { progress ->
-            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                    && progress.durChapterPos < book.durChapterPos)
-            ) {
-                // 服务器没有进度或者进度比服务器快，上传现有进度
-                execute {
-                    AppWebDav.uploadBookProgress(BookProgress(book), uploadSuccessAction)
-                    book.update()
-                }
-            } else if (progress.durChapterIndex > book.durChapterIndex ||
-                progress.durChapterPos > book.durChapterPos
-            ) {
-                // 进度比服务器慢，执行传入动作
-                newProgressAction?.invoke(progress)
-            } else {
-                syncSuccessAction?.invoke()
-            }
-        }
+        syncProgress(book, newProgressAction, uploadSuccessAction, syncSuccessAction)
     }
 
     fun setProgress(progress: BookProgress) {

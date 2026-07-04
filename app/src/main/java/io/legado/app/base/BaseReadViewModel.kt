@@ -29,6 +29,7 @@ import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.book.update
 import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -45,6 +46,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -355,6 +357,58 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 applyProgress(progress)
                 AppLog.put("自动同步阅读进度成功《${book.name}》 ${progress.durChapterTitle}")
                 context.toastOnUi(getSyncProgressMsg())
+            }
+        }
+    }
+
+    /**
+     * 上传阅读进度 (WebDAV)
+     * 走 [Coroutine.async] 默认的进程级 MainScope, 退出阅读时 VM 已 cleared 也不会被打断
+     * [AppWebDav.uploadBookProgress] 内部已经守卫 [AppConfig.syncBookProgress]
+     */
+    fun uploadProgress(book: Book, toast: Boolean = false, onSuccess: (() -> Unit)? = null) {
+        if (!AppConfig.syncBookProgress) return
+        Coroutine.async {
+            AppWebDav.uploadBookProgress(book, toast, onSuccess)
+            ensureActive()
+            book.update()
+        }
+    }
+
+    /**
+     * 三路进度同步 (WebDAV)
+     * 云端无进度或本地进度较新 -> 上传; 云端进度较新 -> 通过 [newProgressAction] 交给上层弹窗; 相等 -> [syncSuccessAction]
+     * [manual] 为 true 时绕过 [AppConfig.syncBookProgress] 守卫并在上传时弹 toast, 供菜单手动触发用
+     * 走 [Coroutine.async] 默认的进程级 MainScope, 不随 VM 生命周期取消, 避免退出阅读时上传被打断
+     */
+    fun syncProgress(
+        book: Book,
+        newProgressAction: ((progress: BookProgress) -> Unit)? = null,
+        uploadSuccessAction: (() -> Unit)? = null,
+        syncSuccessAction: (() -> Unit)? = null,
+        manual: Boolean = false,
+    ) {
+        if (!manual && !AppConfig.syncBookProgress) return
+        Coroutine.async {
+            AppWebDav.getBookProgress(book)
+        }.onError {
+            AppLog.put("拉取阅读进度失败", it)
+        }.onSuccess { progress ->
+            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
+                (progress.durChapterIndex == book.durChapterIndex
+                    && progress.durChapterPos < book.durChapterPos)
+            ) {
+                Coroutine.async {
+                    AppWebDav.uploadBookProgress(book, manual, uploadSuccessAction)
+                    ensureActive()
+                    book.update()
+                }
+            } else if (progress.durChapterIndex > book.durChapterIndex ||
+                progress.durChapterPos > book.durChapterPos
+            ) {
+                newProgressAction?.invoke(progress)
+            } else {
+                syncSuccessAction?.invoke()
             }
         }
     }

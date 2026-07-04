@@ -264,6 +264,9 @@ class AudioPlayActivity :
         if (AudioPlay.status != Status.PLAY) {
             viewModel.stop()
         }
+        if (viewModel.inBookshelf) {
+            AudioPlay.book?.let { viewModel.uploadProgress(it) }
+        }
     }
 
     @SuppressLint("SetTextI18n")

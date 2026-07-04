@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseReadViewModel
 import io.legado.app.constant.Status
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
@@ -42,6 +43,12 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
         AudioPlay.bookSource = book.getBookSource()
     }
 
+    override fun applyProgress(progress: BookProgress) {
+        AudioPlay.setProgress(progress)
+    }
+
+    override fun getSyncProgressMsg(): String = "已同步最新音频播放进度"
+
     fun initData(intent: Intent) = AudioPlay.apply {
         execute {
             val book =
@@ -53,6 +60,7 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
             if (AudioPlay.book?.bookUrl == book.bookUrl) upData(curBook!!) else resetData(curBook!!)
             titleData.postValue(book.name)
             if (status == Status.STOP) loadOrUpPlayUrl()
+            curBook?.takeIf { inBookshelf }?.let { syncBookProgress(it) }
         }
     }
 
