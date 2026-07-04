@@ -28,6 +28,11 @@
 		<item>6</item>
 	</string-array>
 
+	<string-array name="explore_item_style">
+		<item>@string/explore_style_normal</item>
+		<item>@string/explore_style_video</item>
+	</string-array>
+
 	<string-array name="book_sort">
 		<item>@string/text_default</item>
 		<item>@string/bookshelf_px_0</item>

@@ -62,24 +62,6 @@ class BookSourceEditActivity :
     private val tocEntities: ArrayList<EditEntity> = ArrayList()
     private val contentEntities: ArrayList<EditEntity> = ArrayList()
     private val reviewEntities: ArrayList<EditEntity> = ArrayList()
-    private val bookSourceTypeSelections by lazy {
-        val labels = resources.getStringArray(R.array.book_type)
-        labels.mapIndexed { index, label -> label to index.toString() }
-    }
-    private val exploreItemStyleSelections: List<Pair<String, String?>> by lazy {
-        listOf(
-            getString(R.string.explore_style_normal) to "0",
-            getString(R.string.explore_style_video) to "1",
-        )
-    }
-    private val exploreColsSelections: List<Pair<String, String?>> by lazy {
-        val list = mutableListOf<Pair<String, String?>>()
-        list.add(getString(R.string.explore_cols_one_label) to "0")
-        for (i in 2..6) {
-            list.add("$i 列" to i.toString())
-        }
-        list
-    }
     private val imageStyleSelections by lazy {
         listOf(
             getString(R.string.text_default) to null,
@@ -187,29 +169,30 @@ class BookSourceEditActivity :
         }
         binding.recyclerView.layoutManager = gridLayoutManager
         binding.keyboardTool.setInterface(binding.root, this)
-        adapter.onSearchReplaceAction = { binding.keyboardTool.showFindReplace(it) }
-        adapter.onCodeViewFocus = { codeView ->
+        val onSearchReplaceAction: (String) -> Unit = { binding.keyboardTool.showFindReplace(it) }
+        adapter.onSearchReplaceAction = onSearchReplaceAction
+        val onCodeViewFocus: (CodeView) -> Unit = { codeView ->
             if (lastActiveCodeView != codeView) {
                 lastActiveCodeView?.clearSearch()
             }
             lastActiveCodeView = codeView
         }
-        adapter.onCheckedChange = { entity, isChecked, btn ->
-            if (entity.key == "enableDangerousApi") {
-                val originalEnabled = viewModel.bookSource?.enableDangerousApi == true
-                if (isChecked != originalEnabled) {
-                    SharedJsScope.remove(viewModel.bookSource?.jsLib)
-                }
-                if (isChecked) {
-                    alert(R.string.enable_dangerous_api) {
-                        setMessage(R.string.enable_dangerous_api_confirm)
-                        positiveButton(R.string.ok)
-                        negativeButton(R.string.cancel) {
-                            btn.isChecked = false
-                        }
-                        onCancelled {
-                            btn.isChecked = false
-                        }
+        adapter.onCodeViewFocus = onCodeViewFocus
+        binding.cbEnableDangerousApi.setOnClickListener {
+            val isChecked = binding.cbEnableDangerousApi.isChecked
+            val originalEnabled = viewModel.bookSource?.enableDangerousApi == true
+            if (isChecked != originalEnabled) {
+                SharedJsScope.remove(viewModel.bookSource?.jsLib)
+            }
+            if (isChecked) {
+                alert(R.string.enable_dangerous_api) {
+                    setMessage(R.string.enable_dangerous_api_confirm)
+                    positiveButton(R.string.ok)
+                    negativeButton(R.string.cancel) {
+                        binding.cbEnableDangerousApi.isChecked = false
+                    }
+                    onCancelled {
+                        binding.cbEnableDangerousApi.isChecked = false
                     }
                 }
             }
@@ -268,46 +251,21 @@ class BookSourceEditActivity :
 
     private fun upSourceView(bookSource: BookSource?) {
         val bs = bookSource ?: BookSource()
+        // Header
+        binding.spBookSourceType.setSelection(bookSourceTypeToIndex(bs.bookSourceType))
+        binding.cbEnabled.isChecked = bs.enabled
+        binding.cbEnabledCookieJar.isChecked = bs.enabledCookieJar == true
+        binding.cbEnableDangerousApi.isChecked = bs.enableDangerousApi == true
+        binding.cbEnabledExplore.isChecked = bs.enabledExplore
+        binding.cbEnabledReview.isChecked = bs.enabledReview
+        binding.spExploreItemStyle.setSelection(
+            if (BookSource.exploreStyleIsVideo(bs.exploreStyle)) 1 else 0
+        )
+        val cols = BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(0, 6)
+        binding.spExploreCols.setSelection(if (cols == 0) 0 else cols - 1)
         // 基本信息
         sourceEntities.clear()
         sourceEntities.apply {
-            add(
-                EditEntity(
-                    "bookSourceType",
-                    bookSourceTypeToIndex(bs.bookSourceType).toString(),
-                    R.string.book_type,
-                    EditEntity.ViewType.spinner,
-                    bookSourceTypeSelections,
-                    span = 1
-                )
-            )
-            add(
-                EditEntity(
-                    "enabled",
-                    bs.enabled.toString(),
-                    R.string.is_enable,
-                    EditEntity.ViewType.checkBox,
-                    span = 1
-                )
-            )
-            add(
-                EditEntity(
-                    "enabledCookieJar",
-                    (bs.enabledCookieJar ?: false).toString(),
-                    R.string.auto_save_cookie,
-                    EditEntity.ViewType.checkBox,
-                    span = 1
-                )
-            )
-            add(
-                EditEntity(
-                    "enableDangerousApi",
-                    (bs.enableDangerousApi ?: false).toString(),
-                    R.string.enable_dangerous_api,
-                    EditEntity.ViewType.checkBox,
-                    span = 1
-                )
-            )
             add(EditEntity("bookSourceUrl", bs.bookSourceUrl, R.string.source_url))
             add(EditEntity("bookSourceName", bs.bookSourceName, R.string.source_name))
             add(EditEntity("bookSourceGroup", bs.bookSourceGroup, R.string.source_group))
@@ -343,35 +301,6 @@ class BookSourceEditActivity :
         val er = bs.exploreRule
         exploreEntities.clear()
         exploreEntities.apply {
-            add(
-                EditEntity(
-                    "enabledExplore",
-                    bs.enabledExplore.toString(),
-                    R.string.discovery,
-                    EditEntity.ViewType.checkBox,
-                    span = 1
-                )
-            )
-            add(
-                EditEntity(
-                    "exploreItemStyle",
-                    if (BookSource.exploreStyleIsVideo(bs.exploreStyle)) "1" else "0",
-                    R.string.explore_style,
-                    EditEntity.ViewType.spinner,
-                    exploreItemStyleSelections,
-                    span = 1
-                )
-            )
-            add(
-                EditEntity(
-                    "exploreCols",
-                    BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(0, 6).toString(),
-                    R.string.explore_cols,
-                    EditEntity.ViewType.spinner,
-                    exploreColsSelections,
-                    span = 1
-                )
-            )
             add(EditEntity("exploreUrl", bs.exploreUrl, R.string.r_find_url))
             add(EditEntity("bookList", er.bookList, R.string.r_book_list))
             add(EditEntity("name", er.name, R.string.r_book_name))
@@ -448,14 +377,6 @@ class BookSourceEditActivity :
         val rr = bs.reviewRule
         reviewEntities.clear()
         reviewEntities.apply {
-            add(
-                EditEntity(
-                    "enabledReview",
-                    bs.enabledReview.toString(),
-                    R.string.enable_review,
-                    EditEntity.ViewType.checkBox
-                )
-            )
             add(EditEntity("reviewCountRule", rr.reviewCountRule, R.string.rule_review_count))
             add(EditEntity("totalCountRule", rr.totalCountRule, R.string.rule_review_total_count))
             add(EditEntity("reviewUrl", rr.reviewUrl, R.string.rule_review_url))
@@ -490,12 +411,19 @@ class BookSourceEditActivity :
         val tocRule = TocRule()
         val contentRule = ContentRule()
         val reviewRule = ReviewRule()
+        source.bookSourceType = indexToBookSourceType(binding.spBookSourceType.selectedItemPosition)
+        source.enabled = binding.cbEnabled.isChecked
+        source.enabledCookieJar = binding.cbEnabledCookieJar.isChecked
+        source.enableDangerousApi = binding.cbEnableDangerousApi.isChecked
+        source.enabledExplore = binding.cbEnabledExplore.isChecked
+        source.enabledReview = binding.cbEnabledReview.isChecked
+        val exploreVideo = binding.spExploreItemStyle.selectedItemPosition == 1
+        val colsPos = binding.spExploreCols.selectedItemPosition
+        val exploreCols = if (colsPos == 0) 0 else colsPos + 1
+        source.exploreStyle = (if (exploreVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
+            (exploreCols and BookSource.EXPLORE_STYLE_COLS_MASK)
         sourceEntities.forEach {
             when (it.key) {
-                "bookSourceType" -> source.bookSourceType = indexToBookSourceType(it.intValue)
-                "enabled" -> source.enabled = it.boolValue
-                "enabledCookieJar" -> source.enabledCookieJar = it.boolValue
-                "enableDangerousApi" -> source.enableDangerousApi = it.boolValue
                 "bookSourceUrl" -> source.bookSourceUrl = it.text.orEmpty()
                 "bookSourceName" -> source.bookSourceName = it.text.orEmpty()
                 "bookSourceGroup" -> source.bookSourceGroup = it.text
@@ -527,13 +455,8 @@ class BookSourceEditActivity :
                 "hasMoreRule" -> searchRule.hasMoreRule = it.text
             }
         }
-        var exploreVideo = false
-        var exploreCols = 0
         exploreEntities.forEach {
             when (it.key) {
-                "enabledExplore" -> source.enabledExplore = it.boolValue
-                "exploreItemStyle" -> exploreVideo = it.intValue != 0
-                "exploreCols" -> exploreCols = it.intValue.coerceIn(0, 6)
                 "exploreUrl" -> source.exploreUrl = it.text
                 "bookList" -> exploreRule.bookList = it.text
                 "name" -> exploreRule.name = it.text
@@ -547,8 +470,6 @@ class BookSourceEditActivity :
                 "hasMoreRule" -> exploreRule.hasMoreRule = it.text
             }
         }
-        source.exploreStyle = (if (exploreVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
-            (exploreCols and BookSource.EXPLORE_STYLE_COLS_MASK)
         infoEntities.forEach {
             when (it.key) {
                 "init" -> bookInfoRule.init = it.text
@@ -594,7 +515,6 @@ class BookSourceEditActivity :
         }
         reviewEntities.forEach {
             when (it.key) {
-                "enabledReview" -> source.enabledReview = it.boolValue
                 "reviewUrl" -> reviewRule.reviewUrl = it.text
                 "reviewList" -> reviewRule.reviewList = it.text
                 "reviewCountRule" -> reviewRule.reviewCountRule = it.text

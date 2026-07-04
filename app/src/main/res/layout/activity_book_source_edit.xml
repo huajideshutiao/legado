@@ -12,6 +12,171 @@
         android:layout_height="wrap_content"
         app:title="@string/edit_book_source" />
 
+    <LinearLayout
+        android:id="@+id/ll_header_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/ll_row1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:gravity="center_vertical"
+                        android:text="@string/book_type" />
+
+                    <androidx.appcompat.widget.AppCompatSpinner
+                        android:id="@+id/sp_book_source_type"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:dropDownWidth="wrap_content"
+                        android:entries="@array/book_type"
+                        android:layerType="software"
+                        tools:ignore="TouchTargetSizeCheck" />
+                </LinearLayout>
+
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                    android:id="@+id/cb_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/is_enable" />
+
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                    android:id="@+id/cb_enabled_cookie_jar"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/auto_save_cookie" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/ll_row2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                    android:id="@+id/cb_enable_dangerous_api"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/enable_dangerous_api" />
+
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                    android:id="@+id/cb_enabled_review"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/enable_review" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/ll_row3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                    android:id="@+id/cb_enabled_explore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/discovery" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:gravity="center_vertical"
+                        android:text="@string/explore_style" />
+
+                    <androidx.appcompat.widget.AppCompatSpinner
+                        android:id="@+id/sp_explore_item_style"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:dropDownWidth="wrap_content"
+                        android:entries="@array/explore_item_style"
+                        android:layerType="software"
+                        tools:ignore="TouchTargetSizeCheck" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:gravity="center_vertical"
+                        android:text="@string/explore_cols" />
+
+                    <androidx.appcompat.widget.AppCompatSpinner
+                        android:id="@+id/sp_explore_cols"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:dropDownWidth="wrap_content"
+                        android:entries="@array/explore_cols"
+                        android:layerType="software"
+                        tools:ignore="TouchTargetSizeCheck" />
+                </LinearLayout>
+            </LinearLayout>
+        </HorizontalScrollView>
+
+    </LinearLayout>
+
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tab_layout"
         android:layout_width="match_parent"
