@@ -993,7 +993,7 @@
     <string name="welcome_text">阅读|享受美好时光</string>
     <string name="enable_welcome">启用欢迎页</string>
     <string name="enable_welcome_summary">启动时是否显示欢迎页</string>
-    <string name="welcome_delay">欢迎页延迟</string>
+    <string name="welcome_show_time">欢迎页显示时间</string>
     <string name="show_icon">显示图标</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="cache_export">缓存/导出</string>

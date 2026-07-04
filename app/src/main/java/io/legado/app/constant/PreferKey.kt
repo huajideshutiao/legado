@@ -115,7 +115,7 @@ object PreferKey {
     const val welcomeImageDark = "welcomeImagePathDark"
     const val welcomeShowText = "welcomeShowText"
     const val welcomeShowIcon = "welcomeShowIcon"
-    const val welcomeDelay = "welcomeDelay"
+    const val welcomeShowTime = "welcomeShowTime"
     const val pageTouchSlop = "pageTouchSlop"
     const val showAddToShelfAlert = "showAddToShelfAlert"
     const val bookInfoDeleteAlert = "bookInfoDeleteAlert"

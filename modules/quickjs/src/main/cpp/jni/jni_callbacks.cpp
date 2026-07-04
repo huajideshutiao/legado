@@ -3,36 +3,35 @@
 #include "jni_object_class.h"
 #include <android/log.h>
 #include <cstring>
-#include <mutex>
-#include <string>
-#include <vector>
+#include <cstdlib>
+#include <pthread.h>
 
 #define TAG "legado_qjs"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+namespace {
+    constexpr uint32_t kMethodCacheInitSize = 16;   // 2^4
+    constexpr uint32_t kMethodEmpty = 0;
+    constexpr uint32_t kMethodUsed = 1;
+
+    // 与 qjs hash_string8 (h * 263) 同款单乘散列, 免多次 shift+xor 的代码占用。
+    inline uint32_t hashAtom(JSAtom a) {
+        return (uint32_t) ((uint64_t) a * 0x9E3779B97F4A7C15ULL >> 32);
+    }
+}
+
 // 缓存的 Java 方法 ID (JavaObjectBridgeNative + BindingHandler)
 namespace {
-    // JavaObjectBridgeNative (method callable 回调)
     jclass g_bridgeNativeCls = nullptr;
-    // Tier 2: 全局 method callable 共享, 从 this_val 取 jobject 直接传 Kotlin,
-    // 不再走 handle-based callMethod (已删除)
-    jmethodID g_callMethodByObj = nullptr;
-
-    // BindingHandler (binding 回调)
+    jmethodID g_callMethodByObj = nullptr;   // 共享 callable, 从 this_val 取 jobject
     jclass g_bindingHandlerCls = nullptr;
     jmethodID g_bindingCall = nullptr;
+    jclass g_objectCls = nullptr;            // jsArgsToJavaArray 的 NewObjectArray 用
 
-    // java.lang.Object class 缓存 (jsArgsToJavaArray 用 NewObjectArray)
-    // 原先每次方法调用都 FindClass("java/lang/Object"), 会锁 ClassLoader, 是热路径开销大头之一
-    jclass g_objectCls = nullptr;
-
-    // 用 std::once_flag 替代裸 bool: call_once 内置 release/acquire 屏障,
-    // 保证 g_bridgeNativeCls / g_callMethodByObj / g_bindingHandlerCls / g_bindingCall
-    // 这些写入对其它线程 happen-before 可见。原裸 bool 可能被 thread A 先观察到 true,
-    // 但 method ID 仍是 nullptr, 走入"未绑定"分支 return JS_EXCEPTION 时 ctx 异常 slot
-    // 未设, 后续 JS_GetException 拿 stale 引发的 ref_count 错乱表现为 JSString header
-    // 被覆盖, JS_ToCString -> strv -> abort。
-    std::once_flag g_callbacksInitFlag;
+    // 双检锁 + __atomic 屏障 (替代 std::call_once, 免 libc++ 依赖; pthread_once 无法传 env)。
+    // RELEASE/ACQUIRE 保证初始化写入 happen-before fast path 的读取。
+    bool g_callbacksInited = false;
+    pthread_mutex_t g_callbacksInitMutex = PTHREAD_MUTEX_INITIALIZER;
 
     // 获取 JNIEnv (复用 JavaObjectClass::cachedJvm)
     JNIEnv *getJniEnv() {
@@ -49,19 +48,23 @@ namespace {
 
     // 初始化回调方法 ID
     void ensureCallbacksInited(JNIEnv *env) {
-        std::call_once(g_callbacksInitFlag, [env]() {
-            // JavaObjectBridgeNative (method callable 回调)
+        if (__atomic_load_n(&g_callbacksInited, __ATOMIC_ACQUIRE)) return;
+        pthread_mutex_lock(&g_callbacksInitMutex);
+        if (g_callbacksInited) {
+            pthread_mutex_unlock(&g_callbacksInitMutex);
+            return;
+        }
+        // do{...}while(0) 包装以便 break 早退, 无论成败都刷 g_callbacksInited (对齐 call_once 语义)。
+        do {
             jclass bridgeCls = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
             if (!bridgeCls) {
                 LOGE("JavaObjectBridgeNative class not found");
                 env->ExceptionClear();
-                return;
+                break;
             }
             g_bridgeNativeCls = (jclass) env->NewGlobalRef(bridgeCls);
             env->DeleteLocalRef(bridgeCls);
             // callMethodByObj(obj, methodName, args, dangerousApi): Any?
-            // Tier 2: 全局 method callable 共享 (按 methodName 缓存), 不再持有 objHandle,
-            // 改为从 this_val 取 jobject 直接传 Kotlin, 省掉 getHandle JNI 往返与 identityHandles 查询。
             g_callMethodByObj = env->GetStaticMethodID(g_bridgeNativeCls, "callMethodByObj",
                                                        "(Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;Z)Ljava/lang/Object;");
             if (!g_callMethodByObj) {
@@ -84,7 +87,7 @@ namespace {
             if (!bindingCls) {
                 LOGE("BindingHandler class not found");
                 env->ExceptionClear();
-                return;
+                break;
             }
             g_bindingHandlerCls = (jclass) env->NewGlobalRef(bindingCls);
             env->DeleteLocalRef(bindingCls);
@@ -95,7 +98,9 @@ namespace {
                 LOGE("BindingHandler.call not found");
                 env->ExceptionClear();
             }
-        });
+        } while (0);
+        __atomic_store_n(&g_callbacksInited, true, __ATOMIC_RELEASE);
+        pthread_mutex_unlock(&g_callbacksInitMutex);
     }
 }
 
@@ -134,16 +139,12 @@ namespace {
 
 void initCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
-    auto *data = new CtxOpaqueData();
-    data->dangerousApi = false;
-    data->arrayProto = JS_UNDEFINED;  // lazy init, 首次 wrap Java 数组时填充
-    // Symbol.iterator 是 well-known symbol (JS_ATOM_TYPE_SYMBOL), 不是普通 string atom。
-    // JS_NewAtom(ctx, "Symbol.iterator") 只在 STRING atom 表 (__JS_FindAtom 强制
-    // JS_ATOM_TYPE_STRING) 里查, 命不中 well-known 的 JS_ATOM_Symbol_iterator, 会新建
-    // 一个描述相同但类型不同的 STRING atom, 与 for..of 内部用来查 property 的 atom
-    // 数值不等 → 比较永远失败 → for..of 报 "not iterable"。
-    // 走 globalThis.Symbol.iterator 拿真正的 symbol value, JS_ValueToAtom 内部走
-    // JS_TAG_SYMBOL 分支 (js_get_atom_index) 才能拿到内部使用的那个 atom。
+    // calloc 而非 new: 免 -fno-exceptions 下 bad_alloc 相关 stub。
+    auto *data = (CtxOpaqueData *) std::calloc(1, sizeof(CtxOpaqueData));
+    if (!data) return;
+    data->arrayProto = JS_UNDEFINED;   // lazy: 首次 wrap Java 数组时填
+    // Symbol.iterator 是 well-known symbol, JS_NewAtom 只查 STRING 表拿不到内部数值,
+    // 必须走 globalThis.Symbol.iterator -> JS_ValueToAtom。
     data->symbolIteratorAtom = JS_ATOM_NULL;
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue symbolObj = JS_GetPropertyStr(ctx, global, "Symbol");
@@ -163,21 +164,19 @@ void freeCtxOpaque(JSContext *ctx) {
     if (!ctx) return;
     auto *data = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
     if (data) {
-        // 释放 method callable 缓存 (atom + value 都持有引用)
-        for (auto &kv: data->methodCallableCache) {
-            JS_FreeAtom(ctx, kv.first);
-            JS_FreeValue(ctx, kv.second);
+        if (data->methodCallableHash) {
+            for (uint32_t i = 0; i < data->methodCallableSize; i++) {
+                MethodCallableEntry &e = data->methodCallableHash[i];
+                if (e.state == kMethodUsed) {
+                    JS_FreeAtom(ctx, e.key);
+                    JS_FreeValue(ctx, e.value);
+                }
+            }
+            std::free(data->methodCallableHash);
         }
-        data->methodCallableCache.clear();
-        // 释放缓存的 Array.prototype (若已初始化)
-        if (!JS_IsUndefined(data->arrayProto)) {
-            JS_FreeValue(ctx, data->arrayProto);
-        }
-        // 释放 Symbol.iterator atom
-        if (data->symbolIteratorAtom != JS_ATOM_NULL) {
-            JS_FreeAtom(ctx, data->symbolIteratorAtom);
-        }
-        delete data;
+        if (!JS_IsUndefined(data->arrayProto)) JS_FreeValue(ctx, data->arrayProto);
+        if (data->symbolIteratorAtom != JS_ATOM_NULL) JS_FreeAtom(ctx, data->symbolIteratorAtom);
+        std::free(data);
         JS_SetContextOpaque(ctx, nullptr);
     }
 }
@@ -202,47 +201,28 @@ bool getDangerousApi(JSContext *ctx) {
 
 // ============ method callable ============
 
-// method callable 的 C 回调
-//
-// 共享设计 (Tier 2 优化):
-// - 每个 methodName 只创建一个 JSCFunctionData, 跨所有 Java 对象共享
-// - func_data[0] = JS_NewString(methodName), 不再持有 objHandle
-// - this_val 由 JS 调用点 (obj.method(...)) 自动绑定到接收对象, 是真正的 Java 对象 wrapper
-// - 从 this_val 取 jobject -> 直接传给 callMethodByObj, 省去 getHandle / identityHandle 查询
-//
-// 与 rhino 对齐: rhino 的 NativeJavaMethod 也是按 (class, methodName) 共享, this 由 callsite 提供。
+// 每个 methodName 只创建一个 JSCFunctionData, 跨 Java 对象共享; jobject 从 this_val 取。
 static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv, int magic,
                                 JSValueConst *func_data) {
     JNIEnv *env = getJniEnv();
-    if (!env) {
-        // 契约: 返回 JS_EXCEPTION 必须先在 ctx 上设置异常 slot,
-        // 否则调用方 JS_GetException 拿到 stale 值, 后续 with/作用域 unwind
-        // 时 ref_count 跟踪可能错乱导致 JSString 提前释放 (heap corruption)
-        return JS_ThrowInternalError(ctx, "JNI env unavailable in method callable");
-    }
+    if (!env) return JS_ThrowInternalError(ctx, "JNI env unavailable in method callable");
     ensureCallbacksInited(env);
     if (!g_callMethodByObj) {
         return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.callMethodByObj not bound");
     }
 
-    // this_val 由 JS 调用点绑定; `var fn = obj.method; fn(x)` 提取调用会丢 this,
-    // 与 rhino NativeJavaMethod 语义一致, 抛 TypeError。
+    // 与 rhino NativeJavaMethod 一致: `var fn = obj.method; fn(x)` 丢 this 抛 TypeError。
     jobject javaObj = JavaObjectClass::getJavaObject(ctx, this_val);
     if (!javaObj) {
         return JS_ThrowTypeError(ctx, "Java method called without Java object as 'this'");
     }
 
     const char *methodName = JS_ToCString(ctx, func_data[0]);
-    if (!methodName) {
-        // JS_ToCString 失败时已经在 ctx 设过异常
-        return JS_EXCEPTION;
-    }
+    if (!methodName) return JS_EXCEPTION;
 
-    // 读取 dangerousApi
     bool dangerousApi = getDangerousApi(ctx);
 
-    // 转换 args 为 Java Object[]
     jobjectArray javaArgs = jsArgsToJavaArray(ctx, env, argc, argv);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -251,24 +231,16 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowInternalError(ctx, "JNI exception while converting JS args");
     }
 
-    // 调用 JavaObjectBridgeNative.callMethodByObj(obj, methodName, args, dangerousApi)
     jstring jMethodName = env->NewStringUTF(methodName);
     jobject result = env->CallStaticObjectMethod(
-            g_bridgeNativeCls,
-            g_callMethodByObj,
-            javaObj,
-            jMethodName,
-            javaArgs,
-            dangerousApi ? JNI_TRUE : JNI_FALSE
-    );
+            g_bridgeNativeCls, g_callMethodByObj,
+            javaObj, jMethodName, javaArgs, dangerousApi ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(jMethodName);
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 拿原始 Throwable, 用 JavaObjectClass::wrap 包装成
-        // JavaObject 后 JS_Throw。JS catch(e) 拿到 JavaObject (持有 Throwable), e 传回
-        // Java 时 toJavaObject 走 isInstance 分支还原原始 Throwable, AppLog.put(e,e,false)
-        // 第二参数能匹配 Throwable。原先 JS_ThrowInternalError 只保留方法名, 丢原始异常。
+        // 对齐 rhino WrappedException: 把原始 Throwable wrap 成 JavaObject 后 JS_Throw,
+        // 让 JS catch(e) 能拿回原始异常, e 传回 Java 时 isInstance 还原。
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
@@ -276,16 +248,11 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
             JS_FreeCString(ctx, methodName);
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
             if (JS_IsException(errObj)) return JS_EXCEPTION;
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
-            // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
-            // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
+            // JS_Throw 偷走引用, 不能再 FreeValue, 否则 current_exception 悬空 → UAF。
             JS_Throw(ctx, errObj);
             return JS_EXCEPTION;
         }
-        // thr 为 null 的兜底 (理论不会发生): 先用 methodName 构造错误再释放
         JSValue exc = JS_ThrowInternalError(ctx, "Java method '%s' threw (no throwable)",
                                             methodName);
         JS_FreeCString(ctx, methodName);
@@ -293,46 +260,98 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     }
     JS_FreeCString(ctx, methodName);
 
-    // return-this 复用 (Tier 2b):
-    // sb.append / sb.insert / list.add 等"返回 this"的方法非常多, 原先每次都 wrap
-    // 出新 JavaObject (NewGlobalRef + JS_NewObjectClass + SetOpaque)。
-    // 这里检测 result 与 this_val 关联的是否同一 jobject, 是则直接 DupValue(this_val),
-    // 省一次 GlobalRef + 一次 JS_NewObject。
+    // "返回 this" 复用: sb.append/list.add 这类方法 result 与 javaObj 同一对象时,
+    // 直接 dup this_val, 省一次 wrap (NewGlobalRef + JS_NewObjectClass)。
     if (result && env->IsSameObject(result, javaObj)) {
         env->DeleteLocalRef(result);
         return JS_DupValue(ctx, this_val);
     }
 
-    // 结果转 JSValue
     JSValue ret = JniValueConvert::fromJavaObject(ctx, env, result);
     if (result) env->DeleteLocalRef(result);
     return ret;
+}
+
+// 线性探测: hash_size 为 2 的幂, 未命中返回首个空桶。
+static uint32_t methodCacheProbe(const MethodCallableEntry *hash, uint32_t hashSize,
+                                 JSAtom key, bool *outFound) {
+    const uint32_t mask = hashSize - 1;
+    uint32_t idx = hashAtom(key) & mask;
+    for (;;) {
+        const MethodCallableEntry &e = hash[idx];
+        if (e.state == kMethodEmpty) {
+            *outFound = false;
+            return idx;
+        }
+        if (e.key == key) {
+            *outFound = true;
+            return idx;
+        }
+        idx = (idx + 1) & mask;
+    }
+}
+
+// newSize 必须是 2 的幂。
+static void methodCacheRehash(CtxOpaqueData *opq, uint32_t newSize) {
+    MethodCallableEntry *oldH = opq->methodCallableHash;
+    uint32_t oldSize = opq->methodCallableSize;
+    auto *nb = (MethodCallableEntry *) std::calloc(newSize, sizeof(MethodCallableEntry));
+    if (!nb) return;
+    opq->methodCallableHash = nb;
+    opq->methodCallableSize = newSize;
+    if (oldH) {
+        for (uint32_t i = 0; i < oldSize; i++) {
+            const MethodCallableEntry &e = oldH[i];
+            if (e.state != kMethodUsed) continue;
+            bool found;
+            uint32_t idx = methodCacheProbe(nb, newSize, e.key, &found);
+            nb[idx] = e;
+        }
+        std::free(oldH);
+    }
 }
 
 JSValue getOrCreateMethodCallable(JSContext *ctx, JSAtom atom) {
     if (!ctx || atom == JS_ATOM_NULL) return JS_UNDEFINED;
 
     auto *opq = (CtxOpaqueData *) JS_GetContextOpaque(ctx);
-    if (opq) {
-        auto it = opq->methodCallableCache.find(atom);
-        if (it != opq->methodCallableCache.end()) {
-            // JS 端命中只需刷引用计数, 免掉 JS_NewCFunctionData + JS_NewString 分配。
-            return JS_DupValue(ctx, it->second);
+    if (opq && opq->methodCallableHash) {
+        bool found;
+        uint32_t idx = methodCacheProbe(opq->methodCallableHash,
+                                        opq->methodCallableSize, atom, &found);
+        if (found) {
+            // 命中只加 refcount, 免掉 JS_NewCFunctionData + JS_NewString 分配。
+            return JS_DupValue(ctx, opq->methodCallableHash[idx].value);
         }
     }
 
     const char *methodName = JS_AtomToCString(ctx, atom);
     if (!methodName) return JS_EXCEPTION;
-
     JSValue data[1];
     data[0] = JS_NewString(ctx, methodName);
     JS_FreeCString(ctx, methodName);
     JSValue fn = JS_NewCFunctionData(ctx, jsMethodCallable, 0, 0, 1, data);
-    JS_FreeValue(ctx, data[0]);  // JS_NewCFunctionData 内部 DupValue
+    JS_FreeValue(ctx, data[0]);
 
     if (opq && !JS_IsException(fn)) {
-        // 缓存持有 atom 与 fn 各一份引用, 释放在 freeCtxOpaque。
-        opq->methodCallableCache.emplace(JS_DupAtom(ctx, atom), JS_DupValue(ctx, fn));
+        if (!opq->methodCallableHash) methodCacheRehash(opq, kMethodCacheInitSize);
+        // load factor >= 0.75 → 2x rehash
+        if (opq->methodCallableHash &&
+            opq->methodCallableUsed * 4 >= opq->methodCallableSize * 3) {
+            methodCacheRehash(opq, opq->methodCallableSize * 2);
+        }
+        if (opq->methodCallableHash) {
+            bool found;
+            uint32_t idx = methodCacheProbe(opq->methodCallableHash,
+                                            opq->methodCallableSize, atom, &found);
+            if (!found) {
+                MethodCallableEntry &e = opq->methodCallableHash[idx];
+                e.key = JS_DupAtom(ctx, atom);
+                e.value = JS_DupValue(ctx, fn);
+                e.state = kMethodUsed;
+                opq->methodCallableUsed++;
+            }
+        }
     }
     return fn;
 }
@@ -360,69 +379,52 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     }
 
-    // 保存 binding name 副本, 供后续判断是否需要强制 wrap (newJavaInstance 等)
-    std::string nameStr(name);
-    JS_FreeCString(ctx, name);
-
-    // 特殊处理: __getDangerousApi 直接从 ctx opaque 读取并返回 Boolean
-    // 避免 JNI 往返 Kotlin, 提升 Proxy get trap 性能 (每次属性访问都会调用)
-    if (nameStr == "__getDangerousApi") {
-        bool dangerousApi = getDangerousApi(ctx);
-        return JS_NewBool(ctx, dangerousApi);
+    // __getDangerousApi 直接读 ctx opaque, 免 JNI 往返 (Proxy get trap 热路径)。
+    if (std::strcmp(name, "__getDangerousApi") == 0) {
+        JS_FreeCString(ctx, name);
+        return JS_NewBool(ctx, getDangerousApi(ctx));
     }
 
-    // 转换 args 为 Java Object[]
+    // 强制 wrap 分支: 让 `new java.lang.String('x')` 返回 JavaObject 而不是 JS string。
+    bool forceWrap = (std::strcmp(name, "__newJavaInstance") == 0 ||
+                      std::strcmp(name, "__newJavaAdapter") == 0);
+
     jobjectArray javaArgs = jsArgsToJavaArray(ctx, env, argc, argv);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (javaArgs) env->DeleteLocalRef(javaArgs);
+        JS_FreeCString(ctx, name);
         return JS_ThrowInternalError(ctx, "JNI exception while converting binding args");
     }
 
-    // 调用 BindingHandler.call(name, args)
-    jstring jName = env->NewStringUTF(nameStr.c_str());
-    jobject result = env->CallStaticObjectMethod(
-            g_bindingHandlerCls,
-            g_bindingCall,
-            jName,
-            javaArgs
-    );
+    jstring jName = env->NewStringUTF(name);
+    jobject result = env->CallStaticObjectMethod(g_bindingHandlerCls, g_bindingCall,
+                                                 jName, javaArgs);
     env->DeleteLocalRef(jName);
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
-        // (见 jsMethodCallable 同类处理)
+        // 对齐 rhino WrappedException, 详见 jsMethodCallable。
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
         if (thr) {
             JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
             env->DeleteLocalRef(thr);
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
+            JS_FreeCString(ctx, name);
             if (JS_IsException(errObj)) return JS_EXCEPTION;
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 jsMethodCallable 注释)
             JS_Throw(ctx, errObj);
             return JS_EXCEPTION;
         }
-        return JS_ThrowInternalError(ctx, "Java binding '%s' threw (no throwable)",
-                                     nameStr.c_str());
+        JSValue exc = JS_ThrowInternalError(ctx, "Java binding '%s' threw (no throwable)", name);
+        JS_FreeCString(ctx, name);
+        return exc;
     }
 
-    // 结果转 JSValue
-    // 对 __newJavaInstance / __newJavaAdapter 强制走 JavaObjectClass::wrap,
-    // 不让 fromJavaObject 把 String/Integer 等转为 JS 基本类型。
-    // 这样 `new java.lang.String('hello')` 返回 JavaObject (包装 String),
-    // s.length() 能调用 String.length() 方法 (对齐 rhino LiveConnect 行为)。
     JSValue ret;
-    if (nameStr == "__newJavaInstance" || nameStr == "__newJavaAdapter") {
+    if (forceWrap) {
         if (result == nullptr) {
-            // 对齐 rhino: 构造失败应抛异常而非静默返回 null。
-            // createInstance 已改为抛 IllegalStateException (对齐 rhino "msg.no.java.ctor"),
-            // 走 ExceptionCheck 分支 wrap Throwable; 此处 result==null 仅在安全拦截
-            // (isClassVisible/isObjectVisible 返回 false) 或 adapter 创建失败时发生,
-            // 同样抛 TypeError 让 JS 侧知晓, 不静默返回 JS_NULL 导致 `new JavaClass()` 得到 null
+            // 安全拦截或 adapter 创建失败时到这里; 不静默返回 null。
             ret = JS_ThrowTypeError(ctx,
                                     "Java instantiation failed (security blocked or no matching constructor)");
         } else {
@@ -432,6 +434,7 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
         ret = JniValueConvert::fromJavaObject(ctx, env, result);
     }
     if (result) env->DeleteLocalRef(result);
+    JS_FreeCString(ctx, name);
     return ret;
 }
 

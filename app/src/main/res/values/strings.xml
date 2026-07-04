@@ -998,7 +998,7 @@
     <string name="welcome_text">Legado|Enjoy Good Times</string>
     <string name="enable_welcome">Enable welcome page</string>
     <string name="enable_welcome_summary">Whether to show welcome page on startup</string>
-    <string name="welcome_delay">Welcome page delay</string>
+    <string name="welcome_show_time">Welcome page show time</string>
     <string name="show_icon">Show icon</string>
     <string name="show_default_book_icon">Show default book icon</string>
     <string name="cache_export">Cache / Export</string>

@@ -3,7 +3,6 @@
 
 #include <quickjs.h>
 #include <jni.h>
-#include <string>
 
 /**
  * JSValue <-> Java 值转换。
@@ -75,11 +74,17 @@ public:
      * 用于 [toJavaObject] 异常分支和 nativeCompile 编译失败分支,
      * 让用户能直接看到出错行号, 而非只有 "TypeError: xxx"。
      *
+     * 返回 malloc 分配的 NUL 结尾字符串, 调用方必须 free()。
+     * 若分配失败返回 nullptr, 调用方应当作空字符串处理。
+     *
+     * 迁移原因: 原返回 std::string 会隐式引入 libc++_static 的 SSO/append 实现,
+     * 与 -fno-exceptions 组合时链接期还会拉入 __throw_length_error 等 stub。
+     *
      * @param ctx JSContext
      * @param exc JS_GetException 返回的异常对象 (调用方负责 FreeValue)
-     * @return 完整错误消息字符串 (含 message + stack)
+     * @return malloc 分配的错误消息 C 字符串; 使用后 free()
      */
-    static std::string buildExceptionMessage(JSContext *ctx, JSValue exc);
+    static char *buildExceptionMessage(JSContext *ctx, JSValue exc);
 };
 
 // 导出 Long 类缓存供其他模块复用 (避免重复 FindClass)

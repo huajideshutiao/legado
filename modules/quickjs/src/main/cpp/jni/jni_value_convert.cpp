@@ -3,7 +3,8 @@
 #include "jni_object_class.h"
 #include <android/log.h>
 #include <cstring>
-#include <mutex>
+#include <cstdlib>
+#include <pthread.h>
 
 #define TAG "legado_qjs"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -39,15 +40,18 @@ namespace {
     jmethodID g_ByteValue = nullptr;
     jmethodID g_ShortValue = nullptr;
     jmethodID g_FloatValue = nullptr;
-    // 用 std::once_flag 保证类缓存初始化只跑一次, 且初始化期间的所有写对其它
-    // 线程 happen-before 可见。原先裸 bool 没有 release barrier, thread A 写完
-    // g_inited=true 之前, g_BooleanCls 等赋值可能还在 store buffer, thread B 已
-    // 看到 g_inited=true 后用零/部分初始化的全局做 JNI 调用 (NULL methodID),
-    // 触发 JNI 内部 abort 或写错位置, 与远处 JSString header 损坏对得上。
-    std::once_flag g_initFlag;
+    // 双检锁 + __atomic (替代 std::call_once, 详见 jni_object_class.cpp)。
+    bool g_inited = false;
+    pthread_mutex_t g_initMutex = PTHREAD_MUTEX_INITIALIZER;
 
     void doInitClassCache(JNIEnv *env) {
-        std::call_once(g_initFlag, [env]() {
+        if (__atomic_load_n(&g_inited, __ATOMIC_ACQUIRE)) return;
+        pthread_mutex_lock(&g_initMutex);
+        if (g_inited) {
+            pthread_mutex_unlock(&g_initMutex);
+            return;
+        }
+        {
             // Boolean
             jclass localBool = env->FindClass("java/lang/Boolean");
             g_BooleanCls = (jclass) env->NewGlobalRef(localBool);
@@ -101,10 +105,11 @@ namespace {
             g_NativeObjectInitI = env->GetMethodID(g_NativeObjectCls, "<init>", "(I)V");
             g_NativeObjectPut = env->GetMethodID(g_NativeObjectCls, "put",
                                                  "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-        });
+        }
+        __atomic_store_n(&g_inited, true, __ATOMIC_RELEASE);
+        pthread_mutex_unlock(&g_initMutex);
     }
 
-    // 保持 inline hint 让编译器把已 warm 的 call_once 检查压得更薄。
     inline void ensureClassCache(JNIEnv *env) { doInitClassCache(env); }
 }
 
@@ -118,13 +123,14 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
     if (JS_IsException(value)) {
         // 获取异常对象, 构建含 stack 的完整错误消息 (含行号位置)
         JSValue exc = JS_GetException(ctx);
-        std::string msgStr = buildExceptionMessage(ctx, exc);
+        char *msgStr = buildExceptionMessage(ctx, exc);
         JS_FreeValue(ctx, exc);
         jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
         if (excCls) {
-            env->ThrowNew(excCls, msgStr.c_str());
+            env->ThrowNew(excCls, msgStr ? msgStr : "JS Exception");
             env->DeleteLocalRef(excCls);
         }
+        std::free(msgStr);
         return nullptr;
     }
 
@@ -326,12 +332,8 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
         return JS_NULL;
     }
 
-    // 类型分派: 一次 GetObjectClass + N 次 IsSameObject 指针比较, 替代原先 8 次
-    // IsInstanceOf 链。boxed 类型 (Boolean/Integer/Long/Double/Float/Byte/Short/String)
-    // 都是 final, GetObjectClass + IsSameObject 与 IsInstanceOf 语义等价; 差别在于
-    // IsInstanceOf 每次都要在 ART 里做类层次比对 (即便 final 也要 resolve class + 匹配),
-    // 而这里 resolve 一次后仅数值比较 GlobalRef 指针, 未命中时也不会跑 8 遍 hierarchy 遍历。
-    // wrap 分支 (自定义 Java 对象) 是常见的 non-boxed 路径, 免掉 8 次 miss 后再进 wrap。
+    // GetObjectClass 一次 + IsSameObject 指针比较, boxed 都是 final 所以与 IsInstanceOf 等价,
+    // 但省掉 ART 每次的 class 层次比对; wrap 分支 miss 时也不会走 8 遍 hierarchy。
     jclass cls = env->GetObjectClass(javaObj);
 
     // String (热路径最前, 书源大量返回字符串; UTF-16 路径见旧注释保留在下方 String 分支内)
@@ -465,29 +467,48 @@ static size_t trimTrailingWrapperFrames(const char *s, size_t n) {
     return n;
 }
 
-std::string JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
+char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     // 1. 获取 message (toString), 如 "TypeError: xxx" / "SyntaxError: ... at line 1 col 6"
     const char *msg = JS_ToCString(ctx, exc);
-    std::string msgStr = msg ? msg : "JS Exception";
-    JS_FreeCString(ctx, msg);
+    const char *msgSafe = msg ? msg : "JS Exception";
+    size_t msgLen = std::strlen(msgSafe);
 
     // 2. 若是 Error 对象 (含子类 SyntaxError/TypeError 等), 附加 stack 属性
     //    stack 含调用位置信息, 如 "    at foo (<eval>:3)\n    at <eval>:5"
     //    让用户直接看到出错行号, 而非只有错误类型+消息
+    const char *stackStr = nullptr;
+    size_t stackKept = 0;
+    JSValue stack = JS_UNDEFINED;
     if (JS_IsError(exc)) {
-        JSValue stack = JS_GetPropertyStr(ctx, exc, "stack");
+        stack = JS_GetPropertyStr(ctx, exc, "stack");
         if (!JS_IsUndefined(stack) && !JS_IsNull(stack)) {
-            const char *stackStr = JS_ToCString(ctx, stack);
+            stackStr = JS_ToCString(ctx, stack);
             if (stackStr && stackStr[0] != '\0') {
-                size_t kept = trimTrailingWrapperFrames(stackStr, std::strlen(stackStr));
-                if (kept > 0) {
-                    msgStr += "\n";
-                    msgStr.append(stackStr, kept);
-                }
+                stackKept = trimTrailingWrapperFrames(stackStr, std::strlen(stackStr));
             }
-            JS_FreeCString(ctx, stackStr);
         }
-        JS_FreeValue(ctx, stack);
     }
-    return msgStr;
+
+    // 3. 拼接 message + '\n' + trimmed stack 到单次 malloc 里
+    size_t total = msgLen + (stackKept > 0 ? 1 + stackKept : 0) + 1;
+    char *out = (char *) std::malloc(total);
+    if (!out) {
+        if (stackStr) JS_FreeCString(ctx, stackStr);
+        if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);
+        if (msg) JS_FreeCString(ctx, msg);
+        return nullptr;
+    }
+    std::memcpy(out, msgSafe, msgLen);
+    size_t pos = msgLen;
+    if (stackKept > 0) {
+        out[pos++] = '\n';
+        std::memcpy(out + pos, stackStr, stackKept);
+        pos += stackKept;
+    }
+    out[pos] = '\0';
+
+    if (stackStr) JS_FreeCString(ctx, stackStr);
+    if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);
+    if (msg) JS_FreeCString(ctx, msg);
+    return out;
 }

@@ -3,60 +3,50 @@
 
 #include <quickjs.h>
 #include <cstdint>
-#include <mutex>
-#include <unordered_map>
+#include <pthread.h>
 
 /**
- * JSValue 句柄表。
- *
- * 设计目的: JSValue 是 native 层的栈值(按值拷贝),不能直接传给 Java。
- * 用 long 句柄包装已 DupValue 的 JSValue,Java 侧只持有 8 字节句柄。
- *
- * 线程模型: 句柄表操作加锁(Java 侧 Cleaner 可能在其他线程调用 release)。
- * JS API 调用本身由调用方保证在同一线程(JSRuntime 单线程约束)。
- *
- * 生命周期: 句柄由 Java 侧 Cleaner/release 显式释放,或 context 销毁时批量释放。
+ * JSValue 句柄表: 用 long 句柄包装 DupValue 过的 JSValue 交给 Java 持有。
+ * Cleaner 可能跨线程 release, 因此加锁; 其他 JS API 由调用方保证同线程。
+ * 内部是 power-of-two 开放寻址表 (splitmix64 hash + 线性探测 + tombstone)。
  */
 class JsHandleTable {
 public:
     static JsHandleTable &instance();
 
-    /**
-     * 存储 JSValue (调用方需先 DupValue),返回句柄。
-     * ctx 用于记录所属 context,release 时用同一 ctx 调用 JS_FreeValue。
-     */
+    // 存入已 DupValue 的 JSValue, 返回句柄; ctx 用于 release 时匹配。
     int64_t store(JSContext *ctx, JSValue value);
 
-    /**
-     * 获取 JSValue (不转移所有权,调用方不应 FreeValue)。
-     * 返回 JS_UNDEFINED 表示句柄不存在。
-     */
+    // 读取 (不转移所有权)。无效句柄返回 JS_NULL。
     JSValue get(int64_t handle);
-
-    /**
-     * 获取句柄对应的 ctx。
-     */
     JSContext *getCtx(int64_t handle);
 
-    /**
-     * 释放句柄 (JS_FreeValue)。
-     */
+    // 单个 / 批量释放 (JS_FreeValue)。
     void release(int64_t handle);
-
-    /**
-     * 释放某 ctx 的所有句柄 (context 销毁时调用)。
-     */
     void releaseByCtx(JSContext *ctx);
 
 private:
     JsHandleTable();
 
+    ~JsHandleTable();
+
+    // state: 0 空, 1 占用, 2 tombstone (删除后仍占位以维持探测链)。
     struct Entry {
+        int64_t key;
         JSContext *ctx;
         JSValue value;
+        uint32_t state;
     };
-    std::mutex mutex;
-    std::unordered_map<int64_t, Entry> table;
+
+    void rehashLocked(uint32_t newSize);
+
+    uint32_t probeLocked(int64_t key, bool *outFound) const;
+
+    pthread_mutex_t mutex;
+    Entry *hash;        // 数组; size 为 2 的幂
+    uint32_t size;
+    uint32_t used;
+    uint32_t tombstones;
     int64_t nextHandle;
 };
 

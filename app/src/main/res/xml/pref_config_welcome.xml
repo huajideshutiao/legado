@@ -10,8 +10,8 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
-        android:key="welcomeDelay"
-        android:title="@string/welcome_delay"
+        android:key="welcomeShowTime"
+        android:title="@string/welcome_show_time"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference

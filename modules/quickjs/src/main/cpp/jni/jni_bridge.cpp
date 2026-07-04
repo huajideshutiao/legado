@@ -2,8 +2,7 @@
 #include <quickjs.h>
 #include <android/log.h>
 #include <cstring>
-#include <string>
-#include <vector>
+#include <cstdlib>
 
 #include "jni_handle.h"
 #include "jni_object_class.h"
@@ -13,6 +12,14 @@
 #define TAG "legado_qjs"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+// 覆盖 libc++abi 的 __cxa_demangle: 已 -fno-exceptions, 只有 demangling_terminate_handler
+// (uncaught 异常时打印 typename) 一处会用它, 我们让它返回 nullptr, 触发上游 gc-sections
+// 剪掉整套 itanium_demangle (~114 KB)。签名与 __cxxabi_demangle.h 保持一致。
+extern "C" char *__cxa_demangle(const char *, char *, size_t *, int *status) {
+    if (status) *status = -1;
+    return nullptr;
+}
 
 // 缓存的 JavaVM (JNI_OnLoad 时设置)
 static JavaVM *g_jvm = nullptr;
@@ -397,13 +404,14 @@ Java_com_script_quickjs_QuickJsNative_nativeWrapJavaObject(JNIEnv *env, jobject 
         // 取出异常抛 JsNativeException, 对齐 nativeEval/nativeEvalBytecode/nativeCompile 模式;
         // 否则 Error 残留 ctx, 下次 eval 会误报, 且 Java 侧拿到 nullptr 不知是包装失败
         JSValue exc = JS_GetException(ctx);
-        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        char *msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
         JS_FreeValue(ctx, exc);
         jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
         if (excCls) {
-            env->ThrowNew(excCls, msgStr.c_str());
+            env->ThrowNew(excCls, msgStr ? msgStr : "JS Exception");
             env->DeleteLocalRef(excCls);
         }
+        std::free(msgStr);
         return nullptr;
     }
     int64_t handle = JsHandleTable::instance().store(ctx, val);
@@ -445,16 +453,16 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject cl
 
     JSValue thisVal = thisHandle ? JsHandleTable::instance().get(thisHandle) : JS_UNDEFINED;
 
-    // 准备参数: 小参数量 (常见 <= 8) 走栈, 避免 std::vector 的堆分配 + 析构 + 触发全局 allocator 锁。
-    // JS_Call 只读 args 内容, 不持有数组本身, 栈上生命周期覆盖 JS_Call 即可。
+    // 参数 <= 8 走栈, 超出堆分配。malloc 而非 std::vector, 避开 libc++_static stub。
     jsize argCount = argHandles ? env->GetArrayLength(argHandles) : 0;
     constexpr jsize kStackArgs = 8;
     JSValue stackArgs[kStackArgs];
     JSValue *args = stackArgs;
-    std::vector<JSValue> heapArgs;
+    JSValue *heapArgs = nullptr;
     if (argCount > kStackArgs) {
-        heapArgs.resize(argCount);
-        args = heapArgs.data();
+        heapArgs = (JSValue *) std::malloc(sizeof(JSValue) * (size_t) argCount);
+        if (!heapArgs) return nullptr;
+        args = heapArgs;
     }
     if (argHandles && argCount > 0) {
         jlong *handles = env->GetLongArrayElements(argHandles, nullptr);
@@ -470,6 +478,7 @@ Java_com_script_quickjs_QuickJsNative_nativeCallFunction(JNIEnv *env, jobject cl
     JSValue result = JS_Call(ctx, func, thisVal, argCount, args);
     jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
     JS_FreeValue(ctx, result);
+    std::free(heapArgs);
     return ret;
 }
 
@@ -486,56 +495,50 @@ Java_com_script_quickjs_QuickJsNative_nativeCallJsHandle(JNIEnv *env, jobject cl
     JSValue func = JsHandleTable::instance().get(funcHandle);
     if (JS_IsNull(func)) return nullptr;
 
-    // 1. Java Object[] -> 临时 JSValue[] (fromJavaObject 返回需 FreeValue)
-    // 常见调用 <= 8 参数走栈上数组, 省掉 std::vector 分配; 超出退回堆分配。
+    // Java Object[] -> 临时 JSValue[]。<= 8 参数走栈, 超出堆分配。
     jsize argCount = argObjects ? env->GetArrayLength(argObjects) : 0;
     constexpr jsize kStackArgs = 8;
     JSValue stackArgs[kStackArgs];
     JSValue *args = stackArgs;
-    std::vector<JSValue> heapArgs;
+    JSValue *heapArgs = nullptr;
     if (argCount > kStackArgs) {
-        heapArgs.resize(argCount);
-        args = heapArgs.data();
+        heapArgs = (JSValue *) std::malloc(sizeof(JSValue) * (size_t) argCount);
+        if (!heapArgs) return nullptr;
+        args = heapArgs;
     }
     for (jsize i = 0; i < argCount; i++) {
         jobject argObj = argObjects ? env->GetObjectArrayElement(argObjects, i) : nullptr;
         JSValue arg = JniValueConvert::fromJavaObject(ctx, env, argObj);
         if (argObj) env->DeleteLocalRef(argObj);
-        // 致命陷阱: fromJavaObject 内部 wrap 失败返回 JS_EXCEPTION (ctx 已设异常),
-        // 但 ExceptionCheck 检测不到 (不是 JNI 异常), 必须先检查 JS_IsException,
-        // 否则 JS_EXCEPTION 会被当作合法参数传给 JS_Call 触发 UB (堆腐败/abort)
+        // fromJavaObject 失败返回 JS_EXCEPTION, 必须显式检查, 否则会当合法参数传给 JS_Call 触发 UB。
         if (JS_IsException(arg)) {
             for (jsize j = 0; j < i; j++) JS_FreeValue(ctx, args[j]);
-            // 把 ctx 异常转成 JsNativeException 抛出 (对齐 nativeEval 模式)
             jobject excObj = JniValueConvert::toJavaObject(ctx, env, arg);
-            JS_FreeValue(ctx, arg);  // JS_EXCEPTION 的 FreeValue 是 no-op, 保持对称
+            JS_FreeValue(ctx, arg);
+            std::free(heapArgs);
             return excObj;
         }
         if (env->ExceptionCheck()) {
-            // JNI 异常 (如 Integer.intValue() 抛 NumberFormatException)
-            // pending 异常下后续 JNI 调用是 UB, 必须 early return
             for (jsize j = 0; j < i; j++) JS_FreeValue(ctx, args[j]);
             JS_FreeValue(ctx, arg);
-            return nullptr;  // pending JNI 异常会传播到 Java 调用方
+            std::free(heapArgs);
+            return nullptr;
         }
         args[i] = arg;
     }
 
-    // 2. 更新 stack_top (跨线程栈检查必需, 对齐 nativeCallFunction)
     JS_UpdateStackTop(JS_GetRuntime(ctx));
 
-    // 3. 用全局对象作 thisVal (对齐 nativeEval 的 JS_EVAL_TYPE_GLOBAL sloppy mode,
-    //    避免普通 function 的 this=undefined 导致严格模式行为不一致)
+    // 用全局对象作 thisVal, 对齐 nativeEval 的 sloppy mode。
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue result = JS_Call(ctx, func, global, argCount, args);
     JS_FreeValue(ctx, global);
 
-    // 4. 释放临时 args (fromJavaObject 返回的 JSValue 需 FreeValue)
     for (jsize i = 0; i < argCount; i++) JS_FreeValue(ctx, args[i]);
 
-    // 5. 转 Java 返回值 (toJavaObject 内部处理 JS_IsException -> 抛 JsNativeException)
     jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
     JS_FreeValue(ctx, result);
+    std::free(heapArgs);
     return ret;
 }
 
@@ -567,14 +570,15 @@ Java_com_script_quickjs_QuickJsNative_nativeCompile(JNIEnv *env, jobject clazz,
         JSValue exc = JS_GetException(ctx);
         // 用 buildExceptionMessage 获取含 stack 的完整消息
         // (编译错误的 SyntaxError message 已含 "at line X col Y", stack 可能没意义但保留)
-        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        char *msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
         JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, funVal);
         jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
         if (excCls) {
-            env->ThrowNew(excCls, msgStr.c_str());
+            env->ThrowNew(excCls, msgStr ? msgStr : "Compile failed");
             env->DeleteLocalRef(excCls);
         }
+        std::free(msgStr);
         return nullptr;
     }
 
@@ -609,14 +613,15 @@ Java_com_script_quickjs_QuickJsNative_nativeEvalBytecode(JNIEnv *env, jobject cl
         // ctx 异常 slot 已设, 获取异常信息抛 JsNativeException, 避免返回 null 让 Kotlin 侧
         // 只能抛通用 "Eval bytecode failed" 丢失原始错误信息(如 "bytecode header mismatch")
         JSValue exc = JS_GetException(ctx);
-        std::string msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+        char *msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
         JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, funVal);
         jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
         if (excCls) {
-            env->ThrowNew(excCls, msgStr.c_str());
+            env->ThrowNew(excCls, msgStr ? msgStr : "Eval bytecode failed");
             env->DeleteLocalRef(excCls);
         }
+        std::free(msgStr);
         return nullptr;
     }
 

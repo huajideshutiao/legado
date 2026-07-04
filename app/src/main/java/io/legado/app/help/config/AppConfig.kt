@@ -328,7 +328,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var welcomeImage by stringPref(PreferKey.welcomeImage)
     var welcomeShowText by boolPref(PreferKey.welcomeShowText, true)
     var welcomeShowIcon by boolPref(PreferKey.welcomeShowIcon, true)
-    var welcomeDelay by intPref(PreferKey.welcomeDelay, 600, 0..3000)
+    var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600, 0..3000)
     var welcomeImageDark by stringPref(PreferKey.welcomeImageDark)
 
 }

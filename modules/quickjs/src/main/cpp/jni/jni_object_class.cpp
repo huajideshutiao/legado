@@ -4,7 +4,8 @@
 #include "jni_callbacks.h"
 #include <android/log.h>
 #include <cstring>
-#include <mutex>
+#include <cstdlib>
+#include <pthread.h>
 
 #define TAG "legado_qjs"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -12,8 +13,10 @@
 // 静态成员初始化
 JSClassID JavaObjectClass::classId = 0;
 JavaVM *JavaObjectClass::cachedJvm = nullptr;
-std::unordered_set<JSRuntime *> JavaObjectClass::registeredRuntimes;
-std::mutex JavaObjectClass::registryMutex;
+JSRuntime **JavaObjectClass::registeredRuntimes = nullptr;
+uint32_t JavaObjectClass::registeredCount = 0;
+uint32_t JavaObjectClass::registeredCap = 0;
+pthread_mutex_t JavaObjectClass::registryMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // 缓存的 Java 方法 ID (JavaObjectBridgeNative 静态方法)
 namespace {
@@ -26,13 +29,9 @@ namespace {
     // trap 用 IsSameObject 与之对比, 免掉原先 3 槽数组 + 装箱 2 Boolean 的开销。
     jobject g_methodMarker = nullptr;
     jobject g_nullFieldMarker = nullptr;
-    // Tier 2: method callable 改为共享 + 从 this_val 取对象后, 不再需要 getHandle (已删)
-    // 用 std::once_flag 保证 init body 只执行一次, 且执行完成后对其它线程可见
-    // (call_once 内部 release/acquire 屏障替代了原裸 bool 的 publish-after-write 隐患:
-    //  原先 thread A 还在赋值 g_hasProperty/g_getHandle, thread B 已观察到 g_bridgeInited==true
-    //  并取走零值 method ID, 走入"调用未初始化方法 ID"路径, 后续返回 JS_EXCEPTION 时
-    //  ctx 异常 slot 为空, 触发 JS_GetException 拿 stale 值的契约违反)
-    std::once_flag g_bridgeInitFlag;
+    // 双检锁 + __atomic (替代 std::call_once, 免 libc++ 依赖; pthread_once 无法安全传 env)。
+    bool g_bridgeInited = false;
+    pthread_mutex_t g_bridgeInitMutex = PTHREAD_MUTEX_INITIALIZER;
 
     // java.util.List 缓存 (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
     jclass g_listCls = nullptr;
@@ -73,12 +72,15 @@ namespace {
         return env;
     }
 
-    // 初始化 JavaObjectBridgeNative 的方法 ID
-    // 所有方法签名都带 dangerousApi 参数 (从 ctx opaque 读取)
+    // 初始化 JavaObjectBridgeNative 及相关缓存的方法 ID。
     void ensureBridgeInited(JNIEnv *env) {
-        std::call_once(g_bridgeInitFlag, [env]() {
-            // JavaObjectBridgeNative 是 Kotlin object,编译后类名 com.script.quickjs.JavaObjectBridgeNative
-            // 提供 @JvmStatic 静态方法供 native 回调,实现 Java 对象的属性访问
+        if (__atomic_load_n(&g_bridgeInited, __ATOMIC_ACQUIRE)) return;
+        pthread_mutex_lock(&g_bridgeInitMutex);
+        if (g_bridgeInited) {
+            pthread_mutex_unlock(&g_bridgeInitMutex);
+            return;
+        }
+        {
             jclass local = env->FindClass("com/script/quickjs/JavaObjectBridgeNative");
             if (!local) {
                 LOGE("JavaObjectBridgeNative class not found");
@@ -178,18 +180,17 @@ namespace {
             }
             if (env->ExceptionCheck()) env->ExceptionClear();
 
-            // 汇总检查放到 lambda 末尾: Boolean 与 sentinel 在上面才初始化, 提前判会误报。
+            // 汇总检查放到末尾: Boolean 与 sentinel 在上面才初始化, 提前判会误报。
             if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
                     !g_BooleanCls || !g_BooleanValue ||
                     !g_methodMarker || !g_nullFieldMarker) {
                 LOGE("JavaObjectBridgeNative methods/Boolean/sentinel not found");
                 env->ExceptionClear();
             }
-        });
+        }
+        __atomic_store_n(&g_bridgeInited, true, __ATOMIC_RELEASE);
+        pthread_mutex_unlock(&g_bridgeInitMutex);
     }
-
-    // 让 trap 用简短的调用点保持源可读性。
-    inline void ensureBridgeInitedFast(JNIEnv *env) { ensureBridgeInited(env); }
 
     // 检测 atom 是否为 Symbol.iterator (well-known symbol)。
     // 缓存在 CtxOpaqueData::symbolIteratorAtom (initCtxOpaque 时经 globalThis.Symbol.iterator
@@ -454,26 +455,23 @@ namespace {
 }
 
 JSClassID JavaObjectClass::init(JSRuntime *rt, JavaVM *jvm) {
-    // 并发安全: nativeCreateContext 可能从多个 Java 线程同时调用,
-    // 这里对 classId 分配 + JS_NewClass + registeredRuntimes.insert 整体加锁。
-    // 在 quickjs-ng 多 runtime 场景下, 这是少数能跨 runtime 触发的 native 路径。
-    std::lock_guard<std::mutex> lock(registryMutex);
-
+    // nativeCreateContext 可能并发调用, 整段加锁。
+    pthread_mutex_lock(&registryMutex);
     cachedJvm = jvm;
 
-    // 首次调用: 用 JS_NewClassID 分配进程级全局唯一的 classId
-    // classId 可跨 runtime 复用 (只是一个数字 ID)
-    if (classId == 0) {
-        JS_NewClassID(rt, &classId);
-    }
+    // classId 是进程级 (一个数字), 首次分配后跨 runtime 复用。
+    if (classId == 0) JS_NewClassID(rt, &classId);
 
-    // JS_NewClass 是 runtime-specific 的: 每个新 JSRuntime 都必须注册一次,
-    // 否则 JS_NewObjectClass 在未注册的 runtime 上返回 exception,
-    // wrap() 会返回 JS_NULL,导致 Java 对象注入失败。
-    // 用 registeredRuntimes 集合避免在同一 runtime 上重复注册。
-    if (registeredRuntimes.find(rt) == registeredRuntimes.end()) {
-        // 定义类: finalizer 释放 jobject GlobalRef,exotic 拦截属性访问
-        // exotic 必须是 static (JSClassDef 内部只存指针,调用方需保证生命周期)
+    // JS_NewClass 是 runtime-scoped, 每个 rt 都要注册一次; 未注册的 rt 上 JS_NewObjectClass 会失败。
+    bool alreadyRegistered = false;
+    for (uint32_t i = 0; i < registeredCount; i++) {
+        if (registeredRuntimes[i] == rt) {
+            alreadyRegistered = true;
+            break;
+        }
+    }
+    if (!alreadyRegistered) {
+        // exotic/def 必须 static: JSClassDef 只存指针。
         static JSClassExoticMethods exotic = {};
         exotic.has_property = &JavaObjectClass::hasProperty;
         exotic.get_property = &JavaObjectClass::getProperty;
@@ -485,35 +483,48 @@ JSClassID JavaObjectClass::init(JSRuntime *rt, JavaVM *jvm) {
         static JSClassDef def = {};
         def.class_name = "JavaObject";
         def.finalizer = &JavaObjectClass::finalizer;
-        def.gc_mark = nullptr;
-        def.call = nullptr;
         def.exotic = &exotic;
 
         int ret = JS_NewClass(rt, classId, &def);
         if (ret != 0) {
             LOGE("JS_NewClass failed for JavaObject: ret=%d", ret);
-            // 不清零 classId (可能其他 runtime 在用),此 runtime 上 class 不可用
+            pthread_mutex_unlock(&registryMutex);
             return 0;
         }
-        registeredRuntimes.insert(rt);
+        if (registeredCount >= registeredCap) {
+            uint32_t newCap = registeredCap == 0 ? 8 : registeredCap * 2;
+            JSRuntime **nb = (JSRuntime **) std::realloc(registeredRuntimes,
+                                                         newCap * sizeof(JSRuntime *));
+            if (!nb) {
+                LOGE("registeredRuntimes realloc failed");
+                pthread_mutex_unlock(&registryMutex);
+                return classId;
+            }
+            registeredRuntimes = nb;
+            registeredCap = newCap;
+        }
+        registeredRuntimes[registeredCount++] = rt;
     }
+    pthread_mutex_unlock(&registryMutex);
     return classId;
 }
 
-JSClassID JavaObjectClass::getClassId() {
-    return classId;
-}
+JSClassID JavaObjectClass::getClassId() { return classId; }
 
 void JavaObjectClass::unregisterRuntime(JSRuntime *rt) {
     if (!rt) return;
-    std::lock_guard<std::mutex> lock(registryMutex);
-    registeredRuntimes.erase(rt);
+    pthread_mutex_lock(&registryMutex);
+    // swap-with-last 删除。
+    for (uint32_t i = 0; i < registeredCount; i++) {
+        if (registeredRuntimes[i] == rt) {
+            registeredRuntimes[i] = registeredRuntimes[--registeredCount];
+            break;
+        }
+    }
+    pthread_mutex_unlock(&registryMutex);
 }
 
-void JavaObjectClass::initBridgeCache(JNIEnv *env) {
-    // 委托匿名命名空间里的 std::call_once, 只在 OnLoad 阶段被打一次。
-    ensureBridgeInited(env);
-}
+void JavaObjectClass::initBridgeCache(JNIEnv *env) { ensureBridgeInited(env); }
 
 JSValue JavaObjectClass::wrap(JSContext *ctx, JNIEnv *env, jobject javaObj) {
     if (classId == 0) {

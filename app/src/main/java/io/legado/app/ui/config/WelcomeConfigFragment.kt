@@ -55,7 +55,7 @@ class WelcomeConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_welcome)
         upPreferenceSummary(PreferKey.welcomeImage, AppConfig.welcomeImage)
         upPreferenceSummary(PreferKey.welcomeImageDark, AppConfig.welcomeImageDark)
-        upPreferenceSummary(PreferKey.welcomeDelay, AppConfig.welcomeDelay.toString())
+        upPreferenceSummary(PreferKey.welcomeShowTime, AppConfig.welcomeShowTime.toString())
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -84,14 +84,14 @@ class WelcomeConfigFragment : PreferenceFragment(),
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (val key = preference.key) {
-            PreferKey.welcomeDelay -> {
+            PreferKey.welcomeShowTime -> {
                 showNumberPicker(
                     requireContext(),
-                    titleResId = R.string.welcome_delay,
-                    max = 3000, min = 0, value = AppConfig.welcomeDelay
+                    titleResId = R.string.welcome_show_time,
+                    max = 3000, min = 0, value = AppConfig.welcomeShowTime
                 ) {
-                    AppConfig.welcomeDelay = it
-                    upPreferenceSummary(PreferKey.welcomeDelay, it.toString())
+                    AppConfig.welcomeShowTime = it
+                    upPreferenceSummary(PreferKey.welcomeShowTime, it.toString())
                 }
                 return true
             }
@@ -140,7 +140,7 @@ class WelcomeConfigFragment : PreferenceFragment(),
             } else {
                 value
             }
-            PreferKey.welcomeDelay -> preference.summary = "${value}ms"
+            PreferKey.welcomeShowTime -> preference.summary = "${value}ms"
 
             else -> preference.summary = value
         }
