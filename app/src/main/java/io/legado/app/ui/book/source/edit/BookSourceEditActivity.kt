@@ -339,7 +339,8 @@ class BookSourceEditActivity :
             add(EditEntity("chapterUrl", tr.chapterUrl, R.string.rule_chapter_url))
             add(EditEntity("isVolume", tr.isVolume, R.string.rule_is_volume))
             add(EditEntity("updateTime", tr.updateTime, R.string.rule_update_time))
-            add(EditEntity("needPay", tr.needPay, R.string.rule_need_pay))
+            add(EditEntity("isVip", tr.isVip, R.string.rule_is_vip))
+            add(EditEntity("isPay", tr.isPay, R.string.rule_is_pay))
             add(EditEntity("nextTocUrl", tr.nextTocUrl, R.string.rule_next_toc_url))
         }
         // 正文页
@@ -493,7 +494,8 @@ class BookSourceEditActivity :
                 "chapterUrl" -> tocRule.chapterUrl = it.text
                 "isVolume" -> tocRule.isVolume = it.text
                 "updateTime" -> tocRule.updateTime = it.text
-                "needPay" -> tocRule.needPay = it.text
+                "isVip" -> tocRule.isVip = it.text
+                "isPay" -> tocRule.isPay = it.text
                 "nextTocUrl" -> tocRule.nextTocUrl = it.text
             }
         }

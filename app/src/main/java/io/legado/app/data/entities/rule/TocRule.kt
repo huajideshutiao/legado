@@ -2,7 +2,6 @@ package io.legado.app.data.entities.rule
 
 import android.os.Parcelable
 import com.google.gson.JsonDeserializer
-import com.google.gson.annotations.SerializedName
 import io.legado.app.utils.INITIAL_GSON
 import kotlinx.parcelize.Parcelize
 
@@ -13,8 +12,8 @@ data class TocRule(
     var chapterName: String? = null,
     var chapterUrl: String? = null,
     var isVolume: String? = null,
-    @SerializedName("needPay", alternate = ["isVip"])
-    var needPay: String? = null,
+    var isVip: String? = null,
+    var isPay: String? = null,
     var updateTime: String? = null,
     var nextTocUrl: String? = null
 ) : Parcelable {

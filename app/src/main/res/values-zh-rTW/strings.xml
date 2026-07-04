@@ -430,7 +430,7 @@
     <string name="rule_chapter_name">章節名稱規則(ChapterName)</string>
     <string name="rule_chapter_url">章節URL規則(chapterUrl)</string>
     <string name="rule_is_volume">Volume標識(isVolume)</string>
-    <string name="rule_need_pay">是否需要購買規則（needPay）</string>
+    <string name="rule_is_vip">VIP標識(isVip)</string>
     <string name="rule_update_time">更新時間(ChapterInfo)</string>
     <string name="pre_update_js">更新之前Js(preUpdateJs)</string>
     <string name="rule_book_content">正文規則(content)</string>

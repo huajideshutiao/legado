@@ -1297,7 +1297,7 @@
     <string name="filter_book_type">按類型過濾</string>
     <string name="book_type_novel">小說</string>
     <string name="book_type_comic">漫畫</string>
-    <string name="rule_need_pay">需要付費規則 (needPay)</string>
+    <string name="rule_is_vip">VIP 標識 (isVip)</string>
     <string name="rule_should_override_url_loading">拦截網絡請求 (shouldOverrideUrlLoading)</string>
     <string name="rule_sub_content">附加內容規則 (subContent)</string>
     <string name="rule_music_cover">音樂封面 URL 規則</string>

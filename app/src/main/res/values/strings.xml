@@ -436,7 +436,7 @@
     <string name="rule_chapter_name">Chapter name(chapterName)</string>
     <string name="rule_chapter_url">Chapter url(chapterUrl)</string>
     <string name="rule_is_volume">Is volume(isVolume)</string>
-    <string name="rule_need_pay">Need pay rule(needPay)</string>
+    <string name="rule_is_vip">Is vip(isVip)</string>
     <string name="rule_update_time">Chapter info(ChapterInfo)</string>
     <string name="pre_update_js">Js before update(preUpdateJs)</string>
     <string name="rule_book_content">Content(content)</string>

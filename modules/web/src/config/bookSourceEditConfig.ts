@@ -374,11 +374,18 @@ export default {
         hint: '选择章节信息（如更新时间） (规则结果为String)',
       },
       {
-        title: '收费标识',
+        title: 'VIP标识',
         namespace: 'ruleToc',
-        id: 'needPay',
+        id: 'isVip',
         type: 'String',
-        hint: '章节是否需要购买 (规则结果为Bool)',
+        hint: '章节是否为VIP章节 (规则结果为Bool)',
+      },
+      {
+        title: '购买标识',
+        namespace: 'ruleToc',
+        id: 'isPay',
+        type: 'String',
+        hint: '章节是否为已购买 (规则结果为Bool)',
       },
       {
         title: '翻页规则',

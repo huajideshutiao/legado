@@ -435,7 +435,7 @@
     <string name="rule_chapter_name">章节名称规则（ChapterName）</string>
     <string name="rule_chapter_url">章节 URL 规则（chapterUrl）</string>
     <string name="rule_is_volume">Volume 标识（isVolume）</string>
-    <string name="rule_need_pay">是否需要购买规则（needPay）</string>
+    <string name="rule_is_vip">VIP 标识（isVip）</string>
     <string name="rule_update_time">更新时间（ChapterInfo）</string>
     <string name="pre_update_js">更新之前 JS（preUpdateJs）</string>
     <string name="rule_book_content">正文规则（content）</string>

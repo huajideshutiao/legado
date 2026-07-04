@@ -182,7 +182,8 @@ object BookChapterList {
             Debug.log(bookSource.bookSourceUrl, "┌解析目录列表", log)
             val nameRule = analyzeRule.splitSourceRule(tocRule.chapterName)
             val urlRule = analyzeRule.splitSourceRule(tocRule.chapterUrl)
-            val needPayRule = analyzeRule.splitSourceRule(tocRule.needPay)
+            val vipRule = analyzeRule.splitSourceRule(tocRule.isVip)
+            val payRule = analyzeRule.splitSourceRule(tocRule.isPay)
             val upTimeRule = analyzeRule.splitSourceRule(tocRule.updateTime)
             val isVolumeRule = analyzeRule.splitSourceRule(tocRule.isVolume)
             elements.forEachIndexed { index, item ->
@@ -211,8 +212,11 @@ object BookChapterList {
                     }
                 }
                 if (bookChapter.title.isNotEmpty()) {
-                    if (analyzeRule.getString(needPayRule).isTrue()) {
+                    if (analyzeRule.getString(vipRule).isTrue()) {
                         bookChapter.isVip = true
+                    }
+                    if (analyzeRule.getString(payRule).isTrue()) {
+                        bookChapter.isPay = true
                     }
                     chapterList.add(bookChapter)
                 }
