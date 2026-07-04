@@ -43,8 +43,8 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
         book.durChapterIndex = progress.durChapterIndex
         book.durChapterPos = progress.durChapterPos
         book.durChapterTitle = progress.durChapterTitle
-        position = progress.durChapterPos.toLong()
-        saveRead(position)
+        position = progress.durChapterPos.coerceAtLeast(0).toLong()
+        saveRead(progress.durChapterPos.toLong())
         if (chapterChanged) {
             chapterListData.value?.getOrNull(progress.durChapterIndex)?.let { initChapter(it) }
         }
@@ -65,7 +65,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
                 curBook!!.durChapterPos = overridePos
                 saveRead(overridePos.toLong())
             }
-            position = curBook!!.durChapterPos.toLong()
+            position = curBook!!.durChapterPos.coerceAtLeast(0).toLong()
             val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
             initChapter(chapterList!![curBook!!.durChapterIndex])
             curBook?.takeIf { inBookshelf }?.let { syncBookProgress(it) }

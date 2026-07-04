@@ -287,14 +287,15 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
                     book.sync(oldBook)
                     book.removeType(BookType.updateError)
-                    if (book.bookUrl == bookUrl) {
-                        appDb.bookDao.update(book)
-                    } else {
-                        appDb.bookDao.replace(oldBook, book)
-                        BookHelp.updateCacheFolder(oldBook, book)
+                    val bookUrlChanged = book.bookUrl != bookUrl
+                    // 合并 DB 写入, 减少 invalidationTracker 触发
+                    appDb.runInTransaction {
+                        if (bookUrlChanged) appDb.bookDao.replace(oldBook, book)
+                        else appDb.bookDao.update(book)
+                        appDb.bookChapterDao.delByBook(bookUrl)
+                        appDb.bookChapterDao.insert(*toc.toTypedArray())
                     }
-                    appDb.bookChapterDao.delByBook(bookUrl)
-                    appDb.bookChapterDao.insert(*toc.toTypedArray())
+                    if (bookUrlChanged) BookHelp.updateCacheFolder(oldBook, book)
                     ReadBook.onChapterListUpdated(book)
                     addDownload(source, book)
                     postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
@@ -481,14 +482,15 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             val toc = tocResult.getOrThrow()
             book.sync(oldBook)
             book.removeType(BookType.updateError)
-            if (book.bookUrl == bookUrl) {
-                appDb.bookDao.update(book)
-            } else {
-                appDb.bookDao.replace(oldBook, book)
-                BookHelp.updateCacheFolder(oldBook, book)
+            val bookUrlChanged = book.bookUrl != bookUrl
+            // 合并 DB 写入, 减少 invalidationTracker 触发
+            appDb.runInTransaction {
+                if (bookUrlChanged) appDb.bookDao.replace(oldBook, book)
+                else appDb.bookDao.update(book)
+                appDb.bookChapterDao.delByBook(bookUrl)
+                appDb.bookChapterDao.insert(*toc.toTypedArray())
             }
-            appDb.bookChapterDao.delByBook(bookUrl)
-            appDb.bookChapterDao.insert(*toc.toTypedArray())
+            if (bookUrlChanged) BookHelp.updateCacheFolder(oldBook, book)
             ReadBook.onChapterListUpdated(book)
             addDownload(source, book)
         }.onFailure {

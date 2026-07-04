@@ -425,7 +425,6 @@
     <string name="rule_chapter_name">章節名稱規則 (ChapterName)</string>
     <string name="rule_chapter_url">章節 URL 規則 (chapterUrl)</string>
     <string name="rule_is_volume">Volume標識(isVolume)</string>
-    <string name="rule_is_vip">VIP 標識 (isVip)</string>
     <string name="rule_update_time">更新時間 (ChapterInfo)</string>
     <string name="pre_update_js">更新之前Js(preUpdateJs)</string>
     <string name="rule_book_content">正文規則 (content)</string>
@@ -1133,7 +1132,6 @@
     <string name="change_source_progress">" 結果 %1$d, 當前進度 %2$d / %3$d: %4$s"</string>
     <string name="export_wait">等待匯出</string>
     <string name="sync_book_progress_success">進度同步成功</string>
-    <string name="default_home_page">默认主页</string>
     <string name="show_bookshelf_fast_scroller">顯示快速捲動條</string>
     <string name="export_all_use_book_source">匯出所有書的書源</string>
     <string name="cloud_progress_exceeds_current">雲端進度超過目前進度，是否同步？</string>
@@ -1301,7 +1299,6 @@
     <string name="book_type_comic">漫畫</string>
     <string name="rule_need_pay">需要付費規則 (needPay)</string>
     <string name="rule_should_override_url_loading">拦截網絡請求 (shouldOverrideUrlLoading)</string>
-    <string name="rule_web_js">WebViewJs (webJs)</string>
     <string name="rule_sub_content">附加內容規則 (subContent)</string>
     <string name="rule_music_cover">音樂封面 URL 規則</string>
 

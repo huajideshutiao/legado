@@ -32,8 +32,10 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -182,6 +184,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     /**
      * 更新书籍列表信息
      */
+    @OptIn(FlowPreview::class)
     private fun upRecyclerData() {
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -189,12 +192,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 groupId = groupId,
                 lifecycle = viewLifecycleOwner.lifecycle,
                 sorter = ::sortBooks,
-            ).collect { list ->
+            )
+                .debounce(100) // 防抖, 避免密集变更时频繁刷 UI
+                .collect { list ->
                 binding.tvEmptyMsg.isGone = list.isNotEmpty()
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
                 booksAdapter?.setItems(list)
                 (parentFragment as? BookshelfFragment1)?.updateTabTitle(groupId, list.size)
-                delay(100)
             }
         }
     }
@@ -235,10 +239,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         } else {
             binding.rvBookshelf.smoothScrollToPosition(0)
         }
-    }
-
-    fun getBooksCount(): Int {
-        return booksAdapter?.itemCount ?: 0
     }
 
     override fun onDestroyView() {

@@ -185,7 +185,7 @@ class AudioPlayActivity :
             chapterIndex = AudioPlay.durChapterIndex
             chapterPos = pos
             chapterName = chapter?.title ?: book.durChapterTitle ?: ""
-            content =
+            bookText =
                 "${pos.toDurationTime()} / ${if (total > 0) total.toDurationTime() else "未知"}"
         }
         showDialogFragment(BookmarkDialog(bookmark))

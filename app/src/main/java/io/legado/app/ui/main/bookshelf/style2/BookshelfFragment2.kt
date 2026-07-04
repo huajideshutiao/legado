@@ -30,8 +30,9 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -151,6 +152,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         initBooksData()
     }
 
+    @OptIn(FlowPreview::class)
     private fun initBooksData() {
         applyGroupState()
         booksFlowJob?.cancel()
@@ -159,11 +161,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 groupId = groupId,
                 lifecycle = viewLifecycleOwner.lifecycle,
                 sorter = ::sortBooks,
-            ).collect { list ->
+            )
+                .debounce(100) // 防抖, 避免密集变更时频繁刷 UI
+                .collect { list ->
                 books = list
                 booksAdapter?.updateItems()
                 applyGroupState()
-                delay(100)
             }
         }
     }

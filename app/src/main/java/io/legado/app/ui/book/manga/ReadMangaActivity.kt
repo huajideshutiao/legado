@@ -647,7 +647,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             chapterIndex = viewModel.durChapterIndex
             chapterPos = pos
             chapterName = chapter?.title ?: book.durChapterTitle ?: ""
-            content = "第${pos + 1}页 / 共${if (imageCount > 0) "${imageCount}页" else "未知"}"
+            bookText = "第${pos + 1}页 / 共${if (imageCount > 0) "${imageCount}页" else "未知"}"
         }
         showDialogFragment(BookmarkDialog(bookmark))
     }

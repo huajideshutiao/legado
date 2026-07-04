@@ -506,7 +506,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
 
     private fun addBookmark() {
         val book = viewModel.curBook ?: return
-        val pos = player?.currentPosition?.toInt() ?: book.durChapterPos
+        val pos = player?.currentPosition?.toInt() ?: book.durChapterPos.coerceAtLeast(0)
         val dur = player?.duration?.takeIf { it > 0 }?.toInt() ?: 0
         val chapters = viewModel.chapterListData.value
         val chapter = chapters?.getOrNull(book.durChapterIndex)
@@ -514,7 +514,7 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
             chapterIndex = book.durChapterIndex
             chapterPos = pos
             chapterName = chapter?.title ?: book.durChapterTitle ?: ""
-            content = "${pos.toDurationTime()} / ${if (dur > 0) dur.toDurationTime() else "未知"}"
+            bookText = "${pos.toDurationTime()} / ${if (dur > 0) dur.toDurationTime() else "未知"}"
         }
         showDialogFragment(BookmarkDialog(bookmark))
     }
@@ -639,9 +639,11 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
         super.onPause()
         ReadTimeRecorder.end(ReadTimeRecorder.Source.VIDEO)
         val currentPlayer = player
+        val duration = currentPlayer?.duration ?: 0L
+        val position = currentPlayer?.currentPosition ?: 0L
         viewModel.saveRead(
-            if ((currentPlayer?.currentPosition ?: 0) > (currentPlayer?.duration ?: 1) - 1000) 0L
-            else currentPlayer?.currentPosition ?: 0L
+            if (duration > 0 && position > duration - 1000) -1L
+            else position
         )
         if (viewModel.inBookshelf) {
             viewModel.curBook?.let { viewModel.uploadProgress(it) }

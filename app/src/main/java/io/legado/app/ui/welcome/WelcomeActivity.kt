@@ -36,7 +36,12 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         } else {
             binding.ivBook.setColorFilter(accentColor)
             binding.vwTitleLine.setBackgroundColor(accentColor)
-            binding.root.postDelayed(600) { startMainActivity() }
+            val delay = AppConfig.welcomeDelay.toLong()
+            if (delay > 0) {
+                binding.root.postDelayed(delay) { startMainActivity() }
+            } else {
+                startMainActivity()
+            }
         }
     }
 
