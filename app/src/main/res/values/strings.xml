@@ -1368,4 +1368,18 @@
     <string name="home_tab_delete_confirm_with_sections">Group "%1$s" contains %2$d sections, all will be deleted</string>
     <string name="home_manage_for_tab">Manage "%1$s" sections</string>
     <string name="home_manage_empty">No sections in this group, tap + in upper right to add</string>
+
+    <!--Non-translatable strings-->
+    <string name="pk_bookshelf_px" translatable="false">bookshelf_px</string>
+    <string name="email" translatable="false">gekunfei@live.com</string>
+    <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>
+    <string name="telegram_group_url" translatable="false">https://t.me/+mT22ceIeiSllM2U1</string>
+    <string name="qq_group_url" translatable="false"></string>
+    <string name="http_ip" translatable="false">http://%1$s:%2$d</string>
+    <string name="git_hub" translatable="false">GitHub</string>
+    <string name="diy_edit_source_group_title" translatable="false">【%s】</string>
+    <string name="vip_title" translatable="false">🔒%s</string>
+    <string name="payed_title" translatable="false">🔓%s</string>
+    <string name="separator" translatable="false">丨</string>
+
 </resources>

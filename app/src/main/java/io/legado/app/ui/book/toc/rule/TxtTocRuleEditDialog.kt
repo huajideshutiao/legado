@@ -48,7 +48,7 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.txt_toc_rule_edit)
+        binding.toolBar.inflateMenu(R.menu.rule_edit)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)
     }

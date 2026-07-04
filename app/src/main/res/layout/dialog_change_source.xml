@@ -74,6 +74,7 @@
             tools:ignore="UnusedAttribute" />
     </LinearLayout>
 
+    <!-- 可折叠目录区域，仅章节换源时使用 -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/cl_toc"
         android:layout_width="match_parent"

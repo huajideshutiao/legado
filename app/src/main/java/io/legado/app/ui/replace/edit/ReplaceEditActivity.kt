@@ -58,7 +58,7 @@ class ReplaceEditActivity :
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.replace_edit, menu)
+        menuInflater.inflate(R.menu.rule_edit, menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
 

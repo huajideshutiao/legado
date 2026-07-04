@@ -20,7 +20,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.DialogTocRegexBinding
+import io.legado.app.databinding.DialogListPickerBinding
 import io.legado.app.databinding.ItemTocRegexBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 /**
  * txt目录规则
  */
-class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
+class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
     Toolbar.OnMenuItemClickListener, TxtTocRuleEditDialog.Callback {
 
     override val isFullHeight: Boolean = true
@@ -61,7 +61,7 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
 
     private val importTocRuleKey = "tocRuleUrl"
     private val viewModel: TxtTocRuleViewModel by viewModels()
-    private val binding by viewBinding(DialogTocRegexBinding::bind)
+    private val binding by viewBinding(DialogListPickerBinding::bind)
     private val adapter by lazy { TocRegexAdapter(requireContext()) }
     var selectedName: String? = null
     private var durRegex: String? = null
@@ -76,7 +76,7 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_toc_regex),
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         durRegex = arguments?.getString("tocRegex")
         binding.toolBar.setTitle(R.string.txt_toc_rule)
-        binding.toolBar.inflateMenu(R.menu.txt_toc_rule)
+        binding.toolBar.inflateMenu(R.menu.rule_list)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)
         initView()

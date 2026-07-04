@@ -132,7 +132,7 @@ class TxtTocRuleAdapter(context: Context, private val callBack: CallBack) :
     private fun showMenu(view: View, position: Int) {
         val source = getItem(position) ?: return
         val popupMenu = PopupMenu(context, view)
-        popupMenu.inflate(R.menu.txt_toc_rule_item)
+        popupMenu.inflate(R.menu.rule_item)
         popupMenu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.menu_top -> callBack.toTop(source)

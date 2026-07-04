@@ -4,7 +4,7 @@ import android.os.Bundle
 import android.view.View
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.DialogUpdateBinding
+import io.legado.app.databinding.DialogTextViewBinding
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.model.Download
 import io.legado.app.utils.toastOnUi
@@ -14,7 +14,7 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
 
-class UpdateDialog() : BaseDialogFragment(R.layout.dialog_update) {
+class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
 
     constructor(updateInfo: AppUpdate.UpdateInfo) : this() {
         arguments = Bundle().apply {
@@ -25,7 +25,7 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_update) {
         }
     }
 
-    val binding by viewBinding(DialogUpdateBinding::bind)
+    val binding by viewBinding(DialogTextViewBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.title = arguments?.getString("newVersion")

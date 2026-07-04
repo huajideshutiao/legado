@@ -78,7 +78,7 @@ class DictRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, Di
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.dict_rule, menu)
+        menuInflater.inflate(R.menu.rule_list, menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
 

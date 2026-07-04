@@ -22,7 +22,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.DialogChapterChangeSourceBinding
+import io.legado.app.databinding.DialogChangeSourceBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
@@ -49,7 +49,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 
-class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_change_source),
+class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_source),
     Toolbar.OnMenuItemClickListener,
     ChangeChapterSourceAdapter.CallBack,
     ChangeChapterTocAdapter.Callback {
@@ -65,7 +65,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         }
     }
 
-    private val binding by viewBinding(DialogChapterChangeSourceBinding::bind)
+    private val binding by viewBinding(DialogChangeSourceBinding::bind)
     private val groups = linkedSetOf<String>()
     private val callBack: CallBack? get() = activity as? CallBack
     private val viewModel: ChangeChapterSourceViewModel by viewModels()

@@ -70,7 +70,14 @@
 		<item>E-Ink mode</item>
 	</string-array>
 
-	<string-array name="NavBarColors">
+    <string-array name="theme_mode_v">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+
+    <string-array name="NavBarColors">
 		<item>Auto</item>
 		<item>Black</item>
 		<item>White</item>
@@ -85,6 +92,14 @@
 		<item>Always</item>
 	</string-array>
 
+    <string-array name="screen_time_out_value">
+        <item>0</item>
+        <item>60</item>
+        <item>300</item>
+        <item>600</item>
+        <item>-1</item>
+    </string-array>
+
 	<string-array name="screen_direction_title">
 		<item>@string/screen_unspecified</item>
 		<item>@string/screen_portrait</item>
@@ -93,6 +108,14 @@
 		<item>@string/screen_portrait_reversed</item>
 	</string-array>
 
+    <string-array name="screen_direction_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+
 	<string-array name="double_page_title">
 		<item>Single page</item>
 		<item>Double page</item>
@@ -100,19 +123,38 @@
 		<item>Double page on tablet or landscape</item>
 	</string-array>
 
-	<string-array name="progress_bar_behavior_title">
+    <string-array name="double_page_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+
+    <string-array name="progress_bar_behavior_title">
 		<item>@string/adjust_chapter_page</item>
 		<item>@string/adjust_chapter_index</item>
 	</string-array>
 
-	<string-array name="icon_names" tools:ignore="Typos">
+    <string-array name="progress_bar_behavior_value">
+        <item>page</item>
+        <item>chapter</item>
+    </string-array>
+
+    <string-array name="icon_names" tools:ignore="Typos">
 		<item>iconMain</item>
 		<item>icon1</item>
 		<item>icon4</item>
 		<item>icon5</item>
 	</string-array>
 
-	<string-array name="chinese_mode">
+    <string-array name="icons">
+        <item>ic_launcher</item>
+        <item>launcher1</item>
+        <item>launcher4</item>
+        <item>launcher5</item>
+    </string-array>
+
+    <string-array name="chinese_mode">
 		<item>Off</item>
 		<item>Traditional to Simplified</item>
 		<item>Simplified to Traditional</item>
@@ -151,6 +193,13 @@
 		<item>Traditional_Chinese</item>
 		<item>English</item>
 	</string-array>
+
+    <string-array name="language_value">
+        <item>auto</item>
+        <item>zh</item>
+        <item>tw</item>
+        <item>en</item>
+    </string-array>
 
     <!-- JS 引擎开关: QuickJS 在前(默认值,对齐 AppConfig.jsEngine 默认 "quickjs"); Rhino 在后 -->
     <string-array name="js_engine">

@@ -208,4 +208,16 @@
             <enum name="right_bottom_fill" value="7" />
         </attr>
     </declare-styleable>
+
+    <!--IDs-->
+    <item name="tag" type="id" />
+    <item name="tag1" type="id" />
+    <item name="tag2" type="id" />
+    <item name="tag3" type="id" />
+    <item name="menu_group_1" type="id" />
+    <item name="menu_group_2" type="id" />
+    <item name="menu_1" type="id" />
+    <item name="fast_scroller" type="id" />
+    <item name="bettermovementmethod_highlight_background_span" type="id" />
+
 </resources>

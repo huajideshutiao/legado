@@ -7,15 +7,11 @@
         android:key="enableWelcome"
         android:summary="@string/enable_welcome_summary"
         android:title="@string/enable_welcome"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
         android:key="welcomeDelay"
         android:title="@string/welcome_delay"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference
@@ -23,8 +19,6 @@
         android:key="welcomeShowText"
         android:summary="@string/welcome_text"
         android:title="@string/show_welcome_text"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference
@@ -32,23 +26,16 @@
         android:key="welcomeShowIcon"
         android:summary="@string/show_default_book_icon"
         android:title="@string/show_icon"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.PreferenceCategory
         android:key="dayThemeCategory"
         android:title="@string/day"
-        app:allowDividerAbove="true"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
             android:key="welcomeImagePath"
             android:title="@string/background_image"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
@@ -56,16 +43,11 @@
     <io.legado.app.lib.prefs.PreferenceCategory
         android:key="nightThemeCategory"
         android:title="@string/night"
-        app:allowDividerAbove="true"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
             android:key="welcomeImagePathDark"
             android:title="@string/background_image"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>

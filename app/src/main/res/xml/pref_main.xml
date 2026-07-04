@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:divider="@color/transparent"
-    app:allowDividerBelow="false">
+    android:divider="@color/transparent">
 
     <!-- 应用设置 (原本没有分类标题，直接平铺在顶部) -->
     <io.legado.app.lib.prefs.NameListPreference
@@ -40,14 +39,11 @@
         android:icon="@drawable/ic_cfg_other"
         android:key="setting"
         android:title="@string/other_setting"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
 
     <!-- 书源规则分类 -->
     <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/book_source"
-        app:allowDividerAbove="true"
-        app:allowDividerBelow="false"
         app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
@@ -85,7 +81,6 @@
             android:icon="@drawable/ic_import"
             android:key="ruleSubManage"
             android:title="@string/rule_subscription"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
@@ -94,10 +89,7 @@
     <io.legado.app.lib.prefs.PreferenceCategory
         android:key="aboutCategory"
         android:title="@string/other"
-        app:allowDividerAbove="true"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
             android:icon="@drawable/ic_bookmark"

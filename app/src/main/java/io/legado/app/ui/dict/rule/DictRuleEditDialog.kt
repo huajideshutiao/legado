@@ -33,7 +33,7 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.inflateMenu(R.menu.dict_rule_edit)
+        binding.toolBar.inflateMenu(R.menu.rule_edit)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)
         viewModel.initData(arguments?.getString("name")) {

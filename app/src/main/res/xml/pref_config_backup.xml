@@ -4,10 +4,7 @@
 
     <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/web_dav_set"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.EditTextPreference
             android:key="web_dav_url"
@@ -30,15 +27,11 @@
         <io.legado.app.lib.prefs.EditTextPreference
             android:key="webDavDir"
             android:title="@string/sub_dir"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.EditTextPreference
             android:key="webDavDeviceName"
             android:title="@string/webdav_device_name"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
@@ -46,8 +39,6 @@
             android:key="syncBookProgress"
             android:summary="@string/sync_book_progress_s"
             android:title="@string/sync_book_progress_t"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
@@ -56,17 +47,13 @@
             android:key="syncBookProgressPlus"
             android:summary="@string/sync_book_progress_plus_s"
             android:title="@string/sync_book_progress_plus_t"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/backup_restore"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
+        app:iconSpaceReserved="false">
 
         <io.legado.app.lib.prefs.Preference
             android:key="backupUri"
@@ -104,10 +91,9 @@
             android:key="autoCheckNewBackup"
             android:summary="@string/auto_check_new_backup_s"
             android:title="@string/auto_check_new_backup_t"
-            app:allowDividerAbove="false"
-            app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
+

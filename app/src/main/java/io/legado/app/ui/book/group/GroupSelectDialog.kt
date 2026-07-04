@@ -17,7 +17,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.DialogBookGroupPickerBinding
+import io.legado.app.databinding.DialogListPickerBinding
 import io.legado.app.databinding.ItemGroupSelectBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 
 
-class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker),
+class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
     Toolbar.OnMenuItemClickListener {
 
     constructor(groupId: Long, requestCode: Int = -1) : this() {
@@ -38,7 +38,7 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
         }
     }
 
-    private val binding by viewBinding(DialogBookGroupPickerBinding::bind)
+    private val binding by viewBinding(DialogListPickerBinding::bind)
     private var requestCode: Int = -1
     private val viewModel: GroupViewModel by viewModels()
     private val adapter by lazy { GroupAdapter(requireContext()) }
