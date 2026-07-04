@@ -6,7 +6,7 @@
     <string name="tip_perm_request_storage">阅读需要访问存储卡权限，请前往“设置”—“应用权限”，打开所需权限</string>
 
     <!--Other-->
-    <string name="menu_backup">Home</string>
+    <string name="menu_backup">备份</string>
     <string name="menu_restore">恢复</string>
     <string name="menu_import_old">导入阅读数据</string>
     <string name="webdav_cache_backup">离线缓存书籍备份</string>
@@ -782,7 +782,6 @@
     <string name="show_brightness_view">显示亮度调节控件</string>
     <string name="language">语言</string>
     <string name="js_engine_title">JS 引擎</string>
-    <string name="js_engine_summary">%s</string>
     <string name="import_rss_source">导入订阅源</string>
     <string name="donate_summary">您的支持是我更新的动力</string>
     <string name="read_record">阅读记录</string>
@@ -1327,7 +1326,7 @@
     <string name="bookshelf_cover_width_summary">当前宽度：%s</string>
     <string name="click_book_open_read">点击视频书籍直接播放</string>
     <string name="click_book_open_read_summary">在搜索、发现中点击视频书籍直接打开播放页，跳过详情</string>
-    <string name="book_info_horizontal_layout">书目详情横向布局</string>
+    <string name="book_info_horizontal_layout">书籍详情横向布局</string>
     <string name="book_info_horizontal_layout_summary">书籍详情页将封面与信息并排显示</string>
     <string name="bookshelf_show_group_count">分组显示书籍数</string>
     <string name="explore_style">样式</string>

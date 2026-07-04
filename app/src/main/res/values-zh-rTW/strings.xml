@@ -207,7 +207,7 @@
     <string name="img_cover">封面</string>
     <string name="book">書</string>
     <string name="volume_key_page">音量鍵翻頁</string>
-    <string name="mouse_wheel_page">鼠标滚动翻页</string>
+    <string name="mouse_wheel_page">滑鼠滾輪翻頁</string>
     <string name="click_turn_page">點擊翻頁</string>
     <string name="page_anim">翻頁動畫</string>
     <string name="book_page_anim">翻頁動畫(本書)</string>
@@ -831,7 +831,7 @@
     <string name="export_bookshelf">匯出書單</string>
     <string name="import_bookshelf">匯入書單</string>
     <string name="pre_download">預下載</string>
-    <string name="pre_download_m">预下载 %s 页</string>
+    <string name="pre_download_m">預下載 %s 頁</string>
     <string name="pre_download_s">預先下載%s章正文</string>
     <string name="is_enabled">是否啟用</string>
     <string name="background_image">背景圖片</string>
@@ -891,7 +891,7 @@
     <string name="need_login">需登入</string>
     <string name="pref_cronet_summary">使用Cronet網路元件</string>
     <string name="upload_url">上傳URL</string>
-    <string name="download_url_rule">下载URL规则(downloadUrls)</string>
+    <string name="download_url_rule">下載 URL 規則 (downloadUrls)</string>
     <string name="sort_by_respondTime">反應時間排序</string>
     <string name="respondTime">反應時間：%1$d ms</string>
     <string name="export_success">匯出成功</string>
@@ -938,7 +938,7 @@
     <string name="open_sys_doc_picker_error">打開系統檔案選擇器出錯，自動打開應用文件選擇器</string>
     <string name="expand_text_menu">展開文字選擇選單</string>
     <string name="search_content_size">搜尋結果</string>
-    <string name="search_content_empty">搜索内容为空，检查净化/简繁设置</string>
+    <string name="search_content_empty">搜尋內容為空，請檢查淨化/簡繁設定</string>
     <string name="book_tree_uri_t">書籍儲存位置</string>
     <string name="book_tree_uri_s">從其它應用程式打開的書籍儲存位置</string>
     <string name="select_book_folder">選擇儲存書籍的資料夾</string>
@@ -1251,7 +1251,7 @@
     <string name="bookshelf_list_intro_lines">簡介行數</string>
     <string name="click_book_open_read">點擊影片書籍直接播放</string>
     <string name="click_book_open_read_summary">在搜尋、發現中點擊影片書籍直接打開播放頁，跳過詳情</string>
-    <string name="book_info_horizontal_layout">書目詳情橫向佈局</string>
+    <string name="book_info_horizontal_layout">書籍詳情橫向佈局</string>
     <string name="book_info_horizontal_layout_summary">書籍詳情頁將封面與資訊並排顯示</string>
     <string name="bookshelf_show_group_count">分組顯示書籍數</string>
     <string name="explore_style">樣式</string>
