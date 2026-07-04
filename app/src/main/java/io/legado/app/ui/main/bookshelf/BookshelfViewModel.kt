@@ -63,7 +63,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
         }.onSuccess {
             context.toastOnUi(
                 if (successCount > 0) {
-                    successCount.toString() + "/" + urls.size + " " + R.string.success
+                    successCount.toString() + "/" + urls.size + " " + context.getString(R.string.success)
                 } else "添加网址失败"
             )
         }.onFinally {
