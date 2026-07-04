@@ -2,8 +2,10 @@ package io.legado.app.ui.book.import
 
 import android.os.Bundle
 import android.view.View
+import androidx.activity.addCallback
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.ViewModel
+import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppPattern
@@ -20,17 +22,20 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 abstract class BaseImportBookActivity<VM : ViewModel> :
-    VMBaseActivity<ActivityRecyclerWithActionBarBinding, VM>() {
+    VMBaseActivity<ActivityRecyclerWithActionBarBinding, VM>(),
+    SelectActionBar.CallBack {
 
     final override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
 
@@ -48,9 +53,38 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding.layTop.visibility = View.VISIBLE
         binding.refreshProgressBar.visibility = View.VISIBLE
         initSearchView()
+    }
+
+    /**
+     * 初始化RecyclerView和SelectActionBar
+     * @param adapter RecyclerView的适配器
+     */
+    protected fun initRecyclerView(adapter: androidx.recyclerview.widget.RecyclerView.Adapter<*>) {
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = adapter
+        binding.selectActionBar.setMainActionText(R.string.add_to_bookshelf)
+        binding.selectActionBar.setCallBack(this)
+    }
+
+    /**
+     * 设置返回键行为
+     */
+    protected fun setupBackPress(onBack: () -> Boolean) {
+        onBackPressedDispatcher.addCallback(this) {
+            if (!onBack()) {
+                finish()
+            }
+        }
+    }
+
+    /**
+     * 显示面包屑路径
+     */
+    protected fun showBreadcrumb(path: String) {
+        binding.tvPath.text = path
+        binding.tvPath.visible()
     }
 
     /**

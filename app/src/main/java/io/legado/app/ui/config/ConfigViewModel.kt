@@ -62,10 +62,10 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun backup(backupPath: String) {
+    fun backup(backupPath: String, uploadToWebDav: Boolean = true) {
         backupRestoreState.value = "备份中…"
         backupRestoreJob = execute {
-            Backup.backupLocked(appCtx, backupPath)
+            Backup.backupLocked(appCtx, backupPath, uploadToWebDav)
         }.onSuccess {
             context.toastOnUi(R.string.backup_success)
         }.onError {

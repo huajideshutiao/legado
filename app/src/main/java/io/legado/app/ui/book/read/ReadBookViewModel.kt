@@ -26,7 +26,6 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.utils.toStringArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -157,7 +156,9 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             ReadBook.chapterChanged = false
         } else if (!(isSameBook && BaseReadAloudService.isRun) && ReadBook.inBookshelf) {
             if (AppConfig.syncBookProgressPlus) {
-                ReadBook.syncProgress({ progress -> ReadBook.callBack?.sureNewProgress(progress) })
+                syncProgress(
+                    book,
+                    newProgressAction = { progress -> ReadBook.callBack?.sureNewProgress(progress) })
             } else {
                 syncBookProgress(book)
             }
@@ -298,23 +299,6 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
                     BookHelp.saveText(book, chapter, content)
                     ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
                 }
-        }
-    }
-
-    /**
-     * 反转内容
-     */
-    fun reverseContent(book: Book) {
-        execute {
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-                ?: return@execute
-            val content = BookHelp.getContent(book, chapter) ?: return@execute
-            val stringBuilder = StringBuilder()
-            content.toStringArray().reversed().forEach {
-                stringBuilder.append(it)
-            }
-            BookHelp.saveText(book, chapter, stringBuilder.toString())
-            ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
         }
     }
 

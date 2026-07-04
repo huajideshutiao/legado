@@ -332,8 +332,6 @@
     <string name="auto_next_page_speed">Velocidad de deslizamiento automático</string>
     <string name="book_info">Información sobre libro</string>
     <string name="book_info_edit">Editar información del libro</string>
-    <string name="ps_default_read">Establecer la estantería como página de inicio</string>
-    <string name="pt_default_read">Ir automáticamente a la lista de Recientes</string>
     <string name="replace_scope">Objeto sustituto. El nombre del libro o la URL de origen están disponibles</string>
     <string name="menu_action_group">Grupos</string>
     <string name="download_path">Carpeta de caché</string>
@@ -805,15 +803,11 @@
     <string name="close">Cerrar</string>
     <string name="next_page">Página siguiente</string>
     <string name="prev_page">Página anterior</string>
-    <string name="non_action">Sin acciones</string>
     <string name="body_title">Título</string>
     <string name="show_hide">Mostrar/ocultar</string>
     <string name="header_footer">pie de página <![CDATA[&]]> encabezado</string>
     <string name="rule_subscription">Suscripción de reglsa</string>
     <string name="rule_sub_empty_msg">添加大佬们提供的规则导入地址\n添加后点击可导入规则</string>
-    <string name="get_book_progress">Obtener progreso en la nube</string>
-    <string name="cover_book_progress">Cobertura del progreso en la nube</string>
-    <string name="current_progress_exceeds_cloud">El progreso actual excede el progreso de la nube. ¿Quieres sincronizar?</string>
     <string name="sync_book_progress_t">Progreso de lectura sincronizado</string>
     <string name="sync_book_progress_s">Sincronizar el progreso de la lectura al entrar y salir de la pantalla de lectura</string>
     <string name="sync_book_progress_plus_t">Mejora de Sincronización</string>
@@ -832,7 +826,6 @@
     <string name="export_folder">Carpeta de exportación</string>
     <string name="export_charset">Codificación de texto exportado</string>
     <string name="export_to_web_dav">Exportar a WebDav</string>
-    <string name="reverse_content">Contenido inverso</string>
     <string name="debug">Depurar</string>
     <string name="crash_log">Registro de fallos</string>
     <string name="use_zh_layout">Uso de ramas chinas personalizadas</string>

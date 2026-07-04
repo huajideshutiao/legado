@@ -5,13 +5,11 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -25,7 +23,6 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.book.import.BaseImportBookActivity
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.gone
@@ -46,8 +43,7 @@ import java.io.File
  */
 class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
     PopupMenu.OnMenuItemClickListener,
-    ImportBookAdapter.CallBack,
-    SelectActionBar.CallBack {
+    ImportBookAdapter.CallBack {
 
     override val viewModel by viewModels<ImportBookViewModel>()
     private val adapter by lazy { ImportBookAdapter(this, this) }
@@ -64,11 +60,7 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         searchView.queryHint = getString(R.string.screen) + " • " + getString(R.string.local_book)
-        onBackPressedDispatcher.addCallback(this) {
-            if (!goBackDir()) {
-                finish()
-            }
-        }
+        setupBackPress { goBackDir() }
         lifecycleScope.launch {
             initView()
             if (setBookStorage() && AppConfig.importBookPath.isNullOrBlank()) {
@@ -83,11 +75,13 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
         return super.onCompatCreateOptionsMenu(menu)
     }
 
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_sort_name)?.isChecked = viewModel.sort == 0
-        menu.findItem(R.id.menu_sort_size)?.isChecked = viewModel.sort == 1
-        menu.findItem(R.id.menu_sort_time)?.isChecked = viewModel.sort == 2
-        return super.onMenuOpened(featureId, menu)
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val sortMenu = menu.findItem(R.id.menu_sort)?.subMenu
+        sortMenu?.setGroupCheckable(R.id.menu_group_sort, true, true)
+        sortMenu?.findItem(R.id.menu_sort_name)?.isChecked = viewModel.sort == 0
+        sortMenu?.findItem(R.id.menu_sort_size)?.isChecked = viewModel.sort == 1
+        sortMenu?.findItem(R.id.menu_sort_time)?.isChecked = viewModel.sort == 2
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
@@ -103,11 +97,6 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_del_selection -> viewModel.deleteDoc(adapter.selected) {
-                adapter.removeSelection()
-            }
-        }
         return false
     }
 
@@ -132,13 +121,9 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
 
     private fun initView() {
         binding.tvEmptyMsg.setText(R.string.empty_msg_import_book)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
+        initRecyclerView(adapter)
         binding.recyclerView.recycledViewPool.setMaxRecycledViews(0, 15)
-        binding.selectActionBar.setMainActionText(R.string.add_to_bookshelf)
-        binding.selectActionBar.inflateMenu(R.menu.import_book_sel)
         binding.selectActionBar.setOnMenuItemClickListener(this)
-        binding.selectActionBar.setCallBack(this)
     }
 
     private fun initData() {
@@ -245,7 +230,8 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
             lastDoc = doc
             path = path + doc.name + File.separator
         }
-        binding.tvPath.text = path
+        // 显示面包屑路径
+        showBreadcrumb(path)
         adapter.selected.clear()
         viewModel.loadDoc(lastDoc)
     }

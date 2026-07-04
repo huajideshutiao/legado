@@ -14,7 +14,6 @@ import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.clearExploreKindsCache
-import io.legado.app.help.storage.ImportOldData
 import io.legado.app.model.SharedJsScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -111,22 +110,11 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
             }
 
             text.isJsonArray() -> {
-                if (text.contains("ruleSearchUrl") || text.contains("ruleFindUrl")) {
-                    val items: List<Map<String, Any>> = jsonPath.parse(text).read("$")
-                    val jsonItem = jsonPath.parse(items[0])
-                    ImportOldData.fromOldBookSource(jsonItem)
-                } else {
-                    GSON.fromJsonArray<BookSource>(text).getOrThrow()[0]
-                }
+                GSON.fromJsonArray<BookSource>(text).getOrThrow()[0]
             }
 
             text.isJsonObject() -> {
-                if (text.contains("ruleSearchUrl") || text.contains("ruleFindUrl")) {
-                    val jsonItem = jsonPath.parse(text)
-                    ImportOldData.fromOldBookSource(jsonItem)
-                } else {
-                    GSON.fromJsonObject<BookSource>(text).getOrThrow()
-                }
+                GSON.fromJsonObject<BookSource>(text).getOrThrow()
             }
 
             else -> throw NoStackTraceException("格式不对")

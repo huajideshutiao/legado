@@ -45,6 +45,9 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val callback get() = (activity as? Callback)
     private val adapter by lazy { ServersAdapter(requireContext()) }
 
+    // 记录初始服务器ID，用于判断是否真正切换
+    private val initialServerId: Long = AppConfig.remoteServerId
+
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setTitle(R.string.server_config)
         initView()
@@ -93,7 +96,10 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
-        callback?.onDialogDismiss("serversDialog")
+        // 只有当服务器ID真正改变时才触发刷新
+        if (adapter.selectServerId != initialServerId) {
+            callback?.onDialogDismiss("serversDialog")
+        }
     }
 
     inner class ServersAdapter(context: Context) :

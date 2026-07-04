@@ -338,8 +338,6 @@
     <string name="auto_next_page_speed">自动翻页间隔</string>
     <string name="book_info">书籍信息</string>
     <string name="book_info_edit">书籍信息编辑</string>
-    <string name="ps_default_read">默认打开书架</string>
-    <string name="pt_default_read">自动跳转最近阅读</string>
     <string name="replace_scope">替换范围，选填书名或者书源 URL</string>
     <string name="menu_action_group">分组</string>
     <string name="download_path">内容缓存路径</string>
@@ -834,15 +832,11 @@
     <string name="close">关闭</string>
     <string name="next_page">下一页</string>
     <string name="prev_page">上一页</string>
-    <string name="non_action">无操作</string>
     <string name="body_title">正文标题</string>
     <string name="show_hide">显示/隐藏</string>
     <string name="header_footer">页眉<![CDATA[&]]>页脚</string>
     <string name="rule_subscription">规则订阅</string>
     <string name="rule_sub_empty_msg">添加大佬们提供的规则导入地址\n添加后点击可导入规则</string>
-    <string name="get_book_progress">拉取云端进度</string>
-    <string name="cover_book_progress">覆盖云端进度</string>
-    <string name="current_progress_exceeds_cloud">当前进度超过云端进度，是否同步？</string>
     <string name="sync_book_progress_t">同步阅读进度</string>
     <string name="sync_book_progress_s">进入退出阅读界面时同步阅读进度</string>
     <string name="sync_book_progress_plus_t">同步增强</string>
@@ -863,7 +857,6 @@
     <string name="export_charset">导出编码</string>
     <string name="export_no_chapter_name">TXT 不导出章节名</string>
     <string name="export_to_web_dav">导出到 WebDav</string>
-    <string name="reverse_content">反转内容</string>
     <string name="debug">调试</string>
     <string name="crash_log">崩溃日志</string>
     <string name="use_zh_layout">使用自定义中文分行</string>

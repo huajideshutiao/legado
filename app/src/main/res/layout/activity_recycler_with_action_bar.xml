@@ -11,31 +11,21 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:contentInsetStartWithNavigation="0dp"
-        app:contentLayout="@layout/view_search" />
-
-    <LinearLayout
-        android:id="@+id/lay_top"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/background"
-        android:elevation="1dp"
-        android:gravity="center_vertical"
-        android:minHeight="36dp"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        android:visibility="gone">
+        app:contentLayout="@layout/view_search">
 
         <TextView
             android:id="@+id/tv_path"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:focusable="true"
-            android:gravity="center_vertical"
+            android:ellipsize="end"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
             android:singleLine="true"
-            android:textColor="@color/secondaryText"
             android:textSize="13sp"
-            tools:text="/" />
-    </LinearLayout>
+            android:visibility="gone"
+            tools:text="/books/" />
+
+    </io.legado.app.ui.widget.TitleBar>
 
     <io.legado.app.ui.widget.anima.RefreshProgressBar
         android:id="@+id/refresh_progress_bar"

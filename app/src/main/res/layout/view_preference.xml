@@ -16,13 +16,12 @@
 
     <ImageView
         android:id="@+id/preference_icon"
-        android:layout_marginRight="16dp"
-        android:scaleType="fitCenter"
-        android:visibility="visible"
-        android:paddingTop="1dp"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        tools:ignore="ContentDescription,RtlHardcoded" />
+        android:layout_marginEnd="16dp"
+        android:scaleType="fitCenter"
+        android:visibility="visible"
+        tools:ignore="ContentDescription" />
 
     <LinearLayout
         android:orientation="vertical"
@@ -52,15 +51,13 @@
 
     <FrameLayout
         android:id="@+id/preference_widget"
-        android:orientation="vertical"
-        android:layout_gravity="center"
-        android:layout_marginLeft="8dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:visibility="gone"
-        android:gravity="right|center_vertical"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        tools:ignore="RtlHardcoded" />
+        android:layout_gravity="center"
+        android:layout_marginEnd="8dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:ignore="RtlHardcoded"
+        tools:visibility="visible" />
 
 </LinearLayout>

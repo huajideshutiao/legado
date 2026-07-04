@@ -5,12 +5,10 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
-import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.net.toUri
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.data.appDb
 import io.legado.app.help.config.AppConfig
@@ -19,11 +17,9 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.import.BaseImportBookActivity
-import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
@@ -38,7 +34,6 @@ import java.io.File
  */
 class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
     RemoteBookAdapter.CallBack,
-    SelectActionBar.CallBack,
     ServersDialog.Callback {
 
     override val viewModel by viewModels<RemoteBookViewModel>()
@@ -47,11 +42,7 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         searchView.queryHint = getString(R.string.screen) + " • " + getString(R.string.remote_book)
-        onBackPressedDispatcher.addCallback(this) {
-            if (!goBackDir()) {
-                finish()
-            }
-        }
+        setupBackPress { goBackDir() }
         lifecycleScope.launch {
             if (!setBookStorage()) {
                 finish()
@@ -86,11 +77,7 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
     }
 
     private fun initView() {
-        binding.layTop.setBackgroundColor(backgroundColor)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.selectActionBar.setMainActionText(R.string.add_to_bookshelf)
-        binding.selectActionBar.setCallBack(this)
+        initRecyclerView(adapter)
         if (!LocalConfig.webDavBookHelpVersionIsLast) {
             showHelp("webDavBookHelp")
         }
@@ -176,7 +163,8 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
         viewModel.dirList.forEach {
             path = path + it.filename + File.separator
         }
-        binding.tvPath.text = path
+        // 显示面包屑路径
+        showBreadcrumb(path)
         viewModel.dataCallback?.clear()
         adapter.selected.clear()
         viewModel.loadRemoteBookList(

@@ -49,7 +49,6 @@ import io.legado.app.ui.book.manga.recyclerview.MangaAdapter
 import io.legado.app.ui.book.manga.recyclerview.MangaLayoutManager
 import io.legado.app.ui.book.manga.recyclerview.MangaVH
 import io.legado.app.ui.book.manga.recyclerview.ScrollTimer
-import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.MangaMenu
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
@@ -432,7 +431,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
                 if (AppConfig.syncBookProgressPlus) {
                     viewModel.syncProgress()
                 } else {
-                    viewModel.uploadProgress()
+                    viewModel.curBook?.let { viewModel.uploadProgress(it) }
                 }
             }
         }
@@ -473,7 +472,7 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
 
     fun sureNewProgress(progress: BookProgress) {
         syncDialog?.dismiss()
-        syncDialog = alert(R.string.get_book_progress) {
+        syncDialog = alert(R.string.sync_book_progress_t) {
             setMessage(R.string.cloud_progress_exceeds_current)
             okButton {
                 viewModel.setProgress(progress)
@@ -822,17 +821,11 @@ class ReadMangaActivity : BaseReadActivity<ActivityMangaBinding, ReadMangaViewMo
             2 -> scrollToPrev()
             3 -> viewModel.moveToNextChapter(true)
             4 -> viewModel.moveToPrevChapter(true)
-            8 -> showDialogFragment(ContentEditDialog())
             10 -> {
                 IntentData.book = viewModel.curBook
                 IntentData.chapterList = viewModel.chapterListData.value
                 tocActivity.launch("")
             }
-
-            12 -> viewModel.syncProgress(
-                { progress -> sureNewProgress(progress) },
-                { toastOnUi(R.string.upload_book_success) },
-                { toastOnUi(R.string.sync_book_progress_success) })
         }
     }
 

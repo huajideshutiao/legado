@@ -138,12 +138,6 @@ object Restore {
         }
         fileToListT<BookSource>(path, "bookSource.json")?.let {
             appDb.bookSourceDao.insert(*it.toTypedArray())
-        } ?: run {
-            val bookSourceFile = File(path, "bookSource.json")
-            if (bookSourceFile.exists()) {
-                val json = bookSourceFile.readText()
-                ImportOldData.importOldSource(json)
-            }
         }
         fileToListT<OldRssSource>(path, "rssSources.json")?.let {
             appDb.bookSourceDao.insert(*it.map { oldRss -> oldRss.toBookSource() }.toTypedArray())

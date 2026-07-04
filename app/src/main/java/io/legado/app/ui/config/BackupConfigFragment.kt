@@ -18,7 +18,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.BackupConfig
-import io.legado.app.help.storage.ImportOldData
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.multiChoiceItems
@@ -29,7 +28,6 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -39,7 +37,6 @@ import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toEditable
 import kotlinx.coroutines.Dispatchers.IO
@@ -86,13 +83,6 @@ class BackupConfigFragment : PreferenceFragment(),
             }
         }
     }
-    private val restoreOld by lazy {
-        registerHandleFile { result ->
-            result.uri?.let { uri ->
-            ImportOldData.importUri(appCtx, uri)
-        }
-        }
-    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_backup)
@@ -121,6 +111,12 @@ class BackupConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.webDavDir, AppConfig.webDavDir)
         upPreferenceSummary(PreferKey.webDavDeviceName, AppConfig.webDavDeviceName)
         upPreferenceSummary(PreferKey.backupPath, getPrefString(PreferKey.backupPath))
+        // 长按备份按钮：只备份到本地，不上传到 WebDav
+        findPreference<io.legado.app.lib.prefs.Preference>("web_dav_backup")
+            ?.onLongClick {
+                backup(uploadToWebDav = false)
+                true
+            }
         findPreference<io.legado.app.lib.prefs.Preference>("web_dav_restore")
             ?.onLongClick {
                 restoreFromLocal()
@@ -164,8 +160,6 @@ class BackupConfigFragment : PreferenceFragment(),
                 showHelp("webDavHelp")
                 return true
             }
-
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return false
     }
@@ -237,7 +231,6 @@ class BackupConfigFragment : PreferenceFragment(),
             PreferKey.restoreIgnore -> backupIgnore()
             "web_dav_backup" -> backup()
             "web_dav_restore" -> restore()
-            "import_old" -> restoreOld.launch()
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -260,9 +253,11 @@ class BackupConfigFragment : PreferenceFragment(),
     }
 
 
-    fun backup() {
+    fun backup(uploadToWebDav: Boolean = true) {
         val backupPath = AppConfig.backupPath
         if (backupPath.isNullOrEmpty()) {
+            // 如果没有设置备份路径，需要先选择路径
+            // 此时无法区分是否上传到 WebDav，默认按用户选择的路径处理
             backupDir.launch()
         } else {
             if (backupPath.isContentScheme()) {
@@ -271,27 +266,27 @@ class BackupConfigFragment : PreferenceFragment(),
                         FileDoc.fromDir(backupPath).checkWrite()
                     }
                     if (canWrite) {
-                        backup(backupPath)
+                        backup(backupPath, uploadToWebDav)
                     } else {
                         backupDir.launch()
                     }
                 }
             } else {
-                backupUsePermission(backupPath)
+                backupUsePermission(backupPath, uploadToWebDav)
             }
         }
     }
 
-    private fun backup(backupPath: String) {
-        viewModel.backup(backupPath)
+    private fun backup(backupPath: String, uploadToWebDav: Boolean = true) {
+        viewModel.backup(backupPath, uploadToWebDav)
     }
 
-    private fun backupUsePermission(path: String) {
+    private fun backupUsePermission(path: String, uploadToWebDav: Boolean = true) {
         PermissionsCompat.Builder()
             .addPermissions(*Permissions.Group.STORAGE)
             .rationale(R.string.tip_perm_request_storage)
             .onGranted {
-                backup(path)
+                backup(path, uploadToWebDav)
             }
             .request()
     }

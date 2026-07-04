@@ -330,8 +330,6 @@
     <string name="auto_next_page_speed">Tốc độ tự động cuộn</string>
     <string name="book_info">Thông tin sách</string>
     <string name="book_info_edit">Sửa thông tin sách</string>
-    <string name="ps_default_read">Sử dụng Tủ sách làm trang bắt đầu</string>
-    <string name="pt_default_read">Tự động chuyển đến danh sách Gần đây</string>
     <string name="replace_scope">Đối tượng thay thế. Tên sách hoặc URL nguồn có sẵn</string>
     <string name="menu_action_group">Nhóm</string>
     <string name="download_path">Đường dẫn bộ đệm</string>
@@ -804,15 +802,11 @@
     <string name="close">Đóng</string>
     <string name="next_page">Trang sau</string>
     <string name="prev_page">Trang trước</string>
-    <string name="non_action">Không có</string>
     <string name="body_title">Tiêu đề</string>
     <string name="show_hide">Hiện/Ẩn</string>
     <string name="header_footer">Đầu trang &amp; Chân trang</string>
     <string name="rule_subscription">Đăng ký quy tắc</string>
     <string name="rule_sub_empty_msg">Thêm địa chỉ nhập quy tắc do các quản trị viên cung cấp\nNhấn để nhập quy tắc sau khi thêm</string>
-    <string name="get_book_progress">Kéo tiến độ từ đám mây</string>
-    <string name="cover_book_progress">Ghi đè tiến độ trên đám mây</string>
-    <string name="current_progress_exceeds_cloud">Tiến độ hiện tại vượt quá tiến độ trên đám mây. Bạn có muốn đồng bộ không?</string>
     <string name="cloud_progress_exceeds_current">Tiến độ trên đám mây vượt quá tiến độ hiện tại. Bạn có muốn đồng bộ không?</string>
     <string name="sync_book_progress_t">Đồng bộ tiến độ đọc</string>
     <string name="sync_book_progress_s">Đồng bộ tiến độ đọc khi vào/ra giao diện đọc</string>
@@ -836,7 +830,6 @@
     <string name="export_folder">Thư mục xuất</string>
     <string name="export_charset">Mã hóa văn bản xuất</string>
     <string name="export_to_web_dav">Xuất sang WebDav</string>
-    <string name="reverse_content">Đảo ngược nội dung</string>
     <string name="debug">Gỡ lỗi</string>
     <string name="crash_log">Nhật ký sự cố</string>
     <string name="use_zh_layout">Sử dụng ngắt dòng tiếng Trung tùy chỉnh</string>

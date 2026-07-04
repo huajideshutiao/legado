@@ -9,7 +9,6 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import io.legado.app.R
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.config.AppConfig
@@ -17,7 +16,6 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.config.ClickArea
 import io.legado.app.ui.book.read.page.api.DataSource
 import io.legado.app.ui.book.read.page.delegate.CoverPageDelegate
@@ -38,8 +36,6 @@ import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextPageFactory
 import io.legado.app.utils.activity
 import io.legado.app.utils.invisible
-import io.legado.app.utils.longToastOnUi
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.throttle
 import java.text.BreakIterator
 import java.util.Locale
@@ -397,15 +393,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
             5 -> ReadAloud.prevParagraph(context)
             6 -> ReadAloud.nextParagraph(context)
             7 -> callBack.addBookmark()
-            8 -> activity?.showDialogFragment(ContentEditDialog())
             9 -> callBack.changeReplaceRuleState()
             10 -> callBack.openChapterList()
             11 -> callBack.openSearchActivity(null)
-            12 -> ReadBook.syncProgress(
-                { progress -> callBack.sureNewProgress(progress) },
-                { context.longToastOnUi(context.getString(R.string.upload_book_success)) },
-                { context.longToastOnUi(context.getString(R.string.sync_book_progress_success)) })
-
             13 -> {
                 if (BaseReadAloudService.isPlay()) {
                     ReadAloud.pause(context)

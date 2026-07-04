@@ -252,10 +252,6 @@
         <activity
             android:name=".ui.dict.rule.DictRuleActivity"
             android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true" /> <!-- 文件管理 -->
-        <activity
-            android:name=".ui.file.FileManageActivity"
-            android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true" /> <!-- 选择文件 -->
         <activity
             android:name=".ui.association.AssociationActivity"

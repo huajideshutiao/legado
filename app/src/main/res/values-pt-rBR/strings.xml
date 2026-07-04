@@ -336,8 +336,6 @@
     <string name="auto_next_page_speed">Velocidade automática ao deslizar</string>
     <string name="book_info">Informações sobre livro</string>
     <string name="book_info_edit">Editar informações do livro</string>
-    <string name="ps_default_read">Definir a Estante como página inicial</string>
-    <string name="pt_default_read">Vá automaticamente à lista de Recentes</string>
     <string name="replace_scope">Objeto substituto. Nome do livro ou Url de origem estão disponíveis</string>
     <string name="menu_action_group">Grupos</string>
     <string name="download_path">Pasta de Cache</string>
@@ -806,15 +804,11 @@
     <string name="close">Fechar</string>
     <string name="next_page">Próxima página</string>
     <string name="prev_page">Página anterior</string>
-    <string name="non_action">Nenhuma Ação</string>
     <string name="body_title">Título</string>
     <string name="show_hide">Mostrar/ocultar</string>
     <string name="header_footer">rodapé <![CDATA[&]]> cabeçalho</string>
     <string name="rule_subscription">Assinatura de regras</string>
     <string name="rule_sub_empty_msg">添加大佬们提供的规则导入地址\n添加后点击可导入规则</string>
-    <string name="get_book_progress">Obter o progresso da nuvem</string>
-    <string name="cover_book_progress">Phủ sóng tiến độ trên đám mây</string>
-    <string name="current_progress_exceeds_cloud">O progresso atual excede o progresso da nuvem. Você quer sincronizar?</string>
     <string name="sync_book_progress_t">Progresso de leitura sincronizada</string>
     <string name="sync_book_progress_s">Sincronizar o progresso da leitura ao entrar e sair da tela de leitura</string>
     <string name="sync_book_progress_plus_t">Aprimoramento de Sincronização</string>
@@ -833,7 +827,6 @@
     <string name="export_folder">Exportar a pasta</string>
     <string name="export_charset">Codificação de texto exportada</string>
     <string name="export_to_web_dav">Exportar para WebDav</string>
-    <string name="reverse_content">Conteúdo reverso</string>
     <string name="debug">Depuração</string>
     <string name="crash_log">Registro de falhas</string>
     <string name="use_zh_layout">Utilização de layout chinesas personalizadas</string>

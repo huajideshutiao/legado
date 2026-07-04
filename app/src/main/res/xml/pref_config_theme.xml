@@ -53,13 +53,6 @@
         android:title="@string/book_info_horizontal_layout"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="devFeat"
-        android:summary="@string/click_book_open_read_summary"
-        android:title="@string/click_book_open_read"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="welcomeStyle"
         android:summary="@string/welcome_style_summary"

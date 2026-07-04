@@ -97,7 +97,6 @@ object PreferKey {
     const val enableMangaGifAutoNext = "enableMangaGifAutoNext"
     const val autoRefresh = "auto_refresh"
     const val autoCheckUpdate = "autoCheckUpdate"
-    const val defaultToRead = "defaultToRead"
     const val exportCharset = "exportCharset"
     const val exportUseReplace = "exportUseReplace"
     const val useZhLayout = "useZhLayout"

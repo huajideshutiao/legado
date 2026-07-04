@@ -74,7 +74,6 @@ class OtherConfigFragment : PreferenceFragment(),
         }
         upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
         upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
-        upPreferenceSummary(PreferKey.jsEngine, AppConfig.jsEngine)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -197,7 +196,6 @@ class OtherConfigFragment : PreferenceFragment(),
                 // 切换引擎: 清空两侧 SharedJsScope 缓存避免 stale scope 泄漏,
                 // JsEngines.get() 下次访问会按新 type 自动重建引擎实例
                 SharedJsScope.clearAll()
-                upPreferenceSummary(key, AppConfig.jsEngine)
             }
         }
     }

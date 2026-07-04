@@ -1,30 +1,27 @@
 package io.legado.app.service
 
-import android.annotation.SuppressLint
 import android.app.DownloadManager
+import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Environment
-import androidx.core.app.NotificationCompat
+import android.os.IBinder
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import io.legado.app.R
-import io.legado.app.base.BaseService
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
-import io.legado.app.constant.NotificationId
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.toastOnUi
 import splitties.systemservices.downloadManager
 
 /**
- * 下载文件，通知由系统 DownloadManager 维护，应用关闭后仍可点击打开
+ * 下载文件，监听下载完成后自动打开
+ * 不显示前台通知，依赖系统 DownloadManager 显示下载进度
  */
-class DownloadService : BaseService() {
+class DownloadService : Service() {
 
     private val downloads = hashMapOf<Long, String>()
 
@@ -34,7 +31,6 @@ class DownloadService : BaseService() {
         }
     }
 
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate() {
         super.onCreate()
         ContextCompat.registerReceiver(
@@ -101,7 +97,7 @@ class DownloadService : BaseService() {
     @Synchronized
     private fun queryComplete() {
         if (downloads.isEmpty()) return
-        val ids = downloads.keys.toLongArray()
+        val ids = LongArray(downloads.size) { index -> downloads.keys.elementAt(index) }
         val query = DownloadManager.Query().setFilterById(*ids)
         downloadManager.query(query).use { cursor ->
             val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
@@ -121,15 +117,6 @@ class DownloadService : BaseService() {
         if (downloads.isEmpty()) stopSelf()
     }
 
-    override fun startForegroundNotification() {
-        // 不接入 LiveUpdate: 实际下载进度由系统 DownloadManager 自己的通知维护 (见 startDownload),
-        // 那条通知不归本应用所有, 无法挂 ProgressStyle; 这里仅是 FGS 占位通知, 无进度可展示。
-        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_download)
-            .setSubText(getString(R.string.action_download))
-            .setOngoing(true)
-            .build()
-        startForeground(NotificationId.DownloadService, notification)
-    }
+    override fun onBind(intent: Intent): IBinder? = null
 
 }

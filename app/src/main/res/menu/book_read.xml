@@ -60,20 +60,9 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/menu_get_progress"
-        android:title="@string/get_book_progress"
+        android:id="@+id/menu_sync_progress"
+        android:title="@string/sync_book_progress_t"
         android:visible="false"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/menu_cover_progress"
-        android:title="@string/cover_book_progress"
-        android:visible="false"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/menu_reverse_content"
-        android:title="@string/reverse_content"
         app:showAsAction="never" />
 
     <item

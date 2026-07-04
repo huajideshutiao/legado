@@ -28,7 +28,6 @@ import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
 import io.legado.app.ui.dict.rule.DictRuleActivity
-import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.utils.LogUtils
@@ -83,10 +82,11 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             putPrefBoolean(PreferKey.webService, WebService.isRun)
             addPreferencesFromResource(R.xml.pref_main)
             findPreference<SwitchPreference>("webService")?.onLongClick {
+                val currentUrl = WebService.hostAddress
                 context?.selector(arrayListOf("复制地址", "浏览器打开")) { _, i ->
                     when (i) {
-                        0 -> context?.sendToClip(it.summary.toString())
-                        1 -> context?.openUrl(it.summary.toString())
+                        0 -> context?.sendToClip(currentUrl)
+                        1 -> context?.openUrl(currentUrl)
                     }
                 }
                 true
@@ -162,10 +162,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     putExtra("configTag", ConfigTag.THEME_CONFIG)
                 }
 
-                "fileManage" -> startActivity<FileManageActivity>()
                 "readRecord" -> startActivity<ReadRecordActivity>()
                 "about" -> startActivity<AboutActivity>()
-                "exit" -> activity?.finish()
             }
             return super.onPreferenceTreeClick(preference)
         }

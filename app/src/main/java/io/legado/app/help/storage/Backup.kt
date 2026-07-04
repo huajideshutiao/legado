@@ -118,15 +118,15 @@ object Backup {
         }
     }
 
-    suspend fun backupLocked(context: Context, path: String?) {
+    suspend fun backupLocked(context: Context, path: String?, uploadToWebDav: Boolean = true) {
         mutex.withLock {
             withContext(IO) {
-                backup(context, path)
+                backup(context, path, uploadToWebDav)
             }
         }
     }
 
-    private suspend fun backup(context: Context, path: String?) {
+    private suspend fun backup(context: Context, path: String?, uploadToWebDav: Boolean = true) {
         LogUtils.d(TAG, "开始备份 path:$path")
         LocalConfig.lastBackup = System.currentTimeMillis()
         val aes = BackupAES()
@@ -219,23 +219,29 @@ object Backup {
                     copyBackup(File(path), backupFileName)
                 }
             }
-            try {
-                AppWebDav.backUpWebDav(zipFileName)
-            } catch (e: Exception) {
-                AppLog.put("上传备份至webdav失败\n$e", e)
+            // 仅在需要时上传到 WebDav
+            if (uploadToWebDav) {
+                try {
+                    AppWebDav.backUpWebDav(zipFileName)
+                } catch (e: Exception) {
+                    AppLog.put("上传备份至webdav失败\n$e", e)
+                }
             }
         }
         FileUtils.delete(backupPath)
         FileUtils.delete(zipFilePath)
         currentCoroutineContext().ensureActive()
-        ReadBookConfig.getAllPicBgStr().map {
-            if (it.contains(File.separator)) {
-                File(it)
-            } else {
-                appCtx.externalFiles.getFile("bg", it)
+        // 仅在需要时上传背景图片到 WebDav
+        if (uploadToWebDav) {
+            ReadBookConfig.getAllPicBgStr().map {
+                if (it.contains(File.separator)) {
+                    File(it)
+                } else {
+                    appCtx.externalFiles.getFile("bg", it)
+                }
+            }.let {
+                AppWebDav.upBgs(it.toTypedArray())
             }
-        }.let {
-            AppWebDav.upBgs(it.toTypedArray())
         }
     }
 
