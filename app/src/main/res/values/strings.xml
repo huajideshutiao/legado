@@ -1009,8 +1009,6 @@
     <string name="url_option">Url parameter</string>
     <string name="only_wifi">WIFI only</string>
     <string name="only_wifi_summary">Load network cover only under wifi</string>
-    <string name="cover_rule">Cover rule</string>
-    <string name="cover_rule_summary">Use the cover rule to retrieve the cover when entering the details page</string>
     <string name="scroll_to_dur_source">Navigate to the current book source</string>
     <string name="sys_tts_config">System tts Settings</string>
     <string name="sys_tts_config_summary">Open the system tts settings interface</string>

@@ -7,7 +7,6 @@ import androidx.core.content.edit
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.constant.AppConst.coverRuleConfigKey
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -26,7 +25,6 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.help.CacheManager
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.isLocal
@@ -34,7 +32,6 @@ import io.legado.app.help.book.upType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.model.BookCover
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
@@ -197,13 +194,6 @@ object Restore {
             ThemeConfig.upConfig()
         }?.onFailure {
             AppLog.put("恢复主题出错\n${it.localizedMessage}", it)
-        }
-        File(path, BookCover.configFileName).takeIf {
-            it.exists()
-        }?.runCatching {
-            CacheManager.put(coverRuleConfigKey, readText())
-        }?.onFailure {
-            AppLog.put("恢复封面规则出错\n${it.localizedMessage}", it)
         }
         if (!BackupConfig.ignoreReadConfig) {
             //恢复阅读界面配置

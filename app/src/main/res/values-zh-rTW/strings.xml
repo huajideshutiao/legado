@@ -982,8 +982,6 @@
     <string name="url_option">Url參數</string>
     <string name="only_wifi">僅WIFI</string>
     <string name="only_wifi_summary">僅在wifi下載入網路封面</string>
-    <string name="cover_rule">封面規則</string>
-    <string name="cover_rule_summary">進入詳情頁時使用封面規則重新獲取封面</string>
     <string name="scroll_to_dur_source">定位到目前書源</string>
     <string name="sys_tts_config">系統tts設定</string>
     <string name="sys_tts_config_summary">打開系統tts設定介面</string>

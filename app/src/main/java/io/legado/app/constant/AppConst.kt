@@ -119,8 +119,6 @@ object AppConst {
 
     const val timeLimit = 15000L
 
-    const val coverRuleConfigKey = "legadoCoverRuleConfig"
-
     /**
      * 注入到 evalJS 作用域的变量名白名单。
      * 通过 [io.legado.app.model.analyzeRule.AnalyzeUrl] / [io.legado.app.model.analyzeRule.AnalyzeRule] 的 `variables` 参数注入时，仅允许使用此处声明的键，

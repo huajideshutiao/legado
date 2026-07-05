@@ -19,7 +19,6 @@ import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
@@ -33,7 +32,6 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
@@ -47,9 +45,6 @@ import kotlin.random.Random
 @Keep
 @Suppress("ConstPropertyName")
 object BookCover {
-
-    private const val coverRuleConfigKey = "legadoCoverRuleConfig"
-    const val configFileName = "coverRule.json"
 
     /**
      * 封面比例 -- novel 用于普通书籍 (3:4, 居中裁剪);
@@ -357,21 +352,6 @@ object BookCover {
             }
         }
     }
-
-    fun getCoverRule(): CoverRule {
-        return getConfig() ?: CoverRule(enable = false, searchUrl = "", coverRule = "")
-    }
-
-    fun getConfig(): CoverRule? {
-        return GSON.fromJsonObject<CoverRule>(CacheManager.get(coverRuleConfigKey)).getOrNull()
-    }
-
-    @Keep
-    data class CoverRule(
-        var enable: Boolean = true,
-        var searchUrl: String,
-        var coverRule: String,
-    )
 
     /**
      * 默认封面图集中的一项。

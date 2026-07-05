@@ -963,8 +963,6 @@
     <string name="url_option">Tham số URL</string>
     <string name="only_wifi">Chỉ WIFI</string>
     <string name="only_wifi_summary">Chỉ tải bìa mạng khi có WIFI</string>
-    <string name="cover_rule">Quy tắc bìa</string>
-    <string name="cover_rule_summary">Sử dụng quy tắc bìa để lấy lại bìa khi vào trang chi tiết</string>
     <string name="scroll_to_dur_source">Định vị đến nguồn sách hiện tại</string>
     <string name="sys_tts_config">Cài đặt TTS hệ thống</string>
     <string name="sys_tts_config_summary">Mở giao diện cài đặt TTS hệ thống</string>

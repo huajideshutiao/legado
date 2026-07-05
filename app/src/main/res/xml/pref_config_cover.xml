@@ -14,12 +14,6 @@
         android:title="@string/only_wifi"
         android:summary="@string/only_wifi_summary" />
 
-    <io.legado.app.lib.prefs.Preference
-        android:key="coverRule"
-        android:title="@string/cover_rule"
-        android:summary="@string/cover_rule_summary"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="useDefaultCover"

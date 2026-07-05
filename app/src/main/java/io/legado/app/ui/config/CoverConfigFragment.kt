@@ -77,7 +77,6 @@ class CoverConfigFragment : PreferenceFragment(),
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
-            "coverRule" -> showDialogFragment(CoverRuleConfigDialog())
             PreferKey.defaultCover ->
                 showDialogFragment(DefaultCoverGalleryDialog(isNight = false))
 
