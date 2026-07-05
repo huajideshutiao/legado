@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:overScrollMode="ifContentScrolls"
-    android:padding="16dp">
+    android:padding="@dimen/arco_spacing_lg">
 
     <LinearLayout
         android:layout_width="match_parent"

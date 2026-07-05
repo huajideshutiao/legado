@@ -9,7 +9,6 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.dpToPx
 
 /**
  * 主题相关的 Context / Fragment 扩展属性。
@@ -90,7 +89,7 @@ val Context.isDarkTheme: Boolean
 val Context.filletBackground: GradientDrawable
     get() {
         val background = GradientDrawable()
-        background.cornerRadius = 5f.dpToPx()
+        background.cornerRadius = resources.getDimension(R.dimen.arco_radius_default)
         background.setColor(bottomBackground)
         return background
     }

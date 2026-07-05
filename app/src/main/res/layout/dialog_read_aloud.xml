@@ -6,10 +6,10 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingLeft="16dp"
-    android:paddingTop="6dp"
-    android:paddingRight="16dp"
-    android:paddingBottom="6dp">
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingTop="@dimen/arco_dialog_padding_v"
+    android:paddingEnd="@dimen/arco_spacing_lg"
+    android:paddingBottom="@dimen/arco_dialog_padding_v">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -21,13 +21,13 @@
             android:id="@+id/tv_pre"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginStart="@dimen/arco_spacing_md"
+            android:layout_marginEnd="@dimen/arco_spacing_md"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
+            android:paddingTop="@dimen/arco_spacing_md"
+            android:paddingBottom="@dimen/arco_spacing_md"
             android:text="@string/previous_chapter"
             android:textColor="@color/primaryText"
             android:textSize="14sp"
@@ -42,8 +42,8 @@
             android:id="@+id/iv_play_prev"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:layout_marginLeft="8dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/prev_sentence"
             android:src="@drawable/ic_skip_previous"
@@ -55,8 +55,8 @@
             android:id="@+id/iv_play_pause"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:layout_marginLeft="8dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/audio_play"
             android:src="@drawable/ic_play_24dp"
@@ -68,8 +68,8 @@
             android:id="@+id/iv_stop"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:layout_marginLeft="8dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/stop"
             android:src="@drawable/ic_stop_black_24dp"
@@ -81,8 +81,8 @@
             android:id="@+id/iv_play_next"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:layout_marginLeft="8dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/next_sentence"
             android:src="@drawable/ic_skip_next"
@@ -99,13 +99,13 @@
             android:id="@+id/tv_next"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginStart="@dimen/arco_spacing_md"
+            android:layout_marginEnd="@dimen/arco_spacing_md"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
+            android:paddingTop="@dimen/arco_spacing_md"
+            android:paddingBottom="@dimen/arco_spacing_md"
             android:text="@string/next_chapter"
             android:textColor="@color/primaryText"
             android:textSize="14sp"
@@ -118,7 +118,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="6dp">
+        android:padding="@dimen/arco_spacing_default">
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/iv_timer"
@@ -159,7 +159,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="8dp">
+            android:padding="@dimen/arco_spacing_default">
 
             <TextView
                 android:id="@+id/tv_tts_speed"
@@ -175,7 +175,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:paddingHorizontal="3dp"
+                android:paddingHorizontal="@dimen/arco_spacing_xs"
                 android:textColor="@color/primaryText"
                 android:textSize="14sp" />
 
@@ -201,8 +201,8 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp">
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_tts_speech_reduce"
@@ -238,7 +238,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="@dimen/arco_spacing_default"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
@@ -252,7 +252,7 @@
             android:contentDescription="@string/chapter_list"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_catalog"
@@ -293,7 +293,7 @@
             android:contentDescription="@string/main_menu"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp"
+            android:paddingBottom="@dimen/arco_spacing_default"
             tools:ignore="TextSizeCheck">
 
             <androidx.appcompat.widget.AppCompatImageView
@@ -335,7 +335,7 @@
             android:contentDescription="@string/to_backstage"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_to_backstage"
@@ -376,7 +376,7 @@
             android:contentDescription="@string/setting"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_setting"

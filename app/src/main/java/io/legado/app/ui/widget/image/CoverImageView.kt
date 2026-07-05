@@ -24,7 +24,6 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.lifecycle
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
@@ -104,7 +103,7 @@ class CoverImageView @JvmOverloads constructor(
         viewHeight = height.toFloat()
         filletPath.reset()
         if (width > 10 && height > 10) {
-            val radius = 4f.dpToPx()
+            val radius = context.resources.getDimension(R.dimen.arco_radius_sm)
             filletPath.addRoundRect(
                 0f,
                 0f,

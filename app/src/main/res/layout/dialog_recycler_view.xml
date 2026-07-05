@@ -22,6 +22,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scrollbars="none"
+            android:clipToPadding="false"
+            android:paddingHorizontal="@dimen/arco_page_padding_h"
             tools:ignore="SpeakableTextPresentCheck" />
 
         <com.google.android.material.progressindicator.CircularProgressIndicator
@@ -29,7 +31,7 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_gravity="center"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/arco_spacing_default"
             android:indeterminate="true"
             android:visibility="invisible"
             app:indicatorSize="36dp"
@@ -40,7 +42,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:padding="16dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:textColor="@color/secondaryText"
             android:visibility="gone" />
 
@@ -51,8 +53,8 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingEnd="8dp"
-        android:paddingBottom="8dp">
+        android:paddingEnd="@dimen/arco_dialog_padding_v"
+        android:paddingBottom="@dimen/arco_dialog_padding_v">
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_footer_left"

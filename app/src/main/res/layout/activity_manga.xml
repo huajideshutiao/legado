@@ -23,9 +23,9 @@
         android:layout_width="match_parent"
         android:layout_height="20dp"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="10dp"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
+        android:layout_marginBottom="@dimen/arco_page_padding_h"
+        android:paddingStart="@dimen/arco_page_padding_h"
+        android:paddingEnd="@dimen/arco_page_padding_h"
         android:visibility="gone"
         tools:visibility="visible" />
 
@@ -64,7 +64,7 @@
                 android:id="@+id/tv_loading_message"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:text="@string/loading"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
@@ -87,7 +87,7 @@
                 android:id="@+id/tv_retry"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_margin="@dimen/arco_spacing_lg"
                 android:text="重新加载"
                 android:textSize="18sp"
                 tools:visibility="visible" />

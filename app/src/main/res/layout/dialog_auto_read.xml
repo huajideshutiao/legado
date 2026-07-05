@@ -4,10 +4,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp"
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingTop="@dimen/arco_spacing_default"
+    android:paddingEnd="@dimen/arco_spacing_lg"
+    android:paddingBottom="@dimen/arco_spacing_default"
     android:orientation="vertical">
 
     <LinearLayout
@@ -21,7 +21,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="8dp">
+            android:padding="@dimen/arco_spacing_default">
 
             <TextView
                 android:id="@+id/tv_read_speed_title"
@@ -44,8 +44,8 @@
             android:id="@+id/seek_auto_read"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="15dp"
-            android:layout_marginEnd="15dp"
+            android:layout_marginStart="@dimen/arco_spacing_lg"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
             android:min="1"
             android:max="120"
             tools:ignore="UnusedAttribute" />
@@ -55,7 +55,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="50dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="@dimen/arco_spacing_default"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
@@ -69,7 +69,7 @@
             android:contentDescription="@string/chapter_list"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_catalog"
@@ -86,7 +86,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:text="@string/chapter_list"
                 android:maxLines="1"
                 android:textColor="@color/primaryText"
@@ -107,7 +107,7 @@
             android:contentDescription="@string/main_menu"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_main_menu"
@@ -124,7 +124,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:text="@string/main_menu"
                 android:maxLines="1"
                 android:textColor="@color/primaryText"
@@ -145,7 +145,7 @@
             android:contentDescription="@string/stop"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_auto_page_stop"
@@ -162,7 +162,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:text="@string/stop"
                 android:maxLines="1"
                 android:textColor="@color/primaryText"
@@ -183,7 +183,7 @@
             android:contentDescription="@string/setting"
             android:focusable="true"
             android:orientation="vertical"
-            android:paddingBottom="7dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_setting"
@@ -200,7 +200,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:text="@string/setting"
                 android:maxLines="1"
                 android:textColor="@color/primaryText"

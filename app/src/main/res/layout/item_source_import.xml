@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="8dp">
+    android:padding="@dimen/arco_spacing_default">
 
     <CheckBox
         android:id="@+id/cb_source_name"
@@ -25,7 +25,7 @@
         android:id="@+id/tv_source_state"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:padding="8dp"
+        android:padding="@dimen/arco_spacing_default"
         android:singleLine="true"
         android:textColor="@color/secondaryText"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -38,9 +38,9 @@
         android:id="@+id/tv_open"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="12dp"
+        android:layout_marginEnd="@dimen/arco_spacing_md"
         android:background="?attr/selectableItemBackground"
-        android:padding="8dp"
+        android:padding="@dimen/arco_spacing_default"
         android:text="@string/open"
         android:textColor="@color/secondaryText"
         app:layout_constraintBottom_toBottomOf="parent"

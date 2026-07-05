@@ -5,10 +5,10 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="16dp"
-    android:paddingTop="12dp"
-    android:paddingEnd="8dp"
-    android:paddingBottom="4dp">
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingTop="@dimen/arco_spacing_md"
+    android:paddingEnd="@dimen/arco_spacing_default"
+    android:paddingBottom="@dimen/arco_spacing_xs">
 
     <TextView
         android:id="@+id/tv_list_title"
@@ -28,7 +28,7 @@
         android:drawableEnd="@drawable/ic_arrow_drop_down"
         android:drawablePadding="2dp"
         android:gravity="center_vertical"
-        android:paddingHorizontal="8dp"
+        android:paddingHorizontal="@dimen/arco_spacing_default"
         android:paddingVertical="4dp"
         android:textColor="@color/secondaryText"
         android:textSize="13sp"

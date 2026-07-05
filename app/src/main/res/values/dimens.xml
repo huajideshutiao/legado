@@ -1,47 +1,41 @@
 <resources>
-    <!-- Default screen margins, per the Android Design guidelines. -->
-    <dimen name="activity_horizontal_margin">16dp</dimen>
-    <dimen name="activity_vertical_margin">16dp</dimen>
-    <dimen name="nav_header_vertical_spacing">8dp</dimen>
-    <dimen name="nav_header_height">176dp</dimen>
-    <dimen name="fab_margin">16dp</dimen>
-
     <dimen name="font_size_normal">14sp</dimen>
     <dimen name="font_size_middle">16sp</dimen>
     <dimen name="font_size_large">18sp</dimen>
 
     <dimen name="fast_scroll_min_thumb_height">24dp</dimen>
 
-    <dimen name="line_height">0.8dp</dimen>
-
     <dimen name="desc_icon_size">18sp</dimen>
 
     <!-- ==================== Arco Design 圆角体系 ==================== -->
-    <dimen name="arco_radius_xs">2dp</dimen>
     <dimen name="arco_radius_sm">4dp</dimen>
-    <dimen name="arco_radius_md">6dp</dimen>
-    <dimen name="arco_radius_lg">8dp</dimen>
-    <dimen name="arco_radius_xl">16dp</dimen>
+    <dimen name="arco_radius_default">8dp</dimen>
+    <dimen name="arco_radius_lg">16dp</dimen>
 
-    <!-- ==================== Arco Design Button 尺寸体系 ==================== -->
-    <!-- 按钮高度：Mini 24 / Small 28 / Default 32 / Large 40 -->
-    <dimen name="arco_btn_height_mini">24dp</dimen>
-    <dimen name="arco_btn_height_small">28dp</dimen>
-    <dimen name="arco_btn_height_default">32dp</dimen>
-    <dimen name="arco_btn_height_large">40dp</dimen>
-    <!-- 按钮水平 padding -->
-    <dimen name="arco_btn_padding_h_mini">8dp</dimen>
-    <dimen name="arco_btn_padding_h_small">12dp</dimen>
-    <dimen name="arco_btn_padding_h_default">15dp</dimen>
-    <dimen name="arco_btn_padding_h_large">19dp</dimen>
-    <!-- 按钮圆角（Arco 按钮默认 radius-xs = 2dp） -->
-    <dimen name="arco_btn_radius">@dimen/arco_radius_xs</dimen>
+    <!-- ==================== Arco Design 尺寸体系 ==================== -->
+    <dimen name="arco_view_height_mini">24dp</dimen>
+    <dimen name="arco_view_height_small">28dp</dimen>
+    <dimen name="arco_view_height_default">32dp</dimen>
+    <dimen name="arco_view_height_large">40dp</dimen>
+    <dimen name="arco_view_height_xl">48dp</dimen>
+    <dimen name="arco_view_height_max">56dp</dimen>
 
     <!-- ==================== Arco Design 间距体系 ==================== -->
+    <dimen name="arco_spacing_xs">4dp</dimen>
+    <dimen name="arco_spacing_default">8dp</dimen>
+    <dimen name="arco_spacing_md">12dp</dimen>
     <dimen name="arco_spacing_lg">16dp</dimen>
+    <dimen name="arco_spacing_max">20dp</dimen>
 
-    <!-- ==================== Arco Design 列表尺寸体系 ==================== -->
-    <dimen name="arco_list_item_height">40dp</dimen>
+    <!-- ==================== Arco Design 语义化边距 ==================== -->
+    <!-- 页面左右留白 -->
+    <dimen name="arco_page_padding_h">@dimen/arco_spacing_lg</dimen>
+    <!-- 对话框内容区水平内边距 -->
+    <dimen name="arco_dialog_padding_h">@dimen/arco_spacing_lg</dimen>
+    <!-- 对话框内容区垂直内边距（标题下方/按钮上方） -->
+    <dimen name="arco_dialog_padding_v">@dimen/arco_spacing_default</dimen>
+    <!-- 组件间距 -->
+    <dimen name="arco_component_gap">@dimen/arco_spacing_default</dimen>
 
     <dimen name="fastscroll_bubble_radius">25dp</dimen>
     <dimen name="fastscroll_bubble_size">50dp</dimen>

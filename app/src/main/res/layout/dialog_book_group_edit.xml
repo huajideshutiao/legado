@@ -21,7 +21,7 @@
             android:id="@+id/iv_cover"
             android:layout_width="110dp"
             android:layout_height="wrap_content"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/arco_spacing_default"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
@@ -31,7 +31,7 @@
             android:id="@+id/til_group_name"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/arco_spacing_default"
             android:hint="@string/group_name"
             app:layout_constraintBottom_toTopOf="@+id/tv_sort"
             app:layout_constraintLeft_toRightOf="@+id/iv_cover"
@@ -50,7 +50,7 @@
             android:id="@+id/tv_sort"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="3dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:text="@string/sort"
             android:textColor="@color/primaryText"
             app:layout_constraintLeft_toLeftOf="@id/til_group_name"
@@ -60,7 +60,7 @@
             android:id="@+id/sp_sort"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
             android:entries="@array/book_sort"
             app:layout_constraintBottom_toBottomOf="@id/tv_sort"
             app:layout_constraintLeft_toRightOf="@+id/tv_sort"
@@ -88,8 +88,8 @@
             android:id="@+id/btn_delete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/delete"
             tools:ignore="RtlHardcoded" />
 
@@ -102,16 +102,16 @@
             android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/cancel" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/btn_ok"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/ok"
             tools:ignore="RtlHardcoded" />
 

@@ -131,22 +131,25 @@
     <color name="arco_warning">#FFFF7D00</color>
     <color name="arco_danger">#FFF53F3F</color>
     <color name="arco_info">#FF86909C</color>
-    <!-- 填充色 fill-1/2/3 -->
-    <color name="arco_fill_1">#FFF7F8FA</color>
-    <color name="arco_fill_2">#FFF2F3F5</color>
-    <color name="arco_fill_3">#FFE5E6EB</color>
+    <!-- 填充色 fill-1/2/3（去掉 Arco 原本的冷偏，保证用户任意 accentColor 不打架） -->
+    <color name="arco_fill_1">#FFF8F8F8</color>
+    <color name="arco_fill_2">#FFF3F3F3</color>
+    <color name="arco_fill_3">#FFE6E6E6</color>
     <!-- 文字色阶 text-1/2/3/4 -->
-    <color name="arco_text_1">#FF1D2129</color>
-    <color name="arco_text_2">#FF4E5969</color>
-    <color name="arco_text_3">#FF86909C</color>
-    <color name="arco_text_4">#FFC9CDD4</color>
+    <color name="arco_text_1">#FF212121</color>
+    <color name="arco_text_2">#FF595959</color>
+    <color name="arco_text_3">#FF909090</color>
+    <color name="arco_text_4">#FFCDCDCD</color>
     <!-- 边框 -->
-    <color name="arco_border_1">#FFE5E6EB</color>
+    <color name="arco_border_1">#FFE6E6E6</color>
     <!-- 页面/卡片背景 -->
-    <color name="arco_bg_page">#FFF7F8FA</color>
+    <color name="arco_bg_page">#FFF8F8F8</color>
     <color name="arco_bg_card">#FFFFFFFF</color>
     <!-- ThemeConfig 默认色引用（light） -->
     <color name="arco_default_accent">@color/arco_primary</color>
     <color name="arco_default_bg">@color/arco_bg_page</color>
     <color name="arco_default_bbg">@color/arco_fill_2</color>
+
+    <!-- ActionMode 浮动菜单背景色（默认使用 Arco fill-2，动态主题会覆盖） -->
+    <color name="bottomBackground">@color/arco_fill_2</color>
 </resources>

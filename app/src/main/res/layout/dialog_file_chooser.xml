@@ -20,7 +20,7 @@
         android:gravity="center_vertical"
         android:minHeight="36dp"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:padding="@dimen/arco_spacing_default">
 
         <TextView
             android:id="@+id/tv_path"
@@ -56,7 +56,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_margin="16dp"
+            android:layout_margin="@dimen/arco_spacing_lg"
             android:gravity="center"
             android:text="@string/empty"
             android:visibility="gone" />

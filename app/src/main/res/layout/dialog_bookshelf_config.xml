@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/arco_spacing_lg">
 
         <LinearLayout
             android:id="@+id/ll_group_style"
@@ -22,7 +22,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/group_style"
                 android:textColor="@color/primaryText" />
 
@@ -39,7 +39,7 @@
             android:id="@+id/sw_show_unread"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/show_unread"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -48,7 +48,7 @@
             android:id="@+id/sw_show_group_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/bookshelf_show_group_count"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -56,7 +56,7 @@
             android:id="@+id/sw_fixed_width_mode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/fixed_width_mode"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -64,7 +64,7 @@
             android:id="@+id/tv_layout_title"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/view"
             android:textSize="16sp" />
 
@@ -74,7 +74,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="6dp">
+            android:padding="@dimen/arco_spacing_default">
 
             <TextView
                 android:id="@+id/tv_column_label"
@@ -109,7 +109,7 @@
             android:id="@+id/sw_show_kind"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/bookshelf_list_show_kind"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -117,7 +117,7 @@
             android:id="@+id/sw_show_intro"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/bookshelf_list_show_intro"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -127,8 +127,8 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default"
             tools:ignore="RtlSymmetry">
 
             <TextView
@@ -176,7 +176,7 @@
             android:id="@+id/sw_show_last_update_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/show_last_update_time"
             tools:ignore="TouchTargetSizeCheck" />
 
@@ -186,7 +186,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="8dp"
+            android:padding="@dimen/arco_spacing_default"
             android:visibility="gone">
 
             <TextView
@@ -214,7 +214,7 @@
         <io.legado.app.ui.widget.text.AccentTextView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/sort"
             android:textSize="16sp" />
 

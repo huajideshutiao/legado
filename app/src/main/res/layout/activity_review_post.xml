@@ -19,15 +19,15 @@
         android:clickable="true"
         android:focusable="true"
         android:orientation="vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingTop="8dp">
+        android:paddingHorizontal="@dimen/arco_page_padding_h"
+        android:paddingTop="@dimen/arco_spacing_default">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingBottom="8dp">
+            android:paddingBottom="@dimen/arco_spacing_default">
 
             <EditText
                 android:id="@+id/et_input"
@@ -41,8 +41,8 @@
                 android:inputType="textMultiLine|textCapSentences"
                 android:maxLines="6"
                 android:minHeight="40dp"
-                android:paddingHorizontal="16dp"
-                android:paddingVertical="10dp"
+                android:paddingHorizontal="@dimen/arco_spacing_lg"
+                android:paddingVertical="@dimen/arco_spacing_md"
                 android:textColor="@color/primaryText"
                 android:textColorHint="@color/secondaryText"
                 android:textSize="13sp" />
@@ -51,11 +51,11 @@
                 android:id="@+id/btn_post"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="@dimen/arco_spacing_default"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:enabled="false"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="8dp"
+                android:paddingHorizontal="@dimen/arco_spacing_md"
+                android:paddingVertical="@dimen/arco_spacing_default"
                 android:text="@string/post_review"
                 android:textColor="@color/secondaryText"
                 android:textSize="14sp" />

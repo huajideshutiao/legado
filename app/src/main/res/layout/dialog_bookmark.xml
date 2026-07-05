@@ -17,8 +17,8 @@
             android:id="@+id/tv_chapter_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingLeft="16dp"
-            android:paddingRight="16dp"
+            android:paddingStart="@dimen/arco_spacing_lg"
+            android:paddingEnd="@dimen/arco_spacing_lg"
             android:textColor="@color/primaryText" />
 
         <androidx.core.widget.NestedScrollView
@@ -31,7 +31,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="@dimen/arco_spacing_lg">
 
                 <io.legado.app.ui.widget.text.TextInputLayout
                     android:layout_width="match_parent"
@@ -68,8 +68,8 @@
         <com.google.android.flexbox.FlexboxLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingLeft="12dp"
-            android:paddingRight="12dp"
+            android:paddingStart="@dimen/arco_spacing_md"
+            android:paddingEnd="@dimen/arco_spacing_md"
             app:flexWrap="wrap"
             app:justifyContent="space_between">
 
@@ -77,7 +77,7 @@
                 android:id="@+id/tv_footer_left"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="12dp"
+                android:padding="@dimen/arco_spacing_md"
                 android:text="@string/delete"
                 android:visibility="invisible"
                 tools:ignore="RtlHardcoded" />
@@ -91,7 +91,7 @@
                     android:id="@+id/tv_cancel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:padding="12dp"
+                    android:padding="@dimen/arco_spacing_md"
                     android:text="@string/cancel"
                     tools:ignore="RtlHardcoded" />
 
@@ -99,7 +99,7 @@
                     android:id="@+id/tv_ok"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:padding="12dp"
+                    android:padding="@dimen/arco_spacing_md"
                     android:text="@string/ok"
                     tools:ignore="RtlHardcoded" />
 

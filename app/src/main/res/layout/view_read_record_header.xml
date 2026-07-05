@@ -6,194 +6,167 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <!-- 统计卡：2x2 网格 -->
-    <LinearLayout
+    <!-- 统计卡：Guideline 分左右两列，单 pass measure -->
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="12dp"
-        android:background="@drawable/bg_arco_card"
-        android:orientation="vertical"
-        android:paddingVertical="14dp">
+        android:layout_margin="@dimen/arco_spacing_md"
+        android:background="@drawable/card_background"
+        android:paddingVertical="@dimen/arco_spacing_lg">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_center"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.5" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_today_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="32分钟" />
 
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_today_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="32分钟" />
+        <TextView
+            android:id="@+id/tv_today_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/arco_spacing_xs"
+            android:text="@string/today_read_time"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_today_value" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/today_read_time"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_month_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/arco_spacing_lg"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_today_label"
+            tools:text="14小时" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
+        <TextView
+            android:id="@+id/tv_month_time_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/arco_spacing_xs"
+            android:text="@string/month_read_time"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_month_value" />
 
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_week_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="3小时15分钟" />
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_book_count_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/arco_spacing_lg"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_month_time_label"
+            tools:text="12" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/week_read_time"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
+        <TextView
+            android:id="@+id/tv_book_count_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/arco_spacing_xs"
+            android:text="@string/read_book_count"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toStartOf="@id/gl_center"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_book_count_value" />
 
-            </LinearLayout>
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_week_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_today_value"
+            tools:text="3小时15分钟" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="horizontal">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/week_read_time"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_today_label" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_all_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_month_value"
+            tools:text="126小时" />
 
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_month_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="14小时" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/all_read_time"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_month_time_label" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/month_read_time"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_avg_read_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_book_count_value"
+            tools:text="10小时" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/avg_book_read_time"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/gl_center"
+            app:layout_constraintTop_toTopOf="@id/tv_book_count_label" />
 
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_all_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="126小时" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/all_read_time"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="horizontal">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_book_count_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="12" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/read_book_count"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <io.legado.app.ui.widget.text.AccentTextView
-                        android:id="@+id/tv_avg_read_value"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:text="10小时" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/avg_book_read_time"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- 月度热力图卡 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="12dp"
-        android:layout_marginRight="12dp"
-        android:layout_marginBottom="12dp"
-        android:background="@drawable/bg_arco_card"
+        android:layout_marginStart="@dimen/arco_spacing_md"
+        android:layout_marginEnd="@dimen/arco_spacing_md"
+        android:layout_marginBottom="@dimen/arco_spacing_md"
+        android:background="@drawable/card_background"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:padding="@dimen/arco_spacing_md">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -216,7 +189,7 @@
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/prev_month"
-                    android:padding="4dp"
+                    android:padding="@dimen/arco_spacing_xs"
                     android:src="@drawable/ic_arrow_back"
                     app:tint="@color/primaryText" />
 
@@ -226,7 +199,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:minWidth="80dp"
-                    android:paddingHorizontal="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_default"
                     android:textColor="@color/primaryText"
                     android:textSize="13sp"
                     tools:text="2026 年 5 月" />
@@ -237,7 +210,7 @@
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/next_month"
-                    android:padding="4dp"
+                    android:padding="@dimen/arco_spacing_xs"
                     android:scaleX="-1"
                     android:src="@drawable/ic_arrow_back"
                     app:tint="@color/primaryText" />
@@ -248,7 +221,7 @@
                 android:id="@+id/heat_map"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="@dimen/arco_spacing_xs" />
 
         </LinearLayout>
 

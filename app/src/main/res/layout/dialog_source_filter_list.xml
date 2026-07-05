@@ -31,7 +31,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:gravity="center"
-            android:padding="16dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:text="@string/source_filter_rule_no_match"
             android:textColor="@color/secondaryText"
             android:visibility="gone" />
@@ -43,13 +43,13 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="10dp">
+        android:paddingHorizontal="@dimen/arco_dialog_padding_v">
 
         <TextView
             android:id="@+id/tv_close"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/close"
             android:textColor="@color/secondaryText" />
 
@@ -62,7 +62,7 @@
             android:id="@+id/tv_manage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/source_filter_rule_manage" />
 
     </LinearLayout>

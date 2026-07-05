@@ -202,7 +202,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     private fun bindHeader(header: ViewReadRecordHeaderBinding) {
-        // Arco: 卡片背景由 bg_arco_card drawable 提供，统一 arco 色板，不再动态设置
+        // Arco: 卡片背景由 card_background.xml drawable 提供，统一 arco 色板，不再动态设置
         header.ivPrevMonth.setOnClickListener { stepMonth(-1) }
         header.ivNextMonth.setOnClickListener {
             if (!isAtCurrentMonth()) stepMonth(1)

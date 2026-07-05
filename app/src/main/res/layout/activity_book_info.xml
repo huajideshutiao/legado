@@ -47,8 +47,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="144dp"
                         android:layout_gravity="center"
-                        android:layout_margin="8dp"
-                        android:background="@drawable/bg_arco_card" />
+                        android:layout_margin="@dimen/arco_spacing_default"
+                        android:background="@drawable/card_background" />
 
                     <LinearLayout
                         android:id="@+id/ll_info_top"
@@ -56,8 +56,8 @@
                         android:layout_height="0dp"
                         android:layout_weight="1"
                         android:orientation="vertical"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp">
+                        android:paddingStart="@dimen/arco_spacing_default"
+                        android:paddingEnd="@dimen/arco_spacing_default">
 
                         <TextView
                             android:id="@+id/tv_name"
@@ -84,8 +84,8 @@
                             android:layout_gravity="center_horizontal"
                             android:gravity="center"
                             android:orientation="horizontal"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp">
+                            android:paddingTop="@dimen/arco_spacing_xs"
+                            android:paddingBottom="@dimen/arco_spacing_xs">
 
                             <ImageView
                                 android:layout_width="18sp"
@@ -114,8 +114,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:baselineAligned="false"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
+                    android:paddingStart="@dimen/arco_spacing_default"
+                    android:paddingEnd="@dimen/arco_spacing_default"
                     app:layout_constraintTop_toBottomOf="@id/ll_top">
 
                     <TextView
@@ -149,10 +149,10 @@
                     android:id="@+id/lb_kind"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginBottom="@dimen/arco_spacing_default"
                     android:orientation="vertical"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
+                    android:paddingStart="@dimen/arco_spacing_default"
+                    android:paddingEnd="@dimen/arco_spacing_default"
                     android:visibility="gone"
                     app:layout_constraintTop_toBottomOf="@id/ll_actions" />
 
@@ -162,9 +162,9 @@
                     android:layout_height="wrap_content"
                     android:clickable="true"
                     android:focusable="true"
-                    android:paddingLeft="16dp"
-                    android:paddingRight="8dp"
-                    android:paddingBottom="8dp"
+                    android:paddingStart="@dimen/arco_spacing_lg"
+                    android:paddingEnd="@dimen/arco_spacing_default"
+                    android:paddingBottom="@dimen/arco_spacing_default"
                     android:text="@string/book_intro"
                     android:textColor="@color/secondaryText"
                     android:textIsSelectable="true"
@@ -192,18 +192,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp"
+        android:paddingHorizontal="@dimen/arco_spacing_default"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <androidx.appcompat.widget.AppCompatTextView
+        <io.legado.app.ui.widget.button.ArcoButton
             android:id="@+id/tv_shelf"
             style="@style/Widget.Arco.Button.Secondary.Large"
             android:layout_width="0dp"
-            android:layout_marginEnd="16dp"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:layout_weight="1"
             android:text="@string/remove_from_bookshelf" />
 
-        <androidx.appcompat.widget.AppCompatTextView
+        <io.legado.app.ui.widget.button.ArcoButton
             android:id="@+id/tv_read"
             style="@style/Widget.Arco.Button.Primary.Large"
             android:layout_width="0dp"

@@ -4,13 +4,13 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="@dimen/arco_spacing_lg">
 
     <TextView
         android:id="@+id/tv_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="5dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:textSize="18sp"
         android:textStyle="bold"
         android:text="@string/custom_page_key" />
@@ -18,7 +18,7 @@
     <io.legado.app.ui.widget.text.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="5dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:hint="@string/prev_page_key">
 
         <androidx.appcompat.widget.AppCompatEditText
@@ -32,7 +32,7 @@
     <io.legado.app.ui.widget.text.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="5dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:hint="@string/next_page_key">
 
         <androidx.appcompat.widget.AppCompatEditText
@@ -46,14 +46,14 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="5dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:textColor="@color/secondaryText"
         android:text="@string/page_key_set_help" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="5dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:orientation="horizontal">
 
         <TextView
@@ -65,8 +65,8 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="9dp"
-            android:paddingBottom="9dp"
+            android:paddingTop="@dimen/arco_spacing_default"
+            android:paddingBottom="@dimen/arco_spacing_default"
             android:text="@string/reset"
             android:textColor="@color/primaryText" />
 
@@ -83,8 +83,8 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="9dp"
-            android:paddingBottom="9dp"
+            android:paddingTop="@dimen/arco_spacing_default"
+            android:paddingBottom="@dimen/arco_spacing_default"
             android:text="@string/ok"
             android:textColor="@color/primaryText" />
 

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="@dimen/arco_dialog_padding_h">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,7 +15,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/book_type"
-            android:padding="3dp"
+            android:padding="@dimen/arco_spacing_xs"
             tools:ignore="RtlHardcoded" />
 
         <androidx.appcompat.widget.AppCompatSpinner

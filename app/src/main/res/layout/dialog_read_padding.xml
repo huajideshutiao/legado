@@ -8,7 +8,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:padding="@dimen/arco_dialog_padding_h">
 
         <LinearLayout
             android:id="@+id/ll_header_padding"
@@ -21,7 +21,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingBottom="10dp">
+                android:paddingBottom="@dimen/arco_spacing_md">
 
                 <io.legado.app.ui.widget.text.AccentTextView
                     android:id="@+id/tv_header_padding"
@@ -40,7 +40,7 @@
                     android:id="@+id/cb_show_top_line"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
-                    android:layout_margin="6dp" />
+                    android:layout_margin="@dimen/arco_spacing_default" />
 
             </LinearLayout>
 
@@ -78,8 +78,8 @@
             android:id="@+id/tv_body_padding"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
+            android:paddingTop="@dimen/arco_spacing_md"
+            android:paddingBottom="@dimen/arco_spacing_md"
             android:text="@string/main_body"
             android:textSize="18sp" />
 
@@ -121,8 +121,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:paddingTop="10dp"
-                android:paddingBottom="10dp"
+                android:paddingTop="@dimen/arco_spacing_md"
+                android:paddingBottom="@dimen/arco_spacing_md"
                 android:text="@string/footer"
                 android:textSize="18sp" />
 
@@ -135,7 +135,7 @@
                 android:id="@+id/cb_show_bottom_line"
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:layout_margin="6dp" />
+                android:layout_margin="@dimen/arco_spacing_default" />
 
         </LinearLayout>
 

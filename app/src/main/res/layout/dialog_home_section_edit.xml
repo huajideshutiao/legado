@@ -21,9 +21,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="16dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="16dp">
+            android:paddingStart="@dimen/arco_spacing_lg"
+            android:paddingTop="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_lg">
 
             <io.legado.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
@@ -65,7 +65,7 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="8dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_default"
                     android:text="@string/home_pick_favorite"
                     android:textColor="@color/primaryText"
                     android:textSize="14sp" />
@@ -78,7 +78,7 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="8dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_default"
                     android:text="@string/home_select_source"
                     android:textColor="@color/primaryText"
                     android:textSize="14sp" />
@@ -91,7 +91,7 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="8dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_default"
                     android:text="@string/home_select_category"
                     android:textColor="@color/primaryText"
                     android:textSize="14sp" />
@@ -100,7 +100,7 @@
             <io.legado.app.ui.widget.text.AccentTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/arco_spacing_default"
                 android:text="@string/home_style"
                 android:textSize="13sp" />
 
@@ -141,7 +141,7 @@
                 android:id="@+id/cb_cover_video"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/arco_spacing_default"
                 android:text="@string/home_cover_video" />
 
         </LinearLayout>
@@ -157,8 +157,8 @@
             android:id="@+id/btn_delete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/delete"
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
@@ -172,16 +172,16 @@
             android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/cancel" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/btn_ok"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
-            android:padding="6dp"
+            android:layout_margin="@dimen/arco_spacing_md"
+            android:padding="@dimen/arco_spacing_default"
             android:text="@string/ok" />
 
     </LinearLayout>

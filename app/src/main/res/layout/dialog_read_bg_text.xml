@@ -6,13 +6,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="@dimen/arco_dialog_padding_h">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:padding="6dp">
+        android:padding="@dimen/arco_spacing_default">
 
         <TextView
             android:id="@+id/tv_name_title"
@@ -26,8 +26,8 @@
             android:id="@+id/tv_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp"
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default"
             android:textColor="@color/secondaryText"
             tools:text="文字" />
 
@@ -57,7 +57,7 @@
         android:id="@+id/sw_dark_status_icon"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         android:text="@string/dark_status_icon"
         tools:ignore="TouchTargetSizeCheck" />
 
@@ -65,7 +65,7 @@
         android:id="@+id/sw_underline"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         android:text="@string/text_underline"
         tools:ignore="TouchTargetSizeCheck" />
 
@@ -74,19 +74,19 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="6dp">
+        android:padding="@dimen/arco_spacing_default">
 
         <io.legado.app.ui.widget.text.StrokeTextView
             android:id="@+id/tv_text_color"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginLeft="6dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:layout_weight="5"
             android:background="?attr/selectableItemBackground"
             android:gravity="center"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:singleLine="true"
             android:text="@string/text_color"
             android:textSize="14sp"
@@ -98,12 +98,12 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginLeft="6dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:layout_weight="5"
             android:background="?attr/selectableItemBackground"
             android:gravity="center"
-            android:padding="6dp"
+            android:padding="@dimen/arco_spacing_default"
             android:singleLine="true"
             android:text="@string/bg_color"
             android:textSize="14sp"
@@ -114,8 +114,8 @@
             android:id="@+id/iv_import"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_marginLeft="6dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?attr/selectableItemBackground"
             android:contentDescription="@string/import_str"
             android:src="@drawable/ic_import"
@@ -126,8 +126,8 @@
             android:id="@+id/iv_export"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_marginLeft="6dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?attr/selectableItemBackground"
             android:contentDescription="@string/import_str"
             android:src="@drawable/ic_export"
@@ -138,8 +138,8 @@
             android:id="@+id/iv_delete"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_marginLeft="6dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginStart="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_default"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/delete"
             android:src="@drawable/ic_clear_all"
@@ -153,8 +153,8 @@
         android:id="@+id/tv_bg_alpha"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="6dp"
-        android:paddingRight="6dp"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:text="@string/bg_alpha" />
 
     <io.legado.app.ui.widget.seekbar.ThemeSeekBar
@@ -162,15 +162,15 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:max="100"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         tools:ignore="UnusedAttribute" />
 
     <TextView
         android:id="@+id/tv_bg_image"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="6dp"
-        android:paddingRight="6dp"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:text="@string/bg_image" />
 
     <androidx.recyclerview.widget.RecyclerView
@@ -178,7 +178,7 @@
         android:layout_width="match_parent"
         android:layout_height="100dp"
         android:orientation="horizontal"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
         tools:listitem="@layout/item_bg_image" />
 

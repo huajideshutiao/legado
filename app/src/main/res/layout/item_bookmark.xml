@@ -3,21 +3,21 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="8dp"
+    android:paddingVertical="@dimen/arco_spacing_default"
     android:background="?android:attr/selectableItemBackground">
 
     <TextView
         android:id="@+id/tv_chapter_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="4dp"
+        android:padding="@dimen/arco_spacing_xs"
         android:singleLine="true" />
 
     <TextView
         android:id="@+id/tv_book_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="4dp"
+        android:padding="@dimen/arco_spacing_xs"
         android:textSize="12sp"
         android:singleLine="true" />
 
@@ -25,7 +25,7 @@
         android:id="@+id/tv_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="4dp"
+        android:padding="@dimen/arco_spacing_xs"
         android:textSize="12sp"
         android:singleLine="true" />
 

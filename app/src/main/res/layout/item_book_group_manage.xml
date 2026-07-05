@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:padding="@dimen/arco_spacing_default">
 
     <TextView
         android:id="@+id/tv_group"
@@ -20,7 +20,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="?attr/selectableItemBackground"
-        android:padding="8dp"
+        android:padding="@dimen/arco_spacing_default"
         android:text="@string/edit"
         android:textColor="@color/secondaryText" />
 

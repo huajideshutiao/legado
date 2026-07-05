@@ -19,7 +19,7 @@
         android:id="@+id/fabLeft"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:contentDescription="上个结果"
         android:rotation="180"
         android:src="@drawable/ic_arrow_right"
@@ -37,7 +37,7 @@
         android:id="@+id/fabRight"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:contentDescription="下个结果"
         android:src="@drawable/ic_arrow_right"
         android:tint="@color/primaryText"
@@ -64,8 +64,8 @@
             android:background="@color/background_menu"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="10dp"
-            android:paddingRight="10dp">
+            android:paddingStart="@dimen/arco_page_padding_h"
+            android:paddingEnd="@dimen/arco_page_padding_h">
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/iv_search_content_up"
@@ -97,8 +97,8 @@
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:ellipsize="middle"
                 android:gravity="center_vertical"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp"
+                android:paddingStart="@dimen/arco_page_padding_h"
+                android:paddingEnd="@dimen/arco_page_padding_h"
                 android:singleLine="true"
                 android:textColor="@color/primaryText"
                 android:textSize="12sp" />
@@ -127,7 +127,7 @@
                 android:contentDescription="结果"
                 android:focusable="true"
                 android:orientation="vertical"
-                android:paddingBottom="7dp">
+                android:paddingBottom="@dimen/arco_spacing_default">
 
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -147,7 +147,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="3dp"
+                    android:layout_marginTop="@dimen/arco_spacing_xs"
                     android:maxLines="1"
                     android:text="结果"
                     android:textColor="@color/primaryText"
@@ -169,7 +169,7 @@
                 android:contentDescription="@string/main_menu"
                 android:focusable="true"
                 android:orientation="vertical"
-                android:paddingBottom="7dp">
+                android:paddingBottom="@dimen/arco_spacing_default">
 
                 <androidx.appcompat.widget.AppCompatImageView
                     android:id="@+id/iv_main_menu"
@@ -188,7 +188,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="3dp"
+                    android:layout_marginTop="@dimen/arco_spacing_xs"
                     android:maxLines="1"
                     android:text="@string/main_menu"
                     android:textColor="@color/primaryText"
@@ -209,7 +209,7 @@
                 android:contentDescription="退出"
                 android:focusable="true"
                 android:orientation="vertical"
-                android:paddingBottom="7dp">
+                android:paddingBottom="@dimen/arco_spacing_default">
 
                 <androidx.appcompat.widget.AppCompatImageView
                     android:id="@+id/iv_search_exit"
@@ -228,7 +228,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="3dp"
+                    android:layout_marginTop="@dimen/arco_spacing_xs"
                     android:maxLines="1"
                     android:text="退出"
                     android:textColor="@color/primaryText"

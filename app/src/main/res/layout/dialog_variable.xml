@@ -4,14 +4,14 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp">
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingEnd="@dimen/arco_spacing_lg">
 
 
     <io.legado.app.ui.widget.text.AccentTextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="3dp"
+        android:padding="@dimen/arco_spacing_xs"
         android:text="variable"
         tools:ignore="HardcodedText" />
 
@@ -35,14 +35,14 @@
             <io.legado.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="3dp"
+                android:padding="@dimen/arco_spacing_xs"
                 android:text="@string/variable_comment" />
 
             <TextView
                 android:id="@+id/tv_comment"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="3dp"
+                android:padding="@dimen/arco_spacing_xs"
                 android:textColor="@color/secondaryText"
                 android:textIsSelectable="true" />
 

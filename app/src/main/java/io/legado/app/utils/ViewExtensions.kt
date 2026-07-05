@@ -271,7 +271,7 @@ fun View.applyNavigationBarMargin(withInitialMargin: Boolean = false) {
 
 /**
  * 给底部动作栏挪出安全区: 导航栏 + 刘海 + 屏幕圆角,
- * 底部 padding 抬高到 >= 底部圆角半径,让全宽按钮不会被圆角切到。
+ * 底部 padding 抬高到 >= 底部圆角半径的一半,让全宽按钮不会被圆角切到。
  */
 fun View.applyBottomActionInsets(withInitialPadding: Boolean = true) {
     val initialLeft = if (withInitialPadding) paddingLeft else 0
@@ -297,7 +297,7 @@ fun View.applyBottomActionInsets(withInitialPadding: Boolean = true) {
             initialLeft + safeInsets.left,
             paddingTop,
             initialRight + safeInsets.right,
-            maxOf(initialBottom + safeInsets.bottom, bottomCornerRadius)
+            maxOf(initialBottom + safeInsets.bottom, bottomCornerRadius / 2)
         )
         windowInsets
     }

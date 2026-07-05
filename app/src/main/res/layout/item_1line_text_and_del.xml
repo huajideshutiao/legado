@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="6dp"
+    android:paddingVertical="@dimen/arco_spacing_default"
     tools:ignore="UseCompoundDrawables">
 
     <TextView

@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/arco_dialog_padding_h">
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:layout_width="wrap_content"
@@ -27,21 +27,21 @@
                 android:id="@+id/rb_title_mode1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="3dp"
+                android:padding="@dimen/arco_spacing_xs"
                 android:text="@string/title_left" />
 
             <RadioButton
                 android:id="@+id/rb_title_mode2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="3dp"
+                android:padding="@dimen/arco_spacing_xs"
                 android:text="@string/title_center" />
 
             <RadioButton
                 android:id="@+id/rb_title_mode3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="3dp"
+                android:padding="@dimen/arco_spacing_xs"
                 android:text="@string/title_hide" />
         </RadioGroup>
 
@@ -49,7 +49,7 @@
             android:id="@+id/dsb_title_size"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="3dp"
+            android:padding="@dimen/arco_spacing_xs"
             app:max="10"
             app:title="@string/title_font_size" />
 
@@ -57,7 +57,7 @@
             android:id="@+id/dsb_title_top"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="3dp"
+            android:padding="@dimen/arco_spacing_xs"
             app:max="100"
             app:title="@string/title_margin_top" />
 
@@ -65,7 +65,7 @@
             android:id="@+id/dsb_title_bottom"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="3dp"
+            android:padding="@dimen/arco_spacing_xs"
             app:max="100"
             app:title="@string/title_margin_bottom" />
 
@@ -88,7 +88,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/show_hide"
                 android:textColor="@color/primaryText" />
 
@@ -96,7 +96,7 @@
                 android:id="@+id/tv_header_show"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/show_hide" />
 
@@ -114,7 +114,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/left"
                 android:textColor="@color/primaryText" />
 
@@ -122,7 +122,7 @@
                 android:id="@+id/tv_header_left"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -140,7 +140,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/middle"
                 android:textColor="@color/primaryText" />
 
@@ -148,7 +148,7 @@
                 android:id="@+id/tv_header_middle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -166,7 +166,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/right"
                 android:textColor="@color/primaryText" />
 
@@ -174,7 +174,7 @@
                 android:id="@+id/tv_header_right"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -198,7 +198,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/show_hide"
                 android:textColor="@color/primaryText" />
 
@@ -206,7 +206,7 @@
                 android:id="@+id/tv_footer_show"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/show_hide" />
 
@@ -224,7 +224,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/left"
                 android:textColor="@color/primaryText" />
 
@@ -232,7 +232,7 @@
                 android:id="@+id/tv_footer_left"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -250,7 +250,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/middle"
                 android:textColor="@color/primaryText" />
 
@@ -258,7 +258,7 @@
                 android:id="@+id/tv_footer_middle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -276,7 +276,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/right"
                 android:textColor="@color/primaryText" />
 
@@ -284,7 +284,7 @@
                 android:id="@+id/tv_footer_right"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/title" />
 
@@ -308,7 +308,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/text_color"
                 android:textColor="@color/primaryText" />
 
@@ -316,7 +316,7 @@
                 android:id="@+id/tv_tip_color"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/text_color" />
 
@@ -334,7 +334,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:text="@string/tip_divider_color"
                 android:textColor="@color/primaryText" />
 
@@ -342,7 +342,7 @@
                 android:id="@+id/tv_tip_divider_color"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="6dp"
+                android:padding="@dimen/arco_spacing_default"
                 android:textColor="@color/primaryText"
                 tools:text="@string/tip_divider_color" />
 

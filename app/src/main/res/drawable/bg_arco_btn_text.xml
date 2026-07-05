@@ -1,21 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?><!-- Arco Text 按钮背景：透明底，无边框 -->
-<!-- normal=透明底 / pressed=fill_2 底 / disabled=透明底 -->
+<?xml version="1.0" encoding="utf-8"?><!-- Arco Text 按钮背景 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_enabled="false">
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
+            <corners android:radius="@dimen/arco_radius_default" />
             <solid android:color="@android:color/transparent" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
+            <corners android:radius="@dimen/arco_radius_default" />
             <solid android:color="@color/arco_fill_2" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
+            <corners android:radius="@dimen/arco_radius_default" />
             <solid android:color="@android:color/transparent" />
         </shape>
     </item>

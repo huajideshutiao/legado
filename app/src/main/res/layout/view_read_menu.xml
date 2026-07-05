@@ -31,8 +31,8 @@
                 android:id="@+id/tv_chapter_name"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp"
+                android:paddingStart="@dimen/arco_page_padding_h"
+                android:paddingEnd="@dimen/arco_page_padding_h"
                 android:singleLine="true"
                 android:visibility="gone"
                 app:layout_constraintLeft_toLeftOf="parent"
@@ -43,23 +43,23 @@
                 android:id="@+id/tv_chapter_url"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp"
+                android:paddingStart="@dimen/arco_page_padding_h"
+                android:paddingEnd="@dimen/arco_page_padding_h"
                 android:singleLine="true"
                 android:visibility="gone"
                 app:layout_constraintLeft_toLeftOf="parent"
                 app:layout_constraintRight_toLeftOf="@+id/tv_source_action"
                 app:layout_constraintTop_toBottomOf="@+id/tv_chapter_name" />
 
-            <androidx.appcompat.widget.AppCompatTextView
+            <io.legado.app.ui.widget.button.ArcoButton
                 android:id="@+id/tv_source_action"
                 style="@style/Widget.Arco.Button.Primary.Small"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_margin="1dp"
                 android:maxWidth="120dp"
+                android:minHeight="@dimen/arco_view_height_default"
                 android:text="@string/book_source"
-                app:layout_constraintBottom_toBottomOf="@+id/tv_chapter_url"
+                app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintRight_toRightOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
@@ -81,14 +81,14 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp">
+            android:paddingStart="@dimen/arco_spacing_lg"
+            android:paddingEnd="@dimen/arco_spacing_lg">
 
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/fabSearch"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_margin="@dimen/arco_spacing_lg"
                 android:contentDescription="@string/search_content"
                 android:src="@drawable/ic_search"
                 android:tint="@color/primaryText"
@@ -107,7 +107,7 @@
                 android:id="@+id/fabAutoPage"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_margin="@dimen/arco_spacing_lg"
                 android:contentDescription="@string/auto_next_page"
                 android:src="@drawable/ic_auto_page"
                 android:tint="@color/primaryText"
@@ -126,7 +126,7 @@
                 android:id="@+id/fabReplaceRule"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_margin="@dimen/arco_spacing_lg"
                 android:contentDescription="@string/replace_rule_title"
                 android:src="@drawable/ic_find_replace"
                 android:tint="@color/primaryText"
@@ -145,7 +145,7 @@
                 android:id="@+id/fabNightTheme"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_margin="@dimen/arco_spacing_lg"
                 android:contentDescription="@string/dark_theme"
                 android:src="@drawable/ic_brightness"
                 android:tint="@color/primaryText"
@@ -170,10 +170,10 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="20dp"
-                android:layout_marginTop="5dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginBottom="5dp"
+                android:layout_marginStart="@dimen/arco_page_padding_h"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
+                android:layout_marginEnd="@dimen/arco_page_padding_h"
+                android:layout_marginBottom="@dimen/arco_spacing_xs"
                 android:importantForAccessibility="no"
                 android:orientation="horizontal">
 
@@ -181,14 +181,14 @@
                     android:id="@+id/tv_pre"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_marginEnd="10dp"
+                    android:layout_marginStart="@dimen/arco_spacing_md"
+                    android:layout_marginEnd="@dimen/arco_spacing_md"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:clickable="true"
                     android:enabled="false"
                     android:focusable="true"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="10dp"
+                    android:paddingTop="@dimen/arco_spacing_md"
+                    android:paddingBottom="@dimen/arco_spacing_md"
                     android:text="@string/previous_chapter"
                     android:textColor="@color/primaryText"
                     android:textSize="14sp"
@@ -205,14 +205,14 @@
                     android:id="@+id/tv_next"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_marginEnd="10dp"
+                    android:layout_marginStart="@dimen/arco_spacing_md"
+                    android:layout_marginEnd="@dimen/arco_spacing_md"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:clickable="true"
                     android:enabled="false"
                     android:focusable="true"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="10dp"
+                    android:paddingTop="@dimen/arco_spacing_md"
+                    android:paddingBottom="@dimen/arco_spacing_md"
                     android:text="@string/next_chapter"
                     android:textColor="@color/primaryText"
                     android:textSize="14sp"
@@ -242,7 +242,7 @@
                     android:contentDescription="@string/chapter_list"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:paddingBottom="7dp"
+                    android:paddingBottom="@dimen/arco_spacing_default"
                     tools:ignore="VisualLintBounds">
 
                     <androidx.appcompat.widget.AppCompatImageView
@@ -262,7 +262,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="@dimen/arco_spacing_xs"
                         android:ellipsize="middle"
                         android:singleLine="true"
                         android:text="@string/chapter_list"
@@ -286,7 +286,7 @@
                     android:contentDescription="@string/read_aloud"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:paddingBottom="7dp"
+                    android:paddingBottom="@dimen/arco_spacing_default"
                     tools:ignore="VisualLintBounds">
 
                     <androidx.appcompat.widget.AppCompatImageView
@@ -306,7 +306,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="@dimen/arco_spacing_xs"
                         android:ellipsize="middle"
                         android:singleLine="true"
                         android:text="@string/read_aloud"
@@ -330,7 +330,7 @@
                     android:contentDescription="@string/interface_setting"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:paddingBottom="7dp"
+                    android:paddingBottom="@dimen/arco_spacing_default"
                     tools:ignore="VisualLintBounds">
 
                     <androidx.appcompat.widget.AppCompatImageView
@@ -350,7 +350,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="@dimen/arco_spacing_xs"
                         android:ellipsize="middle"
                         android:singleLine="true"
                         android:text="@string/interface_setting"
@@ -374,7 +374,7 @@
                     android:contentDescription="@string/setting"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:paddingBottom="7dp"
+                    android:paddingBottom="@dimen/arco_spacing_default"
                     tools:ignore="VisualLintBounds">
 
                     <androidx.appcompat.widget.AppCompatImageView
@@ -394,7 +394,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="@dimen/arco_spacing_xs"
                         android:ellipsize="middle"
                         android:singleLine="true"
                         android:text="@string/setting"

@@ -33,10 +33,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:paddingStart="16dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="6dp"
+        android:paddingStart="@dimen/arco_spacing_lg"
+        android:paddingTop="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_lg"
+        android:paddingBottom="@dimen/arco_spacing_default"
         android:textColor="@color/md_white_1000"
         app:layout_constraintTop_toBottomOf="@+id/title_bar" />
 
@@ -44,13 +44,13 @@
         android:id="@+id/tv_timer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:background="@drawable/shape_fillet_btn_press"
-        android:paddingLeft="6dp"
-        android:paddingRight="6dp"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:textColor="@color/md_white_1000"
         android:visibility="invisible"
-        app:drawableLeftCompat="@drawable/ic_timer_black_24dp"
+        app:drawableStartCompat="@drawable/ic_timer_black_24dp"
         app:drawableTint="@color/md_white_1000"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tv_sub_title" />
@@ -59,20 +59,20 @@
         android:id="@+id/tv_speed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:background="@drawable/shape_fillet_btn_press"
-        android:paddingLeft="6dp"
-        android:paddingRight="6dp"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:textColor="@color/md_white_1000"
         android:visibility="invisible"
-        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tv_sub_title" />
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_cover"
         android:layout_width="200dp"
         android:layout_height="200dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="@dimen/arco_spacing_lg"
         android:contentDescription="@string/img_cover"
         android:scaleType="centerCrop"
         app:layout_constraintLeft_toLeftOf="parent"
@@ -86,10 +86,10 @@
         android:id="@+id/iv_lrc"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="24dp"
-        android:paddingLeft="24dp"
-        android:paddingRight="24dp"
+        android:layout_marginTop="@dimen/arco_spacing_lg"
+        android:layout_marginBottom="@dimen/arco_spacing_lg"
+        android:paddingStart="@dimen/arco_spacing_lg"
+        android:paddingEnd="@dimen/arco_spacing_lg"
         app:layout_constraintBottom_toTopOf="@+id/ll_player_progress"
         app:layout_constraintTop_toBottomOf="@+id/iv_cover" />
 
@@ -99,8 +99,8 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="@dimen/arco_spacing_lg"
+        android:paddingEnd="@dimen/arco_spacing_lg"
         app:layout_constraintBottom_toTopOf="@+id/ll_play_menu">
 
         <TextView
@@ -136,7 +136,7 @@
         android:alpha="0.7"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="6dp"
+        android:paddingHorizontal="@dimen/arco_spacing_default"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <androidx.appcompat.widget.AppCompatImageView
@@ -145,7 +145,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/set_timer"
-            android:padding="5dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:src="@drawable/ic_timer_black_24dp"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />
@@ -161,7 +161,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_previous"
-            android:padding="5dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:src="@drawable/ic_fast_forward"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />
@@ -177,7 +177,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_previous"
-            android:padding="5dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:src="@drawable/ic_skip_previous"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />
@@ -190,7 +190,7 @@
                 android:id="@+id/fab_play_stop"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_margin="10dp"
+                android:layout_margin="@dimen/arco_spacing_md"
                 android:contentDescription="@string/audio_play"
                 android:src="@drawable/ic_play_24dp"
                 android:tint="@color/md_black_1000"
@@ -223,7 +223,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_next"
-            android:padding="5dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:src="@drawable/ic_skip_next"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />
@@ -239,7 +239,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/skip_next"
-            android:padding="7dp"
+            android:padding="@dimen/arco_spacing_default"
             android:src="@drawable/ic_play_mode_list_end_stop"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />
@@ -255,7 +255,7 @@
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
             android:contentDescription="@string/chapter_list"
-            android:padding="5dp"
+            android:padding="@dimen/arco_spacing_xs"
             android:src="@drawable/ic_chapter_list"
             app:tint="@color/selector_white_icon"
             tools:ignore="ImageContrastCheck" />

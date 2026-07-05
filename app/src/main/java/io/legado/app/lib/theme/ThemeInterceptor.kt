@@ -39,6 +39,7 @@ object ThemeInterceptor {
         for (i in 0 until typedArray.indexCount) {
             val attrIndex = typedArray.getIndex(i)
             val resId = typedArray.getResourceId(attrIndex, -1)
+            val attr = themeAttributes[attrIndex]
 
             if (resId == R.color.accent || resId == R.color.primary) {
                 val targetColor = if (resId == R.color.accent) {
@@ -47,7 +48,7 @@ object ThemeInterceptor {
                     context.primaryColor
                 }
 
-                when (themeAttributes[attrIndex]) {
+                when (attr) {
                     android.R.attr.textColor -> if (view is TextView) {
                         view.setTextColor(targetColor)
                     }
@@ -87,6 +88,7 @@ object ThemeInterceptor {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                     view.isLocalePreferredLineHeightForMinimumUsed = false
                 }
+                view.setLinkTextColor(context.accentColor)
             }
 
             is CheckBox, is RadioButton, is Switch, is SwitchCompat -> {
@@ -99,6 +101,10 @@ object ThemeInterceptor {
 
             is SwipeRefreshLayout -> {
                 view.setColorSchemeColors(context.accentColor)
+            }
+
+            is TextView -> {
+                view.setLinkTextColor(context.accentColor)
             }
         }
     }

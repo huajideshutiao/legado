@@ -46,7 +46,7 @@ fun AlertDialog.applyTint(): AlertDialog {
 
         // 统一宽度为屏幕对应边的 90%，并设置上限
         val dm = context.resources.displayMetrics
-        val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((600 * dm.density).toInt())
+        val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((800 * dm.density).toInt())
         val maxHeight = (dm.heightPixels * 0.8).toInt()
 
         val h = findViewById<View>(androidx.appcompat.R.id.parentPanel)?.let { v ->

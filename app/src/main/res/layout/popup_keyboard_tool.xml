@@ -24,8 +24,8 @@
             android:layout_height="45dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -37,7 +37,7 @@
                 android:id="@+id/tv_find"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="@dimen/arco_spacing_default"
                 android:singleLine="true" />
         </LinearLayout>
 
@@ -47,8 +47,8 @@
             android:layout_height="45dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -60,7 +60,7 @@
                 android:id="@+id/tv_replace"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="@dimen/arco_spacing_default"
                 android:singleLine="true" />
         </LinearLayout>
 
@@ -70,7 +70,7 @@
             android:layout_height="35dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingRight="6dp">
+            android:paddingEnd="@dimen/arco_spacing_default">
 
             <TextView
                 android:id="@+id/tv_prev"
@@ -118,7 +118,7 @@
                 android:layout_height="wrap_content"
                 android:background="?selectableItemBackgroundBorderless"
                 android:contentDescription="@string/more_menu"
-                android:padding="8dp"
+                android:padding="@dimen/arco_spacing_default"
                 app:srcCompat="@drawable/ic_more_vert"
                 app:tint="@color/primaryText" />
 
@@ -132,7 +132,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:orientation="horizontal"
-        android:padding="4dp"
+        android:padding="@dimen/arco_spacing_xs"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
 </LinearLayout>

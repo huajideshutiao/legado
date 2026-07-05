@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center"
-    android:padding="20dp"
+    android:padding="@dimen/arco_dialog_padding_h"
     android:orientation="vertical">
 
     <LinearLayout
@@ -13,13 +13,13 @@
         android:layout_height="60dp"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="16dp">
+        android:padding="@dimen/arco_spacing_lg">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
-            android:layout_marginRight="2dp"
+            android:layout_marginEnd="2dp"
             android:text="@string/switch_on"
             android:textColor="@color/primaryText"
             android:textSize="16sp"
@@ -58,7 +58,7 @@
         android:layout_width="match_parent"
         android:layout_height="65dp"
         android:orientation="horizontal"
-        android:padding="16dp"
+        android:padding="@dimen/arco_spacing_lg"
         android:gravity="start|center_vertical">
 
         <TextView
@@ -87,7 +87,7 @@
             android:layout_weight="1"
             android:clickable="true"
             android:textSize="16sp"
-            android:layout_marginRight="68dp" />
+            android:layout_marginEnd="68dp" />
 
         <View
             android:layout_width="0dp"
@@ -101,7 +101,7 @@
         android:layout_width="match_parent"
         android:layout_height="63dp"
         android:gravity="center_horizontal|left"
-        android:padding="16dp">
+        android:padding="@dimen/arco_spacing_lg">
 
         <LinearLayout
             android:orientation="horizontal"
@@ -113,7 +113,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:layout_marginRight="2dp"
+                android:layout_marginEnd="2dp"
                 android:text="@string/start_chapter"
                 android:textColor="@color/primaryText"
                 android:textSize="16sp"
@@ -133,10 +133,10 @@
             android:lines="1"
             android:maxLength="5"
             android:minWidth="60dp"
-            android:paddingLeft="5dp"
-            android:paddingTop="4dp"
-            android:paddingRight="5dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="@dimen/arco_spacing_xs"
+            android:paddingTop="@dimen/arco_spacing_xs"
+            android:paddingEnd="@dimen/arco_spacing_xs"
+            android:paddingBottom="@dimen/arco_spacing_xs"
             android:textColor="@color/primaryText"
             android:textCursorDrawable="@drawable/shape_text_cursor"
             android:textSize="14sp"
@@ -152,8 +152,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
-                android:layout_marginLeft="25dp"
-                android:layout_marginRight="5dp"
+                android:layout_marginStart="25dp"
+                android:layout_marginEnd="@dimen/arco_spacing_xs"
                 android:text="@string/daily_chapters"
                 android:textColor="@color/primaryText"
                 android:textSize="16sp" />
@@ -170,10 +170,10 @@
                 android:lines="1"
                 android:maxLength="5"
                 android:minWidth="60dp"
-                android:paddingLeft="5dp"
-                android:paddingTop="4dp"
-                android:paddingRight="5dp"
-                android:paddingBottom="4dp"
+                android:paddingStart="@dimen/arco_spacing_xs"
+                android:paddingTop="@dimen/arco_spacing_xs"
+                android:paddingEnd="@dimen/arco_spacing_xs"
+                android:paddingBottom="@dimen/arco_spacing_xs"
                 android:textColor="@color/primaryText"
                 android:textCursorDrawable="@drawable/shape_text_cursor"
                 android:textSize="14sp"

@@ -9,7 +9,7 @@
     android:clickable="true"
     android:focusable="true"
     android:foreground="?android:attr/selectableItemBackground"
-    android:padding="8dp">
+    android:padding="@dimen/arco_spacing_default">
 
     <io.legado.app.ui.widget.image.CoverImageView
         android:id="@+id/iv_cover"
@@ -26,7 +26,7 @@
         android:id="@+id/iv_in_bookshelf"
         android:layout_width="8dp"
         android:layout_height="8dp"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="@dimen/arco_spacing_md"
         android:src="@color/md_green_600"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/tv_name"
@@ -40,7 +40,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:includeFontPadding="false"
-        android:paddingStart="4dp"
+        android:paddingStart="@dimen/arco_spacing_xs"
         android:singleLine="true"
         android:text="@string/book_name"
         android:textColor="@color/primaryText"
@@ -51,7 +51,7 @@
         app:layout_constraintStart_toEndOf="@id/iv_in_bookshelf"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_chainStyle="spread"
-        app:layout_goneMarginStart="8dp"
+        app:layout_goneMarginStart="@dimen/arco_spacing_default"
         tools:ignore="RtlSymmetry" />
 
     <io.legado.app.ui.widget.text.BadgeView
@@ -95,7 +95,7 @@
         android:id="@+id/iv_author"
         android:layout_width="@dimen/desc_icon_size"
         android:layout_height="@dimen/desc_icon_size"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/arco_spacing_default"
         android:contentDescription="@string/author"
         android:paddingStart="2dp"
         android:paddingEnd="2dp"
@@ -112,7 +112,7 @@
         android:layout_height="wrap_content"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:paddingEnd="6dp"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:singleLine="true"
         android:text="@string/author"
         android:textColor="@color/tv_text_summary"
@@ -128,7 +128,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:includeFontPadding="false"
-        android:paddingEnd="6dp"
+        android:paddingEnd="@dimen/arco_spacing_default"
         android:singleLine="true"
         android:textColor="@color/tv_text_summary"
         android:textSize="13sp"
@@ -145,7 +145,7 @@
         android:id="@+id/ll_kind"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/arco_spacing_default"
         android:orientation="horizontal"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/tv_read"
@@ -159,7 +159,7 @@
         android:id="@+id/iv_read"
         android:layout_width="@dimen/desc_icon_size"
         android:layout_height="@dimen/desc_icon_size"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/arco_spacing_default"
         android:contentDescription="@string/read_dur_progress"
         android:paddingStart="2dp"
         android:paddingEnd="2dp"
@@ -186,7 +186,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/iv_read"
         app:layout_constraintTop_toBottomOf="@id/ll_kind"
-        app:layout_goneMarginStart="8dp"
+        app:layout_goneMarginStart="@dimen/arco_spacing_default"
         tools:ignore="TextContrastCheck"
         tools:visibility="visible" />
 
@@ -195,7 +195,7 @@
         android:id="@+id/iv_last"
         android:layout_width="@dimen/desc_icon_size"
         android:layout_height="@dimen/desc_icon_size"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/arco_spacing_default"
         android:contentDescription="@string/lasted_show"
         android:paddingStart="2dp"
         android:paddingEnd="2dp"
@@ -221,7 +221,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/iv_last"
         app:layout_constraintTop_toBottomOf="@id/tv_read"
-        app:layout_goneMarginStart="8dp"
+        app:layout_goneMarginStart="@dimen/arco_spacing_default"
         tools:ignore="TextContrastCheck"
         tools:text="最新章节"
         tools:visibility="visible" />
@@ -231,7 +231,7 @@
         android:id="@+id/tv_intro"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/arco_spacing_default"
         android:ellipsize="end"
         android:includeFontPadding="false"
         android:maxLines="3"

@@ -26,7 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="16dp">
+            android:paddingHorizontal="@dimen/arco_dialog_padding_h">
 
             <io.legado.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
@@ -43,7 +43,7 @@
             <io.legado.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/arco_spacing_default"
                 android:hint="@string/source_filter_rule_pattern">
 
                 <androidx.appcompat.widget.AppCompatEditText
@@ -56,7 +56,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:text="@string/source_filter_rule_fields"
                 android:textColor="@color/secondaryText"
                 android:textSize="13sp" />
@@ -64,7 +64,7 @@
             <GridLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:columnCount="3">
 
                 <CheckBox
@@ -113,13 +113,13 @@
                 android:id="@+id/ll_pick_scope"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:background="?attr/selectableItemBackground"
                 android:gravity="center_vertical"
                 android:minHeight="48dp"
                 android:orientation="horizontal"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp">
+                android:paddingStart="@dimen/arco_spacing_xs"
+                android:paddingEnd="@dimen/arco_spacing_xs">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -148,7 +148,7 @@
                 <androidx.appcompat.widget.AppCompatImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginStart="@dimen/arco_spacing_default"
                     android:contentDescription="@string/source_filter_rule_scope_label"
                     android:src="@drawable/ic_arrow_drop_down"
                     android:tint="@color/secondaryText" />
@@ -157,7 +157,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -184,8 +184,8 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
+        android:paddingStart="@dimen/arco_dialog_padding_v"
+        android:paddingEnd="@dimen/arco_dialog_padding_v"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/scroll_view">
 
@@ -198,8 +198,7 @@
             android:id="@+id/tv_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginRight="16dp"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/cancel"
             android:textColor="@color/secondaryText"
             tools:ignore="RtlHardcoded" />
@@ -208,8 +207,7 @@
             android:id="@+id/tv_ok"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginRight="16dp"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/ok"
             tools:ignore="RtlHardcoded" />
 

@@ -6,14 +6,14 @@
     android:background="?android:attr/selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="5dp">
+    android:paddingVertical="@dimen/arco_spacing_xs">
 
     <TextView
         android:id="@+id/tv_font"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:padding="5dp"
+        android:padding="@dimen/arco_spacing_xs"
         android:textColor="@color/primaryText" />
 
     <androidx.appcompat.widget.AppCompatImageView

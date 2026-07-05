@@ -8,8 +8,8 @@
     android:background="?android:attr/selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="16dp"
-    android:paddingEnd="8dp">
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingEnd="@dimen/arco_spacing_default">
 
     <TextView
         android:id="@+id/tv_section_title"
@@ -25,10 +25,10 @@
         android:id="@+id/tv_more"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:paddingStart="8dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="4dp"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        android:paddingEnd="@dimen/arco_spacing_default"
+        android:paddingBottom="@dimen/arco_spacing_xs"
         android:text="@string/home_more"
         android:textColor="@color/tv_text_summary"
         android:textSize="13sp" />

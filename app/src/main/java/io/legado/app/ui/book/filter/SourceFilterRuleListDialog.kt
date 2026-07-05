@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -14,9 +15,13 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.DialogSourceFilterListBinding
-import io.legado.app.databinding.Item1lineTextBinding
+import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.help.source.SearchBookFilter
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
@@ -82,27 +87,73 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_source_f
     }
 
     private inner class RuleAdapter(context: Context) :
-        RecyclerAdapter<SourceFilterRule, Item1lineTextBinding>(context) {
+        RecyclerAdapter<SourceFilterRule, ItemManageRuleBinding>(context) {
 
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextBinding {
-            return Item1lineTextBinding.inflate(inflater, parent, false)
+        override fun getViewBinding(parent: ViewGroup): ItemManageRuleBinding {
+            return ItemManageRuleBinding.inflate(inflater, parent, false)
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: Item1lineTextBinding,
+            binding: ItemManageRuleBinding,
             item: SourceFilterRule,
             payloads: MutableList<Any>
         ) {
-            binding.textView.text = item.name.ifEmpty { item.pattern }
+            binding.run {
+                // 对话框场景 cb_name 只用来展示名称，去掉勾选框视觉
+                cbName.buttonDrawable = null
+                cbName.isClickable = false
+                cbName.text = item.name.ifEmpty { item.pattern }
+                swtEnabled.isChecked = item.enabled
+                tvExtra.visibility = View.GONE
+            }
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextBinding) {
-            binding.root.setOnClickListener {
-                getItem(holder.layoutPosition)?.let {
-                    showDialogFragment(SourceFilterEditDialog(it))
+        override fun registerListener(holder: ItemViewHolder, binding: ItemManageRuleBinding) {
+            binding.apply {
+                swtEnabled.setOnUserCheckedChangeListener { isChecked ->
+                    getItem(holder.layoutPosition)?.let {
+                        it.enabled = isChecked
+                        lifecycleScope.launch(IO) { SearchBookFilter.save(it, isNew = false) }
+                    }
+                }
+                // 只允许点击编辑按钮进入编辑界面
+                ivEdit.setOnClickListener {
+                    getItem(holder.layoutPosition)?.let {
+                        showDialogFragment(SourceFilterEditDialog(it))
+                    }
+                }
+                ivMenuMore.setOnClickListener {
+                    showMenu(ivMenuMore, holder.layoutPosition)
                 }
             }
+        }
+
+        private fun showMenu(view: View, position: Int) {
+            val item = getItem(position) ?: return
+            val popupMenu = PopupMenu(requireContext(), view)
+            popupMenu.inflate(R.menu.rule_item)
+            // 对话框场景不需要置顶/置底
+            popupMenu.menu.findItem(R.id.menu_top).isVisible = false
+            popupMenu.menu.findItem(R.id.menu_bottom).isVisible = false
+            popupMenu.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.menu_del -> {
+                        alert(R.string.draw) {
+                            setMessage(getString(R.string.sure_del) + "\n" + item.name.ifEmpty { item.pattern })
+                            noButton()
+                            yesButton {
+                                lifecycleScope.launch {
+                                    withContext(IO) { SearchBookFilter.delete(item) }
+                                    loadRules()
+                                }
+                            }
+                        }
+                    }
+                }
+                true
+            }
+            popupMenu.show()
         }
     }
 }

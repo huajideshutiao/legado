@@ -838,7 +838,7 @@ class BookInfoActivity :
         if (!viewModel.inBookshelf) {
             book.addType(BookType.notShelf)
             startReadActivity(book)
-        } else viewModel.saveBook(book) { startReadActivity(book) }
+        } else startReadActivity(book)
     }
 
     private fun startReadActivity(book: Book) {

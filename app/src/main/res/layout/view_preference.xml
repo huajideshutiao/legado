@@ -4,10 +4,10 @@
     android:background="@drawable/bg_prefs_color"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingLeft="16dp"
-    android:paddingTop="10dp"
-    android:paddingRight="16dp"
-    android:paddingBottom="10dp"
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingTop="@dimen/arco_spacing_md"
+    android:paddingEnd="@dimen/arco_spacing_lg"
+    android:paddingBottom="@dimen/arco_spacing_md"
     android:minHeight="60dp"
     android:clickable="true"
     android:orientation="horizontal"
@@ -18,7 +18,7 @@
         android:id="@+id/preference_icon"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginEnd="@dimen/arco_spacing_lg"
         android:scaleType="fitCenter"
         android:visibility="visible"
         tools:ignore="ContentDescription" />
@@ -45,7 +45,7 @@
             android:text="@string/default1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="@dimen/arco_spacing_default" />
 
     </LinearLayout>
 
@@ -54,7 +54,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="@dimen/arco_spacing_default"
         android:orientation="vertical"
         android:visibility="gone"
         tools:ignore="RtlHardcoded"

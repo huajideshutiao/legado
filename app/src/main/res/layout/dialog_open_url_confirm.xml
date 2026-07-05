@@ -16,7 +16,7 @@
         android:id="@+id/message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp"
+        android:padding="@dimen/arco_spacing_lg"
         android:textColor="@color/primaryText"
         android:textSize="16sp" />
 
@@ -30,14 +30,14 @@
             android:id="@+id/btn_negative"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="16dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:text="@string/cancel" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/btn_positive"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="16dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:text="@string/ok" />
 
     </com.google.android.flexbox.FlexboxLayout>

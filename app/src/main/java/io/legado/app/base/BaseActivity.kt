@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -15,6 +16,7 @@ import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.LayoutInflaterCompat
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -27,6 +29,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeInterceptor
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.ui.widget.BottomBackgroundDrawable
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.MenuExtensions
@@ -49,7 +52,7 @@ abstract class BaseActivity<VB : ViewBinding>(
     private val theme: Theme = Theme.Auto,
     private val toolBarTheme: Theme = Theme.Auto,
     private val imageBg: Boolean = true
-) : AppCompatActivity() {
+) : AppCompatActivity(), LayoutInflater.Factory2 {
 
     protected abstract val binding: VB
     private var needRecreate = false
@@ -75,16 +78,26 @@ abstract class BaseActivity<VB : ViewBinding>(
         attrs: AttributeSet
     ): View? {
         if (AppConst.menuViewNames.contains(name) && parent?.parent is FrameLayout) {
-            (parent.parent as View).setBackgroundColor(backgroundColor)
+            (parent.parent as View).background = BottomBackgroundDrawable()
         }
-        val view = super.onCreateView(parent, name, context, attrs)
+        val view = delegate.createView(parent, name, context, attrs)
+            ?: takeIf { name.contains('.') }?.let {
+                runCatching {
+                    LayoutInflater.from(context).createView(name, null, attrs)
+                }.getOrNull()
+            }
         view?.let { ThemeInterceptor.apply(it, attrs) }
         return view
+    }
+
+    override fun onCreateView(name: String, context: Context, attrs: AttributeSet): View? {
+        return onCreateView(null, name, context, attrs)
     }
 
     @SuppressLint("ObsoleteSdkInt")
     override fun onCreate(savedInstanceState: Bundle?) {
         initTheme()
+        LayoutInflaterCompat.setFactory2(layoutInflater, this)
         window.decorView.disableAutoFill()
         super.onCreate(savedInstanceState)
         setupSystemBar()

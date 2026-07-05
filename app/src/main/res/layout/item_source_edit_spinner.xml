@@ -5,14 +5,14 @@
     android:layout_height="48dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="6dp">
+    android:paddingHorizontal="@dimen/arco_spacing_md"
+    android:paddingVertical="@dimen/arco_spacing_default">
 
     <TextView
         android:id="@+id/textView"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="@dimen/arco_spacing_default"
         android:gravity="center_vertical"
         tools:text="标签" />
 

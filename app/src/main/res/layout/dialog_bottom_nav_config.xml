@@ -4,13 +4,13 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="@dimen/arco_spacing_lg">
 
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/sw_show_home"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="@dimen/arco_spacing_md"
         android:text="@string/show_home"
         android:textColor="@color/primaryText"
         android:textSize="15sp" />
@@ -19,7 +19,7 @@
         android:id="@+id/sw_show_discovery"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="@dimen/arco_spacing_md"
         android:text="@string/show_discovery"
         android:textColor="@color/primaryText"
         android:textSize="15sp" />
@@ -60,7 +60,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="@dimen/arco_spacing_md"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -94,7 +94,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="@dimen/arco_spacing_md"
         android:text="@string/bottom_bar_label_mode"
         android:textColor="@color/primaryText"
         android:textSize="15sp" />

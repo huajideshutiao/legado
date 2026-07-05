@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/shape_card_view"
-    android:padding="8dp"
+    android:padding="@dimen/arco_spacing_default"
     android:orientation="vertical"
     android:gravity="center_horizontal">
 

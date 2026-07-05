@@ -50,6 +50,14 @@ object SearchBookFilter {
         reload()
     }
 
+    /**
+     * 删除规则并刷新缓存；调用方负责切到 IO 线程。
+     */
+    fun delete(rule: SourceFilterRule) {
+        appDb.sourceFilterRuleDao.delete(rule)
+        reload()
+    }
+
     fun apply(books: List<SearchBook>): Pair<List<SearchBook>, Int> {
         val snap = ensure()
         if (snap.isEmpty) return books to 0

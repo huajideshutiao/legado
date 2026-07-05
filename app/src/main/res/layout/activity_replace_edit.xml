@@ -25,7 +25,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="@dimen/arco_page_padding_h">
 
             <io.legado.app.ui.widget.text.TextInputLayout
                 android:id="@+id/til_name"
@@ -119,7 +119,7 @@
                     android:id="@+id/cb_scope_content"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginLeft="10dp"
+                    android:layout_marginStart="@dimen/arco_spacing_md"
                     android:checked="true"
                     android:text="@string/scope_content"
                     tools:ignore="RtlHardcoded,TouchTargetSizeCheck" />

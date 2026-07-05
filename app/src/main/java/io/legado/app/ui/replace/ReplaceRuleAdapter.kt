@@ -11,16 +11,14 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.databinding.ItemReplaceRuleBinding
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.setOnUserCheckedChangeListener
 
 
 class ReplaceRuleAdapter(context: Context, var callBack: CallBack) :
-    RecyclerAdapter<ReplaceRule, ItemReplaceRuleBinding>(context),
+    RecyclerAdapter<ReplaceRule, ItemManageRuleBinding>(context),
     ItemTouchCallback.Callback {
 
     private val selected = linkedSetOf<ReplaceRule>()
@@ -92,8 +90,8 @@ class ReplaceRuleAdapter(context: Context, var callBack: CallBack) :
         callBack.upCountView()
     }
 
-    override fun getViewBinding(parent: ViewGroup): ItemReplaceRuleBinding {
-        return ItemReplaceRuleBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemManageRuleBinding {
+        return ItemManageRuleBinding.inflate(inflater, parent, false)
     }
 
     override fun onCurrentListChanged() {
@@ -102,13 +100,12 @@ class ReplaceRuleAdapter(context: Context, var callBack: CallBack) :
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemReplaceRuleBinding,
+        binding: ItemManageRuleBinding,
         item: ReplaceRule,
         payloads: MutableList<Any>
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                root.setBackgroundColor(ColorUtils.withAlpha(context.backgroundColor, 0.5f))
                 cbName.text = item.getDisplayNameGroup()
                 swtEnabled.isChecked = item.isEnabled
                 cbName.isChecked = selected.contains(item)
@@ -127,7 +124,7 @@ class ReplaceRuleAdapter(context: Context, var callBack: CallBack) :
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemReplaceRuleBinding) {
+    override fun registerListener(holder: ItemViewHolder, binding: ItemManageRuleBinding) {
         binding.apply {
             swtEnabled.setOnUserCheckedChangeListener { isChecked ->
                 getItem(holder.layoutPosition)?.let {

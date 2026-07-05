@@ -1,25 +1,21 @@
-<?xml version="1.0" encoding="utf-8"?><!-- Arco Secondary 按钮背景：白底 + 1dp 边框 -->
-<!-- normal=bg_card 底 + border_1 边 / pressed=fill_2 底 + primary_active 边 / disabled=fill_2 底 + fill_3 边 -->
+<?xml version="1.0" encoding="utf-8"?><!-- Arco Secondary 按钮背景 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_enabled="false">
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
-            <solid android:color="@color/arco_fill_2" />
-            <stroke android:width="1dp" android:color="@color/arco_fill_3" />
+            <corners android:radius="@dimen/arco_radius_default" />
+            <solid android:color="@color/arco_fill_1" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
-            <solid android:color="@color/arco_fill_2" />
-            <stroke android:width="1dp" android:color="@color/arco_primary_active" />
+            <corners android:radius="@dimen/arco_radius_default" />
+            <solid android:color="@color/arco_fill_3" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="@dimen/arco_btn_radius" />
-            <solid android:color="@color/arco_bg_card" />
-            <stroke android:width="1dp" android:color="@color/arco_border_1" />
+            <corners android:radius="@dimen/arco_radius_default" />
+            <solid android:color="@color/arco_fill_2" />
         </shape>
     </item>
 </selector>

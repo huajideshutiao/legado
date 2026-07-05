@@ -35,8 +35,8 @@
         android:background="@color/background"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
+        android:paddingStart="@dimen/arco_page_padding_h"
+        android:paddingEnd="@dimen/arco_page_padding_h"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <TextView
@@ -47,8 +47,8 @@
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:ellipsize="middle"
             android:gravity="center_vertical"
-            android:paddingLeft="10dp"
-            android:paddingRight="10dp"
+            android:paddingStart="@dimen/arco_page_padding_h"
+            android:paddingEnd="@dimen/arco_page_padding_h"
             android:singleLine="true"
             android:textColor="@color/primaryText"
             android:textSize="12sp" />
@@ -84,7 +84,7 @@
         android:id="@+id/fb_stop"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:src="@drawable/ic_stop_black_24dp"
         android:visibility="invisible"
         android:contentDescription="@string/stop"

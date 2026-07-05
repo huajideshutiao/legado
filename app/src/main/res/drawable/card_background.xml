@@ -1,6 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!-- Arco 风格卡片背景：8dp 圆角 + 底栏色 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
+    <solid android:color="@color/bottomBackground" />
     <corners android:radius="@dimen/arco_radius_default" />
-    <solid android:color="@color/background_card" />
 </shape>

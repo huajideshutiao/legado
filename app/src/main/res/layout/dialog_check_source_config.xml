@@ -16,9 +16,9 @@
     <io.legado.app.ui.widget.text.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
-        android:paddingTop="3dp">
+        android:paddingStart="@dimen/arco_spacing_md"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        android:paddingEnd="@dimen/arco_spacing_md">
 
         <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/check_source_timeout"
@@ -31,15 +31,15 @@
     </io.legado.app.ui.widget.text.TextInputLayout>
 
     <io.legado.app.ui.widget.text.AccentTextView
-        android:paddingLeft="12dp"
+        android:paddingStart="@dimen/arco_spacing_md"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/check_source_item" />
 
     <com.google.android.flexbox.FlexboxLayout
         android:layout_width="match_parent"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
+        android:paddingStart="@dimen/arco_spacing_md"
+        android:paddingEnd="@dimen/arco_spacing_md"
         android:layout_height="wrap_content"
         app:flexWrap="wrap"
         app:justifyContent="space_between">
@@ -79,15 +79,15 @@
     <com.google.android.flexbox.FlexboxLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
+        android:paddingStart="@dimen/arco_spacing_md"
+        android:paddingEnd="@dimen/arco_spacing_md"
         app:justifyContent="flex_end">
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/cancel"
             tools:ignore="RtlHardcoded" />
 
@@ -95,7 +95,7 @@
             android:id="@+id/tv_ok"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/ok"
             tools:ignore="RtlHardcoded" />
 

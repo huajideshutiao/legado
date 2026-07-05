@@ -34,13 +34,13 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp">
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="@dimen/arco_spacing_default"
                         android:gravity="center_vertical"
                         android:text="@string/book_type" />
 
@@ -59,8 +59,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/is_enable" />
 
                 <CheckBox
@@ -68,8 +68,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/auto_save_cookie" />
             </LinearLayout>
         </HorizontalScrollView>
@@ -90,8 +90,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/enable_dangerous_api" />
 
                 <CheckBox
@@ -99,8 +99,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/enable_review" />
             </LinearLayout>
         </HorizontalScrollView>
@@ -121,8 +121,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="@dimen/arco_spacing_md"
+                    android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/discovery" />
 
                 <LinearLayout
@@ -130,12 +130,12 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingVertical="6dp">
+                    android:paddingVertical="@dimen/arco_spacing_default">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="@dimen/arco_spacing_default"
                         android:gravity="center_vertical"
                         android:text="@string/explore_style" />
 
@@ -154,12 +154,12 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingVertical="6dp">
+                    android:paddingVertical="@dimen/arco_spacing_default">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="@dimen/arco_spacing_default"
                         android:gravity="center_vertical"
                         android:text="@string/explore_cols" />
 

@@ -35,8 +35,8 @@
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
-        android:paddingTop="5dp"
-        android:paddingBottom="5dp"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        android:paddingBottom="@dimen/arco_spacing_xs"
         android:orientation="vertical">
 
         <TextView
@@ -62,9 +62,9 @@
                 android:id="@+id/tv_tag"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginRight="15dp"
-                android:paddingStart="5dp"
-                android:paddingEnd="5dp"
+                android:layout_marginEnd="@dimen/arco_spacing_lg"
+                android:paddingStart="@dimen/arco_spacing_xs"
+                android:paddingEnd="@dimen/arco_spacing_xs"
                 android:text="TXT"
                 android:maxLines="1"
                 android:maxWidth="50dp"
@@ -75,7 +75,7 @@
                 android:id="@+id/tv_size"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginRight="15dp"
+                android:layout_marginEnd="@dimen/arco_spacing_lg"
                 tools:ignore="RtlHardcoded"
                 tools:text="324kb" />
 

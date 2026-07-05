@@ -5,8 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:overScrollMode="ifContentScrolls"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp">
+    android:paddingStart="@dimen/arco_spacing_lg"
+    android:paddingEnd="@dimen/arco_spacing_lg">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -31,7 +31,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:text="@string/export_type"
             android:textColor="@color/primaryText"
             android:textSize="14sp" />
@@ -40,7 +40,7 @@
             android:id="@+id/rg_export_type"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/arco_spacing_xs"
             android:orientation="horizontal">
 
             <RadioButton
@@ -54,7 +54,7 @@
                 android:id="@+id/rb_type_epub"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="@dimen/arco_spacing_default"
                 android:gravity="center"
                 android:text="epub" />
 
@@ -62,7 +62,7 @@
                 android:id="@+id/rb_type_cbz"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="@dimen/arco_spacing_default"
                 android:clickable="false"
                 android:enabled="false"
                 android:focusable="false"
@@ -74,7 +74,7 @@
         <io.legado.app.ui.widget.text.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:hint="@string/export_charset">
 
             <io.legado.app.ui.widget.text.AutoCompleteTextView
@@ -90,7 +90,7 @@
             android:id="@+id/cb_no_chapter_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:text="@string/export_no_chapter_name" />
 
     </LinearLayout>

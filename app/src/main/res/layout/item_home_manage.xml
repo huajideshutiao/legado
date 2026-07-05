@@ -7,10 +7,7 @@
     android:background="?android:attr/selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="16dp"
-    android:paddingTop="10dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="10dp">
+    android:paddingVertical="@dimen/arco_spacing_md">
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_drag"
@@ -23,7 +20,7 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="@dimen/arco_spacing_md"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -55,7 +52,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="?android:attr/selectableItemBackground"
-        android:padding="8dp"
+        android:padding="@dimen/arco_spacing_default"
         android:textSize="14sp"
         tools:text="@string/edit" />
 

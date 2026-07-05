@@ -17,7 +17,7 @@ class AccentBgTextView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : AppCompatTextView(context, attrs) {
 
-    private var radius = 0
+    private var radius = context.resources.getDimensionPixelOffset(R.dimen.arco_radius_default)
 
     init {
         context.withStyledAttributes(attrs, R.styleable.AccentBgTextView) {

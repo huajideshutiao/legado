@@ -10,9 +10,9 @@
     <!-- 基础样式（不直接使用，由 5 种类型继承）。默认尺寸 Default：高 32dp / paddingH 15dp / 14sp -->
     <style name="Widget.Arco.Button" parent="android:Widget">
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">@dimen/arco_btn_height_default</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_default</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_default</item>
+        <item name="android:layout_height">@dimen/arco_view_height_default</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_lg</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_lg</item>
         <item name="android:gravity">center</item>
         <item name="android:textSize">@dimen/font_size_normal</item>
         <item name="android:includeFontPadding">false</item>
@@ -20,6 +20,8 @@
         <item name="android:focusable">true</item>
         <item name="android:minHeight">0dp</item>
         <item name="android:minWidth">0dp</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
     </style>
 
     <!-- ===== 5 种类型（默认尺寸 Default） ===== -->
@@ -42,16 +44,16 @@
         <item name="android:background">@drawable/bg_arco_btn_outline</item>
     </style>
 
-    <!-- Dashed 虚线按钮：主色虚线边框，常用于添加类操作 -->
-    <style name="Widget.Arco.Button.Dashed" parent="Widget.Arco.Button">
-        <item name="android:textColor">@color/arco_btn_text_dashed</item>
-        <item name="android:background">@drawable/bg_arco_btn_dashed</item>
-    </style>
-
     <!-- Text 文本按钮：无边框无背景，用于弱化操作 / 链接 -->
     <style name="Widget.Arco.Button.Text" parent="Widget.Arco.Button">
         <item name="android:textColor">@color/arco_btn_text_text</item>
         <item name="android:background">@drawable/bg_arco_btn_text</item>
+    </style>
+
+    <!-- Danger 危险按钮：红色实心填充 + 白字，用于删除/退出等危险操作 -->
+    <style name="Widget.Arco.Button.Danger" parent="Widget.Arco.Button">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:background">@drawable/bg_arco_btn_danger</item>
     </style>
 
     <!-- ===== 5 类 × 4 尺寸 = 20 个组合 style（仅覆盖 height/paddingH/textSize） ===== -->
@@ -59,102 +61,75 @@
 
     <!-- Primary 尺寸变体 -->
     <style name="Widget.Arco.Button.Primary.Mini" parent="Widget.Arco.Button.Primary">
-        <item name="android:layout_height">@dimen/arco_btn_height_mini</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_mini</item>
+        <item name="android:layout_height">@dimen/arco_view_height_mini</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_default</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_default</item>
         <item name="android:textSize">12sp</item>
     </style>
 
     <style name="Widget.Arco.Button.Primary.Small" parent="Widget.Arco.Button.Primary">
-        <item name="android:layout_height">@dimen/arco_btn_height_small</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_small</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_small</item>
+        <item name="android:layout_height">@dimen/arco_view_height_small</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_md</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_md</item>
     </style>
 
     <style name="Widget.Arco.Button.Primary.Large" parent="Widget.Arco.Button.Primary">
-        <item name="android:layout_height">@dimen/arco_btn_height_large</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_large</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_large</item>
+        <item name="android:layout_height">@dimen/arco_view_height_xl</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
     <!-- Secondary 尺寸变体 -->
     <style name="Widget.Arco.Button.Secondary.Mini" parent="Widget.Arco.Button.Secondary">
-        <item name="android:layout_height">@dimen/arco_btn_height_mini</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_mini</item>
+        <item name="android:layout_height">@dimen/arco_view_height_mini</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_default</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_default</item>
         <item name="android:textSize">12sp</item>
     </style>
 
     <style name="Widget.Arco.Button.Secondary.Small" parent="Widget.Arco.Button.Secondary">
-        <item name="android:layout_height">@dimen/arco_btn_height_small</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_small</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_small</item>
+        <item name="android:layout_height">@dimen/arco_view_height_small</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_md</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_md</item>
     </style>
 
     <style name="Widget.Arco.Button.Secondary.Large" parent="Widget.Arco.Button.Secondary">
-        <item name="android:layout_height">@dimen/arco_btn_height_large</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_large</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_large</item>
+        <item name="android:layout_height">@dimen/arco_view_height_xl</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
     <!-- Outline 尺寸变体 -->
-    <style name="Widget.Arco.Button.Outline.Mini" parent="Widget.Arco.Button.Outline">
-        <item name="android:layout_height">@dimen/arco_btn_height_mini</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:textSize">12sp</item>
-    </style>
-
-    <style name="Widget.Arco.Button.Outline.Small" parent="Widget.Arco.Button.Outline">
-        <item name="android:layout_height">@dimen/arco_btn_height_small</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_small</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_small</item>
+    <style name="Widget.Arco.Button.Outline.default" parent="Widget.Arco.Button.Outline">
+        <item name="android:layout_height">@dimen/arco_view_height_default</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
     <style name="Widget.Arco.Button.Outline.Large" parent="Widget.Arco.Button.Outline">
-        <item name="android:layout_height">@dimen/arco_btn_height_large</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_large</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_large</item>
+        <item name="android:layout_height">@dimen/arco_view_height_large</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
-    <!-- Dashed 尺寸变体 -->
-    <style name="Widget.Arco.Button.Dashed.Mini" parent="Widget.Arco.Button.Dashed">
-        <item name="android:layout_height">@dimen/arco_btn_height_mini</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:textSize">12sp</item>
-    </style>
-
-    <style name="Widget.Arco.Button.Dashed.Small" parent="Widget.Arco.Button.Dashed">
-        <item name="android:layout_height">@dimen/arco_btn_height_small</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_small</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_small</item>
-    </style>
-
-    <style name="Widget.Arco.Button.Dashed.Large" parent="Widget.Arco.Button.Dashed">
-        <item name="android:layout_height">@dimen/arco_btn_height_large</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_large</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_large</item>
+    <style name="Widget.Arco.Button.Outline.xl" parent="Widget.Arco.Button.Outline">
+        <item name="android:layout_height">@dimen/arco_view_height_xl</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
     <!-- Text 尺寸变体 -->
     <style name="Widget.Arco.Button.Text.Mini" parent="Widget.Arco.Button.Text">
-        <item name="android:layout_height">@dimen/arco_btn_height_mini</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_mini</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_mini</item>
+        <item name="android:layout_height">@dimen/arco_view_height_mini</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_default</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_default</item>
         <item name="android:textSize">12sp</item>
     </style>
 
     <style name="Widget.Arco.Button.Text.Small" parent="Widget.Arco.Button.Text">
-        <item name="android:layout_height">@dimen/arco_btn_height_small</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_small</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_small</item>
+        <item name="android:layout_height">@dimen/arco_view_height_small</item>
+        <item name="android:paddingStart">@dimen/arco_spacing_md</item>
+        <item name="android:paddingEnd">@dimen/arco_spacing_md</item>
     </style>
 
     <style name="Widget.Arco.Button.Text.Large" parent="Widget.Arco.Button.Text">
-        <item name="android:layout_height">@dimen/arco_btn_height_large</item>
-        <item name="android:paddingStart">@dimen/arco_btn_padding_h_large</item>
-        <item name="android:paddingEnd">@dimen/arco_btn_padding_h_large</item>
+        <item name="android:layout_height">@dimen/arco_view_height_large</item>
+        <item name="android:paddingHorizontal">@dimen/arco_spacing_max</item>
     </style>
 
 </resources>

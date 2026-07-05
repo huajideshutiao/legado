@@ -17,7 +17,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="top|start"
-        android:padding="12dp" />
+        android:padding="@dimen/arco_spacing_md" />
 
 </LinearLayout>
 

@@ -6,15 +6,15 @@
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
     android:orientation="horizontal"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="8dp">
+    android:paddingHorizontal="@dimen/arco_page_padding_h"
+    android:paddingVertical="@dimen/arco_spacing_default">
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_avatar"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginTop="@dimen/arco_spacing_xs"
+        android:layout_marginEnd="@dimen/arco_spacing_md"
         app:shapeAppearanceOverlay="@style/ShapeAppearance.Circle"
         tools:src="@drawable/ic_bottom_person_s" />
 
@@ -48,7 +48,7 @@
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:gravity="center_vertical"
-                android:paddingStart="8dp"
+                android:paddingStart="@dimen/arco_spacing_default"
                 android:singleLine="true"
                 android:textColor="@color/secondaryText"
                 android:textSize="12sp"
@@ -106,7 +106,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingTop="10dp">
+            android:paddingTop="@dimen/arco_spacing_md">
 
             <TextView
                 android:id="@+id/tv_post_time"
@@ -130,7 +130,7 @@
                 android:layout_width="50dp"
                 android:layout_height="20dp"
                 android:gravity="center_vertical"
-                android:paddingHorizontal="8dp"
+                android:paddingHorizontal="@dimen/arco_spacing_default"
                 android:text="@string/vote_up"
                 android:textColor="@color/secondaryText"
                 android:textSize="12sp" />
@@ -139,7 +139,7 @@
                 android:id="@+id/btn_vote_down"
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:layout_marginEnd="8dp"
+                android:layout_marginEnd="@dimen/arco_spacing_default"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/vote_down"
                 android:src="@drawable/ic_review_thumb_down" />
@@ -150,10 +150,10 @@
             android:id="@+id/tv_reply_preview"
             android:layout_width="match_parent"
             android:layout_height="40dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/arco_spacing_default"
             android:background="@drawable/shape_fillet_btn"
             android:gravity="center_vertical"
-            android:paddingStart="16dp"
+            android:paddingStart="@dimen/arco_spacing_lg"
             android:textColor="@color/secondaryText"
             android:textSize="12sp"
             android:visibility="gone"

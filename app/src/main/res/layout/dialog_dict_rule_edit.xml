@@ -16,7 +16,7 @@
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="6dp"
+            android:paddingTop="@dimen/arco_spacing_default"
             android:overScrollMode="ifContentScrolls">
 
             <LinearLayout

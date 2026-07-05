@@ -6,8 +6,8 @@
     android:id="@+id/item_root"
     android:layout_width="48dp"
     android:layout_height="48dp"
-    android:layout_marginLeft="6dp"
-    android:layout_marginRight="6dp">
+    android:layout_marginStart="@dimen/arco_spacing_default"
+    android:layout_marginEnd="@dimen/arco_spacing_default">
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_style"

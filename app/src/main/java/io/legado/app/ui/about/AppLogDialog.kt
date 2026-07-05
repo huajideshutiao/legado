@@ -50,6 +50,7 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         return true
     }
 
+    @Suppress("RedundantInnerClassModifier")
     inner class LogAdapter(context: Context) :
         RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAppLogBinding>(context) {
 

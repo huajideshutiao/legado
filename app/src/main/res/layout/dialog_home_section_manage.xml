@@ -22,6 +22,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:overScrollMode="never"
+            android:clipToPadding="false"
+            android:paddingHorizontal="@dimen/arco_page_padding_h"
             tools:listitem="@layout/item_home_manage" />
 
         <TextView
@@ -30,7 +32,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:gravity="center"
-            android:padding="24dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:text="@string/home_manage_empty"
             android:textColor="@color/tv_text_summary"
             android:textSize="14sp"

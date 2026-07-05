@@ -3,7 +3,7 @@
     android:id="@+id/textInputLayout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingTop="3dp">
+    android:paddingTop="@dimen/arco_spacing_xs">
 
     <io.legado.app.ui.widget.code.CodeView
         android:id="@+id/editText"

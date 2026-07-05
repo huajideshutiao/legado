@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?><!-- 圆角按钮按压态背景（Arco 化：solid 走 arco_fill_3，light/dark 自动切换） -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="@dimen/arco_radius_lg" />
+    <corners android:radius="@dimen/arco_radius_default" />
     <solid android:color="@color/arco_fill_3" />
 </shape>

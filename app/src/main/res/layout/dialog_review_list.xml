@@ -15,7 +15,7 @@
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/cancel"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:src="@drawable/ic_review_close" />
 
         <TextView
@@ -38,22 +38,22 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:overScrollMode="never"
-        android:paddingBottom="8dp"
+        android:paddingBottom="@dimen/arco_spacing_default"
         android:scrollbars="none" />
 
     <TextView
         android:id="@+id/et_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginVertical="8dp"
+        android:layout_marginHorizontal="@dimen/arco_spacing_md"
+        android:layout_marginVertical="@dimen/arco_spacing_default"
         android:background="@drawable/bg_review_input"
         android:clickable="true"
         android:focusable="true"
         android:hint="@string/review_post_hint"
         android:maxLines="1"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="10dp"
+        android:paddingHorizontal="@dimen/arco_spacing_lg"
+        android:paddingVertical="@dimen/arco_spacing_default"
         android:textColor="@color/primaryText"
         android:textColorHint="@color/secondaryText"
         android:textSize="13sp" />

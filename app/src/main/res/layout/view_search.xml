@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/search_view"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/arco_btn_height_default"
+    android:layout_height="@dimen/arco_view_height_default"
     android:layout_gravity="center_vertical"
     android:background="@drawable/bg_searchview"
     android:focusable="false"

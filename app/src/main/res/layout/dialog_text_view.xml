@@ -23,7 +23,7 @@
             android:id="@+id/text_view"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:textColor="@color/secondaryText"
             android:textIsSelectable="true" />
 
@@ -33,7 +33,7 @@
         android:id="@+id/badge_view"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="3dp"
+        android:layout_margin="@dimen/arco_spacing_xs"
         android:visibility="invisible"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent" />

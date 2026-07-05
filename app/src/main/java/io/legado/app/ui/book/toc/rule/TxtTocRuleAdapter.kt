@@ -11,15 +11,13 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.databinding.ItemTxtTocRuleBinding
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.setOnUserCheckedChangeListener
 
 class TxtTocRuleAdapter(context: Context, private val callBack: CallBack) :
-    RecyclerAdapter<TxtTocRule, ItemTxtTocRuleBinding>(context),
+    RecyclerAdapter<TxtTocRule, ItemManageRuleBinding>(context),
     ItemTouchCallback.Callback {
 
     private val selected = linkedSetOf<TxtTocRule>()
@@ -66,31 +64,43 @@ class TxtTocRuleAdapter(context: Context, private val callBack: CallBack) :
         }
     }
 
-    override fun getViewBinding(parent: ViewGroup): ItemTxtTocRuleBinding {
-        return ItemTxtTocRuleBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemManageRuleBinding {
+        return ItemManageRuleBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemTxtTocRuleBinding,
+        binding: ItemManageRuleBinding,
         item: TxtTocRule,
         payloads: MutableList<Any>
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                root.setBackgroundColor(ColorUtils.withAlpha(context.backgroundColor, 0.5f))
-                cbSource.text = item.name
+                cbName.text = item.name
                 swtEnabled.isChecked = item.enable
-                cbSource.isChecked = selected.contains(item)
-                titleExample.text = item.example
+                cbName.isChecked = selected.contains(item)
+                // 显示示例信息
+                if (!item.example.isNullOrEmpty()) {
+                    tvExtra.text = item.example
+                    tvExtra.visibility = View.VISIBLE
+                } else {
+                    tvExtra.visibility = View.GONE
+                }
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle
                     bundle.keySet().forEach {
                         when (it) {
-                            "selected" -> cbSource.isChecked = selected.contains(item)
-                            "upName" -> cbSource.text = item.name
-                            "upExample" -> titleExample.text = item.example
+                            "selected" -> cbName.isChecked = selected.contains(item)
+                            "upName" -> cbName.text = item.name
+                            "upExample" -> {
+                                if (!item.example.isNullOrEmpty()) {
+                                    tvExtra.text = item.example
+                                    tvExtra.visibility = View.VISIBLE
+                                } else {
+                                    tvExtra.visibility = View.GONE
+                                }
+                            }
                             "enabled" -> swtEnabled.isChecked = item.enable
                         }
                     }
@@ -99,8 +109,8 @@ class TxtTocRuleAdapter(context: Context, private val callBack: CallBack) :
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemTxtTocRuleBinding) {
-        binding.cbSource.setOnUserCheckedChangeListener { isChecked ->
+    override fun registerListener(holder: ItemViewHolder, binding: ItemManageRuleBinding) {
+        binding.cbName.setOnUserCheckedChangeListener { isChecked ->
             getItem(holder.layoutPosition)?.let {
                 if (isChecked) {
                     selected.add(it)

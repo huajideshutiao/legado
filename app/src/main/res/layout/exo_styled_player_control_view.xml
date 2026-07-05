@@ -14,8 +14,7 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<merge xmlns:tools="http://schemas.android.com/tools"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
 
   <View android:id="@id/exo_controls_background"
       android:layout_width="0dp"
@@ -62,7 +61,7 @@
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:padding="8dp"
+            android:padding="@dimen/arco_spacing_default"
             android:text="清晰度"
             android:textColor="@android:color/white"
             android:textStyle="bold" />

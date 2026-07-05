@@ -34,7 +34,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:gravity="center"
         android:text="@string/bookshelf_empty"
         android:visibility="gone"

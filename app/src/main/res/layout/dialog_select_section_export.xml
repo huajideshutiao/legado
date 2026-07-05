@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="16dp">
+    android:padding="@dimen/arco_dialog_padding_h">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,7 +14,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:orientation="horizontal">
 
             <com.google.android.material.checkbox.MaterialCheckBox
@@ -22,8 +22,8 @@
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:layout_gravity="center"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="16dp" />
+                android:layout_marginStart="@dimen/arco_spacing_default"
+                android:layout_marginEnd="@dimen/arco_spacing_lg" />
 
             <TextView
                 android:id="@+id/tv_all_export"
@@ -37,7 +37,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:orientation="horizontal">
 
             <com.google.android.material.checkbox.MaterialCheckBox
@@ -45,8 +45,8 @@
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:layout_gravity="center"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="16dp" />
+                android:layout_marginStart="@dimen/arco_spacing_default"
+                android:layout_marginEnd="@dimen/arco_spacing_lg" />
 
             <TextView
                 android:id="@+id/tv_select_export"
@@ -61,7 +61,7 @@
             android:id="@+id/ly_et_epub_filename"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:hint="@string/export_file_name"
             app:endIconCheckable="true"
             app:endIconContentDescription="Execute script"
@@ -83,7 +83,7 @@
         <io.legado.app.ui.widget.text.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/arco_spacing_md"
             android:hint="@string/file_contains_number">
 
             <androidx.appcompat.widget.AppCompatEditText

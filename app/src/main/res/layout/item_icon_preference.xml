@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="?android:attr/listPreferredItemHeight"
-    android:padding="6dip">
+    android:padding="@dimen/arco_spacing_default">
 
     <ImageView
         android:id="@+id/icon"
@@ -11,14 +11,14 @@
         android:layout_height="match_parent"
         android:adjustViewBounds="true"
         android:contentDescription="ICON"
-        android:padding="10dip"
+        android:padding="@dimen/arco_spacing_md"
         tools:ignore="HardcodedText" />
 
     <CheckedTextView
         android:id="@+id/label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:paddingRight="10dp"
+        android:paddingEnd="@dimen/arco_spacing_md"
         android:layout_alignParentEnd="true"
         android:layout_toRightOf="@+id/icon"
         android:checkMark="?android:attr/listChoiceIndicatorSingle"

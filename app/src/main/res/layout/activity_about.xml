@@ -17,10 +17,10 @@
         android:id="@+id/ll_about"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_margin="@dimen/arco_spacing_lg"
         android:background="@drawable/shape_card_view"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:padding="@dimen/arco_page_padding_h">
 
         <TextView
             android:layout_width="wrap_content"

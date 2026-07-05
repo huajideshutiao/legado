@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -17,6 +16,8 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingHorizontal="@dimen/arco_page_padding_h"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
     <LinearLayout
@@ -32,20 +33,18 @@
             android:id="@+id/tv_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginRight="16dp"
-            android:padding="12dp"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
+            android:padding="@dimen/arco_spacing_md"
             android:text="@string/cancel"
-            android:textColor="@color/secondaryText"
-            tools:ignore="RtlHardcoded" />
+            android:textColor="@color/secondaryText" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_ok"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginRight="16dp"
-            android:padding="12dp"
-            android:text="@string/ok"
-            tools:ignore="RtlHardcoded" />
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
+            android:padding="@dimen/arco_spacing_md"
+            android:text="@string/ok" />
 
     </LinearLayout>
 </LinearLayout>

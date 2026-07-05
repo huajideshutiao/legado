@@ -35,7 +35,7 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_gravity="center"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/arco_spacing_default"
             android:indeterminate="true"
             android:visibility="invisible"
             app:indicatorSize="36dp"
@@ -46,7 +46,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:padding="16dp"
+            android:padding="@dimen/arco_spacing_lg"
             android:textColor="@color/secondaryText"
             android:visibility="gone" />
 
@@ -55,8 +55,8 @@
     <com.google.android.flexbox.FlexboxLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
+        android:paddingStart="@dimen/arco_spacing_md"
+        android:paddingEnd="@dimen/arco_spacing_md"
         app:flexWrap="wrap"
         app:justifyContent="space_between">
 
@@ -64,7 +64,7 @@
             android:id="@+id/tv_footer_left"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
+            android:padding="@dimen/arco_spacing_md"
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
 
@@ -81,7 +81,7 @@
                 android:id="@+id/tv_cancel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="12dp"
+                android:padding="@dimen/arco_spacing_md"
                 android:text="@string/cancel"
                 android:visibility="gone"
                 tools:ignore="RtlHardcoded" />
@@ -90,7 +90,7 @@
                 android:id="@+id/tv_ok"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:padding="12dp"
+                android:padding="@dimen/arco_spacing_md"
                 android:text="@string/ok"
                 android:visibility="gone"
                 tools:ignore="RtlHardcoded" />

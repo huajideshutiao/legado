@@ -13,8 +13,8 @@
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/tv_error_message"
         style="@style/Style.Text.Primary.Normal"
-        android:paddingTop="16dp"
-        android:paddingBottom="16dp" />
+        android:paddingTop="@dimen/arco_spacing_lg"
+        android:paddingBottom="@dimen/arco_spacing_lg" />
 
     <androidx.appcompat.widget.AppCompatButton
         android:id="@+id/btn_error_retry"

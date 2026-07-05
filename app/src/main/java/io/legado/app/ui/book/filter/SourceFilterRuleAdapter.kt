@@ -11,17 +11,15 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SourceFilterRule
-import io.legado.app.databinding.ItemReplaceRuleBinding
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.setOnUserCheckedChangeListener
 
 class SourceFilterRuleAdapter(
     context: Context,
     private val callback: Callback,
-) : RecyclerAdapter<SourceFilterRule, ItemReplaceRuleBinding>(context),
+) : RecyclerAdapter<SourceFilterRule, ItemManageRuleBinding>(context),
     ItemTouchCallback.Callback {
 
     private val selected = linkedSetOf<SourceFilterRule>()
@@ -74,8 +72,8 @@ class SourceFilterRuleAdapter(
         callback.upCountView()
     }
 
-    override fun getViewBinding(parent: ViewGroup): ItemReplaceRuleBinding {
-        return ItemReplaceRuleBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemManageRuleBinding {
+        return ItemManageRuleBinding.inflate(inflater, parent, false)
     }
 
     override fun onCurrentListChanged() {
@@ -84,12 +82,11 @@ class SourceFilterRuleAdapter(
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemReplaceRuleBinding,
+        binding: ItemManageRuleBinding,
         item: SourceFilterRule,
         payloads: MutableList<Any>,
     ) = binding.run {
         if (payloads.isEmpty()) {
-            root.setBackgroundColor(ColorUtils.withAlpha(context.backgroundColor, 0.5f))
             cbName.text = displayName(item)
             cbName.isChecked = selected.contains(item)
             swtEnabled.isChecked = item.enabled
@@ -112,7 +109,7 @@ class SourceFilterRuleAdapter(
 
     override fun registerListener(
         holder: ItemViewHolder,
-        binding: ItemReplaceRuleBinding,
+        binding: ItemManageRuleBinding,
     ) {
         binding.apply {
             swtEnabled.setOnUserCheckedChangeListener { isChecked ->

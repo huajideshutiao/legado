@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="8dp">
+    android:padding="@dimen/arco_spacing_default">
 
     <RadioButton
         android:id="@+id/rb_select"
@@ -23,7 +23,7 @@
         android:layout_height="36dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/edit"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         android:src="@drawable/ic_edit"
         android:tint="@color/primaryText"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -36,7 +36,7 @@
         android:layout_height="36dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/delete"
-        android:padding="6dp"
+        android:padding="@dimen/arco_spacing_default"
         android:src="@drawable/ic_clear_all"
         android:tint="@color/primaryText"
         android:tooltipText="@string/delete"
