@@ -20,7 +20,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemHttpTtsBinding
+import io.legado.app.databinding.ItemSelectableOptionBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -93,33 +93,33 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
         adapter.addHeaderView {
-            ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
-                sysTtsViews.add(cbName)
+            ItemSelectableOptionBinding.inflate(layoutInflater, recyclerView, false).apply {
+                sysTtsViews.add(rbSelect)
                 ivEdit.gone()
-                ivMenuDelete.gone()
+                ivDelete.gone()
                 labelSys.visible()
-                cbName.text = "系统默认"
-                cbName.tag = ""
-                cbName.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
+                rbSelect.text = "系统默认"
+                rbSelect.tag = ""
+                rbSelect.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
                         && GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
                     .getOrNull()?.value.isNullOrEmpty()
-                cbName.setOnClickListener {
+                rbSelect.setOnClickListener {
                     upTts(GSON.toJson(SelectItem("系统默认", "")))
                 }
             }
         }
         viewModel.sysEngines.forEach { engine ->
             adapter.addHeaderView {
-                ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
-                    sysTtsViews.add(cbName)
+                ItemSelectableOptionBinding.inflate(layoutInflater, recyclerView, false).apply {
+                    sysTtsViews.add(rbSelect)
                     ivEdit.gone()
-                    ivMenuDelete.gone()
+                    ivDelete.gone()
                     labelSys.visible()
-                    cbName.text = engine.label
-                    cbName.tag = engine.name
-                    cbName.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                        .getOrNull()?.value == cbName.tag
-                    cbName.setOnClickListener {
+                    rbSelect.text = engine.label
+                    rbSelect.tag = engine.name
+                    rbSelect.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
+                        .getOrNull()?.value == rbSelect.tag
+                    rbSelect.setOnClickListener {
                         upTts(GSON.toJson(SelectItem(engine.label, engine.name)))
                     }
                 }
@@ -224,27 +224,30 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     inner class Adapter(context: Context) :
-        RecyclerAdapter<HttpTTS, ItemHttpTtsBinding>(context) {
+        RecyclerAdapter<HttpTTS, ItemSelectableOptionBinding>(context) {
 
-        override fun getViewBinding(parent: ViewGroup): ItemHttpTtsBinding {
-            return ItemHttpTtsBinding.inflate(inflater, parent, false)
+        override fun getViewBinding(parent: ViewGroup): ItemSelectableOptionBinding {
+            return ItemSelectableOptionBinding.inflate(inflater, parent, false)
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: ItemHttpTtsBinding,
+            binding: ItemSelectableOptionBinding,
             item: HttpTTS,
             payloads: MutableList<Any>
         ) {
             binding.apply {
-                cbName.text = item.name
-                cbName.isChecked = item.id.toString() == ttsEngine
+                rbSelect.text = item.name
+                rbSelect.isChecked = item.id.toString() == ttsEngine
             }
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: ItemHttpTtsBinding) {
+        override fun registerListener(
+            holder: ItemViewHolder,
+            binding: ItemSelectableOptionBinding
+        ) {
             binding.run {
-                cbName.setOnClickListener {
+                rbSelect.setOnClickListener {
                     getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
                         val id = httpTTS.id.toString()
                         upTts(id)
@@ -258,7 +261,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     val id = getItemByLayoutPosition(holder.layoutPosition)!!.id
                     showDialogFragment(HttpTtsEditDialog(id))
                 }
-                ivMenuDelete.setOnClickListener {
+                ivDelete.setOnClickListener {
                     getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
                         appDb.httpTTSDao.delete(httpTTS)
                     }

@@ -807,6 +807,12 @@
     <string name="save_night_theme_summary">Save night theme config</string>
     <string name="theme_list">Theme list</string>
     <string name="theme_list_summary">Save, Import, Share theme</string>
+    <string name="default_day_theme">Default · Day</string>
+    <string name="default_night_theme">Default · Night</string>
+    <string name="customize_day_theme">Customize day theme</string>
+    <string name="customize_night_theme">Customize night theme</string>
+    <string name="new_theme">New</string>
+    <string name="theme_customize_title">Edit theme</string>
     <string name="select_theme">Switch default theme</string>
     <string name="sort_by_lastUpdateTime">Sort by update time</string>
     <string name="sort_by_respondTime">Sort by respond time</string>

@@ -18,6 +18,7 @@ import io.legado.app.databinding.DialogSearchScopeBinding
 import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemRadioButtonBinding
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO

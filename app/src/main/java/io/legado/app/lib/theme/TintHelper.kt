@@ -27,7 +27,9 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.widget.TextViewCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import io.legado.app.R
+import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.applyTint
 
 /**
  * @author afollestad, plusCubed
@@ -158,6 +160,7 @@ object TintHelper {
                 is ImageView -> setTint(view, color)
                 is Switch -> setTint(view, color, isDark)
                 is SwitchCompat -> setTint(view, color, isDark)
+                is TitleBar -> setTint(view, color)
                 is SearchView -> {
                     val iconIdS =
                         intArrayOf(
@@ -244,6 +247,14 @@ object TintHelper {
         )
         seekBar.thumbTintList = s1
         seekBar.progressTintList = s1
+    }
+
+    fun setTint(titleBar: TitleBar, @ColorInt color: Int) {
+        titleBar.setColorFilter(color)
+        titleBar.toolbar.menu.applyTint(
+            titleBar.context,
+            if (ColorUtils.isColorLight(color)) io.legado.app.constant.Theme.Dark else io.legado.app.constant.Theme.Light
+        )
     }
 
     @JvmOverloads

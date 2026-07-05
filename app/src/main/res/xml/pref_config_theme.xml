@@ -2,39 +2,6 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <io.legado.app.lib.prefs.IconListPreference
-        android:defaultValue="ic_launcher"
-        android:entries="@array/icon_names"
-        android:entryValues="@array/icons"
-        android:key="launcherIcon"
-        android:summary="@string/change_icon_summary"
-        android:title="@string/change_icon"
-        app:iconSpaceReserved="false"
-        app:icons="@array/icons" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:key="themeList"
-        android:summary="@string/theme_list_summary"
-        android:title="@string/theme_list"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:key="bottomNavConfig"
-        android:summary="@string/bottom_nav_config_summary"
-        android:title="@string/bottom_nav_config"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:key="fontScale"
-        android:summary="@string/font_scale_summary"
-        android:title="@string/font_scale"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:key="sourceEditMaxLine"
-        android:title="@string/source_edit_text_max_line"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:key="bookshelfLayout"
         android:title="@string/bookshelf_layout"
@@ -48,99 +15,58 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
+        android:key="coverConfig"
+        android:summary="@string/cover_config_summary"
+        android:title="@string/cover_config"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.IconListPreference
+        android:defaultValue="ic_launcher"
+        android:entries="@array/icon_names"
+        android:entryValues="@array/icons"
+        android:key="launcherIcon"
+        android:summary="@string/change_icon_summary"
+        android:title="@string/change_icon"
+        app:iconSpaceReserved="false"
+        app:icons="@array/icons" />
+
+    <io.legado.app.lib.prefs.Preference
         android:key="welcomeStyle"
         android:summary="@string/welcome_style_summary"
         android:title="@string/welcome_style"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
-        android:key="coverConfig"
-        android:summary="@string/cover_config_summary"
-        android:title="@string/cover_config"
+        android:key="bottomNavConfig"
+        android:summary="@string/bottom_nav_config_summary"
+        android:title="@string/bottom_nav_config"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:key="dayThemeCategory"
-        android:title="@string/day"
-        app:iconSpaceReserved="false">
+    <io.legado.app.lib.prefs.Preference
+        android:key="themeList"
+        android:summary="@string/theme_list_summary"
+        android:title="@string/theme_list"
+        app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_red_600"
-            android:key="colorAccent"
-            android:summary="@string/day_color_accent"
-            android:title="@string/accent"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
+    <io.legado.app.lib.prefs.Preference
+        android:key="customizeDayTheme"
+        android:title="@string/customize_day_theme"
+        app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_grey_100"
-            android:key="colorBackground"
-            android:summary="@string/day_background_color"
-            android:title="@string/background_color"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
+    <io.legado.app.lib.prefs.Preference
+        android:key="customizeNightTheme"
+        android:title="@string/customize_night_theme"
+        app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_grey_200"
-            android:key="colorBottomBackground"
-            android:summary="@string/day_navbar_color"
-            android:title="@string/navbar_color"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
+    <io.legado.app.lib.prefs.Preference
+        android:key="fontScale"
+        android:summary="@string/font_scale_summary"
+        android:title="@string/font_scale"
+        app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
-            android:key="backgroundImage"
-            android:title="@string/background_image"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="saveDayTheme"
-            android:summary="@string/save_day_theme_summary"
-            android:title="@string/save_theme_config"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:key="nightThemeCategory"
-        android:title="@string/night"
-        app:iconSpaceReserved="false">
-
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_deep_orange_800"
-            android:key="colorAccentNight"
-            android:summary="@string/night_accent"
-            android:title="@string/accent"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_grey_900"
-            android:key="colorBackgroundNight"
-            android:summary="@string/night_background_color"
-            android:title="@string/background_color"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.ColorPreference
-            android:defaultValue="@color/md_grey_850"
-            android:key="colorBottomBackgroundNight"
-            android:summary="@string/night_navbar_color"
-            android:title="@string/navbar_color"
-            app:cpv_dialogType="preset"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="backgroundImageNight"
-            android:title="@string/background_image"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="saveNightTheme"
-            android:summary="@string/save_night_theme_summary"
-            android:title="@string/save_theme_config"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
+    <io.legado.app.lib.prefs.Preference
+        android:key="sourceEditMaxLine"
+        android:title="@string/source_edit_text_max_line"
+        app:iconSpaceReserved="false" />
 
 </androidx.preference.PreferenceScreen>

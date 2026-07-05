@@ -32,6 +32,7 @@ import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding

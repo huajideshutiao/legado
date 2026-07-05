@@ -18,6 +18,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible

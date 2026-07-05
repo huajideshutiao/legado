@@ -126,7 +126,7 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     }
                 }
 
-                tvDel.setOnClickListener {
+                ivDelete.setOnClickListener {
                     getItem(holder.layoutPosition)?.let { viewModel.delGroup(it) }
                 }
             }

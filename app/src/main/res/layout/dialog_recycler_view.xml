@@ -49,14 +49,16 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
+        android:paddingEnd="8dp"
         android:paddingBottom="8dp">
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_footer_left"
+            style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
 
@@ -65,22 +67,22 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_cancel"
+            style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
             android:text="@string/cancel"
-            android:textColor="@color/secondaryText"
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_ok"
+            style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="12dp"
             android:text="@string/ok"
+            android:textColor="@color/arco_btn_text_outline"
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
 

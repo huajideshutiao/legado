@@ -31,6 +31,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible

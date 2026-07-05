@@ -2,13 +2,14 @@ package io.legado.app.ui.book.filter
 
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.widget.AppCompatCheckBox
+import android.widget.CheckBox
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.DialogSourceFilterEditBinding
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -35,7 +36,7 @@ class SourceFilterEditDialog() : BaseDialogFragment(R.layout.dialog_source_filte
     }
 
     private val binding by viewBinding(DialogSourceFilterEditBinding::bind)
-    private val checkBoxes = linkedMapOf<SourceFilterRule.Field, AppCompatCheckBox>()
+    private val checkBoxes = linkedMapOf<SourceFilterRule.Field, CheckBox>()
     private var scope: String = ""
     private var existing: SourceFilterRule? = null
 

@@ -32,7 +32,6 @@ import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.get
-import androidx.core.view.isVisible
 import androidx.core.view.marginBottom
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
@@ -41,7 +40,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
-import splitties.systemservices.inputMethodManager
 import splitties.views.bottomPadding
 import splitties.views.topPadding
 
@@ -57,17 +55,19 @@ private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {
 val View.activity: AppCompatActivity?
     get() = getCompatActivity(context)
 
-fun View.hideSoftInput() = run {
-    inputMethodManager.hideSoftInputFromWindow(this.windowToken, 0)
+fun View.hideSoftInput() {
+    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+        ?.hideSoftInputFromWindow(this.windowToken, 0)
 }
 
-fun EditText.showSoftInput() = run {
+fun EditText.showSoftInput() {
     requestFocus()
-    inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+        ?.showSoftInput(this, InputMethodManager.SHOW_FORCED)
 }
 
-fun View.disableAutoFill() = run {
-    this.importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+fun View.disableAutoFill() {
+    importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
 }
 
 fun View.applyTint(
@@ -115,18 +115,14 @@ fun EditText.disableEdit() {
     keyListener = null
 }
 
-fun View.gone() {
-    if (visibility != GONE) {
-        visibility = GONE
+fun View.visible() {
+    if (visibility != VISIBLE) {
+        visibility = VISIBLE
     }
 }
 
-fun View.gone(gone: Boolean) {
-    if (gone) {
-        gone()
-    } else {
-        visibility = VISIBLE
-    }
+fun View.visible(visible: Boolean) {
+    if (visible) visible() else gone()
 }
 
 fun View.invisible() {
@@ -135,18 +131,14 @@ fun View.invisible() {
     }
 }
 
-fun View.visible() {
-    if (visibility != VISIBLE) {
-        visibility = VISIBLE
+fun View.gone() {
+    if (visibility != GONE) {
+        visibility = GONE
     }
 }
 
-fun View.visible(visible: Boolean) {
-    if (visible && visibility != VISIBLE) {
-        visibility = VISIBLE
-    } else if (!visible && isVisible) {
-        visibility = INVISIBLE
-    }
+fun View.gone(gone: Boolean) {
+    if (gone) gone() else visible()
 }
 
 fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
@@ -161,7 +153,7 @@ fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
         val c = canvas ?: Canvas()
         c.setBitmap(screenshot)
         c.withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
-            draw(this)
+            this@screenshot.draw(this)
         }
         c.setBitmap(null)
         screenshot.prepareToDraw()
@@ -175,7 +167,7 @@ fun View.screenshot(picture: Picture) {
     if (width > 0 && height > 0) {
         picture.record(width, height) {
             withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
-                draw(this)
+                this@screenshot.draw(this)
             }
         }
     }
@@ -184,7 +176,7 @@ fun View.screenshot(picture: Picture) {
 fun View.screenshot(canvasRecorder: CanvasRecorder) {
     if (width > 0 && height > 0) {
         canvasRecorder.record(width, height) {
-            draw(this)
+            this@screenshot.draw(this)
         }
     }
 }
@@ -260,7 +252,8 @@ fun View.applyStatusBarPadding(withInitialPadding: Boolean = false) {
 fun View.applyNavigationBarPadding(withInitialPadding: Boolean = false) {
     val initialPadding = if (withInitialPadding) bottomPadding else 0
     setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
-        bottomPadding = initialPadding + windowInsets.navigationBarHeight
+        val insets = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars())
+        bottomPadding = initialPadding + insets.bottom
         windowInsets
     }
 }
@@ -268,9 +261,44 @@ fun View.applyNavigationBarPadding(withInitialPadding: Boolean = false) {
 fun View.applyNavigationBarMargin(withInitialMargin: Boolean = false) {
     val initialMargin = if (withInitialMargin) marginBottom else 0
     setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+        val insets = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars())
         updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            bottomMargin = initialMargin + windowInsets.navigationBarHeight
+            bottomMargin = initialMargin + insets.bottom
         }
+        windowInsets
+    }
+}
+
+/**
+ * 给底部动作栏挪出安全区: 导航栏 + 刘海 + 屏幕圆角,
+ * 底部 padding 抬高到 >= 底部圆角半径,让全宽按钮不会被圆角切到。
+ */
+fun View.applyBottomActionInsets(withInitialPadding: Boolean = true) {
+    val initialLeft = if (withInitialPadding) paddingLeft else 0
+    val initialRight = if (withInitialPadding) paddingRight else 0
+    val initialBottom = if (withInitialPadding) paddingBottom else 0
+    setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+        val safeInsets = windowInsets.getInsets(
+            WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.displayCutout()
+        )
+        var bottomCornerRadius = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            windowInsets.toWindowInsets()?.let { raw ->
+                val bl =
+                    raw.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_LEFT)?.radius
+                        ?: 0
+                val br =
+                    raw.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius
+                        ?: 0
+                bottomCornerRadius = maxOf(bl, br)
+            }
+        }
+        setPadding(
+            initialLeft + safeInsets.left,
+            paddingTop,
+            initialRight + safeInsets.right,
+            maxOf(initialBottom + safeInsets.bottom, bottomCornerRadius)
+        )
         windowInsets
     }
 }
@@ -302,3 +330,8 @@ fun View.setOnApplyWindowInsetsListenerCompat(listener: (View, WindowInsetsCompa
     }
 }
 
+fun android.widget.CompoundButton.setOnUserCheckedChangeListener(listener: (isChecked: Boolean) -> Unit) {
+    setOnClickListener {
+        listener(isChecked)
+    }
+}

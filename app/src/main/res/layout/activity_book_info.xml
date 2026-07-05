@@ -9,6 +9,7 @@
         android:id="@+id/refresh_layout"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/fl_action"
         app:layout_constraintTop_toTopOf="parent">
 
         <io.legado.app.ui.widget.NoChildScrollNestedScrollView
@@ -47,13 +48,12 @@
                         android:layout_height="144dp"
                         android:layout_gravity="center"
                         android:layout_margin="8dp"
-                        android:background="@drawable/bg_arco_card"
-                        android:clipToOutline="true" />
+                        android:background="@drawable/bg_arco_card" />
 
                     <LinearLayout
                         android:id="@+id/ll_info_top"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="0dp"
                         android:layout_weight="1"
                         android:orientation="vertical"
                         android:paddingLeft="8dp"
@@ -192,30 +192,23 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:padding="8dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <Button
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_shelf"
+            style="@style/Widget.Arco.Button.Secondary.Large"
             android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_margin="8dp"
+            android:layout_marginEnd="16dp"
             android:layout_weight="1"
-            android:background="@color/ate_button_disabled_light"
-            android:text="@string/remove_from_bookshelf"
-            android:textColor="@color/primaryText"
-            android:textSize="15sp" />
+            android:text="@string/remove_from_bookshelf" />
 
-        <io.legado.app.ui.widget.text.AccentBgTextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_read"
+            style="@style/Widget.Arco.Button.Primary.Large"
             android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_margin="8dp"
             android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="@string/reading"
-            android:textSize="15sp"
-            app:radius="@dimen/arco_radius_lg" />
+            android:text="@string/reading" />
 
     </LinearLayout>
 

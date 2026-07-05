@@ -805,6 +805,12 @@
     <string name="save_night_theme_summary">保存夜间主题配置以供调用和分享</string>
     <string name="theme_list">主题列表</string>
     <string name="theme_list_summary">使用、保存、导入或分享主题</string>
+    <string name="default_day_theme">默认·白天</string>
+    <string name="default_night_theme">默认·夜间</string>
+    <string name="customize_day_theme">自定义白天主题</string>
+    <string name="customize_night_theme">自定义夜间主题</string>
+    <string name="new_theme">新建</string>
+    <string name="theme_customize_title">编辑主题</string>
     <string name="select_theme">切换默认主题</string>
     <string name="sort_by_lastUpdateTime">更新时间排序</string>
     <string name="search_content">全文搜索</string>
@@ -883,6 +889,7 @@
     <string name="hide_when_status_bar_show">状态栏显示时隐藏</string>
     <string name="reverse_toc">反转目录</string>
     <string name="show_discovery">显示发现</string>
+    <string name="show_home">显示主页</string>
     <string name="style">样式</string>
     <string name="group_style">分组样式</string>
     <string name="export_file_name">导出文件名</string>
@@ -1293,6 +1300,7 @@
     <string name="source_filter_rule_no_field">请至少选一个作用字段</string>
     <string name="source_filter_rule_filtered_count">屏蔽了 %d 本</string>
     <string name="source_filter_rule_delete_all_confirm">删除全部屏蔽规则？</string>
+    <string name="import_source_filter_rule">导入屏蔽规则</string>
     <string name="source_filter_field_name">书名</string>
     <string name="source_filter_field_author">作者</string>
     <string name="source_filter_field_intro">简介</string>

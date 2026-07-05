@@ -24,6 +24,7 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="@+id/bg_book"
@@ -123,7 +124,7 @@
         android:id="@+id/refresh_layout"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@+id/view_divider_land"
+        app:layout_constraintBottom_toTopOf="@+id/fl_action"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/guideline_vertical"
         app:layout_constraintTop_toTopOf="parent">
@@ -208,49 +209,31 @@
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <View
-        android:id="@+id/view_divider_land"
-        android:layout_width="0dp"
-        android:layout_height="1dp"
-        android:background="@color/bg_divider_line"
-        app:layout_constraintBottom_toTopOf="@+id/fl_action"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/guideline_vertical" />
-
     <LinearLayout
         android:id="@+id/fl_action"
         android:layout_width="0dp"
-        android:layout_height="50dp"
-        android:background="@color/background_menu"
-        android:fitsSystemWindows="true"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/guideline_vertical">
+        app:layout_constraintStart_toEndOf="@+id/constraintLayout">
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_shelf"
+            style="@style/Widget.Arco.Button.Secondary.Large"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_margin="8dp"
             android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="@string/remove_from_bookshelf"
-            android:textColor="@color/primaryText"
-            android:textSize="15sp" />
+            android:text="@string/remove_from_bookshelf" />
 
-        <io.legado.app.ui.widget.text.AccentBgTextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_read"
+            style="@style/Widget.Arco.Button.Primary.Large"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_margin="8dp"
             android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="@string/reading"
-            android:textSize="15sp" />
+            android:text="@string/reading" />
 
     </LinearLayout>
 

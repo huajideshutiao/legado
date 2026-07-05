@@ -18,6 +18,7 @@ import io.legado.app.model.CacheBook
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.gone
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.visible
 import java.util.Collections
 
@@ -123,7 +124,7 @@ class BookAdapter(context: Context, val callBack: CallBack) :
                 }
                 true
             }
-            tvDelete.setOnClickListener {
+            ivDelete.setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
                     callBack.deleteBook(it)
                 }

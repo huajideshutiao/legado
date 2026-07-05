@@ -120,7 +120,7 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                         editGroup(it)
                     }
                 }
-                tvDel.setOnClickListener {
+                ivDelete.setOnClickListener {
                     getItem(holder.layoutPosition)?.let { viewModel.delGroup(it) }
                 }
             }

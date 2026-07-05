@@ -23,6 +23,7 @@ import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.visible
 import java.util.Collections
 

@@ -113,9 +113,10 @@
         android:contentDescription="@string/stop"
         android:src="@drawable/ic_stop_black_24dp"
         android:visibility="invisible"
-        app:fabSize="mini"
+        app:fabCustomSize="@dimen/arco_btn_height_default"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
+        app:layout_constraintRight_toRightOf="parent"
+        tools:visibility="visible" />
 
     <io.legado.app.ui.widget.anima.RefreshProgressBar
         android:id="@+id/refresh_progress_bar"

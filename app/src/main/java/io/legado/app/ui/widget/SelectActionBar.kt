@@ -22,6 +22,7 @@ import io.legado.app.lib.theme.getSecondaryDisabledTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.visible
 
 @Suppress("unused")

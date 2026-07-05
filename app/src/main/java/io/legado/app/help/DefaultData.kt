@@ -8,7 +8,6 @@ import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -62,14 +61,6 @@ object DefaultData {
                 .readBytes()
         )
         GSON.fromJsonArray<TxtTocRule>(json).getOrNull() ?: emptyList()
-    }
-
-    val themeConfigs: List<ThemeConfig.Config> by lazy {
-        val json = String(
-            appCtx.assets.open("defaultData${File.separator}${ThemeConfig.configFileName}")
-                .readBytes()
-        )
-        GSON.fromJsonArray<ThemeConfig.Config>(json).getOrNull() ?: emptyList()
     }
 
     val dictRules: List<DictRule> by lazy {

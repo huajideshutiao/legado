@@ -185,7 +185,7 @@
                 android:layout_gravity="center"
                 android:layout_weight="1" />
 
-            <io.legado.app.ui.widget.ThemeSwitch
+            <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/cb_tts_follow_sys"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

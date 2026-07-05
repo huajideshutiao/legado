@@ -54,7 +54,7 @@
                         tools:ignore="TouchTargetSizeCheck" />
                 </LinearLayout>
 
-                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                <CheckBox
                     android:id="@+id/cb_enabled"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -63,7 +63,7 @@
                     android:paddingVertical="6dp"
                     android:text="@string/is_enable" />
 
-                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                <CheckBox
                     android:id="@+id/cb_enabled_cookie_jar"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -85,7 +85,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal">
 
-                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                <CheckBox
                     android:id="@+id/cb_enable_dangerous_api"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -94,7 +94,7 @@
                     android:paddingVertical="6dp"
                     android:text="@string/enable_dangerous_api" />
 
-                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                <CheckBox
                     android:id="@+id/cb_enabled_review"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -116,7 +116,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal">
 
-                <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+                <CheckBox
                     android:id="@+id/cb_enabled_explore"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"

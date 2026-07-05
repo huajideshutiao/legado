@@ -12,7 +12,7 @@
         android:layout_width="60dp"
         android:layout_height="match_parent">
         <!--选择是否添加文件-->
-        <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+        <CheckBox
             android:id="@+id/cb_select"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -68,7 +68,7 @@
                 android:text="TXT"
                 android:maxLines="1"
                 android:maxWidth="50dp"
-                app:radius="@dimen/arco_radius_sm"
+                app:arcoRadius="@dimen/arco_radius_sm"
                 tools:ignore="HardcodedText,RtlHardcoded" />
 
             <TextView

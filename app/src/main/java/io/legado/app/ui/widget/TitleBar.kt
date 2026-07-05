@@ -3,23 +3,21 @@ package io.legado.app.ui.widget
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 import android.util.AttributeSet
 import android.view.Menu
 import android.view.View
-import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.annotation.ColorInt
 import androidx.annotation.StyleRes
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.children
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.activity
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import splitties.views.bottomPadding
@@ -228,10 +226,18 @@ class TitleBar @JvmOverloads constructor(
     }
 
     fun setColorFilter(@ColorInt color: Int) {
-        val colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_ATOP)
-        toolbar.children.firstOrNull { it is ImageView }?.background?.colorFilter = colorFilter
-        toolbar.navigationIcon?.colorFilter = colorFilter
-        toolbar.overflowIcon?.colorFilter = colorFilter
+        toolbar.navigationIcon?.setTint(color)
+        toolbar.overflowIcon?.setTint(color)
+        toolbar.setTitleTextColor(color)
+        toolbar.setSubtitleTextColor(color)
+    }
+
+    fun applyTint(@ColorInt color: Int) {
+        setColorFilter(color)
+        toolbar.menu.applyTint(
+            context,
+            if (ColorUtils.isColorLight(color)) io.legado.app.constant.Theme.Dark else io.legado.app.constant.Theme.Light
+        )
     }
 
     fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, fullScreen: Boolean) {

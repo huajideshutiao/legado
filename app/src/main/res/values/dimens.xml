@@ -23,6 +23,26 @@
     <dimen name="arco_radius_lg">8dp</dimen>
     <dimen name="arco_radius_xl">16dp</dimen>
 
+    <!-- ==================== Arco Design Button 尺寸体系 ==================== -->
+    <!-- 按钮高度：Mini 24 / Small 28 / Default 32 / Large 40 -->
+    <dimen name="arco_btn_height_mini">24dp</dimen>
+    <dimen name="arco_btn_height_small">28dp</dimen>
+    <dimen name="arco_btn_height_default">32dp</dimen>
+    <dimen name="arco_btn_height_large">40dp</dimen>
+    <!-- 按钮水平 padding -->
+    <dimen name="arco_btn_padding_h_mini">8dp</dimen>
+    <dimen name="arco_btn_padding_h_small">12dp</dimen>
+    <dimen name="arco_btn_padding_h_default">15dp</dimen>
+    <dimen name="arco_btn_padding_h_large">19dp</dimen>
+    <!-- 按钮圆角（Arco 按钮默认 radius-xs = 2dp） -->
+    <dimen name="arco_btn_radius">@dimen/arco_radius_xs</dimen>
+
+    <!-- ==================== Arco Design 间距体系 ==================== -->
+    <dimen name="arco_spacing_lg">16dp</dimen>
+
+    <!-- ==================== Arco Design 列表尺寸体系 ==================== -->
+    <dimen name="arco_list_item_height">40dp</dimen>
+
     <dimen name="fastscroll_bubble_radius">25dp</dimen>
     <dimen name="fastscroll_bubble_size">50dp</dimen>
     <dimen name="fastscroll_bubble_textsize">20sp</dimen>

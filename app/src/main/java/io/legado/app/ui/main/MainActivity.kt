@@ -3,18 +3,21 @@
 package io.legado.app.ui.main
 
 
+import android.graphics.Color
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.graphics.drawable.toDrawable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager.widget.ViewPager
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -37,6 +40,11 @@ import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.onDismiss
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.Selector
+import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
@@ -47,6 +55,9 @@ import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.home.HomeFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
@@ -159,16 +170,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {
         when (item.itemId) {
             R.id.menu_home ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idHome), false)
+                viewPagerMain.setCurrentItem(realPositions.indexOf(idHome), true)
 
             R.id.menu_bookshelf ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idBookshelf), false)
+                viewPagerMain.setCurrentItem(realPositions.indexOf(idBookshelf), true)
 
             R.id.menu_discovery ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idExplore), false)
+                viewPagerMain.setCurrentItem(realPositions.indexOf(idExplore), true)
 
             R.id.menu_my_config ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), false)
+                viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), true)
         }
         return false
     }
@@ -199,16 +210,61 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         viewPagerMain.offscreenPageLimit = 3
         viewPagerMain.adapter = adapter
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
-        // Arco 风格：移除 bottomNavigationView 的 elevation 阴影
+        initBottomNavigation()
         bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
         bottomNavigationView.setOnNavigationItemReselectedListener(this@MainActivity)
-        if (AppConfig.isEInkMode) {
-            bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
-        }
         bottomNavigationView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val height = windowInsets.navigationBarHeight
             view.bottomPadding = height
             windowInsets.inset(0, 0, 0, height)
+        }
+    }
+
+    private fun initBottomNavigation() {
+        applyBottomNavigationStyle()
+        applyBottomNavigationSize()
+    }
+
+    private fun applyBottomNavigationStyle() = binding.bottomNavigationView.run {
+        val bg =
+            context.getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
+        val bgColor = if (bg.isNullOrBlank()) context.bottomBackground else Color.TRANSPARENT
+        setBackgroundColor(bgColor)
+        val textIsDark =
+            ColorUtils.isColorLight(if (bg.isNullOrBlank()) bgColor else context.backgroundColor)
+        val textColor = context.getSecondaryTextColor(textIsDark)
+        val accentColor = ThemeStore.accentColor
+        val colorStateList = Selector.colorBuild()
+            .setDefaultColor(textColor)
+            .setPressedColor(accentColor)
+            .setSelectedColor(accentColor)
+            .setFocusedColor(accentColor)
+            .setCheckedColor(accentColor)
+            .create()
+        itemIconTintList = colorStateList
+        itemTextColor = colorStateList
+        elevation = 0f
+        if (AppConfig.isEInkMode) {
+            isItemHorizontalTranslationEnabled = false
+            itemBackground = Color.TRANSPARENT.toDrawable()
+            setBackgroundResource(R.drawable.bg_eink_border_top)
+        }
+    }
+
+    private fun applyBottomNavigationSize() = binding.bottomNavigationView.run {
+        itemIconSize = AppConfig.bottomBarIconSize.dpToPx()
+        labelVisibilityMode = when (AppConfig.bottomBarLabelMode) {
+            1 -> NavigationBarView.LABEL_VISIBILITY_LABELED
+            2 -> NavigationBarView.LABEL_VISIBILITY_SELECTED
+            3 -> NavigationBarView.LABEL_VISIBILITY_AUTO
+            else -> NavigationBarView.LABEL_VISIBILITY_UNLABELED
+        }
+        layoutParams?.let {
+            val targetHeight = AppConfig.bottomBarHeight.dpToPx()
+            if (it.height != targetHeight) {
+                it.height = targetHeight
+                layoutParams = it
+            }
         }
     }
 
@@ -366,6 +422,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         realPositions.add(idMy)
         bottomMenuCount = realPositions.size
         adapter.notifyDataSetChanged()
+        applyBottomNavigationSize()
     }
 
     private fun upHomePage() {

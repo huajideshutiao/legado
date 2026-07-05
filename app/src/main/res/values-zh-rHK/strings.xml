@@ -95,6 +95,7 @@
     <string name="web_edit_source">web 編輯書源</string>
     <string name="offline_cache">離線緩存</string>
     <string name="offline_cache_t">離線緩存</string>
+    <string name="download_to_local">下載到本地</string>
     <string name="offline_cache_s">緩存已選擇的章節到本地</string>
     <string name="change_origin">換源</string>
     <string name="about_description">
@@ -779,6 +780,12 @@
     <string name="save_night_theme_summary">儲存夜間主題配置以供使用同埋分享</string>
     <string name="theme_list">主題列表</string>
     <string name="theme_list_summary">使用儲存主題,匯入,分享主題</string>
+    <string name="default_day_theme">預設·白天</string>
+    <string name="default_night_theme">預設·夜間</string>
+    <string name="customize_day_theme">自訂白天主題</string>
+    <string name="customize_night_theme">自訂夜間主題</string>
+    <string name="new_theme">新建</string>
+    <string name="theme_customize_title">編輯主題</string>
     <string name="select_theme">切換默認主題</string>
     <string name="share_selected_source">分享選中源</string>
     <string name="sort_by_lastUpdateTime">更新時間排序</string>

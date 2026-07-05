@@ -124,6 +124,8 @@
     <color name="arco_primary">#FF165DFF</color>
     <color name="arco_primary_hover">#FF3064FF</color>
     <color name="arco_primary_active">#FF0E42D2</color>
+    <!-- 主色 disabled（arcoblue-3，用于按钮 disabled 态填充） -->
+    <color name="arco_primary_disabled">#FF94BDFF</color>
     <!-- 功能色 -->
     <color name="arco_success">#FF00B42A</color>
     <color name="arco_warning">#FFFF7D00</color>

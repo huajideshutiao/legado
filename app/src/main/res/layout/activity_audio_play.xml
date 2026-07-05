@@ -203,7 +203,7 @@
                 app:pressedTranslationZ="2dp"
                 tools:ignore="ImageContrastCheck" />
 
-            <io.legado.app.ui.widget.ThemeProgressBar
+            <ProgressBar
                 android:id="@+id/progress_loading"
                 android:layout_width="0dp"
                 android:layout_height="0dp"

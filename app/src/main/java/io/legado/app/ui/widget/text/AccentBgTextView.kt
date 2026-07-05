@@ -21,7 +21,7 @@ class AccentBgTextView @JvmOverloads constructor(
 
     init {
         context.withStyledAttributes(attrs, R.styleable.AccentBgTextView) {
-            radius = getDimensionPixelOffset(R.styleable.AccentBgTextView_radius, radius)
+            radius = getDimensionPixelOffset(R.styleable.AccentBgTextView_arcoRadius, radius)
         }
         upBackground()
     }

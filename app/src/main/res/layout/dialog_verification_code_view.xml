@@ -27,7 +27,7 @@
         android:layout_marginTop="8dp"
         android:padding="3dp">
 
-        <io.legado.app.ui.widget.text.ThemeEditText
+        <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/verification_code"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

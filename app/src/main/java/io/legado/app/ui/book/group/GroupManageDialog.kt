@@ -23,6 +23,7 @@ import io.legado.app.databinding.ItemBookGroupManageBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding

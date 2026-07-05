@@ -7,14 +7,14 @@
     android:orientation="horizontal"
     android:padding="8dp">
 
-    <io.legado.app.ui.widget.checkbox.ThemeCheckBox
+    <CheckBox
         android:id="@+id/cb_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         tools:ignore="RtlSymmetry" />
 
-    <io.legado.app.ui.widget.ThemeSwitch
+    <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/swt_enabled"
         android:name="@string/enable"
         android:layout_width="wrap_content"
@@ -38,11 +38,12 @@
         android:id="@+id/iv_delete"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:padding="6dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_outline_delete"
-        android:tint="@color/primaryText"
         android:contentDescription="@string/delete"
-        tools:ignore="RtlHardcoded" />
+        android:padding="6dp"
+        android:src="@drawable/ic_clear_all"
+        android:tint="@color/primaryText"
+        android:tooltipText="@string/delete"
+        tools:ignore="UnusedAttribute" />
 
 </LinearLayout>

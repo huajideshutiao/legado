@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <attr name="radius" format="dimension" />
+    <attr name="arcoRadius" format="dimension" />
     <attr name="isBottomBackground" format="boolean" />
     <attr name="themeMode" format="enum">
         <enum name="dark" value="1" />
@@ -103,7 +103,7 @@
     </declare-styleable>
 
     <declare-styleable name="FilletImageView">
-        <attr name="radius" />
+        <attr name="arcoRadius" />
         <attr name="left_top_radius" format="dimension" />
         <attr name="right_top_radius" format="dimension" />
         <attr name="right_bottom_radius" format="dimension" />
@@ -124,21 +124,21 @@
     </declare-styleable>
 
     <declare-styleable name="AccentBgTextView">
-        <attr name="radius" />
+        <attr name="arcoRadius" />
     </declare-styleable>
 
     <declare-styleable name="AccentStrokeTextView">
-        <attr name="radius" />
+        <attr name="arcoRadius" />
         <attr name="isBottomBackground" />
     </declare-styleable>
 
     <declare-styleable name="StrokeTextView">
-        <attr name="radius" />
+        <attr name="arcoRadius" />
         <attr name="isBottomBackground" />
     </declare-styleable>
 
     <declare-styleable name="BadgeView">
-        <attr name="radius" />
+        <attr name="arcoRadius" />
         <attr name="up_flat_angle" format="boolean" />
     </declare-styleable>
 

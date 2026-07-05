@@ -1,12 +1,14 @@
 package io.legado.app.help.config
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.NinePatch
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import android.util.DisplayMetrics
+import androidx.annotation.ColorRes
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.graphics.drawable.toDrawable
@@ -16,11 +18,9 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
-import io.legado.app.help.DefaultData
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.centerCrop
@@ -35,6 +35,7 @@ import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.removePref
 import io.legado.app.utils.stackBlur
 import splitties.init.appCtx
 import java.io.File
@@ -47,9 +48,9 @@ object ThemeConfig {
     private var bgDrawableCache: Drawable? = null
     private var bgCacheKey: String? = null
 
+    // 存档库：仅存储用户自定义/导入的主题
     val configList: ArrayList<Config> by lazy {
-        val cList = getConfigs() ?: DefaultData.themeConfigs
-        ArrayList(cList)
+        ArrayList(getConfigsFromDisk() ?: emptyList())
     }
 
     fun getTheme() = when {
@@ -59,29 +60,124 @@ object ThemeConfig {
     }
 
     fun applyDayNight(context: Context) {
-        applyTheme(context)
         initNightMode()
+        applyTheme(context)
         BookCover.upDefaultCover()
         postEvent(EventBus.RECREATE, "")
     }
 
     fun applyDayNightInit(context: Context) {
-        applyTheme(context)
         initNightMode()
+        applyTheme(context)
     }
 
     private fun initNightMode(): Boolean {
-        val targetMode =
-            if (AppConfig.isNightTheme) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
-            }
+        val targetMode = if (AppConfig.isNightTheme) {
+            AppCompatDelegate.MODE_NIGHT_YES
+        } else {
+            AppCompatDelegate.MODE_NIGHT_NO
+        }
         if (AppCompatDelegate.getDefaultNightMode() != targetMode) {
             AppCompatDelegate.setDefaultNightMode(targetMode)
             return true
         }
         return false
+    }
+
+    /**
+     * pref 全 0 时按 XML 值实时读取，用户改过就用用户的。不写回 pref。
+     */
+    fun applyTheme(context: Context) = with(context) {
+        if (AppConfig.isEInkMode) {
+            ThemeStore.saveTheme(Color.WHITE, Color.BLACK, Color.WHITE, Color.WHITE)
+            return@with
+        }
+
+        val isNight = AppConfig.isNightTheme
+        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
+        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
+        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
+
+        val (defAccent, defBg, defBbg) = readDefaultColors(context, isNight)
+        val accent = getPrefInt(accentKey).let { if (it == 0) defAccent else it }
+        val background = getPrefInt(bgKey).let { if (it == 0) defBg else it }
+        val bBackground = getPrefInt(bbgKey).let { if (it == 0) defBbg else it }
+
+        ThemeStore.saveTheme(background, accent, background, bBackground)
+    }
+
+    /**
+     * 实时读取 arco 默认色，供内置主题条目、对话框种子色、applyTheme 复用
+     */
+    fun readDefaultColors(context: Context, isNight: Boolean): Triple<Int, Int, Int> =
+        with(context) {
+            Triple(
+                getCompatColorForMode(R.color.arco_default_accent, isNight),
+                getCompatColorForMode(R.color.arco_default_bg, isNight),
+                getCompatColorForMode(R.color.arco_default_bbg, isNight)
+            )
+        }
+
+    /**
+     * 前置到主题列表最前的两个虚拟条目，不写盘、不进 configList
+     */
+    fun getBuiltinConfigs(context: Context): List<Config> {
+        val (dayAccent, dayBg, dayBbg) = readDefaultColors(context, false)
+        val (nightAccent, nightBg, nightBbg) = readDefaultColors(context, true)
+        return listOf(
+            Config(
+                themeName = context.getString(R.string.default_day_theme),
+                isNightTheme = false,
+                primaryColor = "#${dayBg.hexString}",
+                accentColor = "#${dayAccent.hexString}",
+                backgroundColor = "#${dayBg.hexString}",
+                bottomBackground = "#${dayBbg.hexString}"
+            ).apply { isBuiltin = true },
+            Config(
+                themeName = context.getString(R.string.default_night_theme),
+                isNightTheme = true,
+                primaryColor = "#${nightBg.hexString}",
+                accentColor = "#${nightAccent.hexString}",
+                backgroundColor = "#${nightBg.hexString}",
+                bottomBackground = "#${nightBbg.hexString}"
+            ).apply { isBuiltin = true }
+        )
+    }
+
+    /**
+     * 应用内置默认主题：清 6 个 pref → applyTheme 走 XML 实时读取
+     */
+    fun applyBuiltin(context: Context, isNight: Boolean) {
+        if (isNight) {
+            context.removePref(PreferKey.cNAccent)
+            context.removePref(PreferKey.cNBackground)
+            context.removePref(PreferKey.cNBBackground)
+            context.removePref(PreferKey.cNPrimary)
+            context.removePref(PreferKey.bgImageN)
+            context.removePref(PreferKey.bgImageNBlurring)
+        } else {
+            context.removePref(PreferKey.cAccent)
+            context.removePref(PreferKey.cBackground)
+            context.removePref(PreferKey.cBBackground)
+            context.removePref(PreferKey.cPrimary)
+            context.removePref(PreferKey.bgImage)
+            context.removePref(PreferKey.bgImageBlurring)
+        }
+        AppConfig.isNightTheme = isNight
+        applyDayNight(context)
+    }
+
+    /**
+     * 核心：强制从指定模式的资源中提取色值
+     */
+    private fun Context.getCompatColorForMode(@ColorRes id: Int, isNight: Boolean): Int {
+        val configuration = Configuration(resources.configuration)
+        configuration.uiMode = if (isNight) {
+            (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_YES
+        } else {
+            (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_NO
+        }
+        return createConfigurationContext(configuration).getCompatColor(id)
     }
 
     fun getBgDrawable(context: Context, metrics: DisplayMetrics): Drawable? {
@@ -141,12 +237,6 @@ object ThemeConfig {
         return drawable.constantState?.newDrawable(context.resources) ?: drawable
     }
 
-    fun upConfig() {
-        getConfigs()?.forEach { config ->
-            addConfig(config)
-        }
-    }
-
     fun save() {
         val json = GSON.toJson(configList)
         FileUtils.delete(configFilePath)
@@ -156,6 +246,31 @@ object ThemeConfig {
     fun delConfig(index: Int) {
         configList.removeAt(index)
         save()
+        applyTheme(appCtx)
+    }
+
+    fun upConfig() {
+        configList.clear()
+        getConfigsFromDisk()?.let {
+            configList.addAll(it)
+        }
+    }
+
+    fun clearBg() {
+        bgDrawableCache = null
+        bgCacheKey = null
+        val bgImagePath = appCtx.getPrefString(PreferKey.bgImage)
+        appCtx.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
+            if (it.absolutePath != bgImagePath) {
+                it.delete()
+            }
+        }
+        val bgImageNPath = appCtx.getPrefString(PreferKey.bgImageN)
+        appCtx.externalFiles.getFile(PreferKey.bgImageN).listFiles()?.forEach {
+            if (it.absolutePath != bgImageNPath) {
+                it.delete()
+            }
+        }
     }
 
     fun addConfig(json: String): Boolean {
@@ -195,7 +310,7 @@ object ThemeConfig {
         }
     }
 
-    private fun getConfigs(): List<Config>? {
+    private fun getConfigsFromDisk(): List<Config>? {
         val configFile = File(configFilePath)
         if (configFile.exists()) {
             kotlin.runCatching {
@@ -208,146 +323,30 @@ object ThemeConfig {
         return null
     }
 
+    private fun applyConfigToPrefs(context: Context, config: Config) {
+        val accent = config.accentColor.toColorInt()
+        val background = config.backgroundColor.toColorInt()
+        val bBackground = config.bottomBackground.toColorInt()
+        if (config.isNightTheme) {
+            context.putPrefInt(PreferKey.cNPrimary, background)
+            context.putPrefInt(PreferKey.cNAccent, accent)
+            context.putPrefInt(PreferKey.cNBackground, background)
+            context.putPrefInt(PreferKey.cNBBackground, bBackground)
+        } else {
+            context.putPrefInt(PreferKey.cPrimary, background)
+            context.putPrefInt(PreferKey.cAccent, accent)
+            context.putPrefInt(PreferKey.cBackground, background)
+            context.putPrefInt(PreferKey.cBBackground, bBackground)
+        }
+    }
+
     fun applyConfig(context: Context, config: Config) {
         try {
-            val accent = config.accentColor.toColorInt()
-            val background = config.backgroundColor.toColorInt()
-            val bBackground = config.bottomBackground.toColorInt()
-            if (config.isNightTheme) {
-                context.putPrefInt(PreferKey.cNPrimary, background)
-                context.putPrefInt(PreferKey.cNAccent, accent)
-                context.putPrefInt(PreferKey.cNBackground, background)
-                context.putPrefInt(PreferKey.cNBBackground, bBackground)
-            } else {
-                context.putPrefInt(PreferKey.cPrimary, background)
-                context.putPrefInt(PreferKey.cAccent, accent)
-                context.putPrefInt(PreferKey.cBackground, background)
-                context.putPrefInt(PreferKey.cBBackground, bBackground)
-            }
+            applyConfigToPrefs(context, config)
             AppConfig.isNightTheme = config.isNightTheme
             applyDayNight(context)
         } catch (e: Exception) {
             AppLog.put("设置主题出错\n$e", e, true)
-        }
-    }
-
-    fun saveDayTheme(context: Context, name: String) {
-        val accent =
-            context.getPrefInt(
-                PreferKey.cAccent,
-                context.getCompatColor(R.color.arco_default_accent)
-            )
-        val background =
-            context.getPrefInt(
-                PreferKey.cBackground,
-                context.getCompatColor(R.color.arco_default_bg)
-            )
-        val bBackground =
-            context.getPrefInt(
-                PreferKey.cBBackground,
-                context.getCompatColor(R.color.arco_default_bbg)
-            )
-        val config = Config(
-            themeName = name,
-            isNightTheme = false,
-            primaryColor = "#${background.hexString}",
-            accentColor = "#${accent.hexString}",
-            backgroundColor = "#${background.hexString}",
-            bottomBackground = "#${bBackground.hexString}"
-        )
-        addConfig(config)
-    }
-
-    fun saveNightTheme(context: Context, name: String) {
-        val accent =
-            context.getPrefInt(
-                PreferKey.cNAccent,
-                context.getCompatColor(R.color.arco_default_accent)
-            )
-        val background =
-            context.getPrefInt(
-                PreferKey.cNBackground,
-                context.getCompatColor(R.color.arco_default_bg)
-            )
-        val bBackground =
-            context.getPrefInt(
-                PreferKey.cNBBackground,
-                context.getCompatColor(R.color.arco_default_bbg)
-            )
-        val config = Config(
-            themeName = name,
-            isNightTheme = true,
-            primaryColor = "#${background.hexString}",
-            accentColor = "#${accent.hexString}",
-            backgroundColor = "#${background.hexString}",
-            bottomBackground = "#${bBackground.hexString}"
-        )
-        addConfig(config)
-    }
-
-    /**
-     * 更新主题
-     */
-    fun applyTheme(context: Context) = with(context) {
-        when {
-            AppConfig.isEInkMode -> {
-                ThemeStore.saveTheme(Color.WHITE, Color.BLACK, Color.WHITE, Color.WHITE)
-            }
-
-            AppConfig.isNightTheme -> {
-                val accent =
-                    getPrefInt(PreferKey.cNAccent, getCompatColor(R.color.arco_default_accent))
-                var background =
-                    getPrefInt(PreferKey.cNBackground, getCompatColor(R.color.arco_default_bg))
-                if (ColorUtils.isColorLight(background)) {
-                    background = getCompatColor(R.color.arco_default_bg)
-                    putPrefInt(PreferKey.cNBackground, background)
-                }
-                val bBackground =
-                    getPrefInt(PreferKey.cNBBackground, getCompatColor(R.color.arco_default_bbg))
-                ThemeStore.saveTheme(
-                    ColorUtils.withAlpha(background, 1f),
-                    ColorUtils.withAlpha(accent, 1f),
-                    ColorUtils.withAlpha(background, 1f),
-                    ColorUtils.withAlpha(bBackground, 1f)
-                )
-            }
-
-            else -> {
-                val accent =
-                    getPrefInt(PreferKey.cAccent, getCompatColor(R.color.arco_default_accent))
-                var background =
-                    getPrefInt(PreferKey.cBackground, getCompatColor(R.color.arco_default_bg))
-                if (!ColorUtils.isColorLight(background)) {
-                    background = getCompatColor(R.color.arco_default_bg)
-                    putPrefInt(PreferKey.cBackground, background)
-                }
-                val bBackground =
-                    getPrefInt(PreferKey.cBBackground, getCompatColor(R.color.arco_default_bbg))
-                ThemeStore.saveTheme(
-                    ColorUtils.withAlpha(background, 1f),
-                    ColorUtils.withAlpha(accent, 1f),
-                    ColorUtils.withAlpha(background, 1f),
-                    ColorUtils.withAlpha(bBackground, 1f)
-                )
-            }
-        }
-    }
-
-    fun clearBg() {
-        bgDrawableCache = null
-        bgCacheKey = null
-        val bgImagePath = appCtx.getPrefString(PreferKey.bgImage)
-        appCtx.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
-            if (it.absolutePath != bgImagePath) {
-                it.delete()
-            }
-        }
-        val bgImageNPath = appCtx.getPrefString(PreferKey.bgImageN)
-        appCtx.externalFiles.getFile(PreferKey.bgImageN).listFiles()?.forEach {
-            if (it.absolutePath != bgImageNPath) {
-                it.delete()
-            }
         }
     }
 
@@ -360,6 +359,9 @@ object ThemeConfig {
         var backgroundColor: String,
         var bottomBackground: String
     ) {
+
+        @Transient
+        var isBuiltin: Boolean = false
 
         override fun hashCode(): Int {
             return GSON.toJson(this).hashCode()

@@ -66,7 +66,6 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
@@ -97,7 +96,7 @@ import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
-import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.applyBottomActionInsets
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
@@ -193,8 +192,7 @@ class BookInfoActivity :
 
     private fun initView() = binding.run {
         titleBar.setBackgroundResource(R.color.transparent)
-        refreshLayout.setColorSchemeColors(accentColor)
-        flAction.applyNavigationBarPadding()
+        flAction.applyBottomActionInsets()
         tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
         tvIntro.revealOnFocusHint = false
         // 原 ScrollTextView 在 init 中自动设置 LinkMovementMethod，迁移到 TextView 后需显式设置
@@ -371,6 +369,7 @@ class BookInfoActivity :
             }
             llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                 width = 0
+                height = LinearLayout.LayoutParams.WRAP_CONTENT
             }
             llInfoTop.setPadding(0, 0, llInfoTop.paddingRight, 0)
             tvName.gravity = Gravity.START
@@ -393,6 +392,7 @@ class BookInfoActivity :
                 }
                 llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
                     width = LinearLayout.LayoutParams.MATCH_PARENT
+                    height = 0
                 }
                 llInfoTop.setPadding(llInfoTop.paddingRight, 0, llInfoTop.paddingRight, 0)
                 tvName.gravity = Gravity.CENTER

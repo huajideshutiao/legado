@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Arco Primary 按钮文字色：始终白色（disabled 也白，符合 Arco 规范） -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/white" />
+</selector>

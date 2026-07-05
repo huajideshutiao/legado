@@ -60,7 +60,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:icon="@drawable/ic_filter_inset"
+            android:icon="@drawable/outline_filter_alt_24"
             android:key="sourceFilterRuleManage"
             android:title="@string/source_filter_rule"
             app:iconSpaceReserved="false" />

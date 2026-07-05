@@ -27,7 +27,7 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
         // 用局部变量 bottomBg 在 lambda 内接收,lambda 外再赋值给 val
         var bottomBg = false
         context.withStyledAttributes(attrs, R.styleable.StrokeTextView) {
-            radius = getDimensionPixelOffset(R.styleable.StrokeTextView_radius, radius)
+            radius = getDimensionPixelOffset(R.styleable.StrokeTextView_arcoRadius, radius)
             bottomBg =
                 getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
         }

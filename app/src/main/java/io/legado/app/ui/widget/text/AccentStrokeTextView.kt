@@ -20,9 +20,9 @@ class AccentStrokeTextView(context: Context, attrs: AttributeSet) :
 
     init {
         context.withStyledAttributes(attrs, R.styleable.AccentStrokeTextView) {
-            radius = getDimensionPixelOffset(R.styleable.StrokeTextView_radius, radius)
+            radius = getDimensionPixelOffset(R.styleable.AccentStrokeTextView_arcoRadius, radius)
             isBottomBackground =
-                getBoolean(R.styleable.StrokeTextView_isBottomBackground, false)
+                getBoolean(R.styleable.AccentStrokeTextView_isBottomBackground, false)
         }
         upStyle()
     }

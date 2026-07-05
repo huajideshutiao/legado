@@ -24,10 +24,12 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.lib.theme.ThemeInterceptor
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.MenuExtensions
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableAutoFill
@@ -75,7 +77,9 @@ abstract class BaseActivity<VB : ViewBinding>(
         if (AppConst.menuViewNames.contains(name) && parent?.parent is FrameLayout) {
             (parent.parent as View).setBackgroundColor(backgroundColor)
         }
-        return super.onCreateView(parent, name, context, attrs)
+        val view = super.onCreateView(parent, name, context, attrs)
+        view?.let { ThemeInterceptor.apply(it, attrs) }
+        return view
     }
 
     @SuppressLint("ObsoleteSdkInt")
@@ -124,6 +128,12 @@ abstract class BaseActivity<VB : ViewBinding>(
     final override fun onCreateOptionsMenu(menu: Menu): Boolean {
         val bool = onCompatCreateOptionsMenu(menu)
         menu.applyTint(this, toolBarTheme)
+        findViewById<TitleBar>(R.id.title_bar)?.applyTint(
+            MenuExtensions.getMenuColor(
+                this,
+                toolBarTheme
+            )
+        )
         return bool
     }
 

@@ -44,6 +44,8 @@
     <!-- ==================== Arco Design Dark 色板（覆盖 light） ==================== -->
     <!-- 主色 arcoblue-6 dark（暗色主色更亮以保证对比度） -->
     <color name="arco_primary">#FF3C7EFF</color>
+    <!-- 主色 disabled dark（arcoblue-3 dark，用于按钮 disabled 态填充） -->
+    <color name="arco_primary_disabled">#FF2748A5</color>
     <!-- 填充色 dark fill-1/2/3 -->
     <color name="arco_fill_1">#FF17171A</color>
     <color name="arco_fill_2">#FF232324</color>
