@@ -23,9 +23,6 @@
     <style name="AppTheme.BottomSheetInput" parent="AppTheme.Transparent" />
 
     <!-- Welcome主题 -->
-    <style name="AppTheme.Welcome" parent="Base.AppTheme">
-        <item name="android:windowNoTitle">true</item>
-    </style>
 
     <!-- Base application theme. -->
     <style name="Base.AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
@@ -52,8 +49,6 @@
         <item name="colorAccent">@color/md_grey_900</item>
     </style>
 
-    <style name="Spinner" parent="android:Theme.Holo.Light" />
-
     //**********System Style******************//
 
     <style name="Style.DialogToolbar" parent="Widget.AppCompat.Toolbar">
@@ -66,14 +61,6 @@
     <style name="Animation.Dialog" parent="android:Animation">
         <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
         <item name="android:windowExitAnimation">@anim/dialog_exit</item>
-    </style>
-
-    <style name="Style.NavigationView" parent="android:Widget">
-        <item name="android:listPreferredItemHeightSmall">44dp</item>
-    </style>
-
-    <style name="Style.Toolbar.NoPadding" parent="Base.Widget.AppCompat.Toolbar">
-        <item name="contentInsetStartWithNavigation">0dp</item>
     </style>
 
     <style name="Style.MenuItemText" parent="@android:style/TextAppearance.Widget.IconMenu.Item">
@@ -100,12 +87,6 @@
 
     //*******************Widget Style**********************************//
 
-    <style name="Style.Line" parent="android:Widget">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">0.5dp</item>
-        <item name="android:background">@color/divider</item>
-    </style>
-
     <style name="Style.Text.Primary.Normal" parent="android:Widget">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -113,10 +94,6 @@
         <!-- Arco: 走资源引用以支持 DayNight 切换（原 #000 在 dark 模式不可读） -->
         <item name="android:textColor">@color/primaryText</item>
         <item name="android:includeFontPadding">false</item>
-    </style>
-
-    <style name="Style.Text.Primary.Normal.Wrap">
-        <item name="android:layout_width">wrap_content</item>
     </style>
 
     <style name="Style.Text.Second.Normal" parent="android:Widget">

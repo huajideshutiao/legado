@@ -14,12 +14,6 @@
         <item>文件夹</item>
     </string-array>
 
-    <string-array name="text_suffix">
-        <item>.txt</item>
-        <item>.json</item>
-        <item>.xml</item>
-    </string-array>
-
     <string-array name="theme_mode">
         <item>跟随系统</item>
         <item>亮色主题</item>
@@ -32,13 +26,6 @@
         <item>全局双页</item>
         <item>横屏双页</item>
         <item>平板/横屏双页</item>
-    </string-array>
-
-    <string-array name="NavBarColors">
-        <item>自动</item>
-        <item>黑色</item>
-        <item>白色</item>
-        <item>跟随背景</item>
     </string-array>
 
     <string-array name="screen_time_out">

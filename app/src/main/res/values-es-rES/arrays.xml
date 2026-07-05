@@ -22,30 +22,11 @@
 		<item>@string/indent_4</item>
 	</string-array>
 
-	<string-array name="text_suffix">
-		<item>.txt</item>
-		<item>.json</item>
-		<item>.xml</item>
-	</string-array>
-
-	<string-array name="convert_s">
-		<item>@string/jf_convert_o</item>
-		<item>@string/jf_convert_j</item>
-		<item>@string/jf_convert_f</item>
-	</string-array>
-
 	<string-array name="theme_mode">
 		<item>Adaptar do sistema</item>
 		<item>Tema Claro</item>
 		<item>Tema Oscuro</item>
 		<item>Tema E-Ink</item>
-	</string-array>
-
-	<string-array name="NavBarColors">
-		<item>Autom.</item>
-		<item>Oscuro</item>
-		<item>Claro</item>
-		<item>Adaptado</item>
 	</string-array>
 
 	<string-array name="screen_time_out">

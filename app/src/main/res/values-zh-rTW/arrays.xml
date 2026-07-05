@@ -14,24 +14,11 @@
         <item>資料夾</item>
     </string-array>
 
-    <string-array name="text_suffix">
-        <item>.txt</item>
-        <item>.json</item>
-        <item>.xml</item>
-    </string-array>
-
     <string-array name="theme_mode">
         <item>跟隨系統</item>
         <item>亮色主題</item>
         <item>暗色主題</item>
         <item>E-Ink(墨水屏)</item>
-    </string-array>
-
-    <string-array name="NavBarColors">
-        <item>自動</item>
-        <item>黑色</item>
-        <item>白色</item>
-        <item>跟隨背景</item>
     </string-array>
 
     <string-array name="screen_time_out">
