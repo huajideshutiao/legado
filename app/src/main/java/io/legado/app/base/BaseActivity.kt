@@ -84,6 +84,9 @@ abstract class BaseActivity<VB : ViewBinding>(
             ?: takeIf { name.contains('.') }?.let {
                 runCatching {
                     LayoutInflater.from(context).createView(name, null, attrs)
+                }.onFailure { e ->
+                    // 不吞异常: 记录日志便于调试, 同时让 LayoutInflater 兜底创建时能抛出原始堆栈
+                    AppLog.put("创建 View 失败: $name", e)
                 }.getOrNull()
             }
         view?.let { ThemeInterceptor.apply(it, attrs) }

@@ -320,7 +320,14 @@ class AnalyzeUrl(
         return if (sharedScope == null) {
             val scope = JsEngines.get().getRuntimeScope(bindings)
             val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
-            JsEngines.get().eval(wrappedJs, scope, coroutineContext)
+            try {
+                JsEngines.get().eval(wrappedJs, scope, coroutineContext)
+            } finally {
+                // 无 sharedScope 时创建的独立 scope 必须显式 close,
+                // 否则 native JSRuntime/JSContext 只能等 GC + PhantomReference 异步释放,
+                // 漫画场景下大量图片加载会快速累积 native 内存。
+                scope.close()
+            }
         } else {
             val compiled = JsEngines.get().compileForSubScope(jsStr)
             JsEngines.get().evalInSubScope(compiled, sharedScope, bindings, coroutineContext)

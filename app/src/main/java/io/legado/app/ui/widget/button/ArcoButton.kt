@@ -18,17 +18,14 @@ import io.legado.app.utils.dpToPx
  * XML 里换成本类 + 原有 style 即可，不需要业务代码逐个 tint。
  */
 class ArcoButton @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : AppCompatTextView(context, attrs, defStyleAttr) {
 
     init {
         val styleRes = attrs?.styleAttribute ?: 0
         if (styleRes != 0) {
             val ta = context.obtainStyledAttributes(
-                styleRes,
-                intArrayOf(android.R.attr.background)
+                styleRes, intArrayOf(android.R.attr.background)
             )
             val bgResId = ta.getResourceId(0, 0)
             ta.recycle()
@@ -44,25 +41,21 @@ class ArcoButton @JvmOverloads constructor(
     private val arcoRadius get() = context.resources.getDimension(R.dimen.arco_radius_default)
     private val arcoStrokeWidth get() = 1.dpToPx()
 
-    private fun tintPrimary() {
-        val accent = context.accentColor
-        val pressed = ColorUtils.darkenColor(accent)
-        val disabled = ColorUtils.withAlpha(accent, 0.4f)
-        background = StateListDrawable().apply {
-            addState(intArrayOf(-android.R.attr.state_enabled), arcoSolid(disabled))
-            addState(intArrayOf(android.R.attr.state_pressed), arcoSolid(pressed))
-            addState(StateSet.WILD_CARD, arcoSolid(accent))
-        }
-    }
+    private fun tintPrimary() = tintSolid(context.accentColor)
 
-    private fun tintDanger() {
-        val danger = ContextCompat.getColor(context, R.color.arco_danger)
-        val pressed = ColorUtils.darkenColor(danger)
-        val disabled = ColorUtils.withAlpha(danger, 0.4f)
+    private fun tintDanger() = tintSolid(ContextCompat.getColor(context, R.color.arco_danger))
+
+    /**
+     * 实心按钮通用 tint: 主色背景 + 白字, 支持 pressed(加深) / disabled(半透明) 状态。
+     * Primary 和 Danger 共用此逻辑, 仅基础色不同。
+     */
+    private fun tintSolid(baseColor: Int) {
+        val pressed = ColorUtils.darkenColor(baseColor)
+        val disabled = ColorUtils.withAlpha(baseColor, 0.4f)
         background = StateListDrawable().apply {
             addState(intArrayOf(-android.R.attr.state_enabled), arcoSolid(disabled))
             addState(intArrayOf(android.R.attr.state_pressed), arcoSolid(pressed))
-            addState(StateSet.WILD_CARD, arcoSolid(danger))
+            addState(StateSet.WILD_CARD, arcoSolid(baseColor))
         }
         setTextColor(ContextCompat.getColor(context, R.color.white))
     }
@@ -84,8 +77,7 @@ class ArcoButton @JvmOverloads constructor(
                     intArrayOf(-android.R.attr.state_enabled),
                     intArrayOf(android.R.attr.state_pressed),
                     StateSet.WILD_CARD,
-                ),
-                intArrayOf(disabledText, pressed, accent)
+                ), intArrayOf(disabledText, pressed, accent)
             )
         )
     }
@@ -106,8 +98,7 @@ class ArcoButton @JvmOverloads constructor(
                 arrayOf(
                     intArrayOf(-android.R.attr.state_enabled),
                     StateSet.WILD_CARD,
-                ),
-                intArrayOf(text4, text1)
+                ), intArrayOf(text4, text1)
             )
         )
     }

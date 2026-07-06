@@ -10,8 +10,11 @@ class TextInputLayout(context: Context, attrs: AttributeSet?) : TextInputLayout(
 
     init {
         if (!isInEditMode) {
+            val accent = ThemeStore.accentColor
             defaultHintTextColor =
-                Selector.colorBuild().setDefaultColor(ThemeStore.accentColor).create()
+                Selector.colorBuild().setDefaultColor(accent).create()
+            boxStrokeColor = accent
+            hintTextColor = Selector.colorBuild().setDefaultColor(accent).create()
         }
     }
 

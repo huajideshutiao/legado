@@ -14,6 +14,7 @@ import androidx.appcompat.widget.SwitchCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.progressindicator.BaseProgressIndicator
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.applyTint
@@ -93,6 +94,10 @@ object ThemeInterceptor {
 
             is CheckBox, is RadioButton, is Switch, is SwitchCompat -> {
                 TintHelper.setTintAuto(view, context.accentColor, false, isDark)
+            }
+
+            is BaseProgressIndicator<*> -> {
+                view.setIndicatorColor(context.accentColor)
             }
 
             is ProgressBar -> {

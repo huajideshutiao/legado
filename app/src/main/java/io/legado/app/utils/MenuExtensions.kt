@@ -7,6 +7,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ImageButton
+import android.widget.PopupMenu
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.appcompat.view.menu.SubMenuBuilder
@@ -112,4 +113,23 @@ object MenuExtensions {
         }
     }
 
+}
+
+/**
+ * 显示规则项菜单（置顶/置底/删除）。
+ * 对话框/列表场景通常不需要置顶/置底, 已默认隐藏, 仅保留删除。
+ * 调用方在 [onDelete] 中自行处理删除确认与刷新逻辑。
+ */
+fun View.showRuleItemMenu(onDelete: () -> Unit) {
+    val popupMenu = PopupMenu(context, this)
+    popupMenu.inflate(R.menu.rule_item)
+    popupMenu.menu.findItem(R.id.menu_top).isVisible = false
+    popupMenu.menu.findItem(R.id.menu_bottom).isVisible = false
+    popupMenu.setOnMenuItemClickListener { menuItem ->
+        if (menuItem.itemId == R.id.menu_del) {
+            onDelete()
+        }
+        true
+    }
+    popupMenu.show()
 }

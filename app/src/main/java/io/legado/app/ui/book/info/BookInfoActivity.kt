@@ -361,7 +361,7 @@ class BookInfoActivity :
             bgBook.gone()
             titleBar.setTextColor(primaryTextColor)
             titleBar.setColorFilter(primaryTextColor)
-            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Auto)
+            titleBar.toolbar.menu.applyTint(this@BookInfoActivity)
 
             llTop.orientation = LinearLayout.HORIZONTAL
             ivCover.updateLayoutParams<LinearLayout.LayoutParams> {

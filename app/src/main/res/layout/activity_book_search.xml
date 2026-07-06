@@ -34,8 +34,6 @@
             android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingHorizontal="@dimen/arco_page_padding_h"
             tools:listitem="@layout/item_bookshelf_list" />
 
     </io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout>
@@ -70,8 +68,6 @@
                 android:id="@+id/rv_bookshelf_search"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:paddingHorizontal="@dimen/arco_page_padding_h"
                 tools:listitem="@layout/item_bookshelf_list" />
 
         </FrameLayout>
@@ -104,7 +100,8 @@
             android:id="@+id/rv_history_key"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:paddingHorizontal="@dimen/arco_spacing_default" />
 
     </LinearLayout>
 

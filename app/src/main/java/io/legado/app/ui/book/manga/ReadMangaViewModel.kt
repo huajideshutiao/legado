@@ -210,7 +210,12 @@ class ReadMangaViewModel(application: Application) :
                     1 -> nextMangaChapter = mangaChapter
                 }
 
-                upContentLiveData.postValue(Unit)
+                // 当前章尚未加载完成时, 不触发 upContent, 避免 submitList 只含 prev/next 内容
+                // 导致 RecyclerView 自动定位到 position=0 (prev/next 首页),
+                // 误触发 onScrolled -> moveToPrevChapter/Next, 造成章节错位 (清缓存后复现)
+                if (curMangaChapter != null) {
+                    upContentLiveData.postValue(Unit)
+                }
             }
         }
     }

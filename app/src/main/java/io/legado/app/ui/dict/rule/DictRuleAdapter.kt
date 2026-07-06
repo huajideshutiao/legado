@@ -4,10 +4,8 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.DictRule
@@ -15,6 +13,7 @@ import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.setOnUserCheckedChangeListener
+import io.legado.app.utils.showRuleItemMenu
 
 
 class DictRuleAdapter(context: Context, var callBack: CallBack) :
@@ -152,20 +151,12 @@ class DictRuleAdapter(context: Context, var callBack: CallBack) :
 
     private fun showMenu(view: View, position: Int) {
         val item = getItem(position) ?: return
-        val popupMenu = PopupMenu(context, view)
-        popupMenu.inflate(R.menu.rule_item)
-        popupMenu.menu.findItem(R.id.menu_top).isVisible = false
-        popupMenu.menu.findItem(R.id.menu_bottom).isVisible = false
-        popupMenu.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.menu_del -> {
-                    callBack.delete(item)
-                    selected.remove(item)
-                }
-            }
-            true
+        view.showRuleItemMenu {
+            // 不在这里提前 selected.remove: callBack.delete 会弹确认框,
+            // 用户取消时 item 仍在列表中, 提前移除会导致选中状态丢失。
+            // 删除成功后列表刷新会自然清理 selected。
+            callBack.delete(item)
         }
-        popupMenu.show()
     }
 
     override fun swap(srcPosition: Int, targetPosition: Int): Boolean {

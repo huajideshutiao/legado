@@ -292,7 +292,13 @@ interface BaseSource : JsExtensions {
         return if (sharedScope == null) {
             val scope = JsEngines.get().getRuntimeScope(bindings)
             val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
-            JsEngines.get().eval(wrappedJs, scope, null)
+            try {
+                JsEngines.get().eval(wrappedJs, scope, null)
+            } finally {
+                // 无 jsLib 时创建的独立 scope 必须显式 close,
+                // 否则 native JSRuntime/JSContext 只能等 GC + PhantomReference 异步释放
+                scope.close()
+            }
         } else {
             val compiled = JsEngines.get().compileForSubScope(jsStr)
             JsEngines.get().evalInSubScope(compiled, sharedScope, bindings, null)
