@@ -1,13 +1,14 @@
 package io.legado.app.model.script.rhino
 
 import com.script.rhino.RhinoContext
+import com.script.rhino.RhinoScriptEngine
 import io.legado.app.model.script.JsCompiledScript
-import io.legado.app.model.script.JsFn
 import io.legado.app.model.script.JsObject
 import io.legado.app.model.script.JsScope
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.Wrapper
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -82,7 +83,7 @@ class RhinoJsCompiledScript(
  *
  * `org.mozilla.javascript.NativeObject` 不直接实现 java.util.Map，
  * 这里通过 Scriptable.get/put/has/delete/ids 实现 MutableMap 接口，
- * 让业务层 `jsObj[rule]` 走 Map 索引（与 quickjs NativeObject 行为一致）。
+ * 让业务层 `jsObj["rule"]` 走 Map 索引（与 quickjs NativeObject 行为一致）。
  */
 class RhinoJsObject(private val delegate: NativeObject) : AbstractMutableMap<String, Any?>(),
     JsObject {
@@ -96,16 +97,16 @@ class RhinoJsObject(private val delegate: NativeObject) : AbstractMutableMap<Str
         delegate.has(key, delegate)
 
     override fun get(key: String): Any? =
-        delegate.get(key, delegate)
+        unwrap(delegate.get(key, delegate))
 
     override fun put(key: String, value: Any?): Any? {
-        val previous = delegate.get(key, delegate)
+        val previous = unwrap(delegate.get(key, delegate))
         delegate.put(key, delegate, value)
         return previous
     }
 
     override fun remove(key: String): Any? {
-        val previous = delegate.get(key, delegate)
+        val previous = unwrap(delegate.get(key, delegate))
         delegate.delete(key)
         return previous
     }
@@ -120,37 +121,32 @@ class RhinoJsObject(private val delegate: NativeObject) : AbstractMutableMap<Str
             object : MutableMap.MutableEntry<String, Any?> {
                 override val key: String = k
                 override val value: Any?
-                    get() = delegate.get(k, delegate)
+                    get() = unwrap(delegate.get(k, delegate))
 
                 override fun setValue(newValue: Any?): Any? {
-                    val old = delegate.get(k, delegate)
+                    val old = unwrap(delegate.get(k, delegate))
                     delegate.put(k, delegate, newValue)
                     return old
                 }
             }
         }.toMutableSet()
-}
 
-/**
- * rhino JsFn 实现：持 scope + functionExpr，call 时创建子 scope 注入 args 变量后 eval。
- *
- * 对应 quickjs 的 `com.script.quickjs.JsFunction`。
- * args 通过子 scope 变量注入（`__arg0`, `__arg1`, ...），JS 端用 `(functionExpr)(__arg0, __arg1)` 调用。
- */
-class RhinoJsFn(
-    private val scope: RhinoJsScope,
-    private val functionExpr: String,
-    override val dangerousApi: Boolean = false
-) : JsFn {
-
-    override fun call(vararg args: Any?): Any? {
-        val scriptable = scope.scriptable ?: return null
-        val childScope = com.script.ScriptBindings().apply {
-            this.dangerousApi = dangerousApi
-            prototype = scriptable
-            args.forEachIndexed { i, arg -> this["__arg$i"] = arg }
-        }
-        val jsArgs = args.indices.joinToString(",") { "__arg$it" }
-        return com.script.rhino.RhinoScriptEngine.eval("($functionExpr)($jsArgs)", childScope, null)
+    /**
+     * 解包 rhino [Wrapper]（[org.mozilla.javascript.NativeJavaObject] 实现 Wrapper）。
+     *
+     * [org.mozilla.javascript.NativeJavaObject] 没有重写 toString()（继承 Object.toString()），
+     * 直接 toString() 会返回 "org.mozilla.javascript.NativeJavaObject@hash"。
+     * 典型场景: `book.bookUrl.replace(...)` 在 rhino 下返回 NativeJavaObject 包装的
+     * java.lang.String, AnalyzeRule.getString 中 `jsObj["url"]?.toString()` 得到乱码,
+     * 章节链接变为 "org.mozilla.javascript.NativeJavaObject@eecfffb"。
+     *
+     * unwrap 返回 javaObject（java.lang.String 等），与 quickjs 行为一致
+     * （quickjs get 返回 java 对象，不返回 Wrapper）。
+     *
+     * 注: NativeObject/NativeArray/NativeString 不实现 Wrapper，不受影响。
+     */
+    private fun unwrap(raw: Any?): Any? {
+        if (raw == Scriptable.NOT_FOUND) return null
+        return RhinoScriptEngine.unwrapReturnValue(raw)
     }
 }

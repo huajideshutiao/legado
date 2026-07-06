@@ -6,25 +6,16 @@ import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.animation.Animation
 import android.widget.SeekBar
-import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.databinding.ViewMangaMenuBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.manga.ReadMangaViewModel
-import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.activity
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
-import io.legado.app.utils.openUrl
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
 
 class MangaMenu @JvmOverloads constructor(
@@ -39,7 +30,6 @@ class MangaMenu @JvmOverloads constructor(
                 it
             )[ReadMangaViewModel::class.java]
         }
-    private var bgColor = context.bottomBackground
 
     private val menuOutListener = object : Animation.AnimationListener {
         override fun onAnimationStart(animation: Animation) {
@@ -60,10 +50,7 @@ class MangaMenu @JvmOverloads constructor(
     }
     private val menuInListener = object : Animation.AnimationListener {
         override fun onAnimationStart(animation: Animation) {
-            binding.tvSourceAction.text =
-                viewModel?.curBookSource?.bookSourceName ?: context.getString(R.string.book_source)
             callBack.upSystemUiVisibility(true)
-            binding.tvSourceAction.isGone = false
         }
 
         @SuppressLint("RtlHardcoded")
@@ -87,12 +74,7 @@ class MangaMenu @JvmOverloads constructor(
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             bottomMenu.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
-            bottomMenu.setBackgroundColor(bgColor)
-        }
-        if (AppConfig.showReadTitleBarAddition) {
-            titleBarAddition.visible()
-        } else {
-            titleBarAddition.gone()
+            bottomMenu.setBackgroundColor(context.bottomBackground)
         }
         /**
          * 确保视图不被导航栏遮挡
@@ -134,38 +116,6 @@ class MangaMenu @JvmOverloads constructor(
         titleBar.toolbar.setOnClickListener {
             callBack.openBookInfoActivity()
         }
-        val chapterViewClickListener = OnClickListener {
-            if (AppConfig.readUrlInBrowser) {
-                context.openUrl(tvChapterUrl.text.toString().substringBefore(",{"))
-            } else {
-                context.startActivity<WebViewActivity> {
-                    val url = tvChapterUrl.text.toString()
-                    val bookSource = ReadBook.bookSource
-                    putExtra("title", tvChapterName.text)
-                    putExtra("url", url)
-                    putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                    putExtra("sourceName", bookSource?.bookSourceName)
-                    putExtra("sourceType", bookSource?.getSourceType())
-                }
-            }
-        }
-        val chapterViewLongClickListener = OnLongClickListener {
-            context.alert(R.string.open_fun) {
-                setMessage(R.string.use_browser_open)
-                okButton {
-                    AppConfig.readUrlInBrowser = true
-                }
-                noButton {
-                    AppConfig.readUrlInBrowser = false
-                }
-            }
-            true
-        }
-        tvChapterName.setOnClickListener(chapterViewClickListener)
-        tvChapterName.setOnLongClickListener(chapterViewLongClickListener)
-        tvChapterUrl.setOnClickListener(chapterViewClickListener)
-        tvChapterUrl.setOnLongClickListener(chapterViewLongClickListener)
-
         tvNext.setOnClickListener {
             viewModel?.moveToNextChapter(true)
         }

@@ -203,13 +203,6 @@ interface JsEngine {
      */
     fun cleanupBindings(scope: JsScope, keys: List<String>)
 
-    // ============ JsFunction 创建 ============
-
-    /**
-     * 把 JS 函数表达式包装为 [JsFn]，供 JsActivity 跨 Activity 调用。
-     * 对应 quickjs 的 `JsFunction(ctx, expr)`。
-     */
-    fun wrapJsFn(scope: JsScope, functionExpr: String, dangerousApi: Boolean = false): JsFn
 }
 
 /**

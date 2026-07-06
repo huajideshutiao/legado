@@ -13,13 +13,14 @@
             android:layout_height="wrap_content"
             app:title="@string/bookmark" />
 
-        <TextView
-            android:id="@+id/tv_chapter_name"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="@dimen/arco_spacing_lg"
-            android:paddingEnd="@dimen/arco_spacing_lg"
-            android:textColor="@color/primaryText" />
+    <TextView
+        android:id="@+id/tv_chapter_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="@dimen/arco_spacing_lg"
+        android:textColor="@color/primaryText"
+        android:textSize="16sp"
+        tools:text="章节名称" />
 
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
@@ -31,7 +32,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="@dimen/arco_spacing_lg">
+                android:paddingHorizontal="@dimen/arco_spacing_lg">
 
                 <io.legado.app.ui.widget.text.TextInputLayout
                     android:layout_width="match_parent"
@@ -65,45 +66,41 @@
 
         </androidx.core.widget.NestedScrollView>
 
-        <com.google.android.flexbox.FlexboxLayout
-            android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_footer_left"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="@dimen/arco_spacing_md"
-            android:paddingEnd="@dimen/arco_spacing_md"
-            app:flexWrap="wrap"
-            app:justifyContent="space_between">
+            android:padding="@dimen/arco_spacing_md"
+            android:text="@string/delete"
+            android:visibility="invisible"
+            tools:ignore="RtlHardcoded" />
 
-            <io.legado.app.ui.widget.text.AccentTextView
-                android:id="@+id/tv_footer_left"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="@dimen/arco_spacing_md"
-                android:text="@string/delete"
-                android:visibility="invisible"
-                tools:ignore="RtlHardcoded" />
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="@dimen/arco_spacing_md"
+            android:text="@string/cancel"
+            tools:ignore="RtlHardcoded" />
 
-                <io.legado.app.ui.widget.text.AccentTextView
-                    android:id="@+id/tv_cancel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:padding="@dimen/arco_spacing_md"
-                    android:text="@string/cancel"
-                    tools:ignore="RtlHardcoded" />
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_ok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="@dimen/arco_spacing_md"
+            android:text="@string/ok"
+            tools:ignore="RtlHardcoded" />
 
-                <io.legado.app.ui.widget.text.AccentTextView
-                    android:id="@+id/tv_ok"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:padding="@dimen/arco_spacing_md"
-                    android:text="@string/ok"
-                    tools:ignore="RtlHardcoded" />
+    </LinearLayout>
 
-            </LinearLayout>
-
-        </com.google.android.flexbox.FlexboxLayout>
 </LinearLayout>

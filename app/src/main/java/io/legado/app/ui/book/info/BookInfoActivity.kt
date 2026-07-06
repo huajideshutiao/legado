@@ -66,7 +66,6 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.lib.theme.primaryTextColor
@@ -91,7 +90,6 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.text.IntroButtonSpan
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
@@ -193,7 +191,7 @@ class BookInfoActivity :
     private fun initView() = binding.run {
         titleBar.setBackgroundResource(R.color.transparent)
         flAction.applyBottomActionInsets()
-        tvShelf.setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
+        tvShelf.tintBottom()
         tvIntro.revealOnFocusHint = false
         // 原 ScrollTextView 在 init 中自动设置 LinkMovementMethod，迁移到 TextView 后需显式设置
         tvIntro.movementMethod = LinkMovementMethod.getInstance()

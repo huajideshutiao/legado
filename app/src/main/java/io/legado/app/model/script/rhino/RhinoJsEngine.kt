@@ -6,7 +6,6 @@ import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsCompiledScript
 import io.legado.app.model.script.JsEngine
 import io.legado.app.model.script.JsEngineType
-import io.legado.app.model.script.JsFn
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.rhino.RhinoJsEngine.cleanupBindings
 import io.legado.app.model.script.rhino.RhinoJsEngine.evalBytecode
@@ -161,12 +160,6 @@ object RhinoJsEngine : JsEngine {
     /** 清理 injectBindings 注入的变量（rhino 空实现，子 scope 关闭自动清理）。 */
     override fun cleanupBindings(scope: JsScope, keys: List<String>) {
         // 空实现：rhino 子 scope 出栈后 GC 自动清理，无需手动 delete
-    }
-
-    override fun wrapJsFn(scope: JsScope, functionExpr: String, dangerousApi: Boolean): JsFn {
-        val rhinoScope = scope as? RhinoJsScope
-            ?: error("RhinoJsEngine.wrapJsFn requires RhinoJsScope, got ${scope::class}")
-        return RhinoJsFn(rhinoScope, functionExpr, dangerousApi)
     }
 
     /**

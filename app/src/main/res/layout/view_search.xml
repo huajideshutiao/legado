@@ -9,7 +9,7 @@
     android:focusable="false"
     android:imeOptions="actionSearch"
     android:theme="?attr/actionBarStyle"
-    app:defaultQueryHint="搜索"
+    app:defaultQueryHint="@string/search"
     app:iconifiedByDefault="false"
     app:queryBackground="@null"
     app:searchHintIcon="@drawable/ic_search_hint"

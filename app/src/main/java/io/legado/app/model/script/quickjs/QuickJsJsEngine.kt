@@ -6,7 +6,6 @@ import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsCompiledScript
 import io.legado.app.model.script.JsEngine
 import io.legado.app.model.script.JsEngineType
-import io.legado.app.model.script.JsFn
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.quickjs.QuickJsJsEngine.toQuickJsBindings
 import kotlin.coroutines.CoroutineContext
@@ -111,12 +110,6 @@ object QuickJsJsEngine : JsEngine {
         val qScope = scope as? QuickJsJsScope
             ?: error("QuickJsJsEngine.cleanupBindings requires QuickJsJsScope, got ${scope::class}")
         QuickJsEngine.cleanupBindings(qScope.ctx, keys)
-    }
-
-    override fun wrapJsFn(scope: JsScope, functionExpr: String, dangerousApi: Boolean): JsFn {
-        val qScope = scope as? QuickJsJsScope
-            ?: error("QuickJsJsEngine.wrapJsFn requires QuickJsJsScope, got ${scope::class}")
-        return QuickJsJsFn(qScope.ctx, functionExpr, dangerousApi)
     }
 
     /**

@@ -10,6 +10,8 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 
@@ -99,6 +101,28 @@ class ArcoButton @JvmOverloads constructor(
                     intArrayOf(-android.R.attr.state_enabled),
                     StateSet.WILD_CARD,
                 ), intArrayOf(text4, text1)
+            )
+        )
+    }
+
+    fun tintBottom() {
+        val bbg = context.bottomBackground
+        val isLight = ColorUtils.isColorLight(bbg)
+        val pressed = ColorUtils.darkenColor(bbg)
+        val disabled = ColorUtils.withAlpha(bbg, 0.4f)
+        background = StateListDrawable().apply {
+            addState(intArrayOf(-android.R.attr.state_enabled), arcoSolid(disabled))
+            addState(intArrayOf(android.R.attr.state_pressed), arcoSolid(pressed))
+            addState(StateSet.WILD_CARD, arcoSolid(bbg))
+        }
+        val textColor = context.getPrimaryTextColor(isLight)
+        val disabledTextColor = ColorUtils.withAlpha(textColor, 0.4f)
+        setTextColor(
+            ColorStateList(
+                arrayOf(
+                    intArrayOf(-android.R.attr.state_enabled),
+                    StateSet.WILD_CARD,
+                ), intArrayOf(disabledTextColor, textColor)
             )
         )
     }

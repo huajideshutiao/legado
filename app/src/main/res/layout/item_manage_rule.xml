@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center"
-    android:orientation="horizontal">
+    android:orientation="horizontal"
+    android:paddingVertical="@dimen/arco_spacing_xs">
 
     <CheckBox
         android:id="@+id/cb_name"
@@ -69,6 +70,7 @@
         android:id="@+id/tv_extra"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:paddingStart="@dimen/arco_spacing_default"
         android:textColor="@color/tv_text_summary"
         android:textSize="12sp"
         android:visibility="gone"
