@@ -46,7 +46,7 @@ class ImportThemeDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.import_theme)
+        setupTitleBar(title = getString(R.string.import_theme))
         binding.rotateLoading.show()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter

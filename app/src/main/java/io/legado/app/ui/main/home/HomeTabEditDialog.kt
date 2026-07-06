@@ -28,13 +28,16 @@ class HomeTabEditDialog : BaseDialogFragment(R.layout.dialog_home_tab_edit) {
     private val oldTitle: String? get() = arguments?.getString(ARG_OLD_TITLE)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        val editing = oldTitle
+        setupTitleBar(
+            title = getString(
+                if (editing == null) R.string.home_tab_add else R.string.home_tab_edit
+            )
+        )
         binding.run {
-            val editing = oldTitle
             if (editing == null) {
-                toolBar.setTitle(R.string.home_tab_add)
                 btnDelete.gone()
             } else {
-                toolBar.setTitle(R.string.home_tab_edit)
                 etTitle.setText(editing)
                 btnDelete.visible()
                 btnDelete.onClick { confirmDelete(editing) }

@@ -19,7 +19,7 @@
         android:clickable="true"
         android:focusable="true"
         android:orientation="vertical"
-        android:paddingHorizontal="@dimen/arco_page_padding_h"
+        android:paddingHorizontal="@dimen/arco_spacing_lg"
         android:paddingTop="@dimen/arco_spacing_default">
 
         <LinearLayout

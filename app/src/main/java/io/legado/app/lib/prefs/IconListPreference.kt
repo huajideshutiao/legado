@@ -132,7 +132,7 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         private val binding by viewBinding(DialogRecyclerViewBinding::bind)
 
         override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-            binding.toolBar.setTitle(R.string.change_icon)
+            setupTitleBar(title = getString(R.string.change_icon))
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
             val args = arguments ?: return
             val dialogValue = args.getString("value")

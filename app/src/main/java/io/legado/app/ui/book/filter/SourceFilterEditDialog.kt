@@ -9,7 +9,6 @@ import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.databinding.DialogSourceFilterEditBinding
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
-import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -20,6 +19,7 @@ import java.util.UUID
  */
 class SourceFilterEditDialog() : BaseDialogFragment(R.layout.dialog_source_filter_edit),
     SearchScopeDialog.Callback {
+    override val defaultBackNavigation: Boolean = false  // 原无返回按钮,有 tvCancel
 
     companion object {
         private const val ARG_EXISTING = "existing"
@@ -46,7 +46,7 @@ class SourceFilterEditDialog() : BaseDialogFragment(R.layout.dialog_source_filte
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         @Suppress("DEPRECATION")
         existing = arguments?.getParcelable(ARG_EXISTING)
-        binding.toolBar.title = if (existing == null) {
+        titleBar!!.title = if (existing == null) {
             getString(R.string.add) + getString(R.string.source_filter_rule)
         } else {
             getString(R.string.source_filter_rule)

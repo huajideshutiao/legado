@@ -126,13 +126,19 @@
 
     </LinearLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_view"
+    <HorizontalScrollView
+        android:id="@+id/horizontal_scroll_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:orientation="horizontal"
-        android:padding="@dimen/arco_spacing_xs"
-        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/items_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="@dimen/arco_spacing_xs" />
+
+    </HorizontalScrollView>
 
 </LinearLayout>

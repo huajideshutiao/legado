@@ -6,25 +6,13 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/tv_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="@dimen/arco_dialog_padding_h"
-        android:paddingTop="@dimen/arco_spacing_lg"
-        android:paddingBottom="@dimen/arco_spacing_default"
-        android:textColor="@color/primaryText"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        tools:text="@string/theme_customize_title" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingHorizontal="@dimen/arco_dialog_padding_h">
+        android:paddingHorizontal="@dimen/arco_spacing_lg">
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -37,7 +25,7 @@
                 android:inputType="text"
                 android:maxLines="1" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
         <RadioGroup
             android:id="@+id/rg_mode"

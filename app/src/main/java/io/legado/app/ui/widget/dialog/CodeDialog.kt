@@ -9,7 +9,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableEdit
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -27,7 +26,7 @@ class CodeDialog() : BaseDialogFragment(R.layout.dialog_code_view) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         if (arguments?.getBoolean("disableEdit") == true) {
-            binding.toolBar.title = "code view"
+            setupTitleBar(title = "code view")
             binding.codeView.disableEdit()
         } else {
             initMenu()
@@ -41,10 +40,8 @@ class CodeDialog() : BaseDialogFragment(R.layout.dialog_code_view) {
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.code_edit)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            when (it.itemId) {
+        setupTitleBar(menuRes = R.menu.code_edit) {
+            when (it?.itemId) {
                 R.id.menu_save -> {
                     binding.codeView.text?.toString()?.let { code ->
                         val requestId = arguments?.getString("requestId")
@@ -54,7 +51,7 @@ class CodeDialog() : BaseDialogFragment(R.layout.dialog_code_view) {
                     dismiss()
                 }
             }
-            return@setOnMenuItemClickListener true
+            return@setupTitleBar true
         }
     }
 

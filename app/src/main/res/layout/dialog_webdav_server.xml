@@ -1,20 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/arco_spacing_xs"
-        app:title="@string/server_config" />
-
-    <io.legado.app.ui.widget.text.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/til_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,7 +16,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
-    </io.legado.app.ui.widget.text.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -49,24 +40,52 @@
 
     </LinearLayout>
 
-    <androidx.core.widget.NestedScrollView
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/til_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:overScrollMode="ifContentScrolls"
-        tools:ignore="SpeakableTextPresentCheck">
+        android:hint="url"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        tools:ignore="HardcodedText">
 
-        <com.google.android.flexbox.FlexboxLayout
-            android:id="@+id/flexbox"
+        <io.legado.app.ui.widget.code.CodeView
+            android:id="@+id/et_url"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/arco_spacing_default"
-            android:clipToPadding="false"
-            android:padding="@dimen/arco_spacing_xs"
-            app:dividerDrawable="@drawable/shape_space_divider"
-            app:flexDirection="row"
-            app:flexWrap="wrap"
-            app:showDivider="middle" />
+            android:inputType="textUri" />
 
-    </androidx.core.widget.NestedScrollView>
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/til_username"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="username"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        tools:ignore="HardcodedText">
+
+        <io.legado.app.ui.widget.code.CodeView
+            android:id="@+id/et_username"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/til_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="password"
+        android:paddingTop="@dimen/arco_spacing_xs"
+        tools:ignore="HardcodedText">
+
+        <io.legado.app.ui.widget.code.CodeView
+            android:id="@+id/et_password"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textPassword" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>

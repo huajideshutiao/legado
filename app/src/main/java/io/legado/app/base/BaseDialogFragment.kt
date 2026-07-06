@@ -3,10 +3,17 @@ package io.legado.app.base
 import android.content.DialogInterface
 import android.content.DialogInterface.OnDismissListener
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import androidx.annotation.LayoutRes
+import androidx.annotation.MenuRes
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.LayoutInflaterCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
@@ -14,23 +21,73 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.theme.ThemeInterceptor
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.filletBackground
+import io.legado.app.ui.widget.TitleBar
+import io.legado.app.utils.applyTint
+import io.legado.app.utils.getCompatDrawable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
 
 
 abstract class BaseDialogFragment(
-    @LayoutRes layoutID: Int
-) : DialogFragment(layoutID) {
+    @LayoutRes private val layoutID: Int
+) : DialogFragment() {
 
     protected open val applyFilletBackground: Boolean = true
     protected open val isFullHeight: Boolean = false
+
+    /** 子类设为 true 时，基类自动注入 TitleBar 容器（LinearLayout 套 TitleBar + 子类布局） */
+    protected open val useDefaultTitleBar: Boolean = true
+
+    /** 是否自动设置返回图标并 dismiss（仅 useDefaultTitleBar=true 时生效） */
+    protected open val defaultBackNavigation: Boolean = true
+
+    /** 基类注入的 TitleBar 引用（useDefaultTitleBar=false 时为 null） */
+    protected var titleBar: TitleBar? = null
+        private set
 
     private var onDismissListener: OnDismissListener? = null
 
     fun setOnDismissListener(onDismissListener: OnDismissListener?) {
         this.onDismissListener = onDismissListener
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val ctx = inflater.context
+        return when {
+            // 子类启用默认 TitleBar：创建 LinearLayout 套 TitleBar + 子类布局
+            useDefaultTitleBar -> {
+                val root = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+                titleBar = inflater.inflate(R.layout.dialog_title_bar, root, false) as TitleBar
+                root.addView(titleBar)
+                if (layoutID != 0) {
+                    val content = inflater.inflate(layoutID, root, false)
+                    content.layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f
+                    )
+                    root.addView(content)
+                }
+                root
+            }
+            // 兼容 BasePrefDialogFragment（layoutID=0 且自己重写 onCreateView）
+            layoutID != 0 -> inflater.inflate(layoutID, container, false)
+            else -> super.onCreateView(inflater, container, savedInstanceState) ?: View(ctx)
+        }
     }
 
     override fun onStart() {
@@ -75,11 +132,40 @@ abstract class BaseDialogFragment(
             view.background = requireContext().filletBackground
             view.clipToOutline = true
         }
+        // Dialog 专用 TitleBar 背景对齐内容区底栏色（TitleBar 默认用 backgroundColor，与 Dialog 的 filletBackground 不一致）
+        if (useDefaultTitleBar && !AppConfig.isEInkMode) {
+            titleBar?.setBackgroundColor(requireContext().bottomBackground)
+        }
+        // 默认 back navigation：设置返回图标 + 点击 dismiss（子类可设 defaultBackNavigation=false 自管）
+        if (useDefaultTitleBar && defaultBackNavigation) {
+            titleBar?.toolbar?.navigationIcon = getCompatDrawable(
+                androidx.appcompat.R.drawable.abc_ic_ab_back_material
+            )
+            titleBar?.setNavigationOnClickListener { dismissAllowingStateLoss() }
+        }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()
     }
 
     abstract fun onFragmentCreated(view: View, savedInstanceState: Bundle?)
+
+    /** 便捷方法：一次性配置 title + menu + 菜单监听（封装常见组合，子类可选使用）。
+     *  onMenuClick 接受 (MenuItem?) -> Boolean 以兼容子类 Toolbar.OnMenuItemClickListener 的可空签名 */
+    protected fun setupTitleBar(
+        title: CharSequence? = null,
+        @MenuRes menuRes: Int = 0,
+        onMenuClick: ((MenuItem?) -> Boolean)? = null
+    ) {
+        val tb = titleBar?.toolbar ?: return
+        title?.let { titleBar?.title = it }
+        if (menuRes != 0) {
+            tb.inflateMenu(menuRes)
+            tb.menu.applyTint(requireContext())
+        }
+        onMenuClick?.let { callback ->
+            tb.setOnMenuItemClickListener { item -> callback(item) }
+        }
+    }
 
     override fun show(manager: FragmentManager, tag: String?) {
         kotlin.runCatching {
@@ -104,4 +190,99 @@ abstract class BaseDialogFragment(
 
     open fun observeLiveBus() {
     }
+
+    /**
+     * 给 Fragment 的 layoutInflater 套一层 Factory2,在 View 创建后调用 ThemeInterceptor.apply。
+     *
+     * 背景: Fragment 的 performGetLayoutInflater 会克隆 Activity 的 layoutInflater 后,
+     * 用 LayoutInflaterCompat.setFactory2 把 Fragment 自己设为 mFactory2(覆盖式而非包装式),
+     * 导致 BaseActivity 注册的 ThemeInterceptor 在 Fragment 内 inflate View 时不会被触发。
+     * 这里在 onGetLayoutInflater 返回前先包一层,确保所有 inflate 的 View 都能走 ThemeInterceptor,
+     * 与 Activity 行为保持一致,业务代码无需手动 applyTint。
+     */
+    override fun onGetLayoutInflater(savedInstanceState: Bundle?): LayoutInflater {
+        val inflater = super.onGetLayoutInflater(savedInstanceState)
+        if (!themeInterceptorFactoryInstalled) {
+            originalFactory2 = inflater.factory2
+            originalFactory = inflater.factory
+            LayoutInflaterCompat.setFactory2(inflater, ThemeInterceptorFactory(inflater))
+            themeInterceptorFactoryInstalled = true
+        }
+        return inflater
+    }
+
+    /**
+     * 包装原有 factory2 的代理: 先让原 factory 创建 View (处理 <fragment> 标签),
+     * 复用 Activity 的创建逻辑 (AppCompatDelegate + 全类名反射兜底), 然后统一调用 ThemeInterceptor.apply。
+     *
+     * 为什么需要复用 Activity 的创建逻辑: Fragment 的 layoutInflater 克隆自 Activity 后,
+     * mFactory2/mFactory/mPrivateFactory 都被 Fragment 覆盖, BaseActivity 注册的 ThemeInterceptor
+     * 在 Fragment 内不会被触发。这里在 factory2 层复用 Activity 的创建逻辑, 确保短名控件
+     * (TextView/CheckBox/Switch 等) 经 AppCompat 转换后被 ThemeInterceptor 处理, 全类名自定义 View
+     * 也通过反射兜底创建后被处理, 与 Activity 行为完全对齐。
+     */
+    private inner class ThemeInterceptorFactory(private val inflater: LayoutInflater) :
+        LayoutInflater.Factory2 {
+
+        private val createViewMethod by lazy {
+            LayoutInflater::class.java.getDeclaredMethod(
+                "createView",
+                String::class.java,
+                String::class.java,
+                android.util.AttributeSet::class.java
+            ).apply { isAccessible = true }
+        }
+
+        override fun onCreateView(
+            parent: View?,
+            name: String,
+            context: android.content.Context,
+            attrs: android.util.AttributeSet
+        ): View? {
+            // 1. 先让原有 factory2/factory 创建(处理 <fragment> 标签)
+            // 2. 复用 Activity 的创建逻辑: AppCompatDelegate.createView (AppCompat 控件转换)
+            //    + 全类名自定义 View 反射兜底
+            // 3. 统一调用 ThemeInterceptor.apply
+            val view = originalFactory2?.onCreateView(parent, name, context, attrs)
+                ?: originalFactory?.onCreateView(name, context, attrs)
+                ?: createViewLikeActivity(parent, name, context, attrs)
+            view?.let { ThemeInterceptor.apply(it, attrs) }
+            return view
+        }
+
+        override fun onCreateView(
+            name: String,
+            context: android.content.Context,
+            attrs: android.util.AttributeSet
+        ): View? {
+            return onCreateView(null, name, context, attrs)
+        }
+
+        /**
+         * 复用 Activity 的 View 创建逻辑, 与 BaseActivity.onCreateView 保持一致:
+         * 1. AppCompatDelegate.createView 处理系统短名控件的 AppCompat 转换
+         *    (TextView → AppCompatTextView, CheckBox → AppCompatCheckBox, Switch → SwitchCompat 等),
+         *    让短名控件也能被 ThemeInterceptor 处理
+         * 2. 全类名自定义 View (含 '.') 反射兜底创建
+         */
+        private fun createViewLikeActivity(
+            parent: View?,
+            name: String,
+            context: android.content.Context,
+            attrs: android.util.AttributeSet
+        ): View? {
+            val activity = activity as? AppCompatActivity ?: return null
+            return runCatching {
+                activity.delegate.createView(parent, name, context, attrs)
+            }.getOrNull() ?: takeIf { name.contains('.') }?.let {
+                runCatching {
+                    createViewMethod.invoke(inflater, name, null, attrs) as? View
+                }.getOrNull()
+            }
+        }
+    }
+
+    private var themeInterceptorFactoryInstalled = false
+    private var originalFactory2: LayoutInflater.Factory2? = null
+    private var originalFactory: LayoutInflater.Factory? = null
 }

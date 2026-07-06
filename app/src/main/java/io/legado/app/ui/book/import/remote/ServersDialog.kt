@@ -24,7 +24,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -50,15 +49,16 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val initialServerId: Long = AppConfig.remoteServerId
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.server_config)
+        setupTitleBar(
+            title = getString(R.string.server_config),
+            menuRes = R.menu.servers,
+            onMenuClick = ::onMenuItemClick
+        )
         initView()
         initData()
     }
 
     private fun initView() {
-        binding.toolBar.inflateMenu(R.menu.servers)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.tvFooterLeft.text = getString(R.string.text_default)
@@ -88,8 +88,8 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        when (item?.itemId) {
             R.id.menu_add -> showDialogFragment(ServerConfigDialog())
         }
         return true

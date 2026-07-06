@@ -23,7 +23,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -56,11 +55,11 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
         }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.effective_replaces)
-        binding.toolBar.inflateMenu(R.menu.dialog_add)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            if (it.itemId == R.id.menu_add) {
+        setupTitleBar(
+            title = getString(R.string.effective_replaces),
+            menuRes = R.menu.dialog_add
+        ) {
+            if (it?.itemId == R.id.menu_add) {
                 val scope = listOfNotNull(
                     ReadBook.book?.name,
                     ReadBook.bookSource?.bookSourceUrl

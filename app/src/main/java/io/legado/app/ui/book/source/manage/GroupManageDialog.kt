@@ -22,7 +22,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.requestInputMethod
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
@@ -38,10 +37,11 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { GroupAdapter(requireContext()) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.title = getString(R.string.group_manage)
-        binding.toolBar.inflateMenu(R.menu.group_manage)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            title = getString(R.string.group_manage),
+            menuRes = R.menu.group_manage,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         initData()

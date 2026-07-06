@@ -40,9 +40,11 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { LogAdapter() }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.crash_log)
-        binding.toolBar.inflateMenu(R.menu.crash_log)
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            title = getString(R.string.crash_log),
+            menuRes = R.menu.crash_log,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         viewModel.logLiveData.observe(viewLifecycleOwner) {
@@ -51,8 +53,8 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         viewModel.initData()
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        when (item?.itemId) {
             R.id.menu_clear -> viewModel.clearCrashLog()
         }
         return true

@@ -20,7 +20,7 @@
         android:layout_margin="@dimen/arco_spacing_lg"
         android:background="@drawable/shape_card_view"
         android:orientation="vertical"
-        android:padding="@dimen/arco_page_padding_h">
+        android:padding="@dimen/arco_spacing_lg">
 
         <TextView
             android:layout_width="wrap_content"

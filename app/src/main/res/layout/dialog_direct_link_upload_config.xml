@@ -6,13 +6,6 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:orientation="vertical">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:title="@string/direct_link_upload_config" />
-
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -24,7 +17,7 @@
             android:orientation="vertical"
             android:padding="@dimen/arco_spacing_lg">
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/arco_spacing_xs">
@@ -36,9 +29,9 @@
                     android:hint="@string/upload_url"
                     tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/arco_spacing_xs">
@@ -50,9 +43,9 @@
                     android:hint="@string/download_url_rule"
                     tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/arco_spacing_xs">
@@ -64,7 +57,7 @@
                     android:hint="@string/summary"
                     tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
             <CheckBox
                 android:id="@+id/cb_compress"

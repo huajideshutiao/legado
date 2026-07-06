@@ -43,10 +43,8 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
 
     private val binding by viewBinding(DialogSourcePickerBinding::bind)
     private val searchView: SearchView by lazy {
-        binding.toolBar.findViewById(R.id.search_view)
-    }
-    private val toolBar: Toolbar by lazy {
-        binding.toolBar.toolbar
+        // view_search 被 include 到布局顶部，SearchView 不再嵌在 TitleBar 内
+        binding.root.findViewById(R.id.search_view)
     }
     private val adapter by lazy {
         SourceAdapter(requireContext())
@@ -60,7 +58,7 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
     }
 
     private fun initView() {
-        binding.toolBar.title = "选择书源"
+        titleBar!!.title = "选择书源"
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         searchView.applyTint(primaryTextColor)
@@ -92,9 +90,10 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
     }
 
     private fun initMenu() {
-        toolBar.setOnMenuItemClickListener(this)
-        toolBar.inflateMenu(R.menu.source_picker)
-        toolBar.menu.applyTint(requireContext())
+        setupTitleBar(
+            menuRes = R.menu.source_picker,
+            onMenuClick = ::onMenuItemClick
+        )
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

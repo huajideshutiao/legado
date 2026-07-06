@@ -31,7 +31,7 @@ class TextListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
         arguments?.let {
-            toolBar.title = it.getString("title")
+            setupTitleBar(title = it.getString("title"))
             values = it.getStringArrayList("values")
         }
         recyclerView.layoutManager = LinearLayoutManager(requireContext())

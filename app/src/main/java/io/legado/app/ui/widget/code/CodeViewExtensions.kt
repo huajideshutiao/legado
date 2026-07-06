@@ -5,6 +5,7 @@ package io.legado.app.ui.widget.code
 import android.content.Context
 import android.widget.ArrayAdapter
 import io.legado.app.R
+import io.legado.app.lib.theme.accentColor
 import splitties.init.appCtx
 import splitties.resources.color
 import java.util.regex.Pattern
@@ -14,6 +15,7 @@ val legadoPattern: Pattern = Pattern.compile("\\|\\||&&|%%|@@|@(?:js|Json|css|XP
 // 推荐用法（Kotlin 原生字符串）：
 val jsonPattern: Pattern =
     Pattern.compile("""(?<!\\)(?:"(?:\\.|[^\\"\n])*"|'(?:\\.|[^\\'\n])*'|`(?:\\.|[^\\`\n])*`)|[\[\]{}]""")
+
 val wrapPattern: Pattern = Pattern.compile("\\\\n")
 val operationPattern: Pattern =
     Pattern.compile("!=|[:=><%+\\-^&|?*]")
@@ -25,7 +27,7 @@ fun CodeView.addLegadoPattern() {
 }
 
 fun CodeView.addJsonPattern() {
-    addSyntaxPattern(jsonPattern, appCtx.color(R.color.md_blue_800))
+    addSyntaxPattern(jsonPattern, context.accentColor)
 }
 
 fun CodeView.addJsPattern() {

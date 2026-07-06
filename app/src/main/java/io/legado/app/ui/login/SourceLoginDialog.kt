@@ -25,7 +25,6 @@ import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.observeEvent
@@ -55,12 +54,12 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = source ?: return
-        binding.toolBar.title = getString(R.string.login_source, source.getTag())
         buildLoginUi(source)
-        binding.toolBar.inflateMenu(R.menu.source_login)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
+        setupTitleBar(
+            title = getString(R.string.login_source, source.getTag()),
+            menuRes = R.menu.source_login
+        ) { item ->
+            when (item?.itemId) {
                 R.id.menu_ok -> login(source, getLoginData())
 
                 R.id.menu_show_login_header -> source.getLoginHeader()?.let { loginHeader ->
@@ -76,7 +75,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 R.id.menu_del_login_header -> source.removeLoginHeader()
                 R.id.menu_log -> showDialogFragment<AppLogDialog>()
             }
-            return@setOnMenuItemClickListener true
+            return@setupTitleBar true
         }
         observeEvent<Boolean>(EventBus.REFRESH_LOGIN_UI) {
             this.source?.let { buildLoginUi(it) }

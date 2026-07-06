@@ -26,7 +26,6 @@ import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -47,9 +46,12 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { KeyAdapter(requireContext()) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.assists_key_config)
+        setupTitleBar(
+            title = getString(R.string.assists_key_config),
+            menuRes = R.menu.keyboard_assists_config,
+            onMenuClick = ::onMenuItemClick
+        )
         initView()
-        initMenu()
         initData()
     }
 
@@ -60,12 +62,6 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
         itemTouchCallback.isCanDrag = true
         ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
 
-    }
-
-    private fun initMenu() {
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.inflateMenu(R.menu.keyboard_assists_config)
-        binding.toolBar.menu.applyTint(requireContext())
     }
 
     private fun initData() {

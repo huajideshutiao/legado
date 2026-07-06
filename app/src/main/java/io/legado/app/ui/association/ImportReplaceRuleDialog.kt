@@ -60,9 +60,12 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.import_replace_rule)
+        setupTitleBar(
+            title = getString(R.string.import_replace_rule),
+            menuRes = R.menu.import_replace,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.rotateLoading.show()
-        initMenu()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.tvCancel.visible()
@@ -114,11 +117,6 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
             return
         }
         viewModel.import(source)
-    }
-
-    private fun initMenu() {
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.inflateMenu(R.menu.import_replace)
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

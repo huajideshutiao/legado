@@ -21,7 +21,6 @@ import io.legado.app.databinding.DialogListPickerBinding
 import io.legado.app.databinding.ItemGroupSelectBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -56,10 +55,11 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
     }
 
     private fun initView() {
-        binding.toolBar.title = getString(R.string.group_select)
-        binding.toolBar.inflateMenu(R.menu.book_group_manage)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            title = getString(R.string.group_select),
+            menuRes = R.menu.book_group_manage,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         val itemTouchCallback = ItemTouchCallback(adapter)

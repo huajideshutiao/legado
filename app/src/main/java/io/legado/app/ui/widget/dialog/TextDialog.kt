@@ -8,7 +8,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogTextViewBinding
 import io.legado.app.help.IntentData
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.noties.markwon.Markwon
@@ -51,16 +50,16 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     private var autoClose: Boolean = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.inflateMenu(R.menu.dialog_text)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            when (it.itemId) {
+        setupTitleBar(
+            title = arguments?.getString("title"),
+            menuRes = R.menu.dialog_text
+        ) {
+            when (it?.itemId) {
                 R.id.menu_close -> dismissAllowingStateLoss()
             }
             true
         }
         arguments?.let {
-            binding.toolBar.title = it.getString("title")
             val content = IntentData.get(it.getString("content")) ?: ""
             when (it.getString("mode")) {
                 Mode.MD.name -> viewLifecycleOwner.lifecycleScope.launch {

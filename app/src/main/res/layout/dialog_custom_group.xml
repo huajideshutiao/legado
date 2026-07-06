@@ -53,7 +53,7 @@
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/text_input_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -65,7 +65,7 @@
                 android:layout_height="wrap_content"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
     </LinearLayout>
 

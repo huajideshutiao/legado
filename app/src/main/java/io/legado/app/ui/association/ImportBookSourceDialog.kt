@@ -65,9 +65,19 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.import_book_source)
+        setupTitleBar(
+            title = getString(R.string.import_book_source),
+            menuRes = R.menu.import_source,
+            onMenuClick = ::onMenuItemClick
+        )
+        // 保留菜单项 isChecked 的动态同步逻辑
+        titleBar!!.menu.findItem(R.id.menu_keep_original_name)
+            ?.isChecked = AppConfig.importKeepName
+        titleBar!!.menu.findItem(R.id.menu_keep_group)
+            ?.isChecked = AppConfig.importKeepGroup
+        titleBar!!.menu.findItem(R.id.menu_keep_enable)
+            ?.isChecked = AppConfig.importKeepEnable
         binding.rotateLoading.show()
-        initMenu()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.tvCancel.visible()
@@ -137,21 +147,10 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
         }
     }
 
-    private fun initMenu() {
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.inflateMenu(R.menu.import_source)
-        binding.toolBar.menu.findItem(R.id.menu_keep_original_name)
-            ?.isChecked = AppConfig.importKeepName
-        binding.toolBar.menu.findItem(R.id.menu_keep_group)
-            ?.isChecked = AppConfig.importKeepGroup
-        binding.toolBar.menu.findItem(R.id.menu_keep_enable)
-            ?.isChecked = AppConfig.importKeepEnable
-    }
-
     @SuppressLint("InflateParams", "NotifyDataSetChanged")
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_new_group -> alertCustomGroup(item)
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        when (item?.itemId) {
+            R.id.menu_new_group -> alertCustomGroup(item!!)
             R.id.menu_select_new_source -> {
                 val selectAllNew = viewModel.isSelectAllNew
                 viewModel.newSourceStatus.forEachIndexed { index, b ->

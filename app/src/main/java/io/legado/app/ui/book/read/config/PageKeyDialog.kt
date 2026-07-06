@@ -47,6 +47,7 @@ class PageKeyDialog : BaseDialogFragment(R.layout.dialog_page_key) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding = DialogPageKeyBinding.bind(view)
+        setupTitleBar(title = getString(R.string.custom_page_key))
         binding.run {
             etPrev.setText(requireContext().getPrefString(PreferKey.prevKeys))
             etNext.setText(requireContext().getPrefString(PreferKey.nextKeys))

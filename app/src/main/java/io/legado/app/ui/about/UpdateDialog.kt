@@ -28,7 +28,7 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     val binding by viewBinding(DialogTextViewBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.title = arguments?.getString("newVersion")
+        setupTitleBar(title = arguments?.getString("newVersion"))
         val updateBody = arguments?.getString("updateBody")
         if (updateBody == null) {
             toastOnUi("没有数据")
@@ -43,9 +43,8 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                 .build()
                 .setMarkdown(binding.textView, updateBody)
         }
-        binding.toolBar.inflateMenu(R.menu.app_update)
-        binding.toolBar.setOnMenuItemClickListener {
-            when (it.itemId) {
+        setupTitleBar(menuRes = R.menu.app_update) {
+            when (it?.itemId) {
                 R.id.menu_download -> {
                     val url = arguments?.getString("url")
                     val name = arguments?.getString("name")
@@ -55,7 +54,7 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                     }
                 }
             }
-            return@setOnMenuItemClickListener true
+            return@setupTitleBar true
         }
     }
 

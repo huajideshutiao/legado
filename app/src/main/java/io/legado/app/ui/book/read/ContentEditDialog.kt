@@ -23,11 +23,10 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,9 +43,9 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val chapter = ReadBook.curTextChapter?.chapter
-        binding.toolBar.title = chapter?.title
+        titleBar!!.title = chapter?.title
         initMenu()
-        binding.toolBar.setOnClickListener {
+        titleBar!!.toolbar.setOnClickListener {
             lifecycleScope.launch {
                 val book = ReadBook.book ?: return@launch
                 val durChapterIndex = chapter?.index ?: ReadBook.durChapterIndex
@@ -85,10 +84,8 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.content_edit)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            when (it.itemId) {
+        setupTitleBar(menuRes = R.menu.content_edit) {
+            when (it?.itemId) {
                 R.id.menu_save -> {
                     save()
                     dismiss()
@@ -98,9 +95,9 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
                     ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
                 }
                 R.id.menu_copy_all -> requireContext()
-                    .sendToClip("${binding.toolBar.title}\n${binding.contentView.text}")
+                    .sendToClip("${titleBar!!.title}\n${binding.contentView.text}")
             }
-            return@setOnMenuItemClickListener true
+            return@setupTitleBar true
         }
     }
 
@@ -116,7 +113,7 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
                     withContext(IO) {
                         appDb.bookChapterDao.update(chapter)
                     }
-                    binding.toolBar.title = chapter.getDisplayTitle()
+                    titleBar!!.title = chapter.getDisplayTitle()
                     ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
                 }
             }

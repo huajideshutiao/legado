@@ -5,24 +5,14 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
-    <TextView
-        android:id="@+id/tv_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="@dimen/arco_spacing_lg"
-        android:text="@string/add_to_bookshelf"
-        android:textColor="@color/primaryText"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toTopOf="parent" />
-
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/book_info"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
+        android:layout_marginTop="@dimen/arco_spacing_lg"
         android:visibility="invisible"
-        app:layout_constraintTop_toBottomOf="@id/tv_title">
+        app:layout_constraintTop_toTopOf="parent">
 
         <TextView
             android:id="@+id/tv_name"

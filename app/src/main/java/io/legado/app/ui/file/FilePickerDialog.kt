@@ -25,7 +25,6 @@ import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.io.File
@@ -68,7 +67,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initMenu()
         initView()
         viewModel.filesLiveData.observe(viewLifecycleOwner) {
             binding.refreshProgressBar.isAutoLoading = false
@@ -81,13 +79,17 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
             upPath()
         }
         viewModel.initData(arguments)
-        binding.toolBar.title = arguments?.getString("title") ?: let {
-            if (viewModel.isSelectDir) {
-                getString(R.string.folder_chooser)
-            } else {
-                getString(R.string.file_chooser)
-            }
-        }
+        setupTitleBar(
+            title = arguments?.getString("title") ?: let {
+                if (viewModel.isSelectDir) {
+                    getString(R.string.folder_chooser)
+                } else {
+                    getString(R.string.file_chooser)
+                }
+            },
+            menuRes = R.menu.file_chooser,
+            onMenuClick = ::onMenuItemClick
+        )
     }
 
     private fun initView() {
@@ -96,12 +98,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
         binding.recyclerView.applyNavigationBarPadding()
         binding.selectActionBar.setMainActionText(R.string.confirm)
         binding.selectActionBar.setCallBack(this)
-    }
-
-    private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.file_chooser)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
     }
 
     override fun onMenuItemClick(item: android.view.MenuItem?): Boolean {

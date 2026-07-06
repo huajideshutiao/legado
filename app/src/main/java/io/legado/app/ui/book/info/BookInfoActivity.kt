@@ -191,6 +191,8 @@ class BookInfoActivity :
     private fun initView() = binding.run {
         titleBar.setBackgroundResource(R.color.transparent)
         flAction.applyBottomActionInsets()
+        // 按钮悬浮在滚动列表上方，需动态设置 scrollView 底部 padding 防止内容被遮挡
+        flAction.post { scrollView.setPadding(0, 0, 0, flAction.height) }
         tvShelf.tintBottom()
         tvIntro.revealOnFocusHint = false
         // 原 ScrollTextView 在 init 中自动设置 LinkMovementMethod，迁移到 TextView 后需显式设置
@@ -271,6 +273,7 @@ class BookInfoActivity :
                 item.isChecked = !item.isChecked
                 if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
             }
+
             R.id.menu_upload -> book?.let { uploadBook(it) }
             R.id.menu_download_local -> book?.let { viewModel.downloadToLocal(it) }
             R.id.menu_review -> viewModel.openCommentDialog(this)
@@ -538,8 +541,7 @@ class BookInfoActivity :
 
     private fun upGroup(groupId: Long) {
         viewModel.loadGroup(groupId) {
-            binding.tvGroup.text = it.takeIf { !it.isNullOrEmpty() }
-                ?: getString(R.string.no_group)
+            binding.tvGroup.text = it.takeIf { !it.isNullOrEmpty() } ?: getString(R.string.no_group)
         }
     }
 
@@ -631,9 +633,7 @@ class BookInfoActivity :
     }
 
     private fun appendIntroNodes(
-        builder: SpannableStringBuilder,
-        parent: Element,
-        target: TextView
+        builder: SpannableStringBuilder, parent: Element, target: TextView
     ) {
         for (node in parent.childNodes()) {
             when (node) {
@@ -656,8 +656,7 @@ class BookInfoActivity :
         }
 
     private fun appendActionSpan(
-        builder: SpannableStringBuilder,
-        node: Element
+        builder: SpannableStringBuilder, node: Element
     ) {
         val label = node.text().ifBlank { return }
         val action = node.attr("onclick")
@@ -665,10 +664,7 @@ class BookInfoActivity :
         builder.append(label)
         val end = builder.length
         builder.setSpan(
-            IntroButtonSpan(this, label),
-            start,
-            end,
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            IntroButtonSpan(this, label), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         builder.setSpan(
             noUnderlineClick { dispatchIntroAction(action) },
@@ -679,9 +675,7 @@ class BookInfoActivity :
     }
 
     private fun appendImageSpan(
-        builder: SpannableStringBuilder,
-        node: Element,
-        target: TextView
+        builder: SpannableStringBuilder, node: Element, target: TextView
     ) {
         val src = node.absUrl("src").ifEmpty { node.attr("src") }
         if (src.isBlank()) return
@@ -695,15 +689,16 @@ class BookInfoActivity :
         builder.setSpan(imgSpan, start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         builder.setSpan(
             noUnderlineClick { showDialogFragment(PhotoDialog(src)) },
-            start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            start + 1,
+            end - 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         target.doOnLayout {
             val width = target.width - target.paddingLeft - target.paddingRight
             if (width <= 0) return@doOnLayout
             Glide.with(this).load(src).into(object : CustomTarget<Drawable>() {
                 override fun onResourceReady(
-                    resource: Drawable,
-                    transition: Transition<in Drawable>?
+                    resource: Drawable, transition: Transition<in Drawable>?
                 ) {
                     if (end > builder.length) return
                     val intrinsicW = resource.intrinsicWidth.coerceAtLeast(1)
@@ -713,7 +708,9 @@ class BookInfoActivity :
                     builder.removeSpan(imgSpan)
                     builder.setSpan(
                         ImageSpan(resource, ImageSpan.ALIGN_BOTTOM),
-                        start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        start + 1,
+                        end - 1,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
                     target.text = builder
                 }

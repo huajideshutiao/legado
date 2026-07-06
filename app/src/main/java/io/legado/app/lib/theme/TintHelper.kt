@@ -6,6 +6,7 @@ import android.content.res.ColorStateList
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.RippleDrawable
+import android.os.Build
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
@@ -475,6 +476,32 @@ object TintHelper {
 
     @SuppressLint("DiscouragedPrivateApi", "SoonBlockedPrivateApi")
     fun setCursorTint(editText: EditText, @ColorInt color: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // API 29+：对系统默认光标和选择手柄着色，保持系统 drawable 原始尺寸/形状。
+            // 调研依据：setTextCursorDrawable 会整体替换 drawable，若自建 GradientDrawable 会
+            // 丢失系统默认 2dp 宽度与形状；正确做法是 getTextCursorDrawable() 取系统 drawable
+            // 后 mutate + setTint，避免共享状态污染。
+            // 注意：textSelectHandle 等在 Kotlin 中是只读属性(val)，必须用 setter 方法赋值
+            editText.textCursorDrawable?.mutate()?.let {
+                it.setTint(color)
+                editText.setTextCursorDrawable(it)
+            }
+            // 选择手柄（游标）：长按选择文本时出现的水滴形拖动手柄
+            editText.textSelectHandleLeft?.mutate()?.let {
+                it.setTint(color)
+                editText.setTextSelectHandleLeft(it)
+            }
+            editText.textSelectHandleRight?.mutate()?.let {
+                it.setTint(color)
+                editText.setTextSelectHandleRight(it)
+            }
+            editText.textSelectHandle?.mutate()?.let {
+                it.setTint(color)
+                editText.setTextSelectHandle(it)
+            }
+            return
+        }
+        // API < 29：保留反射方式（在新版本上可能失败）
         try {
             val fCursorDrawableRes = TextView::class.java.getDeclaredField("mCursorDrawableRes")
             fCursorDrawableRes.isAccessible = true

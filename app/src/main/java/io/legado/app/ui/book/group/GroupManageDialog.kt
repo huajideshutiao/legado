@@ -22,7 +22,6 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemBookGroupManageBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -47,10 +46,13 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { GroupAdapter(requireContext()) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.group_manage)
+        setupTitleBar(
+            title = getString(R.string.group_manage),
+            menuRes = R.menu.book_group_manage,
+            onMenuClick = ::onMenuItemClick
+        )
         initView()
         initData()
-        initMenu()
     }
 
     private fun initView() {
@@ -74,12 +76,6 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 adapter.setItems(it)
             }
         }
-    }
-
-    private fun initMenu() {
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.inflateMenu(R.menu.book_group_manage)
-        binding.toolBar.menu.applyTint(requireContext())
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

@@ -13,7 +13,6 @@ import io.legado.app.databinding.DialogHomeSectionManageBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -43,16 +42,16 @@ class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_mana
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.home_tab_manage)
-        binding.toolBar.inflateMenu(R.menu.dialog_add)
-        binding.toolBar.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_tab_add)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            if (it.itemId == R.id.menu_add) {
+        setupTitleBar(
+            title = getString(R.string.home_tab_manage),
+            menuRes = R.menu.dialog_add
+        ) {
+            if (it?.itemId == R.id.menu_add) {
                 showDialogFragment(HomeTabEditDialog.newInstance(null))
             }
             true
         }
+        titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_tab_add)
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter

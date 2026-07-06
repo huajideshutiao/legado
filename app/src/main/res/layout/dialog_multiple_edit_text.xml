@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/layout_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
@@ -22,9 +22,9 @@
                 android:layout_height="wrap_content"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/layout_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -36,7 +36,7 @@
                 android:layout_height="wrap_content"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
 
     </LinearLayout>

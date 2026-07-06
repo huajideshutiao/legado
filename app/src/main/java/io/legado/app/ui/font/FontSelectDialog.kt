@@ -23,7 +23,6 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RealPathUtil
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefString
@@ -74,10 +73,11 @@ class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.select_font)
-        binding.toolBar.inflateMenu(R.menu.font_select)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            title = getString(R.string.select_font),
+            menuRes = R.menu.font_select,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(context)
         binding.recyclerView.adapter = adapter
 

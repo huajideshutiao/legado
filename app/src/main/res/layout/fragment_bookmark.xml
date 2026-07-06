@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:paddingHorizontal="@dimen/arco_page_padding_h"
+        android:paddingHorizontal="@dimen/arco_spacing_lg"
         android:overScrollMode="never" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

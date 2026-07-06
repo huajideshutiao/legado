@@ -182,7 +182,7 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
     }
 
     private fun initToolbar() {
-        binding.tvTitle.setText(
+        titleBar!!.title = getString(
             when (mode) {
                 MODE_EDIT_PREFS ->
                     if (isNight) R.string.customize_night_theme else R.string.customize_day_theme

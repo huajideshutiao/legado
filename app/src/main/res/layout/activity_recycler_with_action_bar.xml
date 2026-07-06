@@ -18,7 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
-            android:paddingHorizontal="@dimen/arco_page_padding_h"
+            android:paddingHorizontal="@dimen/arco_spacing_lg"
             android:paddingVertical="@dimen/arco_spacing_default"
             android:singleLine="true"
             android:textSize="13sp"

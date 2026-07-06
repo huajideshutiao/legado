@@ -40,20 +40,17 @@ class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
     private val adapter by lazy { CoverAdapter(requireContext(), this) }
 
     private val startStopMenuItem: MenuItem?
-        get() = binding.toolBar.menu.findItem(R.id.menu_start_stop)
+        get() = titleBar!!.menu.findItem(R.id.menu_start_stop)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.change_cover_source)
+        setupTitleBar(
+            title = getString(R.string.change_cover_source),
+            menuRes = R.menu.change_cover,
+            onMenuClick = ::onMenuItemClick
+        )
         viewModel.initData(arguments)
-        initMenu()
         initView()
         initData()
-    }
-
-    private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.change_cover)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
     }
 
     private fun initView() {
@@ -86,7 +83,7 @@ class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
                     item.setTitle(R.string.refresh)
                 }
             }
-            binding.toolBar.menu.applyTint(requireContext())
+            titleBar!!.menu.applyTint(requireContext())
         }
 
     }

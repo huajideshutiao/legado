@@ -41,6 +41,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
 import io.legado.app.service.AudioPlayService
@@ -192,6 +193,8 @@ class AudioPlayActivity :
     }
 
     private fun initView() {
+        // 封面圆形描边使用主题强调色（原 XML 的 app:strokeColor="@color/accent" 改为代码动态设置，以响应主题切换）
+        binding.ivCover.strokeColor = ColorStateList.valueOf(accentColor)
         binding.ivPlayMode.setOnClickListener {
             viewModel.changePlayMode()
         }

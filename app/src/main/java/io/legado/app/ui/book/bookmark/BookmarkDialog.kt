@@ -26,6 +26,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
     private val binding by viewBinding(DialogBookmarkBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(title = getString(R.string.bookmark))
         val arguments = arguments ?: let {
             dismiss()
             return

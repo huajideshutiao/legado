@@ -5,15 +5,12 @@ import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
@@ -47,7 +44,6 @@ class KeyboardToolPop @JvmOverloads constructor(
     private lateinit var callBack: CallBack
 
     private val binding = PopupKeyboardToolBinding.inflate(LayoutInflater.from(context), this, true)
-    private val adapter = Adapter(context)
     private var mIsSoftKeyBoardShowing = false
     var initialPadding = 0
     var isAutoPadding = true
@@ -61,7 +57,7 @@ class KeyboardToolPop @JvmOverloads constructor(
     }
 
     init {
-        initRecyclerView()
+        initFindReplace()
         isVisible = false
         backgroundColor = ThemeStore.bottomBackground
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
@@ -125,33 +121,34 @@ class KeyboardToolPop @JvmOverloads constructor(
         }
     }
 
-    private fun initRecyclerView() {
-        binding.recyclerView.adapter = adapter
-        adapter.addHeaderView {
-            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
-                textView.text = helpChar
+    private fun updateItems(items: List<KeyboardAssist>) {
+        binding.itemsLayout.removeAllViews()
+        ItemFilletTextBinding.inflate(context.layoutInflater, binding.itemsLayout, true).apply {
+            textView.text = helpChar
+            root.setOnClickListener {
+                activity?.showDialogFragment<KeyboardAssistsConfig>()
+            }
+            root.setOnLongClickListener {
+                toggleFindReplace()
+                true
+            }
+        }
+        ItemFilletTextBinding.inflate(context.layoutInflater, binding.itemsLayout, true).apply {
+            textView.text = "↩️"
+            root.setOnClickListener { callBack.undo() }
+        }
+        ItemFilletTextBinding.inflate(context.layoutInflater, binding.itemsLayout, true).apply {
+            textView.text = "↪️"
+            root.setOnClickListener { callBack.redo() }
+        }
+        items.forEach { item ->
+            ItemFilletTextBinding.inflate(context.layoutInflater, binding.itemsLayout, true).apply {
+                textView.text = item.key
                 root.setOnClickListener {
-                    activity?.showDialogFragment<KeyboardAssistsConfig>()
-                }
-                root.setOnLongClickListener {
-                    toggleFindReplace()
-                    true
+                    callBack.sendText(item.value)
                 }
             }
         }
-        adapter.addHeaderView {
-            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
-                textView.text = "↩️"
-                root.setOnClickListener { callBack.undo() }
-            }
-        }
-        adapter.addHeaderView {
-            ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
-                textView.text = "↪️"
-                root.setOnClickListener { callBack.redo() }
-            }
-        }
-        initFindReplace()
     }
 
     private fun initFindReplace() {
@@ -250,42 +247,26 @@ class KeyboardToolPop @JvmOverloads constructor(
         binding.tvFind.setSelection(keyword.length)
     }
 
+    fun tryConsumeBack(): Boolean {
+        if (!isVisible || mIsSoftKeyBoardShowing) return false
+        isVisible = false
+        binding.llFindReplace.isVisible = false
+        binding.tvFind.text?.clear()
+        binding.tvReplace.text?.clear()
+        useRegex = false
+        matchCase = false
+        matchWholeWord = false
+        callBack.getActiveCodeView()?.clearSearch()
+        return true
+    }
+
     @Suppress("MemberVisibilityCanBePrivate")
     fun upAdapterData() {
         activity?.lifecycleScope?.launch {
             appDb.keyboardAssistsDao.flowByType(0).catch {
                 AppLog.put("键盘帮助组件获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
-                adapter.setItems(it)
-            }
-        }
-    }
-
-    inner class Adapter(context: Context) :
-        RecyclerAdapter<KeyboardAssist, ItemFilletTextBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemFilletTextBinding {
-            return ItemFilletTextBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemFilletTextBinding,
-            item: KeyboardAssist,
-            payloads: MutableList<Any>
-        ) {
-            binding.run {
-                textView.text = item.key
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemFilletTextBinding) {
-            holder.itemView.apply {
-                setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let {
-                        callBack.sendText(it.value)
-                    }
-                }
+                updateItems(it)
             }
         }
     }

@@ -19,7 +19,6 @@ import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showRuleItemMenu
@@ -52,11 +51,11 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_source_f
         get() = arguments?.getString(ARG_SCOPE)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.source_filter_rule)
-        binding.toolBar.inflateMenu(R.menu.dialog_add)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            if (it.itemId == R.id.menu_add) {
+        setupTitleBar(
+            title = getString(R.string.source_filter_rule),
+            menuRes = R.menu.dialog_add
+        ) {
+            if (it?.itemId == R.id.menu_add) {
                 showDialogFragment(SourceFilterEditDialog(existing = null, defaultScope = scope))
             }
             true

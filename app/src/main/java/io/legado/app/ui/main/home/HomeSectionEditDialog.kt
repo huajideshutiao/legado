@@ -53,13 +53,17 @@ class HomeSectionEditDialog() : BaseDialogFragment(R.layout.dialog_home_section_
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         @Suppress("DEPRECATION")
         editing = arguments?.getParcelable(ARG_SECTION)
+        setupTitleBar(
+            title = getString(
+                if (editing != null) R.string.home_edit_section else R.string.home_add_section
+            )
+        )
         initView()
         loadData()
     }
 
     private fun initView() {
         binding.run {
-            editing?.let { toolBar.setTitle(R.string.home_edit_section) }
             tvPickFavorite.setOnClickListener { pickFavorite() }
             tvPickSource.setOnClickListener { pickSource() }
             tvPickCategory.setOnClickListener { pickCategory() }

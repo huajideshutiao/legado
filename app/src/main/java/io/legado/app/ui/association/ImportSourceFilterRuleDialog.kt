@@ -48,7 +48,7 @@ class ImportSourceFilterRuleDialog() : BaseDialogFragment(R.layout.dialog_recycl
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.import_source_filter_rule)
+        setupTitleBar(title = getString(R.string.import_source_filter_rule))
         binding.rotateLoading.show()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter

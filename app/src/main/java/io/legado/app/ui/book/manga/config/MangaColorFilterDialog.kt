@@ -13,6 +13,7 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class MangaColorFilterDialog : BaseDialogFragment(R.layout.dialog_manga_color_filter) {
+
     private val binding by viewBinding(DialogMangaColorFilterBinding::bind)
     private val mConfig =
         GSON.fromJsonObject<MangaColorFilterConfig>(AppConfig.mangaColorFilter).getOrNull()
@@ -25,6 +26,7 @@ class MangaColorFilterDialog : BaseDialogFragment(R.layout.dialog_manga_color_fi
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(title = getString(R.string.manga_color_filter))
         initData()
         initView()
     }

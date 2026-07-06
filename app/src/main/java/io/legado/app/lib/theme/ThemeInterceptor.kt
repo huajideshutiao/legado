@@ -5,19 +5,17 @@ import android.util.AttributeSet
 import android.view.View
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.Switch
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.SwitchCompat
-import androidx.core.widget.ImageViewCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.BaseProgressIndicator
-import io.legado.app.R
+import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.applyTint
+import io.legado.app.utils.ColorUtils
 
 /**
  * 自动主题拦截器：在 View 填充时自动应用 ThemeStore 中的颜色。
@@ -25,91 +23,76 @@ import io.legado.app.utils.applyTint
  */
 object ThemeInterceptor {
 
-    private val themeAttributes = intArrayOf(
-        android.R.attr.textColor,
-        android.R.attr.background,
-        android.R.attr.tint,
-        androidx.appcompat.R.attr.backgroundTint,
-        com.google.android.material.R.attr.strokeColor
-    )
-
     fun apply(view: View, attrs: AttributeSet) {
         val context = view.context
-        val typedArray = context.obtainStyledAttributes(attrs, themeAttributes)
-
-        for (i in 0 until typedArray.indexCount) {
-            val attrIndex = typedArray.getIndex(i)
-            val resId = typedArray.getResourceId(attrIndex, -1)
-            val attr = themeAttributes[attrIndex]
-
-            if (resId == R.color.accent || resId == R.color.primary) {
-                val targetColor = if (resId == R.color.accent) {
-                    context.accentColor
-                } else {
-                    context.primaryColor
-                }
-
-                when (attr) {
-                    android.R.attr.textColor -> if (view is TextView) {
-                        view.setTextColor(targetColor)
-                    }
-
-                    android.R.attr.background -> {
-                        view.setBackgroundColor(targetColor)
-                    }
-
-                    android.R.attr.tint -> {
-                        if (view is ImageView) {
-                            ImageViewCompat.setImageTintList(
-                                view,
-                                ColorStateList.valueOf(targetColor)
-                            )
-                        } else {
-                            view.applyTint(targetColor)
-                        }
-                    }
-
-                    androidx.appcompat.R.attr.backgroundTint -> {
-                        view.backgroundTintList = ColorStateList.valueOf(targetColor)
-                    }
-
-                    com.google.android.material.R.attr.strokeColor -> if (view is MaterialButton) {
-                        view.strokeColor = ColorStateList.valueOf(targetColor)
-                    }
-                }
-            }
-        }
-        typedArray.recycle()
-
-        // 特殊组件处理
+        // 仅读取一次主题色和夜间模式标记，避免重复查询
+        val accentColor = context.accentColor
         val isDark = AppConfig.isNightTheme
         when (view) {
+            // TextInputLayout 是 EditText 的容器，需在 EditText 之前判断
+            is TextInputLayout -> {
+                setTint(view, accentColor, isDark)
+            }
+
             is EditText -> {
-                TintHelper.setTintAuto(view, context.accentColor, false, isDark)
+                TintHelper.setTintAuto(view, accentColor, false, isDark)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                     view.isLocalePreferredLineHeightForMinimumUsed = false
                 }
-                view.setLinkTextColor(context.accentColor)
+                view.setLinkTextColor(accentColor)
+                // 长按选中文本的高亮背景色，对齐 Material 默认 0x66(40%) 透明度
+                view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
             }
 
             is CheckBox, is RadioButton, is Switch, is SwitchCompat -> {
-                TintHelper.setTintAuto(view, context.accentColor, false, isDark)
+                TintHelper.setTintAuto(view, accentColor, false, isDark)
             }
 
             is BaseProgressIndicator<*> -> {
-                view.setIndicatorColor(context.accentColor)
+                view.setIndicatorColor(accentColor)
             }
 
             is ProgressBar -> {
-                TintHelper.setTintAuto(view, context.accentColor, false, isDark)
+                TintHelper.setTintAuto(view, accentColor, false, isDark)
             }
 
             is SwipeRefreshLayout -> {
-                view.setColorSchemeColors(context.accentColor)
+                view.setColorSchemeColors(accentColor)
             }
 
             is TextView -> {
-                view.setLinkTextColor(context.accentColor)
+                view.setLinkTextColor(accentColor)
+                // 长按选中文本的高亮背景色（仅对 setTextIsSelectable=true 的 TextView 生效）
+                view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
+            }
+        }
+    }
+
+    /**
+     * 为 TextInputLayout 动态应用主题色。
+     *
+     * 调研依据（Material TextInputLayout 源码行为）：
+     * 1. boxStrokeColor/hintTextColor/defaultHintTextColor 需在 inflate 后设置，
+     *    构造函数阶段 boxBackground 可能尚未初始化，applyBoxAttributes 难以立即生效。
+     * 2. addView 会触发 onEditTextChanged → updateInputTextColors →
+     *    setEditTextBackgroundTintList，用默认 editTextBackgroundTintList
+     *    （基于 colorControlActivated 静态值）覆盖 EditText 的 supportBackgroundTintList，
+     *    导致底线颜色不跟随动态主题色。
+     *
+     * 解决方案：通过 addOnEditTextAttachedListener 在 EditText 添加后重新应用 tint。
+     * 若 EditText 已添加，监听器会立即触发（Material 官方文档保证）。
+     */
+    private fun setTint(layout: TextInputLayout, color: Int, isDark: Boolean) {
+        layout.boxStrokeColor = color
+        val csl = ColorStateList.valueOf(color)
+        layout.defaultHintTextColor = csl
+        layout.hintTextColor = csl
+        // 在 EditText 添加后重新应用 backgroundTintList 和光标颜色
+        layout.addOnEditTextAttachedListener { textInputLayout ->
+            textInputLayout.editText?.let { editText ->
+                if (editText is AppCompatEditText) {
+                    TintHelper.setTint(editText, color, isDark)
+                }
             }
         }
     }

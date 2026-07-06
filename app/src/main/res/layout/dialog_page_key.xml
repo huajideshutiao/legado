@@ -6,16 +6,7 @@
     android:layout_height="match_parent"
     android:padding="@dimen/arco_spacing_lg">
 
-    <TextView
-        android:id="@+id/tv_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:text="@string/custom_page_key" />
-
-    <io.legado.app.ui.widget.text.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="@dimen/arco_spacing_xs"
@@ -27,9 +18,9 @@
             android:layout_height="wrap_content"
             android:singleLine="true" />
 
-    </io.legado.app.ui.widget.text.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
-    <io.legado.app.ui.widget.text.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="@dimen/arco_spacing_xs"
@@ -41,7 +32,7 @@
             android:layout_height="wrap_content"
             android:singleLine="true" />
 
-    </io.legado.app.ui.widget.text.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
     <TextView
         android:layout_width="match_parent"

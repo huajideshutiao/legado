@@ -9,12 +9,6 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.text.AccentTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/manga_footer_config"
-            android:textSize="18sp" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

@@ -34,7 +34,6 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
@@ -83,12 +82,15 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         initView()
-        initMenu()
         initData()
     }
 
     private fun initView() = binding.run {
-        toolBar.setTitle(R.string.speak_engine)
+        setupTitleBar(
+            title = getString(R.string.speak_engine),
+            menuRes = R.menu.speak_engine,
+            onMenuClick = ::onMenuItemClick
+        )
         recyclerView.setEdgeEffectColor(primaryColor)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
@@ -97,7 +99,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 sysTtsViews.add(rbSelect)
                 ivEdit.gone()
                 ivDelete.gone()
-                labelSys.visible()
                 rbSelect.text = "系统默认"
                 rbSelect.tag = ""
                 rbSelect.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
@@ -114,7 +115,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     sysTtsViews.add(rbSelect)
                     ivEdit.gone()
                     ivDelete.gone()
-                    labelSys.visible()
                     rbSelect.text = engine.label
                     rbSelect.tag = engine.name
                     rbSelect.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
@@ -146,12 +146,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         tvCancel.setOnClickListener {
             dismissAllowingStateLoss()
         }
-    }
-
-    private fun initMenu() = binding.run {
-        toolBar.inflateMenu(R.menu.speak_engine)
-        toolBar.menu.applyTint(requireContext())
-        toolBar.setOnMenuItemClickListener(this@SpeakEngineDialog)
     }
 
     private fun initData() {

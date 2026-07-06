@@ -14,7 +14,6 @@ import io.legado.app.databinding.DialogHomeSectionManageBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -50,8 +49,17 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.title = getString(R.string.home_manage_for_tab, tabTitle)
-        initMenu()
+        setupTitleBar(
+            title = getString(R.string.home_manage_for_tab, tabTitle),
+            menuRes = R.menu.dialog_add
+        ) {
+            when (it?.itemId) {
+                R.id.menu_add ->
+                    showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
+            }
+            true
+        }
+        titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -61,19 +69,6 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
             if (event.tabTitle == tabTitle && event.action != HomeSectionEvent.REORDER) {
                 upData()
             }
-        }
-    }
-
-    private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.dialog_add)
-        binding.toolBar.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener {
-            when (it.itemId) {
-                R.id.menu_add ->
-                    showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
-            }
-            true
         }
     }
 

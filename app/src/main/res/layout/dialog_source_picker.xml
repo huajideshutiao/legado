@@ -6,17 +6,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <io.legado.app.ui.widget.TitleBar
-        android:id="@+id/tool_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:theme="?attr/actionBarStyle"
-        app:attachToActivity="false"
-        app:contentLayout="@layout/view_search"
-        app:fitStatusBar="false"
-        app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:titleTextAppearance="@style/ToolbarTitle"
-        tools:ignore="RtlHardcoded,RtlSymmetry" />
+    <include layout="@layout/view_search" />
 
     <FrameLayout
         android:layout_width="match_parent"

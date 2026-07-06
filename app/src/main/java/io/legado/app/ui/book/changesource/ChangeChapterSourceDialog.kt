@@ -54,6 +54,8 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     ChangeChapterTocAdapter.Callback {
 
     override val isFullHeight: Boolean = true
+    override val defaultBackNavigation: Boolean =
+        false  // 原无返回按钮,靠 onBackPressedDispatcher 处理 toc 隐藏
 
     constructor(name: String, author: String, chapterIndex: Int, chapterTitle: String) : this() {
         arguments = Bundle().apply {
@@ -128,20 +130,21 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     }
 
     private fun showTitle() {
-        binding.toolBar.title = viewModel.chapterTitle
+        titleBar!!.title = viewModel.chapterTitle
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.change_source)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.menu.findItem(R.id.menu_check_author)
+        val tb = titleBar!!.toolbar
+        tb.inflateMenu(R.menu.change_source)
+        tb.menu.applyTint(requireContext())
+        tb.setOnMenuItemClickListener(this)
+        titleBar!!.menu.findItem(R.id.menu_check_author)
             ?.isChecked = AppConfig.changeSourceCheckAuthor
-        binding.toolBar.menu.findItem(R.id.menu_load_info)
+        titleBar!!.menu.findItem(R.id.menu_load_info)
             ?.isChecked = AppConfig.changeSourceLoadInfo
-        binding.toolBar.menu.findItem(R.id.menu_load_toc)
+        titleBar!!.menu.findItem(R.id.menu_load_toc)
             ?.isChecked = AppConfig.changeSourceLoadToc
-        binding.toolBar.menu.findItem(R.id.menu_load_word_count)
+        titleBar!!.menu.findItem(R.id.menu_load_word_count)
             ?.isChecked = AppConfig.changeSourceLoadWordCount
     }
 
@@ -171,14 +174,14 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     }
 
     private fun initSearchView() {
-        val searchView = binding.toolBar.menu.findItem(R.id.menu_screen).actionView as SearchView
+        val searchView = titleBar!!.menu.findItem(R.id.menu_screen).actionView as SearchView
         searchView.setOnCloseListener {
             showTitle()
             false
         }
         searchView.setOnSearchClickListener {
-            binding.toolBar.title = ""
-            binding.toolBar.subtitle = ""
+            titleBar!!.title = ""
+            titleBar!!.subtitle = ""
         }
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
@@ -220,7 +223,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
                     item.setTitle(R.string.refresh)
                 }
             }
-            binding.toolBar.menu.applyTint(requireContext())
+            titleBar!!.toolbar.menu.applyTint(requireContext())
         }
         lifecycleScope.launch {
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
@@ -239,7 +242,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     }
 
     private val startStopMenuItem: MenuItem?
-        get() = binding.toolBar.menu.findItem(R.id.menu_start_stop)
+        get() = titleBar!!.menu.findItem(R.id.menu_start_stop)
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
@@ -366,7 +369,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
      * 更新分组菜单
      */
     private fun upGroupMenu() {
-        binding.toolBar.menu.findItem(R.id.menu_group)?.subMenu?.transaction { menu ->
+        titleBar!!.menu.findItem(R.id.menu_group)?.subMenu?.transaction { menu ->
             val selectedGroup = AppConfig.searchGroup
             menu.removeGroup(R.id.source_group)
             val allItem = menu.add(R.id.source_group, Menu.NONE, Menu.NONE, R.string.all_source)

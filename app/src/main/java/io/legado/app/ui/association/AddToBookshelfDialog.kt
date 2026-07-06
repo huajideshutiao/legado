@@ -57,6 +57,7 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
             dismiss()
             return
         }
+        setupTitleBar(title = getString(R.string.add_to_bookshelf))
         viewModel.loadStateLiveData.observe(this) {
             if (it) {
                 binding.rotateLoading.show()

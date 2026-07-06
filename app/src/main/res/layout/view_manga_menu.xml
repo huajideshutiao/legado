@@ -34,9 +34,9 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/arco_page_padding_h"
+            android:layout_marginStart="@dimen/arco_spacing_lg"
             android:layout_marginTop="@dimen/arco_spacing_md"
-            android:layout_marginEnd="@dimen/arco_page_padding_h"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
             android:layout_marginBottom="@dimen/arco_spacing_md"
             android:importantForAccessibility="no"
             android:orientation="horizontal">

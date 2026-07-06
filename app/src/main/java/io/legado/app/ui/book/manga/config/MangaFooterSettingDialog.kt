@@ -15,11 +15,13 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class MangaFooterSettingDialog : BaseDialogFragment(R.layout.dialog_manga_footer_setting) {
+
     val config = GSON.fromJsonObject<MangaFooterConfig>(AppConfig.mangaFooterConfig).getOrNull()
         ?: MangaFooterConfig()
     private val binding by viewBinding(DialogMangaFooterSettingBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(title = getString(R.string.manga_footer_config))
         binding.cbChapterLabel.run {
             isChecked = config.hideChapterLabel
             setOnCheckedChangeListener { _, isChecked ->

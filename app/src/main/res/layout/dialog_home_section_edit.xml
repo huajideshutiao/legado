@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
-
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:title="@string/home_add_section" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -25,7 +17,7 @@
             android:paddingTop="@dimen/arco_spacing_default"
             android:paddingEnd="@dimen/arco_spacing_lg">
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="@string/home_section_title">
@@ -37,7 +29,7 @@
                     android:inputType="text"
                     android:maxLines="1" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
             <!-- 结果显示区 -->
             <TextView

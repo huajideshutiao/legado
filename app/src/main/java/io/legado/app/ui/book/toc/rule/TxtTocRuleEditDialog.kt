@@ -15,7 +15,6 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogTocRegexEditBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.printOnDebug
@@ -48,9 +47,10 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.rule_edit)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            menuRes = R.menu.rule_edit,
+            onMenuClick = ::onMenuItemClick
+        )
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

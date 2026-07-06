@@ -13,7 +13,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
 import io.legado.app.databinding.DialogDictRuleEditBinding
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
@@ -33,16 +32,17 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.inflateMenu(R.menu.rule_edit)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            menuRes = R.menu.rule_edit,
+            onMenuClick = ::onMenuItemClick
+        )
         viewModel.initData(arguments?.getString("name")) {
             upRuleView(viewModel.dictRule)
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        when (item?.itemId) {
             R.id.menu_save -> viewModel.save(getDictRule()) {
                 dismissAllowingStateLoss()
             }

@@ -33,7 +33,6 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.ACache
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
@@ -76,10 +75,11 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         durRegex = arguments?.getString("tocRegex")
-        binding.toolBar.setTitle(R.string.txt_toc_rule)
-        binding.toolBar.inflateMenu(R.menu.rule_list)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
+        setupTitleBar(
+            title = getString(R.string.txt_toc_rule),
+            menuRes = R.menu.rule_list,
+            onMenuClick = ::onMenuItemClick
+        )
         initView()
         initData()
     }

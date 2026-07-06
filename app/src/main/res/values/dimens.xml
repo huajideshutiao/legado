@@ -27,16 +27,6 @@
     <dimen name="arco_spacing_lg">16dp</dimen>
     <dimen name="arco_spacing_max">20dp</dimen>
 
-    <!-- ==================== Arco Design 语义化边距 ==================== -->
-    <!-- 页面左右留白 -->
-    <dimen name="arco_page_padding_h">@dimen/arco_spacing_lg</dimen>
-    <!-- 对话框内容区水平内边距 -->
-    <dimen name="arco_dialog_padding_h">@dimen/arco_spacing_lg</dimen>
-    <!-- 对话框内容区垂直内边距（标题下方/按钮上方） -->
-    <dimen name="arco_dialog_padding_v">@dimen/arco_spacing_default</dimen>
-    <!-- 组件间距 -->
-    <dimen name="arco_component_gap">@dimen/arco_spacing_default</dimen>
-
     <dimen name="fastscroll_bubble_radius">25dp</dimen>
     <dimen name="fastscroll_bubble_size">50dp</dimen>
     <dimen name="fastscroll_bubble_textsize">20sp</dimen>

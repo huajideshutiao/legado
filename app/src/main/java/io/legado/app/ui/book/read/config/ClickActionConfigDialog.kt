@@ -20,6 +20,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 点击区域设置
  */
 class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_config) {
+    override val useDefaultTitleBar: Boolean = false  // 点击区域设置不需要 TitleBar
     override val applyFilletBackground: Boolean = false
     private val binding by viewBinding(DialogClickActionConfigBinding::bind)
     private val actions by lazy {

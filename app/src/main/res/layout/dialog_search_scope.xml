@@ -5,14 +5,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:title="@string/search_scope" />
-
     <RadioGroup
         android:id="@+id/rg_scope"
         android:layout_width="match_parent"
@@ -20,7 +12,7 @@
         android:layout_marginHorizontal="@dimen/arco_spacing_md"
         android:gravity="center"
         android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@+id/tool_bar">
+        app:layout_constraintTop_toTopOf="parent">
 
         <io.legado.app.ui.widget.checkbox.ThemeRadioNoButton
             android:id="@+id/rb_group"
@@ -63,8 +55,8 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="@dimen/arco_dialog_padding_v"
-        android:paddingEnd="@dimen/arco_dialog_padding_v"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <io.legado.app.ui.widget.text.AccentTextView

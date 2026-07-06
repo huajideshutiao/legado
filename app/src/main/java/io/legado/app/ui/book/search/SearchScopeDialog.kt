@@ -17,9 +17,8 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSearchScopeBinding
 import io.legado.app.databinding.ItemCheckBoxBinding
 import io.legado.app.databinding.ItemRadioButtonBinding
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -33,6 +32,7 @@ import kotlinx.coroutines.withContext
 class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     override val isFullHeight: Boolean = true
+    override val defaultBackNavigation: Boolean = false  // 原无返回按钮,底部有 tvCancel
 
     private val binding by viewBinding(DialogSearchScopeBinding::bind)
     private var sourceFlowJob: Job? = null
@@ -54,12 +54,14 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.book_search_scope)
-        binding.toolBar.menu.applyTint(requireContext())
+        setupTitleBar(
+            title = getString(R.string.search_scope),
+            menuRes = R.menu.book_search_scope
+        )
     }
 
     private fun initSearchView() {
-        val searchView = binding.toolBar.menu.findItem(R.id.menu_screen).actionView as SearchView
+        val searchView = titleBar!!.menu.findItem(R.id.menu_screen).actionView as SearchView
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
                 return false
@@ -76,7 +78,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     private fun initOtherView() {
         binding.rgScope.setOnCheckedChangeListener { _, checkedId ->
-            binding.toolBar.menu.findItem(R.id.menu_screen)?.isVisible = checkedId == R.id.rb_source
+            titleBar!!.menu.findItem(R.id.menu_screen)?.isVisible = checkedId == R.id.rb_source
             upData()
         }
         binding.tvCancel.setOnClickListener {

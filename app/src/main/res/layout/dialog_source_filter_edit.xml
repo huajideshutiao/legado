@@ -5,14 +5,6 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:title="@string/source_filter_rule" />
-
     <ScrollView
         android:id="@+id/scroll_view"
         android:layout_width="match_parent"
@@ -20,15 +12,15 @@
         android:fillViewport="true"
         app:layout_constrainedHeight="true"
         app:layout_constraintBottom_toTopOf="@+id/ll_bottom_bar"
-        app:layout_constraintTop_toBottomOf="@+id/tool_bar">
+        app:layout_constraintTop_toTopOf="parent">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="@dimen/arco_dialog_padding_h">
+            android:paddingHorizontal="@dimen/arco_spacing_lg">
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="@string/source_filter_rule_name">
@@ -38,9 +30,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="1" />
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/arco_spacing_default"
@@ -51,7 +43,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="2" />
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -184,8 +176,8 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="@dimen/arco_dialog_padding_v"
-        android:paddingEnd="@dimen/arco_dialog_padding_v"
+        android:paddingStart="@dimen/arco_spacing_default"
+        android:paddingEnd="@dimen/arco_spacing_default"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/scroll_view">
 

@@ -1,17 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
-
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/tool_bar"
-            style="@style/Style.DialogToolbar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:title="@string/bookmark" />
 
     <TextView
         android:id="@+id/tv_chapter_name"
@@ -34,7 +26,7 @@
                 android:orientation="vertical"
                 android:paddingHorizontal="@dimen/arco_spacing_lg">
 
-                <io.legado.app.ui.widget.text.TextInputLayout
+                <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="3dp">
@@ -46,9 +38,9 @@
                         android:hint="@string/content"
                         tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-                </io.legado.app.ui.widget.text.TextInputLayout>
+                </com.google.android.material.textfield.TextInputLayout>
 
-                <io.legado.app.ui.widget.text.TextInputLayout
+                <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="3dp">
@@ -60,7 +52,7 @@
                         android:hint="@string/note_content"
                         tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-                </io.legado.app.ui.widget.text.TextInputLayout>
+                </com.google.android.material.textfield.TextInputLayout>
 
             </LinearLayout>
 

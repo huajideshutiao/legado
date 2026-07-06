@@ -13,7 +13,7 @@
         android:layout_marginTop="@dimen/arco_spacing_lg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/arco_dialog_padding_h">
+        android:paddingHorizontal="@dimen/arco_spacing_lg">
 
         <io.legado.app.ui.book.read.config.TextFontWeightConverter
             android:id="@+id/text_font_weight_converter"
@@ -128,7 +128,7 @@
         android:id="@+id/dsb_text_size"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         android:layout_marginTop="@dimen/arco_spacing_default"
         app:isBottomBackground="true"
         app:max="45"
@@ -138,7 +138,7 @@
         android:id="@+id/dsb_text_letter_spacing"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         app:isBottomBackground="true"
         app:max="100"
         app:title="@string/text_letter_spacing" />
@@ -147,7 +147,7 @@
         android:id="@+id/dsb_line_size"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         app:isBottomBackground="true"
         app:max="20"
         app:title="@string/line_size" />
@@ -156,7 +156,7 @@
         android:id="@+id/dsb_paragraph_spacing"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         app:isBottomBackground="true"
         app:max="20"
         app:title="@string/paragraph_size" />
@@ -165,7 +165,7 @@
         android:id="@+id/vw_bg_fg"
         android:layout_width="match_parent"
         android:layout_height="0.8dp"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         android:layout_marginVertical="@dimen/arco_spacing_default"
         android:background="@color/btn_bg" />
 
@@ -173,7 +173,7 @@
         android:id="@+id/tv_page_anim"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         android:layout_marginBottom="@dimen/arco_spacing_xs"
         android:alpha="0.75"
         android:text="@string/page_anim"
@@ -183,7 +183,7 @@
         android:id="@+id/rg_page_anim"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         android:gravity="center"
         android:orientation="horizontal">
 
@@ -258,7 +258,7 @@
         android:id="@+id/vw_bg_fg1"
         android:layout_width="match_parent"
         android:layout_height="0.8dp"
-        android:layout_marginHorizontal="@dimen/arco_dialog_padding_h"
+        android:layout_marginHorizontal="@dimen/arco_spacing_lg"
         android:layout_marginVertical="@dimen/arco_spacing_default"
         android:background="@color/btn_bg" />
 

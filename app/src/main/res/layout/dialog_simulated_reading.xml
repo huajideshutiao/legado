@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center"
-    android:padding="@dimen/arco_dialog_padding_h"
+    android:padding="@dimen/arco_spacing_lg"
     android:orientation="vertical">
 
     <LinearLayout

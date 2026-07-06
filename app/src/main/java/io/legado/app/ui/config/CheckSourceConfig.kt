@@ -20,6 +20,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
     private val minTimeout = 0L
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(title = getString(R.string.check_source_config))
         binding.run {
             checkSearch.onClick {
                 if (!checkSearch.isChecked && !checkDiscovery.isChecked) {

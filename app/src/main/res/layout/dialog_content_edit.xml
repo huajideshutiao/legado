@@ -5,21 +5,13 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:title="edit" />
-
     <androidx.appcompat.widget.AppCompatEditText
         android:id="@+id/content_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:padding="@dimen/arco_spacing_md"
         android:importantForAutofill="no"
-        app:layout_constraintTop_toBottomOf="@+id/tool_bar"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
@@ -29,7 +21,7 @@
         android:indeterminate="true"
         android:visibility="invisible"
         app:indicatorSize="60dp"
-        app:layout_constraintTop_toBottomOf="@+id/tool_bar"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />

@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="@dimen/arco_dialog_padding_h">
+    android:padding="@dimen/arco_spacing_lg">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -57,7 +57,7 @@
 
         </LinearLayout>
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ly_et_epub_filename"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -77,10 +77,10 @@
                 android:inputType="text"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/arco_spacing_md"
@@ -94,9 +94,9 @@
                 android:maxLength="6"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <io.legado.app.ui.widget.text.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ly_et_input_scope"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -108,7 +108,7 @@
                 android:layout_height="wrap_content"
                 tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-        </io.legado.app.ui.widget.text.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
 
     </LinearLayout>
 

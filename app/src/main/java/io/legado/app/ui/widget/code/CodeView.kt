@@ -13,8 +13,11 @@ import android.text.InputFilter
 import android.text.Layout
 import android.text.Spannable
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.TextUtils
 import android.text.TextWatcher
 import android.text.style.BackgroundColorSpan
+import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
 import android.text.style.ReplacementSpan
 import android.util.AttributeSet
@@ -36,8 +39,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.ArrayDeque
 import java.util.TreeMap
 import java.util.regex.Pattern
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 @Suppress("unused")
@@ -128,8 +134,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
         val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
-        val startLine = kotlin.math.max(0, firstLine - 10)
-        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
+        val startLine = max(0, firstLine - 10)
+        val endLine = min(layout.lineCount - 1, lastLine + 10)
 
         val startOffset = layout.getLineStart(startLine)
         val endOffset = layout.getLineEnd(endLine)
@@ -213,8 +219,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             val offset = count - before
 
             if (dirtyStart != -1) {
-                if (dirtyStart >= start) dirtyStart = kotlin.math.max(start, dirtyStart + offset)
-                if (dirtyEnd > start) dirtyEnd = kotlin.math.max(start, dirtyEnd + offset)
+                if (dirtyStart >= start) dirtyStart = max(start, dirtyStart + offset)
+                if (dirtyEnd > start) dirtyEnd = max(start, dirtyEnd + offset)
             }
 
             if (offset != 0 && allSyntaxSpans.isNotEmpty()) {
@@ -234,14 +240,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 for (i in startIndex - 1 downTo 0) {
                     val span = allSyntaxSpans[i]
                     if (span.end > start) {
-                        span.end = kotlin.math.max(start, span.end + offset)
+                        span.end = max(start, span.end + offset)
                     }
                 }
                 for (i in startIndex until allSyntaxSpans.size) {
                     val span = allSyntaxSpans[i]
-                    span.start = kotlin.math.max(start, span.start + offset)
+                    span.start = max(start, span.start + offset)
                     if (span.end > start) {
-                        span.end = kotlin.math.max(start, span.end + offset)
+                        span.end = max(start, span.end + offset)
                     }
                 }
             }
@@ -270,8 +276,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 dirtyStart = start
                 dirtyEnd = start + count
             } else {
-                dirtyStart = kotlin.math.min(dirtyStart, start)
-                dirtyEnd = kotlin.math.max(dirtyEnd, start + count)
+                dirtyStart = min(dirtyStart, start)
+                dirtyEnd = max(dirtyEnd, start + count)
             }
 
             highlightJob?.cancel()
@@ -368,11 +374,11 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 }
 
                 if (cursor >= 0) {
-                    var start = kotlin.math.max(0, currentText.lastIndexOf('\n', cursor - 1) + 1)
-                    start = kotlin.math.max(start, cursor - 500)
+                    var start = max(0, currentText.lastIndexOf('\n', cursor - 1) + 1)
+                    start = max(start, cursor - 500)
                     var lineEnd = currentText.indexOf('\n', cursor)
                     if (lineEnd == -1) lineEnd = currentText.length
-                    lineEnd = kotlin.math.min(lineEnd, cursor + 500)
+                    lineEnd = min(lineEnd, cursor + 500)
                     if (start > lineEnd) start = lineEnd
                     autoCompleteAdapter?.currentLineText =
                         currentText.subSequence(start, lineEnd).toString()
@@ -668,7 +674,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
     }
 
-    private val spanPool = java.util.ArrayDeque<SyntaxForegroundColorSpan>()
+    private val spanPool = ArrayDeque<SyntaxForegroundColorSpan>()
 
     private fun obtainSpan(color: Int): SyntaxForegroundColorSpan {
         val span = spanPool.poll()
@@ -693,8 +699,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         val firstLine = layout.getLineForVertical(visibleRect.top - paddingTop)
         val lastLine = layout.getLineForVertical(visibleRect.bottom - paddingTop)
 
-        val startLine = kotlin.math.max(0, firstLine - 10)
-        val endLine = kotlin.math.min(layout.lineCount - 1, lastLine + 10)
+        val startLine = max(0, firstLine - 10)
+        val endLine = min(layout.lineCount - 1, lastLine + 10)
 
         val startOffset = layout.getLineStart(startLine)
         val endOffset = layout.getLineEnd(endLine)
@@ -703,8 +709,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             return
         }
 
-        val renderStartLine = kotlin.math.max(0, firstLine - 20)
-        val renderEndLine = kotlin.math.min(layout.lineCount - 1, lastLine + 20)
+        val renderStartLine = max(0, firstLine - 20)
+        val renderEndLine = min(layout.lineCount - 1, lastLine + 20)
         val renderStartOffset = layout.getLineStart(renderStartLine)
         val renderEndOffset = layout.getLineEnd(renderEndLine)
 
@@ -752,8 +758,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             if (span.start >= renderEndOffset) break
 
             if (!activeSyntaxSpans.containsKey(span)) {
-                val s = kotlin.math.max(0, kotlin.math.min(span.start, editable.length))
-                val e = kotlin.math.max(0, kotlin.math.min(span.end, editable.length))
+                val s = max(0, min(span.start, editable.length))
+                val e = max(0, min(span.end, editable.length))
                 if (s < e) {
                     val newSpan = obtainSpan(span.color)
                     editable.setSpan(newSpan, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -877,7 +883,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     fun isTextEqual(a: CharSequence?, b: CharSequence?): Boolean {
-        return android.text.TextUtils.equals(a, b)
+        return TextUtils.equals(a, b)
     }
 
     override fun setText(text: CharSequence?, type: BufferType?) {
@@ -928,12 +934,12 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private fun convertTabs(start: Int, count: Int) {
         if (tabWidth < 1) return
         val stop = start + count
-        var startIndex = android.text.TextUtils.indexOf(editableText, '\t', start, stop)
+        var startIndex = TextUtils.indexOf(editableText, '\t', start, stop)
         while (startIndex in 0 until stop) {
             editableText.setSpan(
                 TabWidthSpan(), startIndex, startIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            startIndex = android.text.TextUtils.indexOf(editableText, '\t', startIndex + 1, stop)
+            startIndex = TextUtils.indexOf(editableText, '\t', startIndex + 1, stop)
         }
     }
 
@@ -981,7 +987,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun getErrorsSize() = mErrorHashSet.size
 
-    fun getTextWithoutTrailingSpace() = PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
+    fun getTextWithoutTrailingSpace(): String =
+        PATTERN_TRAILING_WHITE_SPACE.matcher(text).replaceAll("")
 
     fun undo() {
         onTextContextMenuItem(android.R.id.undo)
@@ -1019,10 +1026,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         var inStr = false
         var escape = false
 
-        fun appendIndent() {
-            for (k in 0 until level) sb.append(indentUnit)
-        }
-
         while (i < n) {
             val c = text[i]
             if (inStr) {
@@ -1051,7 +1054,7 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     } else {
                         level++
                         sb.append('\n')
-                        appendIndent()
+                        for (k in 0 until level) sb.append(indentUnit)
                         i++
                     }
                 }
@@ -1060,14 +1063,14 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     if (level == 0) return null
                     level--
                     sb.append('\n')
-                    appendIndent()
+                    for (k in 0 until level) sb.append(indentUnit)
                     sb.append(c)
                     i++
                 }
 
                 ',' -> {
                     sb.append(',').append('\n')
-                    appendIndent()
+                    for (k in 0 until level) sb.append(indentUnit)
                     i++
                     while (i < n && text[i].isJsonWs()) i++
                 }
@@ -1348,7 +1351,11 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (currentMatchIndex in matchRanges.indices) {
             val range = matchRanges[currentMatchIndex]
             editableText.replace(range.first, range.second, replaceText)
-            find(searchKeyword, useRegex, matchCase, matchWholeWord, true, true)
+            find(
+                searchKeyword, useRegex, matchCase, matchWholeWord,
+                forward = true,
+                scrollToMatch = true
+            )
         }
     }
 
@@ -1443,8 +1450,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (isLineNumberEnabled && enterPosSize > 0) {
             canvas.getClipBounds(visibleRect)
             val firstLine =
-                kotlin.math.max(0, layout.getLineForVertical(visibleRect.top - paddingTop))
-            val lastLine = kotlin.math.min(
+                max(0, layout.getLineForVertical(visibleRect.top - paddingTop))
+            val lastLine = min(
                 layout.lineCount - 1,
                 layout.getLineForVertical(visibleRect.bottom - paddingTop)
             )
@@ -1498,10 +1505,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         enterPosSize = 0
         // 使用 TextUtils.indexOf 代替逐字 charAt 遍历
         // 这样可以避免在大文本上调用 toString() 产生的内存分配，也能利用 TextUtils 内部 getChars 的分块读取优化
-        var index = android.text.TextUtils.indexOf(text, '\n', 0)
+        var index = TextUtils.indexOf(text, '\n', 0)
         while (index >= 0) {
             addEnterPos(index)
-            index = android.text.TextUtils.indexOf(text, '\n', index + 1)
+            index = TextUtils.indexOf(text, '\n', index + 1)
         }
     }
 
@@ -1536,10 +1543,10 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         }
 
         val newEnters = mutableListOf<Int>()
-        var idx = android.text.TextUtils.indexOf(text, '\n', start, start + count)
+        var idx = TextUtils.indexOf(text, '\n', start, start + count)
         while (idx >= 0) {
             newEnters.add(idx)
-            idx = android.text.TextUtils.indexOf(text, '\n', idx + 1, start + count)
+            idx = TextUtils.indexOf(text, '\n', idx + 1, start + count)
         }
         if (newEnters.isNotEmpty()) {
             val numNew = newEnters.size
@@ -1596,8 +1603,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private class SyntaxSpan(var start: Int, var end: Int, val color: Int)
 
-    private class SyntaxForegroundColorSpan(var color: Int) : android.text.style.CharacterStyle() {
-        override fun updateDrawState(tp: android.text.TextPaint) {
+    private class SyntaxForegroundColorSpan(var color: Int) : CharacterStyle() {
+        override fun updateDrawState(tp: TextPaint) {
             tp.color = color
         }
 

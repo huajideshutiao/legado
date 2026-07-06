@@ -38,7 +38,6 @@ import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getCompatDrawable
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.transaction
@@ -114,24 +113,23 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
     }
 
     private fun showTitle() {
-        binding.toolBar.title = viewModel.name
-        binding.toolBar.subtitle = viewModel.author
-        binding.toolBar.navigationIcon =
-            getCompatDrawable(androidx.appcompat.R.drawable.abc_ic_ab_back_material)
-        // Arco 风格：移除 toolBar elevation 阴影
+        titleBar!!.title = viewModel.name
+        titleBar!!.subtitle = viewModel.author
+        // navigationIcon 由基类默认设置,此处不重复
     }
 
     private fun initMenu() {
-        binding.toolBar.inflateMenu(R.menu.change_source)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.toolBar.menu.findItem(R.id.menu_check_author)
+        val tb = titleBar!!.toolbar
+        tb.inflateMenu(R.menu.change_source)
+        tb.menu.applyTint(requireContext())
+        tb.setOnMenuItemClickListener(this)
+        titleBar!!.menu.findItem(R.id.menu_check_author)
             ?.isChecked = AppConfig.changeSourceCheckAuthor
-        binding.toolBar.menu.findItem(R.id.menu_load_info)
+        titleBar!!.menu.findItem(R.id.menu_load_info)
             ?.isChecked = AppConfig.changeSourceLoadInfo
-        binding.toolBar.menu.findItem(R.id.menu_load_toc)
+        titleBar!!.menu.findItem(R.id.menu_load_toc)
             ?.isChecked = AppConfig.changeSourceLoadToc
-        binding.toolBar.menu.findItem(R.id.menu_load_word_count)
+        titleBar!!.menu.findItem(R.id.menu_load_word_count)
             ?.isChecked = AppConfig.changeSourceLoadWordCount
     }
 
@@ -153,15 +151,15 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
     }
 
     private fun initSearchView() {
-        val searchView = binding.toolBar.menu.findItem(R.id.menu_screen).actionView as SearchView
+        val searchView = titleBar!!.menu.findItem(R.id.menu_screen).actionView as SearchView
         searchView.setOnCloseListener {
             showTitle()
             false
         }
         searchView.setOnSearchClickListener {
-            binding.toolBar.title = ""
-            binding.toolBar.subtitle = ""
-            binding.toolBar.navigationIcon = null
+            titleBar!!.title = ""
+            titleBar!!.subtitle = ""
+            titleBar!!.toolbar.navigationIcon = null
         }
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
@@ -177,18 +175,15 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
     }
 
     private fun initNavigationView() {
-        binding.toolBar.navigationIcon =
-            getCompatDrawable(androidx.appcompat.R.drawable.abc_ic_ab_back_material)
-        binding.toolBar.setNavigationContentDescription(
+        // navigationIcon 和 setNavigationOnClickListener 由基类默认设置,此处仅做导航按钮着色
+        val tb = titleBar!!.toolbar
+        tb.setNavigationContentDescription(
             androidx.appcompat.R.string.abc_action_bar_up_description
         )
-        binding.toolBar.setNavigationOnClickListener {
-            dismissAllowingStateLoss()
-        }
         kotlin.runCatching {
             val mNavButtonViewField = Toolbar::class.java.getDeclaredField("mNavButtonView")
             mNavButtonViewField.isAccessible = true
-            val navigationView = mNavButtonViewField.get(binding.toolBar) as ImageButton
+            val navigationView = mNavButtonViewField.get(tb) as ImageButton
             val isLight = ColorUtils.isColorLight(primaryColor)
             val textColor = requireContext().getPrimaryTextColor(isLight)
             navigationView.setColorFilter(textColor)
@@ -222,7 +217,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
                     item.setTitle(R.string.refresh)
                 }
             }
-            binding.toolBar.menu.applyTint(requireContext())
+            titleBar!!.toolbar.menu.applyTint(requireContext())
         }
         lifecycleScope.launch {
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
@@ -260,7 +255,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
     }
 
     private val startStopMenuItem: MenuItem?
-        get() = binding.toolBar.menu.findItem(R.id.menu_start_stop)
+        get() = titleBar!!.menu.findItem(R.id.menu_start_stop)
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
@@ -399,7 +394,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
      * 更新分组菜单
      */
     private fun upGroupMenu() {
-        binding.toolBar.menu.findItem(R.id.menu_group)?.run {
+        titleBar!!.menu.findItem(R.id.menu_group)?.run {
             subMenu?.transaction { menu ->
                 val selectedGroup = AppConfig.searchGroup
                 menu.removeGroup(R.id.source_group)
@@ -428,7 +423,7 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_change_sourc
      * 更新分组菜单名
      */
     private fun upGroupMenuName() {
-        val menuGroup = binding.toolBar.menu.findItem(R.id.menu_group)
+        val menuGroup = titleBar!!.menu.findItem(R.id.menu_group)
         val searchGroup = AppConfig.searchGroup
         if (searchGroup.isEmpty()) {
             menuGroup?.title = getString(R.string.group)

@@ -6,12 +6,6 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/tool_bar"
-        style="@style/Style.DialogToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
-
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -21,9 +15,9 @@
             android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scrollbars="none"
             android:clipToPadding="false"
-            android:paddingHorizontal="@dimen/arco_page_padding_h"
+            android:paddingHorizontal="@dimen/arco_spacing_lg"
+            android:scrollbars="none"
             tools:ignore="SpeakableTextPresentCheck" />
 
         <com.google.android.material.progressindicator.CircularProgressIndicator
@@ -50,19 +44,20 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/arco_view_height_max"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingEnd="@dimen/arco_dialog_padding_v"
-        android:paddingBottom="@dimen/arco_dialog_padding_v">
+        android:paddingBottom="@dimen/arco_spacing_default">
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_footer_left"
             style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:visibility="gone"
-            tools:ignore="RtlHardcoded" />
+            tools:ignore="RtlHardcoded"
+            tools:text="action"
+            tools:visibility="visible" />
 
         <Space
             android:layout_width="0dp"
@@ -73,20 +68,22 @@
             android:id="@+id/tv_cancel"
             style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:text="@string/cancel"
             android:visibility="gone"
-            tools:ignore="RtlHardcoded" />
+            tools:ignore="RtlHardcoded"
+            tools:visibility="visible" />
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_ok"
             style="@style/Widget.Arco.Button.Text"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:text="@string/ok"
             android:textColor="@color/arco_btn_text_outline"
             android:visibility="gone"
-            tools:ignore="RtlHardcoded" />
+            tools:ignore="RtlHardcoded"
+            tools:visibility="visible" />
 
     </LinearLayout>
 

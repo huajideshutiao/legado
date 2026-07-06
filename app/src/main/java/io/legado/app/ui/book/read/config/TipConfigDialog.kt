@@ -29,6 +29,7 @@ class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
     private val binding by viewBinding(DialogTipConfigBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(title = getString(R.string.body_title))
         initView()
         initEvent()
         observeEvent<String>(EventBus.TIP_COLOR) {

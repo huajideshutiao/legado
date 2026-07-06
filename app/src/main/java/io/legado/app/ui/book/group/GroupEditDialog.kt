@@ -63,6 +63,11 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         @Suppress("DEPRECATION")
         bookGroup = arguments?.getParcelable("group")
+        setupTitleBar(
+            title = getString(
+                if (bookGroup != null) R.string.group_edit else R.string.add_group
+            )
+        )
         bookGroup?.let {
             binding.btnDelete.visible(it.groupId > 0 || it.groupId == Long.MIN_VALUE)
             binding.tieGroupName.setText(it.groupName)
@@ -73,7 +78,6 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
             binding.spSort.setSelection(it.bookSort + 1)
             binding.cbEnableRefresh.isChecked = it.enableRefresh
         } ?: let {
-            binding.toolBar.title = getString(R.string.add_group)
             binding.btnDelete.gone()
             binding.ivCover.load()
         }

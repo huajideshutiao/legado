@@ -8,7 +8,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="@dimen/arco_dialog_padding_h">
+        android:padding="@dimen/arco_spacing_lg">
 
         <LinearLayout
             android:id="@+id/ll_header_padding"

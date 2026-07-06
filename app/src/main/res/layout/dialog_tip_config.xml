@@ -9,13 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/arco_dialog_padding_h">
-
-        <io.legado.app.ui.widget.text.AccentTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/body_title"
-            android:textSize="18sp" />
+        android:padding="@dimen/arco_spacing_lg">
 
         <RadioGroup
             android:id="@+id/rg_title_mode"

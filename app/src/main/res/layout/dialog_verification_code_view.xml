@@ -21,7 +21,7 @@
         android:scaleType="fitCenter"
         tools:ignore="UnusedAttribute" />
 
-    <io.legado.app.ui.widget.text.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/arco_spacing_default"
@@ -34,6 +34,6 @@
             android:hint="@string/verification_code"
             tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-    </io.legado.app.ui.widget.text.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>

@@ -72,8 +72,9 @@ class DefaultCoverGalleryDialog() : BaseDialogFragment(R.layout.dialog_recycler_
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setTitle(R.string.default_cover)
-        binding.toolBar.subtitle = getString(
+        setupTitleBar(title = getString(R.string.default_cover))
+        // 复用基类注入的 TitleBar，subtitle 通过 TitleBar.toolbar 访问原生 API
+        titleBar!!.toolbar.subtitle = getString(
             if (prefKey == PreferKey.defaultCoverDark) R.string.night else R.string.day
         )
         binding.recyclerView.layoutManager = GridLayoutManager(requireContext(), 3)

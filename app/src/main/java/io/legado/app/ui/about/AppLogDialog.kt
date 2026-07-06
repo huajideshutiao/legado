@@ -30,10 +30,12 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        setupTitleBar(
+            title = getString(R.string.log),
+            menuRes = R.menu.app_log,
+            onMenuClick = ::onMenuItemClick
+        )
         binding.run {
-            toolBar.setTitle(R.string.log)
-            toolBar.inflateMenu(R.menu.app_log)
-            toolBar.setOnMenuItemClickListener(this@AppLogDialog)
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }

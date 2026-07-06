@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
     android:orientation="horizontal"
-    android:paddingHorizontal="@dimen/arco_page_padding_h"
+    android:paddingHorizontal="@dimen/arco_spacing_lg"
     android:paddingVertical="@dimen/arco_spacing_default">
 
     <com.google.android.material.imageview.ShapeableImageView

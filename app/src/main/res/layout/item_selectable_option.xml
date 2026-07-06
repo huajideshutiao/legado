@@ -3,13 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:padding="@dimen/arco_spacing_default">
+    android:layout_height="wrap_content">
 
     <RadioButton
         android:id="@+id/rb_select"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/arco_view_height_xl"
         android:singleLine="true"
         android:textColor="@color/primaryText"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -19,8 +18,8 @@
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_edit"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:layout_width="@dimen/arco_view_height_large"
+        android:layout_height="@dimen/arco_view_height_large"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/edit"
         android:padding="@dimen/arco_spacing_default"
@@ -32,8 +31,8 @@
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_delete"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:layout_width="@dimen/arco_view_height_large"
+        android:layout_height="@dimen/arco_view_height_large"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/delete"
         android:padding="@dimen/arco_spacing_default"
@@ -44,16 +43,5 @@
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="UnusedAttribute" />
-
-    <io.legado.app.ui.widget.text.BevelLabelView
-        android:id="@+id/label_sys"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:visibility="gone"
-        app:label_length="24dp"
-        app:label_mode="right_top"
-        app:label_text="SYS"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
