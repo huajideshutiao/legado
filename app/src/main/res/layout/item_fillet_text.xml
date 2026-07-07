@@ -8,11 +8,8 @@
     android:ellipsize="end"
     android:gravity="center"
     android:maxLines="1"
-    android:paddingStart="@dimen/arco_spacing_lg"
-    android:paddingTop="@dimen/arco_spacing_md"
-    android:paddingEnd="@dimen/arco_spacing_lg"
-    android:paddingBottom="@dimen/arco_spacing_md"
+    android:paddingHorizontal="@dimen/arco_spacing_lg"
+    android:paddingVertical="@dimen/arco_spacing_md"
     android:scrollbars="none"
     android:textColor="@color/secondaryText"
-    android:textSize="14sp"
     tools:ignore="UnusedAttribute" />

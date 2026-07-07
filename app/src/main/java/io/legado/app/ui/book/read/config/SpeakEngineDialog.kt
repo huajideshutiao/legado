@@ -26,7 +26,6 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.association.ImportHttpTtsDialog
@@ -38,7 +37,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.splitNotBlank
@@ -91,7 +89,6 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             menuRes = R.menu.speak_engine,
             onMenuClick = ::onMenuItemClick
         )
-        recyclerView.setEdgeEffectColor(primaryColor)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
         adapter.addHeaderView {

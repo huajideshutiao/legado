@@ -17,7 +17,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.DialogCustomGroupBinding
+import io.legado.app.databinding.DialogImportCustomGroupBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemSourceImportBinding
 import io.legado.app.help.config.AppConfig
@@ -150,7 +150,7 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
     @SuppressLint("InflateParams", "NotifyDataSetChanged")
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
-            R.id.menu_new_group -> alertCustomGroup(item!!)
+            R.id.menu_new_group -> alertCustomGroup(item)
             R.id.menu_select_new_source -> {
                 val selectAllNew = viewModel.isSelectAllNew
                 viewModel.newSourceStatus.forEachIndexed { index, b ->
@@ -193,7 +193,7 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
 
     private fun alertCustomGroup(item: MenuItem) {
         alert(R.string.diy_edit_source_group) {
-            val alertBinding = DialogCustomGroupBinding.inflate(layoutInflater).apply {
+            val alertBinding = DialogImportCustomGroupBinding.inflate(layoutInflater).apply {
                 val groups = appDb.bookSourceDao.allGroups()
                 textInputLayout.setHint(R.string.group_name)
                 editView.setFilterValues(groups.toList())

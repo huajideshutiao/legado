@@ -23,51 +23,51 @@ class MangaFooterSettingDialog : BaseDialogFragment(R.layout.dialog_manga_footer
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(title = getString(R.string.manga_footer_config))
         binding.cbChapterLabel.run {
-            isChecked = config.hideChapterLabel
+            isChecked = !config.hideChapterLabel
             setOnCheckedChangeListener { _, isChecked ->
-                config.hideChapterLabel = isChecked
+                config.hideChapterLabel = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbChapter.run {
-            isChecked = config.hideChapter
+            isChecked = !config.hideChapter
             setOnCheckedChangeListener { _, isChecked ->
-                config.hideChapter = isChecked
+                config.hideChapter = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbPageNumberLabel.run {
-            isChecked = config.hidePageNumberLabel
+            isChecked = !config.hidePageNumberLabel
             setOnCheckedChangeListener { _, isChecked ->
-                config.hidePageNumberLabel = isChecked
+                config.hidePageNumberLabel = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbPageNumber.run {
-            isChecked = config.hidePageNumber
+            isChecked = !config.hidePageNumber
             setOnCheckedChangeListener { _, isChecked ->
-                config.hidePageNumber = isChecked
+                config.hidePageNumber = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbProgressRatioLabel.run {
-            isChecked = config.hideProgressRatioLabel
+            isChecked = !config.hideProgressRatioLabel
             setOnCheckedChangeListener { _, isChecked ->
-                config.hideProgressRatioLabel = isChecked
+                config.hideProgressRatioLabel = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbProgressRatio.run {
-            isChecked = config.hideProgressRatio
+            isChecked = !config.hideProgressRatio
             setOnCheckedChangeListener { _, isChecked ->
-                config.hideProgressRatio = isChecked
+                config.hideProgressRatio = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
         binding.cbChapterName.run {
-            isChecked = config.hideChapterName
+            isChecked = !config.hideChapterName
             setOnCheckedChangeListener { _, isChecked ->
-                config.hideChapterName = isChecked
+                config.hideChapterName = !isChecked
                 postEvent(EventBus.UP_MANGA_CONFIG, config)
             }
         }
@@ -86,8 +86,10 @@ class MangaFooterSettingDialog : BaseDialogFragment(R.layout.dialog_manga_footer
         }
 
         binding.rgFooter.isChecked = !config.hideFooter
+        binding.groupFooterContent.visibility = if (config.hideFooter) View.GONE else View.VISIBLE
         binding.rgFooter.setOnCheckedChangeListener { _, isChecked ->
             config.hideFooter = !isChecked
+            binding.groupFooterContent.visibility = if (isChecked) View.VISIBLE else View.GONE
             postEvent(EventBus.UP_MANGA_CONFIG, config)
         }
     }

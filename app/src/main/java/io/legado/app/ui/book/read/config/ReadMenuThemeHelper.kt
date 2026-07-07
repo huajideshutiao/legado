@@ -1,9 +1,11 @@
 package io.legado.app.ui.book.read.config
 
+import android.content.res.ColorStateList
 import android.graphics.PorterDuff
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.widget.TextViewCompat
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
@@ -42,6 +44,10 @@ fun ImageView.applyMenuThemeSecondaryColorFilter(theme: ReadMenuTheme, mode: Por
 
 fun TextView.applyMenuThemeTextColor(theme: ReadMenuTheme) {
     setTextColor(theme.textColor)
+}
+
+fun TextView.applyMenuThemeCompoundDrawableTint(theme: ReadMenuTheme) {
+    TextViewCompat.setCompoundDrawableTintList(this, ColorStateList.valueOf(theme.textColor))
 }
 
 fun TextView.applyMenuThemeSecondaryTextColor(theme: ReadMenuTheme) {

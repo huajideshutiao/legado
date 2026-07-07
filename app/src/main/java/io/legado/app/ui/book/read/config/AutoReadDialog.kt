@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.read.config
 
-import android.graphics.PorterDuff
 import android.os.Bundle
 import android.view.View
 import android.widget.SeekBar
@@ -30,14 +29,14 @@ class AutoReadDialog : BaseBottomDialogFragment(R.layout.dialog_auto_read) {
         root.applyMenuTheme(theme)
         tvReadSpeedTitle.applyMenuThemeTextColor(theme)
         tvReadSpeed.applyMenuThemeTextColor(theme)
-        ivCatalog.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
         tvCatalog.applyMenuThemeTextColor(theme)
-        ivMainMenu.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvCatalog.applyMenuThemeCompoundDrawableTint(theme)
         tvMainMenu.applyMenuThemeTextColor(theme)
-        ivAutoPageStop.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvMainMenu.applyMenuThemeCompoundDrawableTint(theme)
         tvAutoPageStop.applyMenuThemeTextColor(theme)
-        ivSetting.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+        tvAutoPageStop.applyMenuThemeCompoundDrawableTint(theme)
         tvSetting.applyMenuThemeTextColor(theme)
+        tvSetting.applyMenuThemeCompoundDrawableTint(theme)
         initOnChange()
         initData()
         initEvent()
@@ -65,20 +64,20 @@ class AutoReadDialog : BaseBottomDialogFragment(R.layout.dialog_auto_read) {
     }
 
     private fun initEvent() {
-        binding.llMainMenu.setOnClickListener {
+        binding.tvMainMenu.setOnClickListener {
             callBack?.showMenuBar()
             dismissAllowingStateLoss()
         }
-        binding.llSetting.setOnClickListener {
+        binding.tvSetting.setOnClickListener {
             (activity as BaseReadBookActivity).showPageAnimConfig {
                 (activity as ReadBookActivity).upPageAnim()
                 ReadBook.loadContent(false)
             }
         }
-        binding.llCatalog.setOnClickListener { callBack?.openChapterList() }
-        binding.llAutoPageStop.setOnClickListener {
+        binding.tvCatalog.setOnClickListener { callBack?.openChapterList() }
+        binding.tvAutoPageStop.setOnClickListener {
             callBack?.autoPageStop()
-            binding.llAutoPageStop.post {
+            binding.tvAutoPageStop.post {
                 dismissAllowingStateLoss()
             }
         }

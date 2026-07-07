@@ -22,7 +22,6 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.checkByIndex
@@ -30,7 +29,6 @@ import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 
 
@@ -47,7 +45,6 @@ class ThemeConfigFragment : PreferenceFragment(),
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         activity?.setTitle(R.string.theme_setting)
-        listView.setEdgeEffectColor(primaryColor)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

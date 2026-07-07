@@ -2,23 +2,27 @@ package io.legado.app.ui.book.source.edit
 
 import android.annotation.SuppressLint
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.widget.AppCompatSpinner
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.R
-import io.legado.app.databinding.ItemSourceEditBinding
-import io.legado.app.databinding.ItemSourceEditSpinnerBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.utils.dpToPx
 
 class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
 
@@ -42,22 +46,70 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
             EditEntity.ViewType.spinner -> {
-                val binding = ItemSourceEditSpinnerBinding.inflate(inflater, parent, false)
-                SpinnerViewHolder(binding)
+                val ctx = parent.context
+                val root = LinearLayout(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        48.dpToPx()
+                    )
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(
+                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
+                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
+                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    )
+                }
+                val textView = TextView(ctx).apply {
+                    layoutParams = ViewGroup.MarginLayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    ).apply {
+                        marginEnd =
+                            ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    }
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                val spinner = AppCompatSpinner(ctx).apply {
+                    layoutParams =
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+                    dropDownWidth = ViewGroup.LayoutParams.WRAP_CONTENT
+                    setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                }
+                root.addView(textView)
+                root.addView(spinner)
+                SpinnerViewHolder(SourceEditSpinnerItemBinding(root, textView, spinner))
             }
             else -> {
-                val binding = ItemSourceEditBinding.inflate(inflater, parent, false)
-                binding.editText.isLineNumberEnabled = true
-                binding.editText.addLegadoPattern()
-                binding.editText.addJsPattern()
-                binding.editText.addJsonPattern()
-                binding.editText.onSearchReplaceAction = onSearchReplaceAction
-                binding.editText.setOnFocusChangeListener { v, hasFocus ->
+                val ctx = parent.context
+                val root = TextInputLayout(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    setPadding(0, 4.dpToPx(), 0, 0)
+                }
+                val editText = CodeView(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    inputType =
+                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                }
+                root.addView(editText)
+                editText.isLineNumberEnabled = true
+                editText.addLegadoPattern()
+                editText.addJsPattern()
+                editText.addJsonPattern()
+                editText.onSearchReplaceAction = onSearchReplaceAction
+                editText.setOnFocusChangeListener { v, hasFocus ->
                     if (hasFocus) {
                         onCodeViewFocus?.invoke(v as CodeView)
                     }
                 }
-                TextViewHolder(binding)
+                TextViewHolder(SourceEditItemBinding(root, editText))
             }
         }
     }
@@ -75,7 +127,7 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         abstract fun bind(editEntity: EditEntity)
     }
 
-    inner class TextViewHolder(private val binding: ItemSourceEditBinding) :
+    inner class TextViewHolder(private val binding: SourceEditItemBinding) :
         MyViewHolder(binding) {
 
         override fun bind(editEntity: EditEntity) = binding.run {
@@ -146,7 +198,15 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
         }
     }
 
-    class SpinnerViewHolder(private val binding: ItemSourceEditSpinnerBinding) :
+    class SourceEditItemBinding(
+        val root: TextInputLayout,
+        val editText: CodeView
+    ) : ViewBinding {
+        override fun getRoot(): View = root
+        val textInputLayout: TextInputLayout get() = root
+    }
+
+    class SpinnerViewHolder(private val binding: SourceEditSpinnerItemBinding) :
         MyViewHolder(binding) {
 
         override fun bind(editEntity: EditEntity) = binding.run {
@@ -178,6 +238,14 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
         }
+    }
+
+    class SourceEditSpinnerItemBinding(
+        val root: LinearLayout,
+        val textView: TextView,
+        val spinner: AppCompatSpinner
+    ) : ViewBinding {
+        override fun getRoot(): View = root
     }
 
 

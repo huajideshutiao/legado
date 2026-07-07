@@ -1,21 +1,19 @@
-@file:Suppress("DEPRECATION")
-
 package io.legado.app.ui.main.bookshelf.style1
 
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.FragmentStatePagerAdapter
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.FragmentBookshelf1Binding
+import io.legado.app.databinding.FragmentViewPager2Binding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -23,7 +21,6 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
-import io.legado.app.utils.isCreated
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
@@ -32,7 +29,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 /**
  * 书架界面
  */
-class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1),
+class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_view_pager2),
     TabLayout.OnTabSelectedListener, SearchView.OnQueryTextListener {
 
     constructor(position: Int) : this() {
@@ -41,13 +38,14 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         arguments = bundle
     }
 
-    private val binding by viewBinding(FragmentBookshelf1Binding::bind)
-    private val adapter by lazy { TabFragmentPageAdapter(childFragmentManager) }
+    private val binding by viewBinding(FragmentViewPager2Binding::bind)
+    private val adapter by lazy { TabFragmentStateAdapter(this@BookshelfFragment1) }
     private val tabLayout: TabLayout by lazy {
         binding.titleBar.findViewById(R.id.tab_layout)
     }
     private val bookGroups = mutableListOf<BookGroup>()
     private val fragmentMap = hashMapOf<Long, BooksFragment>()
+    private var tabLayoutMediator: TabLayoutMediator? = null
     override val groupId: Long get() = selectedGroup?.groupId ?: 0
 
     override val books: List<Book>
@@ -63,16 +61,23 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     }
 
     private val selectedGroup: BookGroup?
-        get() = bookGroups.getOrNull(tabLayout.selectedTabPosition)
+        get() = bookGroups.getOrNull(binding.viewPager.currentItem)
 
     private fun initView() {
-        binding.viewPagerBookshelf.setEdgeEffectColor(primaryColor)
+        (binding.viewPager.getChildAt(0) as? RecyclerView)?.setEdgeEffectColor(primaryColor)
         tabLayout.isTabIndicatorFullWidth = false
         tabLayout.tabMode = TabLayout.MODE_SCROLLABLE
         tabLayout.setSelectedTabIndicatorColor(requireContext().accentColor)
-        tabLayout.setupWithViewPager(binding.viewPagerBookshelf)
-        binding.viewPagerBookshelf.offscreenPageLimit = 1
-        binding.viewPagerBookshelf.adapter = adapter
+        binding.viewPager.offscreenPageLimit = 1
+        binding.viewPager.adapter = adapter
+        tabLayoutMediator = TabLayoutMediator(tabLayout, binding.viewPager) { tab, position ->
+            val group = bookGroups[position]
+            tab.text = tabTitle(group, groupBookCountMap[group.groupId])
+            tab.view.setOnLongClickListener {
+                showDialogFragment(GroupEditDialog(group))
+                true
+            }
+        }.also { it.attach() }
     }
 
     private val groupBookCountMap = mutableMapOf<Long, Int>()
@@ -94,14 +99,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             if (data != bookGroups) {
                 bookGroups.clear()
                 bookGroups.addAll(data)
-                adapter.notifyDataSetChanged()
+                adapter.notifyItemRangeChanged(0, adapter.itemCount)
+                adapter.notifyItemInserted(0)
                 selectLastTab()
-                for (i in 0 until adapter.count) {
-                    tabLayout.getTabAt(i)?.view?.setOnLongClickListener {
-                        showDialogFragment(GroupEditDialog(bookGroups[i]))
-                        true
-                    }
-                }
             }
         }
     }
@@ -113,9 +113,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private fun selectLastTab() {
         tabLayout.post {
             val lastPosition = AppConfig.saveTabPosition
-            if (lastPosition in 0 until adapter.count) {
+            if (lastPosition in 0 until adapter.itemCount) {
                 tabLayout.removeOnTabSelectedListener(this)
-                binding.viewPagerBookshelf.setCurrentItem(lastPosition, false)
+                binding.viewPager.setCurrentItem(lastPosition, false)
                 tabLayout.getTabAt(lastPosition)?.select()
                 tabLayout.addOnTabSelectedListener(this)
             }
@@ -162,55 +162,30 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap[groupId]?.gotoTop()
     }
 
-    private inner class TabFragmentPageAdapter(fm: FragmentManager) :
-        FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
+    override fun onDestroyView() {
+        tabLayoutMediator?.detach()
+        tabLayoutMediator = null
+        super.onDestroyView()
+    }
 
-        override fun getPageTitle(position: Int): CharSequence {
+    private inner class TabFragmentStateAdapter(fragment: Fragment) :
+        FragmentStateAdapter(fragment) {
+
+        override fun getItemCount(): Int = bookGroups.size
+
+        override fun createFragment(position: Int): Fragment {
             val group = bookGroups[position]
-            return tabTitle(group, groupBookCountMap[group.groupId])
-        }
-
-        /**
-         * 确定视图位置是否更改时调用
-         * @return POSITION_NONE 已更改,刷新视图. POSITION_UNCHANGED 未更改,不刷新视图
-         */
-        override fun getItemPosition(any: Any): Int {
-            val fragment = any as BooksFragment
-            val position = fragment.position
-            val group = bookGroups.getOrNull(position)
-            if (fragment.groupId != group?.groupId) {
-                return POSITION_NONE
+            return BooksFragment(position, group).also {
+                fragmentMap[group.groupId] = it
             }
-            val bookSort = group.getRealBookSort()
-            fragment.setEnableRefresh(group.enableRefresh)
-            if (fragment.bookSort != bookSort) {
-                fragment.upBookSort(bookSort)
-            }
-            return POSITION_UNCHANGED
         }
 
-        override fun getItem(position: Int): Fragment {
-            val group = bookGroups[position]
-            return BooksFragment(position, group)
+        override fun getItemId(position: Int): Long {
+            return bookGroups[position].groupId
         }
 
-        override fun getCount(): Int {
-            return bookGroups.size
+        override fun containsItem(itemId: Long): Boolean {
+            return bookGroups.any { it.groupId == itemId }
         }
-
-        override fun instantiateItem(container: ViewGroup, position: Int): Any {
-            var fragment = super.instantiateItem(container, position) as BooksFragment
-            val group = bookGroups[position]
-            /**
-             * Activity recreate 会复用之前的 Fragment，不正确的需要重新创建
-             */
-            if (fragment.isCreated && getItemPosition(fragment) == POSITION_NONE) {
-                destroyItem(container, position, fragment)
-                fragment = super.instantiateItem(container, position) as BooksFragment
-            }
-            fragmentMap[group.groupId] = fragment
-            return fragment
-        }
-
     }
 }

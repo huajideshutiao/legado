@@ -12,11 +12,9 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.databinding.DialogHomeSectionManageBinding
 import io.legado.app.help.HomeTabHelp
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -60,7 +58,6 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
             true
         }
         titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         initDragSort()

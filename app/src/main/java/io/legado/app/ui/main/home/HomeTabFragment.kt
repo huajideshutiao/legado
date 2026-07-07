@@ -15,7 +15,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.FragmentHomeTabBinding
+import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.help.IntentData
@@ -39,7 +39,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 单个主页分组（HomeTab）的内容承载 Fragment。
  * ViewModel 共享外壳 HomeFragment 的实例，按 tabTitle 订阅自己的数据。
  */
-class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_tab) {
+class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_recycler_view) {
 
     constructor(tabTitle: String) : this() {
         arguments = Bundle().apply { putString(ARG_TAB_TITLE, tabTitle) }
@@ -47,7 +47,7 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
 
     private val tabTitle: String get() = arguments?.getString(ARG_TAB_TITLE).orEmpty()
 
-    private val binding by viewBinding(FragmentHomeTabBinding::bind)
+    private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
 
     /** 共享外壳 VM */
     override val viewModel by viewModels<HomeViewModel>(
@@ -126,8 +126,8 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
             binding.refreshLayout.isRefreshing = false
             viewModel.refreshTab(tabTitle)
         }
-        binding.rvHome.layoutManager = glm
-        binding.rvHome.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        binding.recyclerView.layoutManager = glm
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (dy <= 0) return
                 if (glm.findLastVisibleItemPosition() >= glm.itemCount - 4) {
@@ -208,8 +208,8 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
      * 由发现页 Grid/Video 适配器以网格项承载，header 作为其唯一头部随之滚动。
      */
     private fun renderSections(sections: List<HomeSection>) {
-        binding.tvEmpty.isVisible = sections.isEmpty()
-        binding.rvHome.isVisible = sections.isNotEmpty()
+        binding.tvEmptyMsg.isVisible = sections.isEmpty()
+        binding.recyclerView.isVisible = sections.isNotEmpty()
         sectionViews.setSections(sections, viewModel.stateOf(tabTitle).sectionBooksMap)
 
         val infinite = sections.find { it.style == HomeSection.STYLE_INFINITE_GRID }
@@ -244,7 +244,7 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home_t
             adapter.addFooterView { ViewLoadMoreBinding.bind(loadMoreView) }
         }
         gridAdapter = adapter
-        binding.rvHome.adapter = adapter
+        binding.recyclerView.adapter = adapter
         glm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {
                 val a = gridAdapter ?: return 1

@@ -7,137 +7,121 @@
     android:layout_height="match_parent"
     android:background="@color/translucent">
 
-    <LinearLayout
+    <GridLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        tools:ignore="NestedWeights">
+        android:columnCount="3"
+        android:rowCount="3">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/tv_top_left"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal">
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="上一页" />
 
-            <TextView
-                android:id="@+id/tv_top_left"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="上一页" />
-
-            <TextView
-                android:id="@+id/tv_top_center"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="上一页" />
-
-            <TextView
-                android:id="@+id/tv_top_right"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="下一页" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/tv_top_center"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal">
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="上一页" />
 
-            <TextView
-                android:id="@+id/tv_middle_left"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="上一页" />
-
-            <TextView
-                android:id="@+id/tv_middle_center"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:text="@string/menu"
-                android:textColor="@color/white" />
-
-            <TextView
-                android:id="@+id/tv_middle_right"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="下一页" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/tv_top_right"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal">
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="下一页" />
 
-            <TextView
-                android:id="@+id/tv_bottom_left"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:ignore="NestedWeights"
-                tools:text="上一页" />
+        <TextView
+            android:id="@+id/tv_middle_left"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="上一页" />
 
-            <TextView
-                android:id="@+id/tv_bottom_center"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="下一页" />
+        <TextView
+            android:id="@+id/tv_middle_center"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:text="@string/menu"
+            android:textColor="@color/white" />
 
-            <TextView
-                android:id="@+id/tv_bottom_right"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_margin="1dp"
-                android:layout_weight="1"
-                android:background="@drawable/shape_translucent_card"
-                android:gravity="center"
-                android:textColor="@color/white"
-                tools:text="下一页" />
+        <TextView
+            android:id="@+id/tv_middle_right"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="下一页" />
 
-        </LinearLayout>
+        <TextView
+            android:id="@+id/tv_bottom_left"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="上一页" />
 
-    </LinearLayout>
+        <TextView
+            android:id="@+id/tv_bottom_center"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="下一页" />
+
+        <TextView
+            android:id="@+id/tv_bottom_right"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="1dp"
+            android:background="@drawable/shape_translucent_card"
+            android:gravity="center"
+            android:textColor="@color/white"
+            tools:text="下一页" />
+
+    </GridLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -149,8 +133,7 @@
         android:paddingStart="@dimen/arco_spacing_lg"
         android:paddingTop="@dimen/arco_spacing_default"
         android:paddingEnd="@dimen/arco_spacing_lg"
-        android:paddingBottom="@dimen/arco_spacing_default"
-        tools:ignore="UseCompoundDrawables">
+        android:paddingBottom="@dimen/arco_spacing_default">
 
         <TextView
             android:layout_width="0dp"

@@ -3,22 +3,21 @@ package io.legado.app.ui.book.toc
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.databinding.FragmentBookmarkBinding
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.widget.recycler.UpLinearLayoutManager
+import io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
@@ -27,14 +26,37 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 
-class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark),
+class BookmarkFragment : VMBaseFragment<TocViewModel>(0),
     BookmarkAdapter.Callback,
     TocViewModel.BookmarkCallBack {
     override val viewModel by activityViewModels<TocViewModel>()
-    private val binding by viewBinding(FragmentBookmarkBinding::bind)
+    private var _recyclerView: FastScrollRecyclerView? = null
+    private val recyclerView get() = _recyclerView!!
     private val mLayoutManager by lazy { UpLinearLayoutManager(requireContext()) }
     private val adapter by lazy { BookmarkAdapter(requireContext(), this) }
     private var durChapterIndex = 0
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val ctx = requireContext()
+        val dp16 = (16 * ctx.resources.displayMetrics.density).toInt()
+
+        _recyclerView = FastScrollRecyclerView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            clipToPadding = false
+            setPadding(dp16, 0, dp16, 0)
+            overScrollMode = View.OVER_SCROLL_NEVER
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+
+        return _recyclerView!!
+    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         viewModel.bookMarkCallBack = this
@@ -46,10 +68,9 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.layoutManager = mLayoutManager
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.applyNavigationBarPadding()
+        recyclerView.layoutManager = mLayoutManager
+        recyclerView.adapter = adapter
+        recyclerView.applyNavigationBarPadding()
     }
 
     override fun upBookmark(searchKey: String?) {

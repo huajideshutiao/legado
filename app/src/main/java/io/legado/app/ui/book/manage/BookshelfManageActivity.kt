@@ -47,7 +47,6 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
@@ -71,7 +70,6 @@ import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
@@ -278,7 +276,6 @@ class BookshelfManageActivity :
     }
 
     private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
         itemTouchCallback.isCanDrag = AppConfig.bookshelfSort == 3

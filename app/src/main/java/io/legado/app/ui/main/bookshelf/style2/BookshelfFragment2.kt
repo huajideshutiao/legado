@@ -4,7 +4,8 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.widget.SearchView
+import android.view.ViewGroup
+import android.widget.LinearLayout
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -14,18 +15,16 @@ import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.FragmentBookshelf2Binding
+import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
@@ -39,8 +38,7 @@ import kotlin.math.max
 /**
  * 书架界面
  */
-class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2),
-    SearchView.OnQueryTextListener,
+class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_view),
     BaseBooksAdapter.CallBack {
 
     constructor(position: Int) : this() {
@@ -49,13 +47,14 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         arguments = bundle
     }
 
-    private val binding by viewBinding(FragmentBookshelf2Binding::bind)
+    private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
     private var booksAdapter: BaseBooksAdapter<*>? = null
     private var bookGroups: List<BookGroup> = emptyList()
     private var booksFlowJob: Job? = null
     override var groupId = BookGroup.IdRoot
     override var books: List<Book> = emptyList()
     private var enableRefresh = true
+    private var titleBar: TitleBar? = null
 
     private fun getSpanCount(): Int {
         if (AppConfig.bookshelfFixedWidthMode) {
@@ -68,10 +67,28 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setSupportToolbar(binding.titleBar.toolbar)
+        addTitleBar()
         initRecyclerView()
         initBookGroupData()
         initBooksData()
+    }
+
+    private fun addTitleBar() {
+        val ctx = requireContext()
+        titleBar = TitleBar(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setTitle(R.string.bookshelf)
+        }
+        val root = binding.root as? ViewGroup ?: return
+        root.addView(titleBar, 0)
+        titleBar?.let { setSupportToolbar(it.toolbar) }
+
+        // Adjust SwipeRefreshLayout constraint to be below TitleBar
+        val lp = binding.refreshLayout.layoutParams as? ViewGroup.MarginLayoutParams
+        lp?.topMargin = 0
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -81,22 +98,21 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
-        val layoutManager = binding.rvBookshelf.layoutManager
+        val layoutManager = binding.recyclerView.layoutManager
         if (spanCount <= 1) {
             if (layoutManager !is LinearLayoutManager) {
-                binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+                binding.recyclerView.layoutManager = LinearLayoutManager(context)
             }
         } else {
             if (layoutManager is GridLayoutManager) {
                 layoutManager.spanCount = spanCount
             } else {
-                binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
+                binding.recyclerView.layoutManager = GridLayoutManager(context, spanCount)
             }
         }
     }
 
     private fun initRecyclerView() {
-        binding.rvBookshelf.setEdgeEffectColor(primaryColor)
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
@@ -104,11 +120,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         val spanCount = getSpanCount()
         if (spanCount <= 1) {
-            binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+            binding.recyclerView.layoutManager = LinearLayoutManager(context)
         } else {
-            binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
+            binding.recyclerView.layoutManager = GridLayoutManager(context, spanCount)
         }
-        binding.rvBookshelf.itemAnimator = null
+        binding.recyclerView.itemAnimator = null
         val adapter = booksAdapter
         if (adapter == null) {
             val newAdapter = if (spanCount <= 1) {
@@ -116,27 +132,27 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             } else {
                 BooksAdapterGrid(requireContext(), this)
             }
-            binding.rvBookshelf.adapter = newAdapter
+            binding.recyclerView.adapter = newAdapter
             newAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
                 override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                    val layoutManager = binding.rvBookshelf.layoutManager
+                    val layoutManager = binding.recyclerView.layoutManager
                     if (positionStart == 0 && layoutManager is LinearLayoutManager) {
                         val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                        binding.recyclerView.scrollToPosition(max(0, scrollTo))
                     }
                 }
 
                 override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                    val layoutManager = binding.rvBookshelf.layoutManager
+                    val layoutManager = binding.recyclerView.layoutManager
                     if (toPosition == 0 && layoutManager is LinearLayoutManager) {
                         val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                        binding.recyclerView.scrollToPosition(max(0, scrollTo))
                     }
                 }
             })
             booksAdapter = newAdapter
         } else {
-            binding.rvBookshelf.adapter = adapter
+            binding.recyclerView.adapter = adapter
         }
     }
 
@@ -162,7 +178,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 lifecycle = viewLifecycleOwner.lifecycle,
                 sorter = ::sortBooks,
             )
-                .debounce(100) // 防抖, 避免密集变更时频繁刷 UI
+                .debounce(100)
                 .collect { list ->
                 books = list
                 booksAdapter?.updateItems()
@@ -176,7 +192,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         val group = bookGroups.find { it.groupId == groupId }
         enableRefresh = group?.enableRefresh ?: true
         val baseTitle = group?.groupName ?: getString(R.string.bookshelf)
-        binding.titleBar.title = if (AppConfig.bookshelfShowGroupCount) {
+        titleBar?.title = if (AppConfig.bookshelfShowGroupCount) {
             "$baseTitle (${books.size})"
         } else {
             baseTitle
@@ -203,20 +219,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         return false
     }
 
-    override fun onQueryTextSubmit(query: String?): Boolean {
-        SearchActivity.start(requireContext(), query)
-        return false
-    }
-
-    override fun onQueryTextChange(newText: String?): Boolean {
-        return false
-    }
-
     override fun gotoTop() {
         if (AppConfig.isEInkMode) {
-            binding.rvBookshelf.scrollToPosition(0)
+            binding.recyclerView.scrollToPosition(0)
         } else {
-            binding.rvBookshelf.smoothScrollToPosition(0)
+            binding.recyclerView.smoothScrollToPosition(0)
         }
     }
 

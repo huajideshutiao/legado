@@ -1,103 +1,104 @@
 package io.legado.app.ui.main.home
 
-import android.os.Bundle
+import android.content.Context
+import android.text.InputType
 import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
-import io.legado.app.databinding.DialogHomeTabEditBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.utils.gone
+import io.legado.app.ui.widget.text.AccentTextView
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import splitties.views.onClick
 
-/**
- * 添加/编辑/删除一个主页分组。title 即唯一标识，重名校验在保存时进行。
- */
-class HomeTabEditDialog : BaseDialogFragment(R.layout.dialog_home_tab_edit) {
-
-    private val binding by viewBinding(DialogHomeTabEditBinding::bind)
-
-    /** 编辑模式下为原标题；添加模式下为 null */
-    private val oldTitle: String? get() = arguments?.getString(ARG_OLD_TITLE)
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val editing = oldTitle
-        setupTitleBar(
-            title = getString(
-                if (editing == null) R.string.home_tab_add else R.string.home_tab_edit
+fun showHomeTabEditDialog(
+    context: Context,
+    oldTitle: String? = null
+) {
+    val dp16 = 16.dpToPx()
+    val dp8 = 8.dpToPx()
+    val et = EditText(context).apply {
+        inputType = InputType.TYPE_CLASS_TEXT
+        maxLines = 1
+        oldTitle?.let { setText(it) }
+    }
+    val btnDelete = AccentTextView(context, null).apply {
+        setText(R.string.delete)
+        visibility = if (oldTitle == null) View.GONE else View.VISIBLE
+        setPadding(dp8, dp8, dp8, dp8)
+    }
+    val layout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp16, dp16, dp16, 0)
+        addView(TextInputLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        )
-        binding.run {
-            if (editing == null) {
-                btnDelete.gone()
-            } else {
-                etTitle.setText(editing)
-                btnDelete.visible()
-                btnDelete.onClick { confirmDelete(editing) }
+            hint = context.getString(R.string.home_tab_title)
+            addView(et)
+        })
+        addView(btnDelete)
+    }
+    val dialog = context.alert {
+        setTitle(if (oldTitle == null) R.string.home_tab_add else R.string.home_tab_edit)
+        customView { layout }
+        positiveButton(R.string.ok) {
+            val newTitle = et.text?.toString()?.trim().orEmpty()
+            if (newTitle.isBlank()) {
+                context.toastOnUi(R.string.home_title_empty)
+                return@positiveButton
             }
-            btnCancel.onClick { dismiss() }
-            btnOk.onClick { save() }
+            val ok = if (oldTitle == null) {
+                HomeTabHelp.addTab(newTitle)
+            } else {
+                HomeTabHelp.renameTab(oldTitle, newTitle)
+            }
+            if (!ok) {
+                context.toastOnUi(R.string.home_tab_name_duplicate)
+                return@positiveButton
+            }
+            if (oldTitle == null) {
+                postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.ADD, newTitle = newTitle))
+            } else {
+                postEvent(
+                    EventBus.HOME_TAB,
+                    HomeTabEvent(HomeTabEvent.RENAME, oldTitle = oldTitle, newTitle = newTitle)
+                )
+            }
         }
+        negativeButton(R.string.cancel)
     }
-
-    private fun save() {
-        val newTitle = binding.etTitle.text?.toString()?.trim().orEmpty()
-        if (newTitle.isBlank()) {
-            toastOnUi(R.string.home_title_empty)
-            return
-        }
-        val old = oldTitle
-        val ok = if (old == null) {
-            HomeTabHelp.addTab(newTitle)
-        } else {
-            HomeTabHelp.renameTab(old, newTitle)
-        }
-        if (!ok) {
-            toastOnUi(R.string.home_tab_name_duplicate)
-            return
-        }
-        if (old == null) {
-            postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.ADD, newTitle = newTitle))
-        } else {
-            postEvent(
-                EventBus.HOME_TAB,
-                HomeTabEvent(HomeTabEvent.RENAME, oldTitle = old, newTitle = newTitle)
+    btnDelete.onClick {
+        val sectionCount = HomeTabHelp.getSections(oldTitle!!).size
+        val msg = if (sectionCount > 0) {
+            context.getString(
+                R.string.home_tab_delete_confirm_with_sections,
+                oldTitle,
+                sectionCount
             )
-        }
-        dismiss()
-    }
-
-    private fun confirmDelete(title: String) {
-        val sectionCount = HomeTabHelp.getSections(title).size
-        val message = if (sectionCount > 0) {
-            getString(R.string.home_tab_delete_confirm_with_sections, title, sectionCount)
         } else {
-            getString(R.string.home_tab_delete_confirm, title)
+            context.getString(R.string.home_tab_delete_confirm, oldTitle)
         }
-        alert(getString(R.string.delete), message) {
+        dialog.dismiss()
+        context.alert {
+            setTitle(R.string.delete)
+            setMessage(msg)
             yesButton {
-                HomeTabHelp.removeTab(title)
-                postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REMOVE, oldTitle = title))
-                dismiss()
+                HomeTabHelp.removeTab(oldTitle)
+                postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REMOVE, oldTitle = oldTitle))
             }
             noButton()
-        }
-    }
-
-    companion object {
-        private const val ARG_OLD_TITLE = "oldTitle"
-
-        fun newInstance(oldTitle: String?) = HomeTabEditDialog().apply {
-            arguments = Bundle().apply {
-                if (oldTitle != null) putString(ARG_OLD_TITLE, oldTitle)
-            }
         }
     }
 }

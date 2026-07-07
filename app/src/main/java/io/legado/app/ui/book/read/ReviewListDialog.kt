@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
@@ -31,8 +32,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
 import io.legado.app.databinding.DialogReviewListBinding
 import io.legado.app.databinding.ItemReviewBinding
-import io.legado.app.databinding.ItemReviewListHeaderBinding
-import io.legado.app.databinding.ItemReviewRepliesHeaderBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
@@ -43,6 +42,7 @@ import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
@@ -83,7 +83,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     private var replyToReview: Review? = null
 
     // 段评模式头部，sort 切换时要刷按钮文案，保留 binding 引用
-    private var listHeaderBinding: ItemReviewListHeaderBinding? = null
+    private var listHeaderBinding: ListHeaderWrapper? = null
 
     private val adapter by lazy { ReviewAdapter(requireContext()) }
 
@@ -200,7 +200,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 b
             }
             adapter.addHeaderView { parent ->
-                val b = ItemReviewRepliesHeaderBinding.inflate(layoutInflater, parent, false)
+                val b = createRepliesHeaderBinding(layoutInflater, parent)
                 b.tvRepliesTitle.text = getString(
                     R.string.review_replies_section_title, parentReview.replyCount
                 )
@@ -212,7 +212,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             // totalCount 与 hasMore 一起解析，回到主线程时 lambda 还没跑，
             // 由 observer 写文案就行，这里只设排序按钮和默认占位
             adapter.addHeaderView { parent ->
-                val b = ItemReviewListHeaderBinding.inflate(layoutInflater, parent, false)
+                val b = createListHeaderBinding(layoutInflater, parent)
                 listHeaderBinding = b
                 b.btnSort.setText(sortLabelRes(viewModel.sort))
                 b.btnSort.setOnClickListener { v -> showSortMenu(v) }
@@ -346,6 +346,112 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             }
         }
         adapter.bindImages(b, item.images)
+    }
+
+    class ListHeaderWrapper(
+        val root: LinearLayout,
+        val tvListTitle: TextView,
+        val btnSort: TextView
+    ) : androidx.viewbinding.ViewBinding {
+        override fun getRoot(): View = root
+    }
+
+    class RepliesHeaderWrapper(
+        val root: LinearLayout,
+        val tvRepliesTitle: TextView
+    ) : androidx.viewbinding.ViewBinding {
+        override fun getRoot(): View = root
+    }
+
+    private fun createRepliesHeaderBinding(
+        inflater: LayoutInflater,
+        parent: ViewGroup
+    ): RepliesHeaderWrapper {
+        val ctx = parent.context
+        val root = LinearLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            orientation = LinearLayout.VERTICAL
+        }
+        val divider = View(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                8.dpToPx()
+            )
+            setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider))
+        }
+        val tvRepliesTitle = TextView(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs)
+            )
+            setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        root.addView(divider)
+        root.addView(tvRepliesTitle)
+        return RepliesHeaderWrapper(root, tvRepliesTitle)
+    }
+
+    private fun createListHeaderBinding(
+        inflater: LayoutInflater,
+        parent: ViewGroup
+    ): ListHeaderWrapper {
+        val ctx = parent.context
+        val root = LinearLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs)
+            )
+        }
+        val tvListTitle = TextView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        val btnSort = TextView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            val ta =
+                ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
+            val bg = ta.getDrawable(0)
+            ta.recycle()
+            setBackground(bg)
+            setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_arrow_drop_down, 0)
+            compoundDrawablePadding = 2.dpToPx()
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                4.dpToPx(),
+                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                4.dpToPx()
+            )
+            setTextColor(ContextCompat.getColor(ctx, R.color.secondaryText))
+            textSize = 13f
+        }
+        root.addView(tvListTitle)
+        root.addView(btnSort)
+        return ListHeaderWrapper(root, tvListTitle, btnSort)
     }
 
     override fun onDestroyView() {

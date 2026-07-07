@@ -59,7 +59,7 @@
         android:id="@+id/iv_book"
         android:layout_width="120dp"
         android:layout_height="120dp"
-        android:layout_marginBottom="96dp"
+        android:layout_marginBottom="80dp"
         android:contentDescription="@string/welcome"
         android:scaleType="fitCenter"
         android:src="@drawable/icon_read_book"

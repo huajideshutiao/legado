@@ -1,90 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="60dp"
     android:background="?attr/selectableItemBackground"
-    android:orientation="horizontal"
-    android:baselineAligned="false">
+    android:paddingTop="@dimen/arco_spacing_xs"
+    android:paddingBottom="@dimen/arco_spacing_xs">
 
-    <FrameLayout
-        android:layout_width="60dp"
-        android:layout_height="match_parent">
-        <!--选择是否添加文件-->
-        <CheckBox
-            android:id="@+id/cb_select"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:clickable="false"
-            android:enabled="true"
-            android:focusable="true" />
-        <!--文件夹标识或已选文件标识-->
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/iv_icon"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="center"
-            android:visibility="invisible"
-            android:src="@drawable/ic_folder"
-            app:tint="@color/primaryText" />
-    </FrameLayout>
+    <CheckBox
+        android:id="@+id/cb_select"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="false"
+        android:focusable="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/iv_icon"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="center"
+        android:src="@drawable/ic_folder"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="1:1"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/primaryText" />
+
+    <TextView
+        android:id="@+id/tv_name"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="@dimen/arco_spacing_xs"
+        android:layout_marginEnd="@dimen/arco_spacing_lg"
+        android:gravity="center_vertical"
+        android:singleLine="true"
+        android:text="@string/app_name"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toTopOf="@id/ll_brief"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/iv_icon"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="spread"
+        app:layout_constraintVertical_weight="1" />
 
     <LinearLayout
+        android:id="@+id/ll_brief"
         android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:paddingTop="@dimen/arco_spacing_xs"
-        android:paddingBottom="@dimen/arco_spacing_xs"
-        android:orientation="vertical">
+        android:layout_height="0dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/iv_icon"
+        app:layout_constraintTop_toBottomOf="@id/tv_name"
+        app:layout_constraintVertical_weight="1">
+
+        <io.legado.app.ui.widget.text.AccentBgTextView
+            android:id="@+id/tv_tag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
+            android:maxWidth="50dp"
+            android:maxLines="1"
+            android:paddingStart="@dimen/arco_spacing_xs"
+            android:paddingEnd="@dimen/arco_spacing_xs"
+            android:text="TXT"
+            app:arcoRadius="@dimen/arco_radius_sm"
+            tools:ignore="HardcodedText,RtlHardcoded" />
 
         <TextView
-            android:id="@+id/tv_name"
+            android:id="@+id/tv_size"
             android:layout_width="wrap_content"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:singleLine="true"
-            android:text="@string/app_name"
-            android:textSize="16sp"
-            android:gravity="center_vertical"
-            tools:ignore="NestedWeights" />
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
+            tools:ignore="RtlHardcoded"
+            tools:text="324kb" />
 
-        <LinearLayout
-            android:id="@+id/ll_brief"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <io.legado.app.ui.widget.text.AccentBgTextView
-                android:id="@+id/tv_tag"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="@dimen/arco_spacing_lg"
-                android:paddingStart="@dimen/arco_spacing_xs"
-                android:paddingEnd="@dimen/arco_spacing_xs"
-                android:text="TXT"
-                android:maxLines="1"
-                android:maxWidth="50dp"
-                app:arcoRadius="@dimen/arco_radius_sm"
-                tools:ignore="HardcodedText,RtlHardcoded" />
-
-            <TextView
-                android:id="@+id/tv_size"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="@dimen/arco_spacing_lg"
-                tools:ignore="RtlHardcoded"
-                tools:text="324kb" />
-
-            <TextView
-                android:id="@+id/tv_date"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                tools:text="2017-05-22" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/tv_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            tools:text="2017-05-22" />
 
     </LinearLayout>
-</LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

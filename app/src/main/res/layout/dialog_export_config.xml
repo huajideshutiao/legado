@@ -74,7 +74,6 @@
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/arco_spacing_md"
             android:hint="@string/export_charset">
 
             <io.legado.app.ui.widget.text.AutoCompleteTextView
@@ -90,7 +89,6 @@
             android:id="@+id/cb_no_chapter_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/arco_spacing_md"
             android:text="@string/export_no_chapter_name" />
 
     </LinearLayout>

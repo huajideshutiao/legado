@@ -130,7 +130,10 @@ class FileAssociationFragment() : Fragment() {
             "/httpTTS" -> showImportDialog(ImportHttpTtsDialog(url, isShell))
             "/dictRule" -> showImportDialog(ImportDictRuleDialog(url, isShell))
             "/theme" -> showImportDialog(ImportThemeDialog(url, isShell))
-            "/addToBookshelf" -> showImportDialog(AddToBookshelfDialog(url, isShell))
+            "/addToBookshelf" -> {
+                AddToBookshelfHelper.add(requireActivity(), url, isShell)
+                removeSelf()
+            }
 
             "/readConfig" -> viewModel.getBytes(url) { bytes ->
                 viewModel.importReadConfig(bytes) { title, msg ->

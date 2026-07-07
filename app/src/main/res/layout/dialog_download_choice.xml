@@ -8,9 +8,9 @@
     android:orientation="horizontal"
     android:padding="@dimen/arco_spacing_lg">
 
-    <View
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+    <Space
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_weight="1" />
 
     <TextView
@@ -75,9 +75,9 @@
         android:textSize="14sp"
         tools:ignore="TouchTargetSizeCheck,SpeakableTextPresentCheck,TextContrastCheck" />
 
-    <View
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+    <Space
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_weight="1" />
 
 </LinearLayout>

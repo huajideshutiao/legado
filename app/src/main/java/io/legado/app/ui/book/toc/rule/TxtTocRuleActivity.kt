@@ -22,7 +22,6 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -32,7 +31,6 @@ import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.showHelp
@@ -82,7 +80,6 @@ class TxtTocRuleActivity :
     }
 
     private fun initView() = binding.run {
-        recyclerView.setEdgeEffectColor(primaryColor)
         recyclerView.adapter = adapter
         // When this page is opened, it is in selection mode
         val dragSelectTouchHelper =

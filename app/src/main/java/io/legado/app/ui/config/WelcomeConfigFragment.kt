@@ -18,7 +18,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.number.showNumberPicker
@@ -29,7 +28,6 @@ import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
 import io.legado.app.utils.removePref
 import io.legado.app.utils.resizeAndRecycle
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.io.ByteArrayOutputStream
@@ -61,7 +59,6 @@ class WelcomeConfigFragment : PreferenceFragment(),
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         activity?.setTitle(R.string.welcome_style)
-        listView.setEdgeEffectColor(primaryColor)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

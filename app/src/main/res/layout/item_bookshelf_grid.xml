@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cv_content"
@@ -13,26 +13,20 @@
     android:scrollbars="none"
     tools:ignore="UnusedAttribute">
 
-
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <io.legado.app.ui.widget.image.CoverImageView
+        android:id="@+id/iv_cover"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:scrollbars="none">
-
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_margin="@dimen/arco_spacing_md"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            tools:layout_editor_absoluteX="8dp" />
+        android:layout_margin="@dimen/arco_spacing_md"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
         <io.legado.app.ui.widget.text.BadgeView
             android:id="@+id/bv_unread"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="right"
+            android:layout_gravity="end"
             android:layout_marginTop="@dimen/arco_spacing_xs"
             android:layout_marginEnd="@dimen/arco_spacing_xs"
             android:includeFontPadding="false"
@@ -40,49 +34,51 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <com.google.android.material.progressindicator.CircularProgressIndicator
-            android:id="@+id/rl_loading"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_gravity="right"
-            android:scrollbars="none"
-            android:indeterminate="true"
-            android:visibility="invisible"
-            app:indicatorSize="22dp"
-            app:trackThickness="2dp"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            tools:ignore="RtlHardcoded" />
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/rl_loading"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="right"
+        android:indeterminate="true"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:indicatorSize="22dp"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:trackThickness="2dp"
+        tools:ignore="RtlHardcoded"
+        tools:visibility="visible" />
 
-        <ImageView
-            android:id="@+id/iv_in_bookshelf"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:visibility="gone"
-            app:layout_constraintDimensionRatio="1:1"
-            app:layout_constraintStart_toStartOf="@+id/iv_cover"
-            app:layout_constraintTop_toTopOf="@+id/iv_cover"
-            app:layout_constraintWidth_percent="0.22"
-            app:srcCompat="@drawable/ic_bookmark"
-            tools:ignore="ContentDescription" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    <ImageView
+        android:id="@+id/iv_in_bookshelf"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintDimensionRatio="1:1"
+        app:layout_constraintStart_toStartOf="@+id/iv_cover"
+        app:layout_constraintTop_toTopOf="@+id/iv_cover"
+        app:layout_constraintWidth_percent="0.22"
+        app:srcCompat="@drawable/ic_bookmark"
+        tools:ignore="ContentDescription"
+        tools:visibility="visible" />
 
     <TextView
         android:id="@+id/tv_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/arco_spacing_default"
         android:ellipsize="end"
-        android:gravity="top|center_horizontal"
+        android:gravity="center_horizontal|top"
         android:includeFontPadding="false"
         android:maxLines="2"
         android:scrollbars="none"
         android:text="@string/book_name"
         android:textColor="@color/primaryText"
         android:textSize="12sp"
+        app:layout_constraintTop_toBottomOf="@id/iv_cover"
         tools:ignore="RtlHardcoded,RtlSymmetry" />
 
-</LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
 
 
 

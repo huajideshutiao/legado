@@ -79,9 +79,12 @@
             android:id="@+id/cl_toc"
             android:layout_width="match_parent"
             android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
+            app:layout_constraintTop_toTopOf="parent"
+            tools:visibility="visible">
 
             <FrameLayout
                 android:id="@+id/fl_hide_toc"

@@ -5,16 +5,18 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.signature.ObjectKey
-import io.legado.app.R
+import com.ortiz.touchview.TouchImageView
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppConst
-import io.legado.app.databinding.DialogPhotoViewBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.glide.ImageLoader
@@ -28,12 +30,11 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
  * 显示图片
  */
-class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
+class PhotoDialog() : BaseDialogFragment(0) {
 
     override val isFullHeight: Boolean = true
 
@@ -44,8 +45,30 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         }
     }
 
-    private val binding by viewBinding(DialogPhotoViewBinding::bind)
+    private lateinit var photoView: TouchImageView
     private lateinit var src: String
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val ctx = inflater.context
+        photoView = TouchImageView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        }
+        return FrameLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            addView(photoView)
+        }
+    }
 
     private val requestOptions: RequestOptions by lazy {
         arguments?.getString("sourceOrigin")?.let {
@@ -69,7 +92,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
     }
 
     private fun initEvent() {
-        binding.photoView.setOnLongClickListener {
+        photoView.setOnLongClickListener {
             val path = ACache.get().getAsString(AppConst.imagePathKey)
             if (path.isNullOrEmpty()) {
                 saveImageLauncher.launch { }
@@ -114,7 +137,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
                 else -> null
             }?.apply { density = targetDensity }
         }.onSuccess { bitmap ->
-            if (bitmap != null) binding.photoView.setImageBitmap(bitmap)
+            if (bitmap != null) photoView.setImageBitmap(bitmap)
             else loadByGlide()
         }.onError {
             loadByGlide()
@@ -147,7 +170,7 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             .error(normalRequest)
             .dontTransform()
             .downsample(DownsampleStrategy.NONE)
-            .into(binding.photoView)
+            .into(photoView)
     }
 
     @SuppressLint("CheckResult")

@@ -6,18 +6,19 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.DialogSourceFilterListBinding
-import io.legado.app.databinding.Item1lineTextBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.ReplaceRuleActivity
@@ -100,14 +101,30 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
         }
     }
 
-    private inner class ReplaceAdapter(context: Context) :
-        RecyclerAdapter<ReplaceRule, Item1lineTextBinding>(context) {
+    class TextItemBinding(val root: TextView) : ViewBinding {
+        override fun getRoot(): View = root
+    }
 
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextBinding {
-            return Item1lineTextBinding.inflate(inflater, parent, false)
+    private inner class ReplaceAdapter(context: Context) :
+        RecyclerAdapter<ReplaceRule, TextItemBinding>(context) {
+
+        override fun getViewBinding(parent: ViewGroup): TextItemBinding {
+            val tv = TextView(parent.context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                )
+            }
+            return TextItemBinding(tv)
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: TextItemBinding) {
             binding.root.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { item ->
                     if (item === chineseConvert) {
@@ -121,11 +138,11 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: Item1lineTextBinding,
+            binding: TextItemBinding,
             item: ReplaceRule,
             payloads: MutableList<Any>
         ) {
-            binding.textView.text = item.name
+            binding.root.text = item.name
         }
     }
 }

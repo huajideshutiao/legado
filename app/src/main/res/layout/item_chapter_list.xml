@@ -7,7 +7,7 @@
     android:layout_height="wrap_content"
     android:background="?android:attr/selectableItemBackground"
     android:orientation="vertical"
-    android:padding="@dimen/arco_spacing_md">
+    android:padding="@dimen/arco_spacing_default">
 
     <ImageView
         android:id="@+id/iv_locked"
@@ -19,7 +19,8 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:tint="@color/secondaryText" />
+        app:tint="@color/secondaryText"
+        tools:visibility="visible" />
 
     <TextView
         android:id="@+id/tv_chapter_name"
@@ -49,7 +50,9 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@+id/iv_locked"
         app:layout_constraintTop_toBottomOf="@+id/barrier"
-        tools:ignore="RtlSymmetry" />
+        tools:ignore="RtlSymmetry"
+        tools:text="@string/source_filter_field_word_count"
+        tools:visibility="visible" />
 
     <TextView
         android:id="@+id/tv_tag"
@@ -61,7 +64,8 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@id/tv_word_count"
         app:layout_constraintRight_toLeftOf="@+id/iv_checked"
-        app:layout_constraintTop_toBottomOf="@+id/barrier" />
+        app:layout_constraintTop_toBottomOf="@+id/barrier"
+        tools:visibility="visible" />
 
     <ImageView
         android:id="@+id/iv_checked"
@@ -74,6 +78,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:tint="@color/secondaryText" />
+        app:tint="@color/secondaryText"
+        tools:visibility="visible" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

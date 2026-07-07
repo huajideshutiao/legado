@@ -1,19 +1,19 @@
 package io.legado.app.ui.about
 
-import android.content.Context
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.setPadding
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemAppLogBinding
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.showDialogFragment
@@ -26,7 +26,7 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy {
-        LogAdapter(requireContext())
+        LogAdapter()
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -39,47 +39,78 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }
-        adapter.setItems(AppLog.logs)
+        adapter.submitList(AppLog.logs)
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_clear -> {
                 AppLog.clear()
-                adapter.clearItems()
+                adapter.submitList(emptyList())
             }
         }
         return true
     }
 
-    @Suppress("RedundantInnerClassModifier")
-    inner class LogAdapter(context: Context) :
-        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAppLogBinding>(context) {
+    private inner class LogAdapter :
+        RecyclerView.Adapter<LogAdapter.LogViewHolder>() {
 
-        override fun getViewBinding(parent: ViewGroup): ItemAppLogBinding {
-            return ItemAppLogBinding.inflate(inflater, parent, false)
+        private var items: List<Triple<Long, String, Throwable?>> = emptyList()
+
+        fun submitList(newItems: List<Triple<Long, String, Throwable?>>) {
+            items = newItems
+            notifyDataSetChanged()
         }
 
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemAppLogBinding,
-            item: Triple<Long, String, Throwable?>,
-            payloads: MutableList<Any>
-        ) {
-            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
-            binding.textMessage.text = item.second
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LogViewHolder {
+            val ctx = parent.context
+            val padding = ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+            val root = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(padding)
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setBackgroundResource(android.R.drawable.list_selector_background)
+            }
+            val textTime = TextView(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val textMessage = TextView(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                setTextIsSelectable(true)
+                autoLinkMask = android.text.util.Linkify.WEB_URLS
+            }
+            root.addView(textTime)
+            root.addView(textMessage)
+            return LogViewHolder(root, textTime, textMessage)
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
-            binding.root.onClick {
-                getItem(holder.layoutPosition)?.let { item ->
-                    item.third?.let {
-                        showDialogFragment(TextDialog("Log", it.stackTraceToString()))
-                    }
+        override fun onBindViewHolder(holder: LogViewHolder, position: Int) {
+            val (time, message, throwable) = items[position]
+            holder.textTime.text = LogUtils.logTimeFormat.format(Date(time))
+            holder.textMessage.text = message
+            holder.itemView.onClick {
+                throwable?.let {
+                    showDialogFragment(TextDialog("Log", it.stackTraceToString()))
                 }
             }
         }
 
+        override fun getItemCount() = items.size
+
+        private inner class LogViewHolder(
+            itemView: View,
+            val textTime: TextView,
+            val textMessage: TextView
+        ) : RecyclerView.ViewHolder(itemView)
     }
 
 }

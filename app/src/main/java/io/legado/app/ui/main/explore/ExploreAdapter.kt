@@ -21,8 +21,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.RowUi
+import io.legado.app.databinding.ItemExploreSourceBinding
 import io.legado.app.databinding.ItemFilletTextBinding
-import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.clearExploreKindsCache
@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 import splitties.views.onLongClick
 
 class ExploreAdapter(context: Context, val callBack: CallBack) :
-    RecyclerAdapter<BookSourcePart, ItemFindBookBinding>(context) {
+    RecyclerAdapter<BookSourcePart, ItemExploreSourceBinding>(context) {
 
     private val recycler = arrayListOf<View>()
     private var exIndex = -1
@@ -54,13 +54,13 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         const val PAYLOAD_REFRESH = "refresh"
     }
 
-    override fun getViewBinding(parent: ViewGroup): ItemFindBookBinding {
-        return ItemFindBookBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemExploreSourceBinding {
+        return ItemExploreSourceBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemFindBookBinding,
+        binding: ItemExploreSourceBinding,
         item: BookSourcePart,
         payloads: MutableList<Any>
     ) {
@@ -102,7 +102,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * ================= 展开逻辑 =================
      */
     private fun handleExpand(
-        binding: ItemFindBookBinding, item: BookSourcePart, isUpdate: Boolean
+        binding: ItemExploreSourceBinding, item: BookSourcePart, isUpdate: Boolean
     ) {
         val bookSource = item.getBookSource() ?: return
 
@@ -136,7 +136,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * 高度展开动画：每帧只改高度，不在动画期间手动 scroll。
      * 下方 item 的让位由 RecyclerView 默认行为完成；如果展开后底部超出视口，动画结束时再 smoothScroll 一次。
      */
-    private fun executeExpandAnimation(binding: ItemFindBookBinding) {
+    private fun executeExpandAnimation(binding: ItemExploreSourceBinding) {
         val grid = binding.flexbox
         val root = binding.root
         val rv = root.parent as? RecyclerView
@@ -198,7 +198,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * 用 ValueAnimator 在旧/新高度之间平滑过渡。
      */
     private fun handleRefresh(
-        holder: ItemViewHolder, binding: ItemFindBookBinding, item: BookSourcePart
+        holder: ItemViewHolder, binding: ItemExploreSourceBinding, item: BookSourcePart
     ) {
         val bookSource = item.getBookSource() ?: return
         val targetPos = holder.layoutPosition - getHeaderCount()
@@ -241,7 +241,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
      * 刷新后的高度过渡：从 startHeight 平滑到新内容的实际高度，避免一次性跳变。
      */
     private fun animateRefreshHeight(
-        binding: ItemFindBookBinding, grid: GridLayout, startHeight: Int
+        binding: ItemExploreSourceBinding, grid: GridLayout, startHeight: Int
     ) {
         val root = binding.root
         val rv = root.parent as? RecyclerView
@@ -274,7 +274,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     /**
      * ================= 收起逻辑 =================
      */
-    private fun handleCollapse(binding: ItemFindBookBinding, isUpdate: Boolean) {
+    private fun handleCollapse(binding: ItemExploreSourceBinding, isUpdate: Boolean) {
         val grid = binding.flexbox
         binding.rotateLoading.hide()
 
@@ -399,7 +399,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemFindBookBinding) {
+    override fun registerListener(holder: ItemViewHolder, binding: ItemExploreSourceBinding) {
         binding.apply {
             llTitle.setOnClickListener {
                 val layoutPos = holder.layoutPosition

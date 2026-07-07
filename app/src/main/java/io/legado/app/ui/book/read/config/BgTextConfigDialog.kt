@@ -4,12 +4,17 @@ import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.graphics.PorterDuff
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
-import android.widget.SeekBar
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.widget.TooltipCompat
 import androidx.core.graphics.toColorInt
 import androidx.core.view.isGone
 import androidx.fragment.app.viewModels
+import androidx.viewbinding.ViewBinding
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
 import io.legado.app.base.BaseBottomDialogFragment
@@ -17,7 +22,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogReadBgTextBinding
-import io.legado.app.databinding.ItemBgImageBinding
 import io.legado.app.help.DefaultData
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.ReadBookConfig
@@ -31,7 +35,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.longToast
 import io.legado.app.utils.postEvent
@@ -126,21 +129,43 @@ class BgTextConfigDialog : BaseBottomDialogFragment(R.layout.dialog_read_bg_text
         ivImport.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
         ivExport.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
         ivDelete.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
-        tvBgAlpha.applyMenuThemeTextColor(theme)
         tvBgImage.applyMenuThemeTextColor(theme)
         swUnderline.isGone = ReadBook.book?.isImage == true
         recyclerView.adapter = adapter
         adapter.addHeaderView {
-            ItemBgImageBinding.inflate(layoutInflater, it, false).apply {
-                tvName.applyMenuThemeSecondaryTextColor(theme)
-                tvName.text = getString(R.string.select_image)
-                ivBg.setImageResource(R.drawable.ic_image)
-                ivBg.applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
-                root.setOnClickListener {
+            val ctx = it.context
+            val root = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(2, 2, 2, 2)
+                layoutParams = ViewGroup.LayoutParams(66, 88)
+                val ivBg = ImageView(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                    )
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setImageResource(R.drawable.ic_image)
+                    applyMenuThemeColorFilter(theme, PorterDuff.Mode.SRC_IN)
+                }
+                val tvName = TextView(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    isSingleLine = true
+                    gravity = Gravity.CENTER
+                    applyMenuThemeSecondaryTextColor(theme)
+                    text = getString(R.string.select_image)
+                }
+                addView(ivBg)
+                addView(tvName)
+                setOnClickListener {
                     selectBgImage.launch {
                         mode = HandleFileContract.IMAGE
                     }
                 }
+            }
+            object : ViewBinding {
+                override fun getRoot(): View = root
             }
         }
         adapter.setItems(RemoteAssetsUtils.getBgList())
@@ -234,16 +259,10 @@ class BgTextConfigDialog : BaseBottomDialogFragment(R.layout.dialog_read_bg_text
                 toastOnUi("数量已是最少,不能删除.")
             }
         }
-        binding.sbBgAlpha.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                ReadBookConfig.bgAlpha = progress
-                postEvent(EventBus.UP_CONFIG, arrayListOf(3))
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                postEvent(EventBus.UP_CONFIG, arrayListOf(3))
-            }
-        })
+        binding.sbBgAlpha.onChanged = { progress ->
+            ReadBookConfig.bgAlpha = progress
+            postEvent(EventBus.UP_CONFIG, arrayListOf(3))
+        }
     }
 
     @SuppressLint("InflateParams")

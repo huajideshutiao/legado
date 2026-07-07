@@ -3,8 +3,13 @@ package io.legado.app.ui.login
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -16,14 +21,12 @@ import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
 import io.legado.app.databinding.ItemFilletTextBinding
-import io.legado.app.databinding.ItemLoginSelectBinding
-import io.legado.app.databinding.ItemLoginToggleBinding
-import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isAbsUrl
@@ -96,34 +99,47 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     }
                 val rowStyle = rowUi.style(defaultStyle)
                 val view = when (rowUi.type) {
-                    RowUi.Type.text -> ItemSourceEditBinding.inflate(
-                        layoutInflater, binding.flexbox, false
-                    ).apply {
-                        rowStyle.apply(root)
-                        textInputLayout.hint = rowUi.name
-                        editText.setText(loginInfo?.get(rowUi.name))
+                    RowUi.Type.text -> createSourceEditView(
+                        binding.flexbox, rowUi.name, loginInfo?.get(rowUi.name)
+                    ) { editText ->
                         editText.setAutofillHints("username")
-                    }.root
+                    }
 
-                    RowUi.Type.password -> ItemSourceEditBinding.inflate(
-                        layoutInflater, binding.flexbox, false
-                    ).apply {
-                        rowStyle.apply(root)
-                        textInputLayout.hint = rowUi.name
+                    RowUi.Type.password -> createSourceEditView(
+                        binding.flexbox, rowUi.name, loginInfo?.get(rowUi.name)
+                    ) { editText ->
                         editText.inputType =
                             InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
-                        editText.setText(loginInfo?.get(rowUi.name))
                         editText.setAutofillHints("password")
-                    }.root
+                    }
 
-                    RowUi.Type.select -> ItemLoginSelectBinding.inflate(
-                        layoutInflater, binding.flexbox, false
-                    ).apply {
-                        rowStyle.apply(root)
-                        textView.text = rowUi.name
+                    RowUi.Type.select -> {
+                        val ctx = requireContext()
+                        val padding = 8.dpToPx()
+                        val root = LinearLayout(ctx).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            setPadding(padding)
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+                        val tv = TextView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                            setTextColor(ctx.getColor(R.color.primaryText))
+                            text = rowUi.name
+                        }
+                        val spinner = Spinner(ctx).apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
+                            )
+                        }
                         val chars = rowUi.chars ?: emptyList()
                         val adapter = ArrayAdapter(
-                            requireContext(), android.R.layout.simple_spinner_item, chars
+                            ctx, android.R.layout.simple_spinner_item, chars
                         ).apply {
                             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                         }
@@ -143,18 +159,31 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
                                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
                             }
-                    }.root
-
-                    RowUi.Type.toggle -> ItemLoginToggleBinding.inflate(
-                        layoutInflater, binding.flexbox, false
-                    ).apply {
+                        root.addView(tv)
+                        root.addView(spinner)
                         rowStyle.apply(root)
-                        swt.text = rowUi.name
-                        swt.isChecked = loginInfo?.get(rowUi.name) == "true"
-                        swt.setOnUserCheckedChangeListener {
-                            handleButtonClick(source, rowUi)
+                        root.tag = spinner
+                        root
+                    }
+
+                    RowUi.Type.toggle -> {
+                        val ctx = requireContext()
+                        val swt = SwitchCompat(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                            setPadding(8.dpToPx())
+                            text = rowUi.name
+                            isChecked = loginInfo?.get(rowUi.name) == "true"
+                            setOnUserCheckedChangeListener {
+                                handleButtonClick(source, rowUi)
+                            }
                         }
-                    }.root
+                        rowStyle.apply(swt)
+                        swt
+                    }
 
                     else -> ItemFilletTextBinding.inflate(
                         layoutInflater, binding.flexbox, false
@@ -174,6 +203,36 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
         } catch (e: Exception) {
             AppLog.put("登录UI 构建失败", e, true)
         }
+    }
+
+    private fun createSourceEditView(
+        parent: ViewGroup,
+        hint: String,
+        text: String?,
+        configure: (CodeView) -> Unit = {}
+    ): View {
+        val ctx = parent.context
+        val root = com.google.android.material.textfield.TextInputLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(0, 4.dpToPx(), 0, 0)
+        }
+        val editText = CodeView(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            inputType =
+                android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        root.addView(editText)
+        root.hint = hint
+        editText.setText(text)
+        configure(editText)
+        root.tag = editText
+        return root
     }
 
     private fun handleButtonClick(source: BaseSource, rowUi: RowUi) {
@@ -205,22 +264,22 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
             when (rowUi.type) {
                 RowUi.Type.text, RowUi.Type.password -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
-                    ItemSourceEditBinding.bind(rowView).editText.text?.let {
+                    (rowView.tag as? CodeView)?.text?.let {
                         loginData[rowUi.name] = it.toString()
                     }
                 }
 
                 RowUi.Type.select -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
-                    (ItemLoginSelectBinding.bind(rowView).spinner.selectedItem as? String)?.let {
-                        loginData[rowUi.name] = it
+                    (rowView.tag as? Spinner)?.selectedItem?.let {
+                        loginData[rowUi.name] = it.toString()
                     }
                 }
 
                 RowUi.Type.toggle -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
                     loginData[rowUi.name] =
-                        ItemLoginToggleBinding.bind(rowView).swt.isChecked.toString()
+                        (rowView as? SwitchCompat)?.isChecked.toString()
                 }
 
                 else -> {}

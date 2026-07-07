@@ -6,15 +6,13 @@
     android:layout_height="wrap_content"
     android:background="?android:attr/selectableItemBackground"
     android:clipToPadding="false"
-    android:paddingVertical="@dimen/arco_spacing_lg"
+    android:padding="@dimen/arco_spacing_default"
     android:scrollbars="none">
 
     <io.legado.app.ui.widget.text.AccentTextView
         android:id="@+id/tv_host_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="-12dp"
-        android:layout_marginBottom="@dimen/arco_spacing_lg"
         android:scrollbars="none"
         android:singleLine="true"
         android:textSize="16sp"
@@ -35,7 +33,7 @@
     <CheckBox
         android:id="@+id/cb_book_source"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/arco_view_height_large"
         android:layout_gravity="center"
         android:scrollbars="none"
         android:singleLine="true"
@@ -49,12 +47,10 @@
 
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/swt_enabled"
-        android:name="@string/enable"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="@dimen/arco_spacing_default"
+        android:layout_height="@dimen/arco_view_height_large"
+        android:paddingHorizontal="@dimen/arco_spacing_xs"
         android:scrollbars="none"
-        app:layout_constraintBottom_toTopOf="@id/iv_debug_text"
         app:layout_constraintRight_toLeftOf="@id/iv_edit"
         app:layout_constraintTop_toBottomOf="@id/barrier"
         tools:ignore="RtlHardcoded,RtlSymmetry,TouchTargetSizeCheck" />
@@ -70,7 +66,6 @@
         android:scrollbars="none"
         android:src="@drawable/ic_edit"
         android:tint="@color/primaryText"
-        app:layout_constraintBottom_toTopOf="@id/iv_debug_text"
         app:layout_constraintRight_toLeftOf="@id/iv_menu_more"
         app:layout_constraintTop_toBottomOf="@id/barrier" />
 
@@ -84,7 +79,6 @@
         android:scrollbars="none"
         android:src="@drawable/ic_more_vert"
         android:tint="@color/primaryText"
-        app:layout_constraintBottom_toTopOf="@id/iv_debug_text"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@id/barrier"
         tools:ignore="RtlHardcoded" />
@@ -104,7 +98,7 @@
         android:id="@+id/iv_debug_text"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/arco_spacing_default"
+        android:layout_marginTop="@dimen/arco_spacing_xs"
         android:scrollbars="none"
         android:singleLine="true"
         android:visibility="gone"
@@ -117,8 +111,8 @@
 
     <ProgressBar
         android:id="@+id/iv_progressBar"
-        android:layout_width="25dp"
-        android:layout_height="25dp"
+        android:layout_width="@dimen/arco_view_height_mini"
+        android:layout_height="@dimen/arco_view_height_mini"
         android:layout_gravity="start|center_vertical"
         android:animationResolution="1000"
         android:indeterminate="true"

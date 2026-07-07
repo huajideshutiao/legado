@@ -28,6 +28,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
@@ -147,6 +148,7 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     }
 
     private fun initView() {
+        binding.clToc.setBackgroundColor(requireContext().backgroundColor)
         binding.ivHideToc.setOnClickListener {
             binding.clToc.gone()
         }

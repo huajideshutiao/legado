@@ -2,11 +2,14 @@ package io.legado.app.ui.main.explore
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
 import androidx.fragment.app.viewModels
@@ -15,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
@@ -24,9 +28,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.PinnedExplore
-import io.legado.app.databinding.FragmentExploreBinding
+import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.databinding.ItemFilletTextBinding
-import io.legado.app.databinding.LayoutExplorePinnedBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.config.AppConfig
@@ -34,17 +37,16 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
@@ -63,7 +65,7 @@ import splitties.views.onLongClick
 /**
  * 发现界面
  */
-class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_explore),
+class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_recycler_view),
     MainFragmentInterface, ExploreAdapter.CallBack {
 
     constructor(position: Int) : this() {
@@ -75,21 +77,22 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     override val position: Int? get() = arguments?.getInt("position")
 
     override val viewModel by viewModels<ExploreViewModel>()
-    private val binding by viewBinding(FragmentExploreBinding::bind)
+    private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
     private val adapter by lazy { ExploreAdapter(requireContext(), this) }
     private val linearLayoutManager by lazy { LinearLayoutManager(context) }
+    private var titleBar: TitleBar? = null
     private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
+        titleBar!!.findViewById(R.id.search_view)
     }
     private val diffItemCallBack = ExploreDiffItemCallBack()
     private val groups = linkedSetOf<String>()
     private var exploreFlowJob: Job? = null
     private var groupsMenu: SubMenu? = null
-    private var pinnedBinding: LayoutExplorePinnedBinding? = null
+    private var pinnedBinding: ExplorePinnedBinding? = null
     private var pinnedHeaderAdded = false
     private val pinnedHeader: (parent: ViewGroup) -> ViewBinding by lazy {
         { parent ->
-            LayoutExplorePinnedBinding.inflate(layoutInflater, parent, false).also {
+            createExplorePinnedBinding(parent).also {
                 pinnedBinding = it
                 upPinned()
             }
@@ -97,7 +100,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setSupportToolbar(binding.titleBar.toolbar)
+        addTitleBar()
         initSearchView()
         initRecyclerView()
         initGroupData()
@@ -109,6 +112,25 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         observeEvent<Boolean>(EventBus.REFRESH_EXPLORE) {
             adapter.refreshCurrentExpanded()
         }
+    }
+
+    private fun addTitleBar() {
+        val ctx = requireContext()
+        titleBar = TitleBar(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setTitle(R.string.discovery)
+            // 手动 inflate 搜索栏布局并添加到 TitleBar
+            LayoutInflater.from(ctx).inflate(R.layout.view_search, this, true)
+        }
+        val root = binding.root as? ViewGroup ?: return
+        root.addView(titleBar, 0)
+        titleBar?.let { setSupportToolbar(it.toolbar) }
+
+        // Hide SwipeRefreshLayout (Explore doesn't use pull-to-refresh)
+        binding.refreshLayout.visibility = View.GONE
     }
 
     @SuppressLint("SetTextI18n")
@@ -213,15 +235,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun initRecyclerView() {
-        binding.rvFind.setEdgeEffectColor(primaryColor)
-        binding.rvFind.layoutManager = linearLayoutManager
-        binding.rvFind.adapter = adapter
+        binding.recyclerView.layoutManager = linearLayoutManager
+        binding.recyclerView.adapter = adapter
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
 
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
                 super.onItemRangeInserted(positionStart, itemCount)
                 if (positionStart == 0) {
-                    binding.rvFind.scrollToPosition(0)
+                    binding.recyclerView.scrollToPosition(0)
                 }
             }
         })
@@ -323,11 +344,49 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     fun compressExplore() {
         if (!adapter.compressExplore()) {
             if (AppConfig.isEInkMode) {
-                binding.rvFind.scrollToPosition(0)
+                binding.recyclerView.scrollToPosition(0)
             } else {
-                binding.rvFind.smoothScrollToPosition(0)
+                binding.recyclerView.smoothScrollToPosition(0)
             }
         }
+    }
+
+    class ExplorePinnedBinding(
+        val root: LinearLayout,
+        val flexbox: FlexboxLayout
+    ) : ViewBinding {
+        override fun getRoot(): View = root
+    }
+
+    private fun createExplorePinnedBinding(
+        parent: ViewGroup
+    ): ExplorePinnedBinding {
+        val ctx = parent.context
+        val root = LinearLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            orientation = LinearLayout.VERTICAL
+        }
+        val tvTitle = TextView(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs), 0, 0, 0)
+            setText(R.string.favorite)
+        }
+        val flexbox = FlexboxLayout(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            flexWrap = com.google.android.flexbox.FlexWrap.WRAP
+        }
+        root.addView(tvTitle)
+        root.addView(flexbox)
+        return ExplorePinnedBinding(root, flexbox)
     }
 
 }

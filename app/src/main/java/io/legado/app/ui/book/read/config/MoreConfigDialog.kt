@@ -17,7 +17,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
@@ -25,7 +24,6 @@ import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setupAsBottomDialog
 
 class MoreConfigDialog : BasePrefDialogFragment() {
@@ -68,7 +66,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
             super.onViewCreated(view, savedInstanceState)
-            listView.setEdgeEffectColor(primaryColor)
         }
 
         override fun onResume() {

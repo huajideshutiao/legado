@@ -4,17 +4,23 @@ import android.content.DialogInterface
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.get
+import androidx.viewbinding.ViewBinding
 import com.github.liuyueyi.quick.transfer.constants.TransType
+import com.google.android.material.imageview.ShapeableImageView
 import io.legado.app.R
 import io.legado.app.base.BaseBottomDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogReadBookStyleBinding
-import io.legado.app.databinding.ItemReadStyleBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
@@ -64,7 +70,8 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
         styleAdapter = StyleAdapter()
         rvStyle.adapter = styleAdapter
         styleAdapter.addFooterView {
-            ItemReadStyleBinding.inflate(layoutInflater, it, false).apply {
+            val binding = createStyleItemBinding(layoutInflater, it)
+            binding.apply {
                 // padding 设在 root 上,使 ShapeableImageView 的 stroke 画在 padding 内(与原 CircleImageView 行为一致)
                 root.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
                 tvStyle.text = null
@@ -185,15 +192,15 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
     }
 
     inner class StyleAdapter :
-        RecyclerAdapter<ReadBookConfig.Config, ItemReadStyleBinding>(requireContext()) {
+        RecyclerAdapter<ReadBookConfig.Config, StyleItemBinding>(requireContext()) {
 
-        override fun getViewBinding(parent: ViewGroup): ItemReadStyleBinding {
-            return ItemReadStyleBinding.inflate(inflater, parent, false)
+        override fun getViewBinding(parent: ViewGroup): StyleItemBinding {
+            return createStyleItemBinding(inflater, parent)
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: ItemReadStyleBinding,
+            binding: StyleItemBinding,
             item: ReadBookConfig.Config,
             payloads: MutableList<Any>
         ) {
@@ -211,7 +218,7 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             }
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: ItemReadStyleBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: StyleItemBinding) {
             binding.apply {
                 // 原 CircleImageView.isInView(点击是否在圆内)能力丢失,改为整个方块响应
                 // 48dp 方块四角区域很小,对用户体验影响可忽略
@@ -224,5 +231,52 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             }
         }
 
+    }
+
+    class StyleItemBinding(
+        val root: FrameLayout,
+        val ivStyle: ShapeableImageView,
+        val tvStyle: TextView
+    ) : ViewBinding {
+        override fun getRoot(): View = root
+    }
+
+    private fun createStyleItemBinding(
+        inflater: LayoutInflater,
+        parent: ViewGroup
+    ): StyleItemBinding {
+        val ctx = parent.context
+        val size = 48.dpToPx()
+        val margin = ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+        val root = FrameLayout(ctx).apply {
+            layoutParams = ViewGroup.MarginLayoutParams(size, size).apply {
+                marginStart = margin
+                marginEnd = margin
+            }
+        }
+        val ivStyle = ShapeableImageView(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.image_cover_default)
+            shapeAppearanceModel = shapeAppearanceModel.withCornerSize(50f)
+            strokeWidth = 1.dpToPx().toFloat()
+        }
+        val tvStyle = TextView(ctx).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            isClickable = false
+            isFocusable = false
+            gravity = android.view.Gravity.CENTER
+            setText(R.string.text)
+            setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
+        }
+        root.addView(ivStyle)
+        root.addView(tvStyle)
+        return StyleItemBinding(root, ivStyle, tvStyle)
     }
 }

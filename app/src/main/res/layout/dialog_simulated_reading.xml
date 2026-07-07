@@ -10,104 +10,58 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:padding="@dimen/arco_spacing_lg">
+        android:layout_height="@dimen/arco_view_height_max"
+        android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_marginEnd="2dp"
-            android:text="@string/switch_on"
-            android:textColor="@color/primaryText"
-            android:textSize="16sp"
-            tools:ignore="RtlHardcoded"
-            android:minWidth="88dp" />
-
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="53dp"
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/sr_enabled"
+            style="@style/Widget.AppCompat.CompoundButton.Switch"
+            android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center_vertical">
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:layout_height="wrap_content"
-                android:id="@+id/sr_enabled"
-                android:layout_weight="1"
-                android:gravity="start|center_vertical"
-                style="@style/Widget.AppCompat.CompoundButton.Switch"
-                android:layout_width="match_parent"
-                android:width="20dp" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:width="20dp"
+            android:text="@string/switch_on" />
 
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="65dp"
-        android:orientation="horizontal"
-        android:padding="@dimen/arco_spacing_lg"
-        android:gravity="start|center_vertical">
+        android:layout_height="@dimen/arco_view_height_max"
+        android:orientation="horizontal">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
+            android:gravity="center_vertical"
+            android:minWidth="100dp"
             android:text="@string/start_from"
             android:textColor="@color/primaryText"
-            android:textSize="16sp"
-            android:gravity="center_vertical"
-            android:minWidth="100dp" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:textSize="16sp" />
 
         <EditText
-            android:layout_width="match_parent"
-            android:layout_height="49dp"
-            android:focusable="true"
-            android:inputType="none"
-            android:ems="10"
             android:id="@+id/start_date"
-            android:hint="Select date"
-            android:layout_weight="1"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="68dp"
             android:clickable="true"
-            android:textSize="16sp"
-            android:layout_marginEnd="68dp" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:ems="10"
+            android:focusable="true"
+            android:hint="Select date"
+            android:inputType="none"
+            android:textSize="16sp" />
 
     </LinearLayout>
 
     <LinearLayout
-        android:orientation="horizontal"
         android:layout_width="match_parent"
-        android:layout_height="63dp"
-        android:gravity="center_horizontal|left"
-        android:padding="@dimen/arco_spacing_lg">
+        android:layout_height="@dimen/arco_view_height_max"
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:orientation="horizontal"
             android:layout_width="100dp"
             android:layout_height="match_parent"
-            android:minWidth="100dp">
+            android:minWidth="100dp"
+            android:orientation="horizontal">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -143,10 +97,10 @@
             tools:ignore="TouchTargetSizeCheck,TextContrastCheck" />
 
         <LinearLayout
-            android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="end">
+            android:gravity="end"
+            android:orientation="horizontal">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -174,11 +128,11 @@
                 android:paddingTop="@dimen/arco_spacing_xs"
                 android:paddingEnd="@dimen/arco_spacing_xs"
                 android:paddingBottom="@dimen/arco_spacing_xs"
+                android:textAlignment="center"
                 android:textColor="@color/primaryText"
                 android:textCursorDrawable="@drawable/shape_text_cursor"
                 android:textSize="14sp"
-                tools:ignore="TouchTargetSizeCheck,SpeakableTextPresentCheck,TextContrastCheck"
-                android:textAlignment="center" />
+                tools:ignore="TouchTargetSizeCheck,SpeakableTextPresentCheck,TextContrastCheck" />
         </LinearLayout>
 
     </LinearLayout>

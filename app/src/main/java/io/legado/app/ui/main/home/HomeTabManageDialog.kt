@@ -11,11 +11,9 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeTab
 import io.legado.app.databinding.DialogHomeSectionManageBinding
 import io.legado.app.help.HomeTabHelp
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -36,7 +34,7 @@ class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_mana
             }
 
             override fun onEdit(tab: HomeTab) {
-                showDialogFragment(HomeTabEditDialog.newInstance(tab.title))
+                showHomeTabEditDialog(requireContext(), tab.title)
             }
         })
     }
@@ -47,12 +45,11 @@ class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_mana
             menuRes = R.menu.dialog_add
         ) {
             if (it?.itemId == R.id.menu_add) {
-                showDialogFragment(HomeTabEditDialog.newInstance(null))
+                showHomeTabEditDialog(requireContext())
             }
             true
         }
         titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_tab_add)
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         initDragSort()

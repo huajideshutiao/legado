@@ -6,7 +6,7 @@ import android.view.View
 import androidx.appcompat.widget.Toolbar
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.DialogDirectLinkUploadConfigBinding
+import io.legado.app.databinding.DialogDirectLinkConfigBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.negativeButton
@@ -21,10 +21,10 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
 import splitties.views.onClick
 
-class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_upload_config),
+class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_config),
     Toolbar.OnMenuItemClickListener {
 
-    private val binding by viewBinding(DialogDirectLinkUploadConfigBinding::bind)
+    private val binding by viewBinding(DialogDirectLinkConfigBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(

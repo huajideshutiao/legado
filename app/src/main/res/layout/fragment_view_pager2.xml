@@ -11,10 +11,10 @@
         android:layout_height="wrap_content"
         app:attachToActivity="false"
         app:contentLayout="@layout/view_tab_layout_min"
-        app:title="@string/home" />
+        app:title="@string/bookshelf" />
 
     <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/view_pager_home"
+        android:id="@+id/view_pager"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

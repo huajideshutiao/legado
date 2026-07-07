@@ -80,8 +80,24 @@ class AudioPlayActivity :
 
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
     override val viewModel by viewModels<AudioPlayViewModel>()
-    private val timerSliderPopup by lazy { TimerSliderPopup(this) }
-    private val speedSliderPopup by lazy { SpeedSliderPopup(this) }
+    private val timerSliderPopup by lazy {
+        SliderPopup(
+            context = this,
+            max = 180,
+            getProgress = { AudioPlayService.timeMinute },
+            onProgressChanged = { AudioPlay.setTimer(it) },
+            formatText = { getString(R.string.timer_m, it) }
+        )
+    }
+    private val speedSliderPopup by lazy {
+        SliderPopup(
+            context = this,
+            max = 30,
+            getProgress = { (AudioPlayService.playSpeed * 10).toInt() },
+            onProgressChanged = { AudioPlay.adjustSpeed(it / 10.0f) },
+            formatText = { String.format(java.util.Locale.ROOT, "%.1fX", it / 10.0f) }
+        )
+    }
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
 

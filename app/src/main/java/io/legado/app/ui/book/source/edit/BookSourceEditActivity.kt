@@ -27,7 +27,6 @@ import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.onCancelled
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
@@ -40,7 +39,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.share
 import io.legado.app.utils.showHelp
@@ -169,7 +167,6 @@ class BookSourceEditActivity :
         binding.tabLayout.addTab(binding.tabLayout.newTab().apply {
             setText(R.string.source_tab_review)
         })
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
         val gridLayoutManager = NoChildScrollGridLayoutManager(this, 2)
         gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {

@@ -4,9 +4,13 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.FrameLayout
+import android.widget.RadioButton
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
@@ -15,8 +19,6 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSearchScopeBinding
-import io.legado.app.databinding.ItemCheckBoxBinding
-import io.legado.app.databinding.ItemRadioButtonBinding
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -157,9 +159,45 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemViewHolder {
             return if (viewType == 1) {
-                ItemViewHolder(ItemRadioButtonBinding.inflate(layoutInflater, parent, false))
+                val ctx = parent.context
+                val hPad = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
+                val vPad =
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                val root = FrameLayout(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    setPadding(hPad, vPad, hPad, vPad)
+                }
+                val radioButton = RadioButton(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                root.addView(radioButton)
+                ItemViewHolder(RadioButtonWrapper(root, radioButton))
             } else {
-                ItemViewHolder(ItemCheckBoxBinding.inflate(layoutInflater, parent, false))
+                val ctx = parent.context
+                val hPad = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
+                val vPad =
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                val root = FrameLayout(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    setPadding(hPad, vPad, hPad, vPad)
+                }
+                val checkBox = CheckBox(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                root.addView(checkBox)
+                ItemViewHolder(CheckBoxWrapper(root, checkBox))
             }
         }
 
@@ -173,18 +211,18 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
                 return
             }
             when (val itemBinding = holder.binding) {
-                is ItemCheckBoxBinding -> {
+                is CheckBoxWrapper -> {
                     groups.getOrNull(position)?.let {
                         itemBinding.checkBox.isChecked = selectGroups.contains(it)
                         itemBinding.checkBox.text = it
                     }
                 }
 
-                is ItemRadioButtonBinding -> {
+                is RadioButtonWrapper -> {
                     screenSources.getOrNull(position)?.let { src ->
-                        itemBinding.radioButton.isChecked =
+                        itemBinding.radio.isChecked =
                             selectSource?.bookSourceUrl == src.bookSourceUrl
-                        itemBinding.radioButton.text = src.bookSourceName
+                        itemBinding.radio.text = src.bookSourceName
                     }
                 }
             }
@@ -192,7 +230,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
         override fun onBindViewHolder(holder: ItemViewHolder, position: Int) {
             when (val itemBinding = holder.binding) {
-                is ItemCheckBoxBinding -> {
+                is CheckBoxWrapper -> {
                     val group = groups.getOrNull(position) ?: return
                     itemBinding.checkBox.isChecked = selectGroups.contains(group)
                     itemBinding.checkBox.text = group
@@ -208,12 +246,12 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
                     }
                 }
 
-                is ItemRadioButtonBinding -> {
+                is RadioButtonWrapper -> {
                     val src = screenSources.getOrNull(position) ?: return
-                    itemBinding.radioButton.isChecked =
+                    itemBinding.radio.isChecked =
                         selectSource?.bookSourceUrl == src.bookSourceUrl
-                    itemBinding.radioButton.text = src.bookSourceName
-                    itemBinding.radioButton.setOnUserCheckedChangeListener { isChecked ->
+                    itemBinding.radio.text = src.bookSourceName
+                    itemBinding.radio.setOnUserCheckedChangeListener { isChecked ->
                         if (isChecked) {
                             selectSource = src
                             holder.itemView.post {
@@ -225,6 +263,20 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
             }
         }
 
+    }
+
+    private class CheckBoxWrapper(root: View, val checkBox: CheckBox) : ViewBinding {
+        override fun getRoot(): View = root
+        init {
+            root.tag = this
+        }
+    }
+
+    private class RadioButtonWrapper(root: View, val radio: RadioButton) : ViewBinding {
+        override fun getRoot(): View = root
+        init {
+            root.tag = this
+        }
     }
 
     interface Callback {

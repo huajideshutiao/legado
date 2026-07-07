@@ -11,11 +11,13 @@ import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.SwitchCompat
+import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.progressindicator.BaseProgressIndicator
 import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.setEdgeEffectColor
 
 /**
  * 自动主题拦截器：在 View 填充时自动应用 ThemeStore 中的颜色。
@@ -24,46 +26,48 @@ import io.legado.app.utils.ColorUtils
 object ThemeInterceptor {
 
     fun apply(view: View, attrs: AttributeSet) {
-        val context = view.context
-        // 仅读取一次主题色和夜间模式标记，避免重复查询
-        val accentColor = context.accentColor
-        val isDark = AppConfig.isNightTheme
-        when (view) {
-            // TextInputLayout 是 EditText 的容器，需在 EditText 之前判断
-            is TextInputLayout -> {
-                setTint(view, accentColor, isDark)
-            }
-
-            is EditText -> {
-                TintHelper.setTintAuto(view, accentColor, false, isDark)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                    view.isLocalePreferredLineHeightForMinimumUsed = false
+        runCatching {
+            val context = view.context
+            val accentColor = context.accentColor
+            val isDark = AppConfig.isNightTheme
+            when (view) {
+                is TextInputLayout -> {
+                    setTint(view, accentColor, isDark)
                 }
-                view.setLinkTextColor(accentColor)
-                // 长按选中文本的高亮背景色，对齐 Material 默认 0x66(40%) 透明度
-                view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
-            }
 
-            is CheckBox, is RadioButton, is Switch, is SwitchCompat -> {
-                TintHelper.setTintAuto(view, accentColor, false, isDark)
-            }
+                is EditText -> {
+                    TintHelper.setTintAuto(view, accentColor, false, isDark)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                        view.isLocalePreferredLineHeightForMinimumUsed = false
+                    }
+                    view.setLinkTextColor(accentColor)
+                    view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
+                }
 
-            is BaseProgressIndicator<*> -> {
-                view.setIndicatorColor(accentColor)
-            }
+                is CheckBox, is RadioButton, is Switch, is SwitchCompat -> {
+                    TintHelper.setTintAuto(view, accentColor, false, isDark)
+                }
 
-            is ProgressBar -> {
-                TintHelper.setTintAuto(view, accentColor, false, isDark)
-            }
+                is BaseProgressIndicator<*> -> {
+                    view.setIndicatorColor(accentColor)
+                }
 
-            is SwipeRefreshLayout -> {
-                view.setColorSchemeColors(accentColor)
-            }
+                is ProgressBar -> {
+                    TintHelper.setTintAuto(view, accentColor, false, isDark)
+                }
 
-            is TextView -> {
-                view.setLinkTextColor(accentColor)
-                // 长按选中文本的高亮背景色（仅对 setTextIsSelectable=true 的 TextView 生效）
-                view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
+                is SwipeRefreshLayout -> {
+                    view.setColorSchemeColors(accentColor)
+                }
+
+                is RecyclerView -> {
+                    view.setEdgeEffectColor(accentColor)
+                }
+
+                is TextView -> {
+                    view.setLinkTextColor(accentColor)
+                    view.setHighlightColor(ColorUtils.adjustAlpha(accentColor, 0.4f))
+                }
             }
         }
     }

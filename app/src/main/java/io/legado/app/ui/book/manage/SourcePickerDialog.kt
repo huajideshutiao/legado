@@ -5,11 +5,13 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
@@ -19,7 +21,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSourcePickerBinding
-import io.legado.app.databinding.Item1lineTextBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.number.showNumberPicker
@@ -109,25 +110,34 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
         return true
     }
 
-    inner class SourceAdapter(context: Context) :
-        RecyclerAdapter<BookSourcePart, Item1lineTextBinding>(context) {
+    class TextItemBinding(val root: TextView) : ViewBinding {
+        override fun getRoot(): View = root
+    }
 
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextBinding {
-            return Item1lineTextBinding.inflate(inflater, parent, false).apply {
-                root.setPadding(16.dpToPx())
+    inner class SourceAdapter(context: Context) :
+        RecyclerAdapter<BookSourcePart, TextItemBinding>(context) {
+
+        override fun getViewBinding(parent: ViewGroup): TextItemBinding {
+            val tv = TextView(parent.context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(16.dpToPx())
             }
+            return TextItemBinding(tv)
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: Item1lineTextBinding,
+            binding: TextItemBinding,
             item: BookSourcePart,
             payloads: MutableList<Any>
         ) {
-            binding.textView.text = item.getDisPlayNameGroup()
+            binding.root.text = item.getDisPlayNameGroup()
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: TextItemBinding) {
             binding.root.onClick {
                 getItemByLayoutPosition(holder.layoutPosition)?.let {
                     it.getBookSource()?.let { source ->

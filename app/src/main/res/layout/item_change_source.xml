@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?android:attr/selectableItemBackground"
+    android:padding="@dimen/arco_spacing_default"
     tools:ignore="RtlHardcoded,RtlSymmetry">
 
     <androidx.appcompat.widget.AppCompatImageView
@@ -12,9 +13,9 @@
         android:layout_width="30dp"
         android:layout_height="0dp"
         android:layout_marginTop="@dimen/arco_spacing_xs"
+        android:contentDescription="@string/like_source"
         android:padding="@dimen/arco_spacing_xs"
         android:src="@drawable/ic_praise"
-        android:contentDescription="@string/like_source"
         app:layout_constraintBottom_toTopOf="@+id/iv_bad"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -25,10 +26,10 @@
         android:layout_width="30dp"
         android:layout_height="0dp"
         android:layout_marginBottom="@dimen/arco_spacing_xs"
+        android:contentDescription="@string/not_like_source"
         android:padding="@dimen/arco_spacing_xs"
         android:rotationX="180"
         android:src="@drawable/ic_praise"
-        android:contentDescription="@string/not_like_source"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/iv_good"
@@ -42,10 +43,10 @@
         android:layout_marginTop="@dimen/arco_spacing_md"
         android:singleLine="true"
         android:textColor="@color/primaryText"
-        tools:text="bookSourceName"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/tv_author"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="bookSourceName" />
 
     <TextView
         android:id="@+id/tv_author"
@@ -54,10 +55,10 @@
         android:layout_marginTop="@dimen/arco_spacing_md"
         android:maxWidth="160dp"
         android:singleLine="true"
-        tools:text="author"
         android:textColor="@color/secondaryText"
         app:layout_constraintRight_toLeftOf="@+id/iv_checked"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="author" />
 
     <TextView
         android:id="@+id/tv_last"
@@ -66,11 +67,11 @@
         android:layout_marginStart="30dp"
         android:layout_marginBottom="@dimen/arco_spacing_md"
         android:singleLine="true"
-        tools:text="latest chapter name"
         android:textColor="@color/secondaryText"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/iv_checked"
-        app:layout_constraintTop_toBottomOf="@+id/tv_origin" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_origin"
+        tools:text="latest chapter name" />
 
     <TextView
         android:id="@+id/tv_current_chapter_word_count"
@@ -79,11 +80,11 @@
         android:layout_marginStart="30dp"
         android:layout_marginBottom="@dimen/arco_spacing_md"
         android:singleLine="false"
-        tools:text="word count"
         android:textColor="@color/secondaryText"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/iv_checked"
-        app:layout_constraintTop_toBottomOf="@+id/tv_last" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_last"
+        tools:text="word count" />
 
     <TextView
         android:id="@+id/tv_respond_time"
@@ -92,12 +93,12 @@
         android:layout_marginStart="30dp"
         android:layout_marginBottom="@dimen/arco_spacing_md"
         android:singleLine="false"
-        tools:text="respond time"
         android:textColor="@color/secondaryText"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/iv_checked"
-        app:layout_constraintTop_toBottomOf="@+id/tv_current_chapter_word_count" />
+        app:layout_constraintTop_toBottomOf="@+id/tv_current_chapter_word_count"
+        tools:text="respond time" />
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_checked"

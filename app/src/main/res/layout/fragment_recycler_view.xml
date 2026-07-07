@@ -9,10 +9,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
-            android:id="@+id/rv_bookshelf"
+        <io.legado.app.ui.widget.recycler.RecyclerViewAtPager2
+            android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="@dimen/arco_spacing_default"
             tools:listitem="@layout/item_bookshelf_list" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
@@ -25,8 +27,9 @@
         android:layout_margin="@dimen/arco_spacing_lg"
         android:gravity="center"
         android:text="@string/bookshelf_empty"
+        android:textColor="@color/tv_text_summary"
+        android:textSize="14sp"
         android:visibility="gone"
         tools:text="TextView" />
 
 </FrameLayout>
-

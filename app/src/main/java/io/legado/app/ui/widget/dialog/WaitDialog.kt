@@ -1,27 +1,55 @@
 package io.legado.app.ui.widget.dialog
 
 import android.content.Context
-import android.view.LayoutInflater
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import io.legado.app.databinding.DialogWaitBinding
+import io.legado.app.R
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.utils.applyTint
 
 class WaitDialog(context: Context) {
 
-    private val binding = DialogWaitBinding.inflate(LayoutInflater.from(context))
-    private val dialog: AlertDialog = AlertDialog.Builder(context).apply {
-        customView { binding.root }
-    }.create()
+    private val tvMsg: TextView
+    private val dialog: AlertDialog
 
     var onCancelListener: (() -> Unit)? = null
 
     init {
+        val dp24 = (24 * context.resources.displayMetrics.density).toInt()
+        val dp16 = (16 * context.resources.displayMetrics.density).toInt()
+        val dp8 = (8 * context.resources.displayMetrics.density).toInt()
+
+        val progressBar = ProgressBar(context).apply {
+            layoutParams = LinearLayout.LayoutParams(dp24, dp24)
+        }
+
+        tvMsg = TextView(context).apply {
+            val pad = dp8
+            setPadding(pad, pad, pad, pad)
+            setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+            text = context.getString(R.string.loading)
+            gravity = android.view.Gravity.CENTER
+        }
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp16, dp16, dp16, dp16)
+            addView(progressBar)
+            addView(tvMsg)
+        }
+
+        dialog = AlertDialog.Builder(context).apply {
+            customView { container }
+        }.create()
         dialog.applyTint()
         dialog.setCanceledOnTouchOutside(false)
         dialog.setOnCancelListener {
@@ -30,12 +58,12 @@ class WaitDialog(context: Context) {
     }
 
     fun setText(text: String): WaitDialog {
-        binding.tvMsg.text = text
+        tvMsg.text = text
         return this
     }
 
     fun setText(@StringRes res: Int): WaitDialog {
-        binding.tvMsg.text = dialog.context.getString(res)
+        tvMsg.text = dialog.context.getString(res)
         return this
     }
 

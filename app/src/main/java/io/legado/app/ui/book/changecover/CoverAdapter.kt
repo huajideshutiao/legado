@@ -6,11 +6,11 @@ import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.ItemCoverBinding
+import io.legado.app.databinding.ItemBookshelfGridBinding
 
 
 class CoverAdapter(context: Context, val callBack: CallBack) :
-    DiffRecyclerAdapter<SearchBook, ItemCoverBinding>(context) {
+    DiffRecyclerAdapter<SearchBook, ItemBookshelfGridBinding>(context) {
 
     override val diffItemCallback: DiffUtil.ItemCallback<SearchBook>
         get() = object : DiffUtil.ItemCallback<SearchBook>() {
@@ -25,21 +25,21 @@ class CoverAdapter(context: Context, val callBack: CallBack) :
 
         }
 
-    override fun getViewBinding(parent: ViewGroup): ItemCoverBinding {
-        return ItemCoverBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemBookshelfGridBinding {
+        return ItemBookshelfGridBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemCoverBinding,
+        binding: ItemBookshelfGridBinding,
         item: SearchBook,
         payloads: MutableList<Any>
     ) = binding.run {
         ivCover.load(item.coverUrl, item.name, item.author, false, item.origin)
-        tvSource.text = item.originName
+        tvName.text = item.originName
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemCoverBinding) {
+    override fun registerListener(holder: ItemViewHolder, binding: ItemBookshelfGridBinding) {
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {

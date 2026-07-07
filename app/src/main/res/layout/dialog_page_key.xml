@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/content_view"
-    android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="@dimen/arco_spacing_lg">
+    android:orientation="vertical">
 
     <include layout="@layout/dialog_title_bar" />
 
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:hint="@string/prev_page_key">
+        android:hint="@string/prev_page_key"
+        android:paddingHorizontal="@dimen/arco_spacing_default">
 
         <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/et_prev"
@@ -25,8 +25,9 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:hint="@string/next_page_key">
+        android:hint="@string/next_page_key"
+        android:paddingHorizontal="@dimen/arco_spacing_default"
+        app:helperText="@string/page_key_set_help">
 
         <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/et_next"
@@ -36,48 +37,33 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:textColor="@color/secondaryText"
-        android:text="@string/page_key_set_help" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/arco_spacing_default">
 
         <TextView
             android:id="@+id/tv_reset"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="@dimen/arco_view_height_xl"
             android:layout_weight="1"
             android:background="@drawable/selector_fillet_btn_bg"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="@dimen/arco_spacing_default"
-            android:paddingBottom="@dimen/arco_spacing_default"
             android:text="@string/reset"
             android:textColor="@color/primaryText" />
-
-        <Space
-            android:layout_width="3dp"
-            android:layout_height="wrap_content" />
 
         <TextView
             android:id="@+id/tv_ok"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="@dimen/arco_view_height_xl"
             android:layout_weight="1"
             android:background="@drawable/selector_fillet_btn_bg"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingTop="@dimen/arco_spacing_default"
-            android:paddingBottom="@dimen/arco_spacing_default"
             android:text="@string/ok"
             android:textColor="@color/primaryText" />
 

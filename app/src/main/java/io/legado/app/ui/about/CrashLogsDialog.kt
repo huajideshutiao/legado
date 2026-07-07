@@ -5,19 +5,20 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.net.toUri
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.Item1lineTextBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
@@ -69,13 +70,28 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     }
 
-    inner class LogAdapter : RecyclerAdapter<FileDoc, Item1lineTextBinding>(requireContext()) {
+    class TextItemBinding(val root: TextView) : ViewBinding {
+        override fun getRoot(): View = root
+    }
 
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextBinding {
-            return Item1lineTextBinding.inflate(inflater, parent, false)
+    inner class LogAdapter : RecyclerAdapter<FileDoc, TextItemBinding>(requireContext()) {
+
+        override fun getViewBinding(parent: ViewGroup): TextItemBinding {
+            val tv = TextView(parent.context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                    0,
+                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
+                    0
+                )
+            }
+            return TextItemBinding(tv)
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: TextItemBinding) {
             binding.root.setOnClickListener {
                 getItemByLayoutPosition(holder.layoutPosition)?.let { item ->
                     showLogFile(item)
@@ -93,11 +109,11 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: Item1lineTextBinding,
+            binding: TextItemBinding,
             item: FileDoc,
             payloads: MutableList<Any>
         ) {
-            binding.textView.text = item.name
+            binding.root.text = item.name
         }
 
     }
@@ -109,18 +125,13 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         fun initData() {
             execute {
                 val list = arrayListOf<FileDoc>()
-                context.externalCacheDir
-                    ?.getFile("crash")
-                    ?.listFiles { it.isFile }
-                    ?.forEach {
+                context.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }?.forEach {
                         list.add(FileDoc.fromFile(it))
                     }
                 val backupPath = AppConfig.backupPath
                 if (!backupPath.isNullOrEmpty()) {
                     val uri = backupPath.toUri()
-                    FileDoc.fromUri(uri, true)
-                        .find("crash")
-                        ?.list {
+                    FileDoc.fromUri(uri, true).find("crash")?.list {
                             !it.isDir
                         }?.let {
                             list.addAll(it)
@@ -144,17 +155,13 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
         fun clearCrashLog() {
             execute {
-                context.externalCacheDir
-                    ?.getFile("crash")
-                    ?.let {
+                context.externalCacheDir?.getFile("crash")?.let {
                         FileUtils.delete(it, false)
                     }
                 val backupPath = AppConfig.backupPath
                 if (!backupPath.isNullOrEmpty()) {
                     val uri = backupPath.toUri()
-                    FileDoc.fromUri(uri, true)
-                        .find("crash")
-                        ?.delete()
+                    FileDoc.fromUri(uri, true).find("crash")?.delete()
                 }
             }.onError {
                 context.toastOnUi(it.localizedMessage)

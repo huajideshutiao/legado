@@ -15,6 +15,13 @@
         android:textColor="@color/secondaryText"
         tools:text="group" />
 
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/sw_show"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="48dp"
+        android:minHeight="48dp" />
+
     <TextView
         android:id="@+id/tv_edit"
         android:layout_width="wrap_content"
@@ -23,12 +30,5 @@
         android:padding="@dimen/arco_spacing_default"
         android:text="@string/edit"
         android:textColor="@color/secondaryText" />
-
-    <androidx.appcompat.widget.SwitchCompat
-        android:id="@+id/sw_show"
-        android:minWidth="48dp"
-        android:minHeight="48dp"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content" />
 
 </LinearLayout>

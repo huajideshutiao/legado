@@ -5,11 +5,16 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.Typeface
 import android.util.SparseArray
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.annotation.IntRange
+import androidx.core.content.ContextCompat
 import androidx.core.util.size
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.AsyncListDiffer
@@ -20,11 +25,11 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.ListPreloader.PreloadModelProvider
 import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
+import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter.Companion.TYPE_FOOTER_VIEW
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ItemBookMangaEdgeBinding
 import io.legado.app.databinding.ItemBookMangaPageBinding
 import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
@@ -187,17 +192,36 @@ class MangaAdapter(private val context: Context) :
         }
     }
 
-    class PageMoreViewHolder(val binding: ItemBookMangaEdgeBinding) :
-        RecyclerView.ViewHolder(binding.root) {
+    class PageMoreViewHolder(itemView: FrameLayout, private val text: TextView) :
+        RecyclerView.ViewHolder(itemView) {
         fun onBind(item: ReaderLoading) {
-            val message = item.mMessage
-            binding.text.text = message
+            text.text = item.mMessage
             itemView.updateLayoutParams {
                 height = if (item.isVolume) {
                     MATCH_PARENT
                 } else {
                     96.dpToPx()
                 }
+            }
+        }
+
+        companion object {
+            fun create(context: Context): PageMoreViewHolder {
+                val text = TextView(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.CENTER
+                    )
+                    setTextColor(ContextCompat.getColor(context, android.R.color.white))
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                val root = FrameLayout(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, 96.dpToPx())
+                    setBackgroundColor(ContextCompat.getColor(context, R.color.book_ant_10))
+                    addView(text)
+                }
+                return PageMoreViewHolder(root, text)
             }
         }
     }
@@ -210,7 +234,7 @@ class MangaAdapter(private val context: Context) :
             }
 
             viewType == LOADING_VIEW -> {
-                PageMoreViewHolder(ItemBookMangaEdgeBinding.inflate(inflater, parent, false))
+                PageMoreViewHolder.create(context)
             }
 
             viewType == CONTENT_VIEW -> {

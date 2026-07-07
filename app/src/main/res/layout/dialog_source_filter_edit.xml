@@ -34,7 +34,6 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_default"
                 android:hint="@string/source_filter_rule_pattern">
 
                 <androidx.appcompat.widget.AppCompatEditText
@@ -47,70 +46,59 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:text="@string/source_filter_rule_fields"
                 android:textColor="@color/secondaryText"
                 android:textSize="13sp" />
 
-            <GridLayout
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_xs"
-                android:columnCount="3">
+                android:layout_height="@dimen/arco_view_height_large">
 
                 <CheckBox
                     android:id="@+id/cb_field_name"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="fill_horizontal"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:text="@string/source_filter_field_name" />
 
                 <CheckBox
                     android:id="@+id/cb_field_author"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="fill_horizontal"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:text="@string/source_filter_field_author" />
 
                 <CheckBox
                     android:id="@+id/cb_field_intro"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="fill_horizontal"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:text="@string/source_filter_field_intro" />
 
                 <CheckBox
                     android:id="@+id/cb_field_kind"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="fill_horizontal"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:text="@string/source_filter_field_kind" />
 
                 <CheckBox
                     android:id="@+id/cb_field_word_count"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="fill_horizontal"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:text="@string/source_filter_field_word_count" />
 
-            </GridLayout>
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/ll_pick_scope"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:background="?attr/selectableItemBackground"
                 android:gravity="center_vertical"
-                android:minHeight="48dp"
-                android:orientation="horizontal"
-                android:paddingStart="@dimen/arco_spacing_xs"
-                android:paddingEnd="@dimen/arco_spacing_xs">
+                android:minHeight="@dimen/arco_view_height_large"
+                android:orientation="horizontal">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -145,25 +133,11 @@
                     android:tint="@color/secondaryText" />
             </LinearLayout>
 
-            <LinearLayout
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/swt_enabled"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_md"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/enable"
-                    android:textColor="@color/primaryText" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/swt_enabled"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
+                android:layout_height="@dimen/arco_view_height_xl"
+                android:text="@string/enable" />
 
         </LinearLayout>
 

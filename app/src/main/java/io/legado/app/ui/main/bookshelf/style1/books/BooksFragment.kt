@@ -18,17 +18,15 @@ import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.FragmentBooksBinding
+import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -43,7 +41,7 @@ import kotlin.math.max
 /**
  * 书架界面
  */
-class BooksFragment() : BaseFragment(R.layout.fragment_books),
+class BooksFragment() : BaseFragment(R.layout.fragment_recycler_view),
     BaseBooksAdapter.CallBack {
 
     constructor(position: Int, group: BookGroup) : this() {
@@ -55,7 +53,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         arguments = bundle
     }
 
-    private val binding by viewBinding(FragmentBooksBinding::bind)
+    private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
     private val activityViewModel by activityViewModels<MainViewModel>()
     private var booksAdapter: BaseBooksAdapter<*>? = null
     private var booksFlowJob: Job? = null
@@ -97,22 +95,21 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
-        val layoutManager = binding.rvBookshelf.layoutManager
+        val layoutManager = binding.recyclerView.layoutManager
         if (spanCount <= 1) {
             if (layoutManager !is LinearLayoutManager) {
-                binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+                binding.recyclerView.layoutManager = LinearLayoutManager(context)
             }
         } else {
             if (layoutManager is GridLayoutManager) {
                 layoutManager.spanCount = spanCount
             } else {
-                binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
+                binding.recyclerView.layoutManager = GridLayoutManager(context, spanCount)
             }
         }
     }
 
     private fun initRecyclerView() {
-        binding.rvBookshelf.setEdgeEffectColor(primaryColor)
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setOnRefreshListener {
@@ -121,14 +118,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
         val spanCount = getSpanCount()
         if (spanCount <= 1) {
-            binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+            binding.recyclerView.layoutManager = LinearLayoutManager(context)
         } else {
-            binding.rvBookshelf.layoutManager = GridLayoutManager(context, spanCount)
+            binding.recyclerView.layoutManager = GridLayoutManager(context, spanCount)
         }
         if (spanCount <= 1) {
-            binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
+            binding.recyclerView.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
         } else {
-            binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksGridRecycledViewPool)
+            binding.recyclerView.setRecycledViewPool(activityViewModel.booksGridRecycledViewPool)
         }
         val adapter = booksAdapter
         if (adapter == null) {
@@ -138,34 +135,34 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 BooksAdapterGrid(requireContext(), this)
             }
             newAdapter.stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
-            binding.rvBookshelf.adapter = newAdapter
+            binding.recyclerView.adapter = newAdapter
             newAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
                 override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                    val layoutManager = binding.rvBookshelf.layoutManager
+                    val layoutManager = binding.recyclerView.layoutManager
                     if (positionStart == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
                         val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                        binding.recyclerView.scrollToPosition(max(0, scrollTo))
                     }
                 }
 
                 override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                    val layoutManager = binding.rvBookshelf.layoutManager
+                    val layoutManager = binding.recyclerView.layoutManager
                     if (toPosition == 0 && itemCount == 1 && layoutManager is LinearLayoutManager) {
                         val scrollTo = layoutManager.findFirstVisibleItemPosition() - itemCount
-                        binding.rvBookshelf.scrollToPosition(max(0, scrollTo))
+                        binding.recyclerView.scrollToPosition(max(0, scrollTo))
                     }
                 }
             })
             booksAdapter = newAdapter
         } else {
-            binding.rvBookshelf.adapter = adapter
+            binding.recyclerView.adapter = adapter
         }
         startLastUpdateTimeJob()
     }
 
     private fun upFastScrollerBar() {
-        binding.rvBookshelf.setFastScrollEnabled(true)
-        binding.rvBookshelf.scrollBarSize = 0
+        binding.recyclerView.setFastScrollEnabled(true)
+        binding.recyclerView.scrollBarSize = 0
     }
 
     fun upBookSort(sort: Int) {
@@ -181,9 +178,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.refreshLayout.isEnabled = enable
     }
 
-    /**
-     * 更新书籍列表信息
-     */
     @OptIn(FlowPreview::class)
     private fun upRecyclerData() {
         booksFlowJob?.cancel()
@@ -193,7 +187,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 lifecycle = viewLifecycleOwner.lifecycle,
                 sorter = ::sortBooks,
             )
-                .debounce(100) // 防抖, 避免密集变更时频繁刷 UI
+                .debounce(100)
                 .collect { list ->
                 binding.tvEmptyMsg.isGone = list.isNotEmpty()
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
@@ -207,9 +201,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         1 -> list.sortedByDescending { it.latestChapterTime }
         2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
         3 -> list.sortedBy { it.order }
-        // 综合排序 issue #3192
         4 -> list.sortedByDescending { max(it.latestChapterTime, it.durChapterTime) }
-        // 按作者排序
         5 -> list.sortedWith { o1, o2 -> o1.author.cnCompare(o2.author) }
         else -> list.sortedByDescending { it.durChapterTime }
     }
@@ -235,19 +227,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     fun gotoTop() {
         if (AppConfig.isEInkMode) {
-            binding.rvBookshelf.scrollToPosition(0)
+            binding.recyclerView.scrollToPosition(0)
         } else {
-            binding.rvBookshelf.smoothScrollToPosition(0)
+            binding.recyclerView.smoothScrollToPosition(0)
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        /**
-         * 将 RecyclerView 中的视图全部回收到 RecycledViewPool 中
-         */
-        binding.rvBookshelf.setItemViewCacheSize(0)
-        binding.rvBookshelf.adapter = null
+        binding.recyclerView.setItemViewCacheSize(0)
+        binding.recyclerView.adapter = null
     }
 
     override fun open(book: Book) {

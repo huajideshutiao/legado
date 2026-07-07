@@ -7,7 +7,7 @@
     android:background="?android:attr/selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingVertical="@dimen/arco_spacing_md">
+    android:padding="@dimen/arco_spacing_default">
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_drag"

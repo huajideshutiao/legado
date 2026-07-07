@@ -17,7 +17,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeTab
-import io.legado.app.databinding.FragmentHomeBinding
+import io.legado.app.databinding.FragmentViewPager2Binding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.main.MainFragmentInterface
@@ -30,7 +30,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  * 主页外壳：标题栏 + TabLayout + 老 ViewPager。
  * 各 tab 内容由 HomeTabFragment 承载，状态由共享的 HomeViewModel 按 tabTitle 分桶持有。
  */
-class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
+class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_view_pager2),
     MainFragmentInterface {
 
     constructor(position: Int) : this() {
@@ -39,7 +39,7 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
 
     override val position: Int? get() = arguments?.getInt("position")
 
-    private val binding by viewBinding(FragmentHomeBinding::bind)
+    private val binding by viewBinding(FragmentViewPager2Binding::bind)
     override val viewModel by viewModels<HomeViewModel>()
 
     private val tabLayout: TabLayout by lazy {
@@ -50,6 +50,7 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
     private val pagerAdapter by lazy { HomeTabPagerAdapter(this) }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        binding.titleBar.title = getString(R.string.home)
         setSupportToolbar(binding.titleBar.toolbar)
         initView()
         viewModel.initTabs()
@@ -62,26 +63,26 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
             )
         }
         savedInstanceState?.getInt(STATE_CURRENT_ITEM, 0)?.let { restored ->
-            binding.viewPagerHome.post {
+            binding.viewPager.post {
                 if (restored in 0 until pagerAdapter.itemCount) {
-                    binding.viewPagerHome.setCurrentItem(restored, false)
+                    binding.viewPager.setCurrentItem(restored, false)
                 }
             }
         }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putInt(STATE_CURRENT_ITEM, binding.viewPagerHome.currentItem)
+        outState.putInt(STATE_CURRENT_ITEM, binding.viewPager.currentItem)
         super.onSaveInstanceState(outState)
     }
 
     private fun initView() {
-        (binding.viewPagerHome.getChildAt(0) as? RecyclerView)?.setEdgeEffectColor(primaryColor)
-        binding.viewPagerHome.adapter = pagerAdapter
+        (binding.viewPager.getChildAt(0) as? RecyclerView)?.setEdgeEffectColor(primaryColor)
+        binding.viewPager.adapter = pagerAdapter
         tabLayout.isTabIndicatorFullWidth = false
         tabLayout.tabMode = TabLayout.MODE_SCROLLABLE
         tabLayout.setSelectedTabIndicatorColor(requireContext().accentColor)
-        TabLayoutMediator(tabLayout, binding.viewPagerHome) { tab, position ->
+        TabLayoutMediator(tabLayout, binding.viewPager) { tab, position ->
             tab.text = tabs[position].title
         }.attach()
     }
@@ -97,7 +98,7 @@ class HomeFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_home),
 
     /** 当前选中 tab 的标题；用于"管理展示项"快捷入口 */
     val currentTabTitle: String?
-        get() = tabs.getOrNull(binding.viewPagerHome.currentItem)?.title
+        get() = tabs.getOrNull(binding.viewPager.currentItem)?.title
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
         menuInflater.inflate(R.menu.main_home, menu)
