@@ -11,7 +11,6 @@ import io.legado.app.R
 abstract class BasePrefDialogFragment(
 ) : BaseDialogFragment(0) {
 
-    override val useDefaultTitleBar: Boolean = false  // Preference Dialog 不需要 TitleBar
     override val applyFilletBackground: Boolean = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {}

@@ -33,6 +33,7 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.utils.DrawableUtils
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
@@ -202,7 +203,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     private fun bindHeader(header: ViewReadRecordHeaderBinding) {
-        // Arco: 卡片背景由 card_background.xml drawable 提供，统一 arco 色板，不再动态设置
+        // 动态主题着色：根据当前主题色设置卡片背景
+        val cardBg = DrawableUtils.createCardBackground(this)
+        header.constraintLayout.background = cardBg
+        header.heatMapCard.background = cardBg
         header.ivPrevMonth.setOnClickListener { stepMonth(-1) }
         header.ivNextMonth.setOnClickListener {
             if (!isAtCurrentMonth()) stepMonth(1)

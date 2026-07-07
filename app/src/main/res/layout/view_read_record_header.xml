@@ -8,6 +8,7 @@
 
     <!-- 统计卡：Guideline 分左右两列，单 pass measure -->
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="@dimen/arco_spacing_md"
@@ -159,6 +160,7 @@
 
     <!-- 月度热力图卡 -->
     <LinearLayout
+        android:id="@+id/heatMapCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/arco_spacing_md"

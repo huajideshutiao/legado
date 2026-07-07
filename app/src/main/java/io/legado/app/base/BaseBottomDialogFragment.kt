@@ -13,7 +13,6 @@ abstract class BaseBottomDialogFragment(
     @LayoutRes layoutID: Int
 ) : BaseDialogFragment(layoutID) {
 
-    override val useDefaultTitleBar: Boolean = false  // 底部弹窗不需要 TitleBar
     open val dismissWhenOtherBottomDialogShowing: Boolean = false
     private var counterIncremented = false
 

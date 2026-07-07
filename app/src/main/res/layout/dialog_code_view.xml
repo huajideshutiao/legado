@@ -4,6 +4,8 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <include layout="@layout/dialog_title_bar" />
+
     <io.legado.app.ui.widget.code.CodeView
         android:id="@+id/code_view"
         android:layout_width="match_parent"

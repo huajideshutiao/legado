@@ -9,6 +9,7 @@
     android:layout_height="wrap_content"
     android:theme="?attr/actionBarStyle"
     app:attachToActivity="false"
+    app:contentInsetStartWithNavigation="0dp"
     app:displayHomeAsUp="false"
     app:fitStatusBar="false"
     app:popupTheme="@style/AppTheme.PopupOverlay"

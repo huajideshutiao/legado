@@ -1,95 +1,104 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <RadioGroup
-        android:id="@+id/rg_scope"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/arco_spacing_md"
-        android:gravity="center"
-        android:orientation="horizontal"
-        app:layout_constraintTop_toTopOf="parent">
+    <include layout="@layout/dialog_title_bar" />
 
-        <io.legado.app.ui.widget.checkbox.ThemeRadioNoButton
-            android:id="@+id/rb_group"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_margin="@dimen/arco_spacing_xs"
-            android:layout_weight="1"
-            android:button="@null"
-            android:gravity="center"
-            android:padding="@dimen/arco_spacing_xs"
-            android:singleLine="true"
-            android:checked="true"
-            android:text="@string/group" />
-
-        <io.legado.app.ui.widget.checkbox.ThemeRadioNoButton
-            android:id="@+id/rb_source"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_margin="@dimen/arco_spacing_xs"
-            android:layout_weight="1"
-            android:button="@null"
-            android:gravity="center"
-            android:padding="@dimen/arco_spacing_xs"
-            android:singleLine="true"
-            android:text="@string/book_source" />
-
-    </RadioGroup>
-
-    <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
-        android:id="@+id/recycler_view"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-        app:layout_constraintBottom_toTopOf="@+id/ll_bottom_bar"
-        app:layout_constraintTop_toBottomOf="@+id/rg_scope" />
+        android:layout_weight="1">
 
-    <LinearLayout
-        android:id="@+id/ll_bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/arco_spacing_default"
-        android:paddingEnd="@dimen/arco_spacing_default"
-        app:layout_constraintBottom_toBottomOf="parent">
-
-        <io.legado.app.ui.widget.text.AccentTextView
-            android:id="@+id/tv_all_source"
-            android:layout_width="wrap_content"
+        <RadioGroup
+            android:id="@+id/rg_scope"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="@dimen/arco_spacing_md"
-            android:text="@string/all_source"
-            tools:ignore="RtlHardcoded" />
+            android:layout_marginHorizontal="@dimen/arco_spacing_md"
+            android:gravity="center"
+            android:orientation="horizontal"
+            app:layout_constraintTop_toTopOf="parent">
 
-        <Space
-            android:layout_width="0dp"
+            <io.legado.app.ui.widget.checkbox.ThemeRadioNoButton
+                android:id="@+id/rb_group"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/arco_spacing_xs"
+                android:layout_weight="1"
+                android:button="@null"
+                android:checked="true"
+                android:gravity="center"
+                android:padding="@dimen/arco_spacing_xs"
+                android:singleLine="true"
+                android:text="@string/group" />
+
+            <io.legado.app.ui.widget.checkbox.ThemeRadioNoButton
+                android:id="@+id/rb_source"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/arco_spacing_xs"
+                android:layout_weight="1"
+                android:button="@null"
+                android:gravity="center"
+                android:padding="@dimen/arco_spacing_xs"
+                android:singleLine="true"
+                android:text="@string/book_source" />
+
+        </RadioGroup>
+
+        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
+            android:id="@+id/recycler_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+            app:layout_constraintBottom_toTopOf="@+id/ll_bottom_bar"
+            app:layout_constraintTop_toBottomOf="@+id/rg_scope" />
+
+        <LinearLayout
+            android:id="@+id/ll_bottom_bar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/arco_spacing_default"
+            android:paddingEnd="@dimen/arco_spacing_default"
+            app:layout_constraintBottom_toBottomOf="parent">
 
-        <TextView
-            android:id="@+id/tv_cancel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="@dimen/arco_spacing_md"
-            android:text="@string/cancel"
-            android:textColor="@color/secondaryText"
-            tools:ignore="RtlHardcoded" />
+            <io.legado.app.ui.widget.text.AccentTextView
+                android:id="@+id/tv_all_source"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="@dimen/arco_spacing_md"
+                android:text="@string/all_source"
+                tools:ignore="RtlHardcoded" />
 
-        <io.legado.app.ui.widget.text.AccentTextView
-            android:id="@+id/tv_ok"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="@dimen/arco_spacing_md"
-            android:text="@string/ok"
-            tools:ignore="RtlHardcoded" />
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
 
-    </LinearLayout>
+            <TextView
+                android:id="@+id/tv_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="@dimen/arco_spacing_md"
+                android:text="@string/cancel"
+                android:textColor="@color/secondaryText"
+                tools:ignore="RtlHardcoded" />
 
+            <io.legado.app.ui.widget.text.AccentTextView
+                android:id="@+id/tv_ok"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="@dimen/arco_spacing_md"
+                android:text="@string/ok"
+                tools:ignore="RtlHardcoded" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</LinearLayout>

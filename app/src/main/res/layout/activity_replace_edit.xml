@@ -25,7 +25,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="@dimen/arco_spacing_lg">
+            android:paddingHorizontal="@dimen/arco_spacing_default">
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/til_name"

@@ -14,7 +14,6 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
 
-    override val useDefaultTitleBar: Boolean = false  // 边距设置不需要 TitleBar
     private val binding by viewBinding(DialogReadPaddingBinding::bind)
 
     override fun onStart() {

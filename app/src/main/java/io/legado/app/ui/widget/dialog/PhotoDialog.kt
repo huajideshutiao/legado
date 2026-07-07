@@ -35,7 +35,6 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  */
 class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
-    override val useDefaultTitleBar: Boolean = false  // 图片查看不需要 TitleBar
     override val isFullHeight: Boolean = true
 
     constructor(src: String, sourceOrigin: String? = null) : this() {

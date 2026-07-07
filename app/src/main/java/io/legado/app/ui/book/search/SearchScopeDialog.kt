@@ -32,7 +32,6 @@ import kotlinx.coroutines.withContext
 class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     override val isFullHeight: Boolean = true
-    override val defaultBackNavigation: Boolean = false  // 原无返回按钮,底部有 tvCancel
 
     private val binding by viewBinding(DialogSearchScopeBinding::bind)
     private var sourceFlowJob: Job? = null
@@ -56,6 +55,7 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
     private fun initMenu() {
         setupTitleBar(
             title = getString(R.string.search_scope),
+            backNavigation = false,
             menuRes = R.menu.book_search_scope
         )
     }

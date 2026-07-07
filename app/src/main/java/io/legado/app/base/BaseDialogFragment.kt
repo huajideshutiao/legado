@@ -8,7 +8,6 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.LinearLayout
 import androidx.annotation.LayoutRes
 import androidx.annotation.MenuRes
 import androidx.appcompat.app.AppCompatActivity
@@ -39,15 +38,8 @@ abstract class BaseDialogFragment(
     protected open val applyFilletBackground: Boolean = true
     protected open val isFullHeight: Boolean = false
 
-    /** 子类设为 true 时，基类自动注入 TitleBar 容器（LinearLayout 套 TitleBar + 子类布局） */
-    protected open val useDefaultTitleBar: Boolean = true
-
-    /** 是否自动设置返回图标并 dismiss（仅 useDefaultTitleBar=true 时生效） */
-    protected open val defaultBackNavigation: Boolean = true
-
-    /** 基类注入的 TitleBar 引用（useDefaultTitleBar=false 时为 null） */
-    protected var titleBar: TitleBar? = null
-        private set
+    /** 指向布局中 id=title_bar 的 TitleBar（XML 中有则非 null，无则 null） */
+    protected val titleBar: TitleBar? get() = view?.findViewById(R.id.title_bar)
 
     private var onDismissListener: OnDismissListener? = null
 
@@ -60,34 +52,8 @@ abstract class BaseDialogFragment(
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val ctx = inflater.context
-        return when {
-            // 子类启用默认 TitleBar：创建 LinearLayout 套 TitleBar + 子类布局
-            useDefaultTitleBar -> {
-                val root = LinearLayout(ctx).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
-                titleBar = inflater.inflate(R.layout.dialog_title_bar, root, false) as TitleBar
-                root.addView(titleBar)
-                if (layoutID != 0) {
-                    val content = inflater.inflate(layoutID, root, false)
-                    content.layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1f
-                    )
-                    root.addView(content)
-                }
-                root
-            }
-            // 兼容 BasePrefDialogFragment（layoutID=0 且自己重写 onCreateView）
-            layoutID != 0 -> inflater.inflate(layoutID, container, false)
-            else -> super.onCreateView(inflater, container, savedInstanceState) ?: View(ctx)
-        }
+        if (layoutID != 0) return inflater.inflate(layoutID, container, false)
+        return super.onCreateView(inflater, container, savedInstanceState) ?: View(inflater.context)
     }
 
     override fun onStart() {
@@ -132,16 +98,9 @@ abstract class BaseDialogFragment(
             view.background = requireContext().filletBackground
             view.clipToOutline = true
         }
-        // Dialog 专用 TitleBar 背景对齐内容区底栏色（TitleBar 默认用 backgroundColor，与 Dialog 的 filletBackground 不一致）
-        if (useDefaultTitleBar && !AppConfig.isEInkMode) {
+        // TitleBar 背景对齐内容区底栏色（XML 有 title_bar 时自动生效）
+        if (!AppConfig.isEInkMode) {
             titleBar?.setBackgroundColor(requireContext().bottomBackground)
-        }
-        // 默认 back navigation：设置返回图标 + 点击 dismiss（子类可设 defaultBackNavigation=false 自管）
-        if (useDefaultTitleBar && defaultBackNavigation) {
-            titleBar?.toolbar?.navigationIcon = getCompatDrawable(
-                androidx.appcompat.R.drawable.abc_ic_ab_back_material
-            )
-            titleBar?.setNavigationOnClickListener { dismissAllowingStateLoss() }
         }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()
@@ -149,21 +108,29 @@ abstract class BaseDialogFragment(
 
     abstract fun onFragmentCreated(view: View, savedInstanceState: Bundle?)
 
-    /** 便捷方法：一次性配置 title + menu + 菜单监听（封装常见组合，子类可选使用）。
-     *  onMenuClick 接受 (MenuItem?) -> Boolean 以兼容子类 Toolbar.OnMenuItemClickListener 的可空签名 */
+    /** 一次性配置 title / 返回图标 / menu / 菜单监听。
+     *  backNavigation=true（默认）：设置返回图标并 dismiss；false：不设置，子类自管。
+     *  onMenuClick 接受 (MenuItem?) -> Boolean 以兼容 Toolbar.OnMenuItemClickListener 的可空签名。 */
     protected fun setupTitleBar(
         title: CharSequence? = null,
+        backNavigation: Boolean = true,
         @MenuRes menuRes: Int = 0,
         onMenuClick: ((MenuItem?) -> Boolean)? = null
     ) {
-        val tb = titleBar?.toolbar ?: return
-        title?.let { titleBar?.title = it }
+        val bar = titleBar ?: return
+        title?.let { bar.title = it }
+        if (backNavigation) {
+            bar.toolbar.navigationIcon = getCompatDrawable(
+                androidx.appcompat.R.drawable.abc_ic_ab_back_material
+            )
+            bar.setNavigationOnClickListener { dismissAllowingStateLoss() }
+        }
         if (menuRes != 0) {
-            tb.inflateMenu(menuRes)
-            tb.menu.applyTint(requireContext())
+            bar.toolbar.inflateMenu(menuRes)
+            bar.toolbar.menu.applyTint(requireContext())
         }
         onMenuClick?.let { callback ->
-            tb.setOnMenuItemClickListener { item -> callback(item) }
+            bar.toolbar.setOnMenuItemClickListener { item -> callback(item) }
         }
     }
 

@@ -5,6 +5,8 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
+    <include layout="@layout/dialog_title_bar" />
+
     <TextView
         android:id="@+id/tv_chapter_name"
         android:layout_width="match_parent"

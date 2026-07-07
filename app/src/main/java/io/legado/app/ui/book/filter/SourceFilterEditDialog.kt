@@ -19,7 +19,6 @@ import java.util.UUID
  */
 class SourceFilterEditDialog() : BaseDialogFragment(R.layout.dialog_source_filter_edit),
     SearchScopeDialog.Callback {
-    override val defaultBackNavigation: Boolean = false  // 原无返回按钮,有 tvCancel
 
     companion object {
         private const val ARG_EXISTING = "existing"

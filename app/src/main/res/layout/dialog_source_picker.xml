@@ -6,6 +6,8 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <include layout="@layout/dialog_title_bar" />
+
     <include layout="@layout/view_search" />
 
     <FrameLayout

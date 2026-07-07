@@ -85,17 +85,9 @@ class MangaFooterSettingDialog : BaseDialogFragment(R.layout.dialog_manga_footer
             postEvent(EventBus.UP_MANGA_CONFIG, config)
         }
 
-        binding.rgFooter.check(if (config.hideFooter) R.id.rb_hide else R.id.rb_show)
-        binding.rgFooter.setOnCheckedChangeListener { _, checkedId ->
-            when (checkedId) {
-                R.id.rb_show -> {
-                    config.hideFooter = false
-                }
-
-                R.id.rb_hide -> {
-                    config.hideFooter = true
-                }
-            }
+        binding.rgFooter.isChecked = !config.hideFooter
+        binding.rgFooter.setOnCheckedChangeListener { _, isChecked ->
+            config.hideFooter = !isChecked
             postEvent(EventBus.UP_MANGA_CONFIG, config)
         }
     }

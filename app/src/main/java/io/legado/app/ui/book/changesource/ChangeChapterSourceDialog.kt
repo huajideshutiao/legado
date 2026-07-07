@@ -54,8 +54,6 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
     ChangeChapterTocAdapter.Callback {
 
     override val isFullHeight: Boolean = true
-    override val defaultBackNavigation: Boolean =
-        false  // 原无返回按钮,靠 onBackPressedDispatcher 处理 toc 隐藏
 
     constructor(name: String, author: String, chapterIndex: Int, chapterTitle: String) : this() {
         arguments = Bundle().apply {

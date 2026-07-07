@@ -2,6 +2,8 @@ package io.legado.app.ui.about
 
 import android.os.Bundle
 import android.view.View
+import android.view.textclassifier.TextClassifier
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogTextViewBinding
@@ -13,6 +15,9 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
 
@@ -25,7 +30,7 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
         }
     }
 
-    val binding by viewBinding(DialogTextViewBinding::bind)
+    private val binding by viewBinding(DialogTextViewBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(title = arguments?.getString("newVersion"))
@@ -35,13 +40,18 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
             dismiss()
             return
         }
-        binding.textView.post {
-            Markwon.builder(requireContext())
-                .usePlugin(GlideImagesPlugin.create(requireContext()))
-                .usePlugin(HtmlPlugin.create())
-                .usePlugin(TablePlugin.create(requireContext()))
-                .build()
-                .setMarkdown(binding.textView, updateBody)
+        binding.textView.setTextClassifier(TextClassifier.NO_OP)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val markwon: Markwon
+            val markdown = withContext(IO) {
+                markwon = Markwon.builder(requireContext())
+                    .usePlugin(GlideImagesPlugin.create(requireContext()))
+                    .usePlugin(HtmlPlugin.create())
+                    .usePlugin(TablePlugin.create(requireContext()))
+                    .build()
+                markwon.toMarkdown(updateBody)
+            }
+            markwon.setParsedMarkdown(binding.textView, markdown)
         }
         setupTitleBar(menuRes = R.menu.app_update) {
             when (it?.itemId) {

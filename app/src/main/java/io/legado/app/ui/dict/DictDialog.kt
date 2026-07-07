@@ -19,7 +19,6 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
  */
 class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
 
-    override val useDefaultTitleBar: Boolean = false  // 词典弹窗用 TabLayout，不需要 TitleBar
     constructor(word: String) : this() {
         arguments = Bundle().apply {
             putString("word", word)

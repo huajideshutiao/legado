@@ -1,12 +1,15 @@
 package io.legado.app.utils
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.TransitionDrawable
 import androidx.annotation.ColorInt
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.graphics.drawable.toDrawable
+import io.legado.app.lib.theme.bottomBackground
 
 /**
  * @author Karim Abou Zeid (kabouzeid)
@@ -27,6 +30,18 @@ object DrawableUtils {
         drawables[1] = end
 
         return TransitionDrawable(drawables)
+    }
+
+    /**
+     * 创建动态主题着色的卡片背景
+     * 使用当前主题的 bottomBackground 颜色，支持 8dp 圆角
+     */
+    fun createCardBackground(context: Context): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(context.bottomBackground)
+            cornerRadius = 8f.dpToPx()
+        }
     }
 
 }
