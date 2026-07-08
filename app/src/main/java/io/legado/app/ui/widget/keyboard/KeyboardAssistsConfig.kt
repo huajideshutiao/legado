@@ -25,8 +25,8 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
@@ -120,7 +120,7 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
 
         override fun getViewBinding(parent: ViewGroup): Item1lineTextAndDelBinding {
             return Item1lineTextAndDelBinding.inflate(inflater, parent, false).apply {
-                root.setPadding(16.dpToPx())
+                root.setPadding(root.context.space.lg)
                 ivDelete.visible()
             }
         }

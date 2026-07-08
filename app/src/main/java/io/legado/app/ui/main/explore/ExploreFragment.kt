@@ -39,13 +39,13 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -229,7 +229,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
     private fun initRecyclerView() {
         binding.refreshLayout.isEnabled = false
         binding.tvEmptyMsg.setText(R.string.explore_empty)
-        val padding = resources.getDimensionPixelSize(R.dimen.arco_spacing_md)
+        val padding = space.md
         binding.recyclerView.setPadding(padding, 0, padding, 0)
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = linearLayoutManager
@@ -371,7 +371,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            setPadding(4.dpToPx(), 0, 0, 0)
+            setPadding(ctx.space.xs, 0, 0, 0)
             setText(R.string.favorite)
         }
         val flexbox = FlexboxLayout(ctx).apply {

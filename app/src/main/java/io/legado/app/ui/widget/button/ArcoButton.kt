@@ -12,8 +12,9 @@ import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.radius
+import io.legado.app.lib.theme.stroke
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.dpToPx
 
 /**
  * Arco 按钮：让 Primary / Outline / Secondary 三种 style 自动跟随 ThemeStore.accentColor。
@@ -40,8 +41,8 @@ class ArcoButton @JvmOverloads constructor(
         }
     }
 
-    private val arcoRadius get() = context.resources.getDimension(R.dimen.arco_radius_default)
-    private val arcoStrokeWidth get() = 1.dpToPx()
+    private val arcoRadius get() = context.radius.defaultF
+    private val arcoStrokeWidth get() = context.stroke.thin
 
     private fun tintPrimary() = tintSolid(context.accentColor)
 

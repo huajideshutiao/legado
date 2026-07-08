@@ -35,6 +35,7 @@ object PreferKey {
     const val nextKeys = "nextKeyCodes"
     const val showDiscovery = "showDiscovery"
     const val showHome = "showHome"
+    const val bottomNavItemOrder = "bottomNavItemOrder"
     const val bookshelfLayout = "bookshelfLayout"
     const val bookshelfFixedWidthMode = "bookshelfFixedWidthMode"
     const val bookshelfGridWidth = "bookshelfGridWidth"

@@ -14,6 +14,7 @@ import androidx.appcompat.view.menu.SubMenuBuilder
 import androidx.core.view.forEach
 import io.legado.app.R
 import io.legado.app.constant.Theme
+import io.legado.app.lib.theme.applyTheme
 import io.legado.app.lib.theme.primaryTextColor
 import java.lang.reflect.Method
 
@@ -80,6 +81,10 @@ fun Menu.iconItemOnLongClick(id: Int, function: (view: View) -> Unit) {
                 this@iconItemOnLongClick.performIdentifierAction(id, 0)
             }
         }
+        // 动态构造的 actionView 不走 Factory2, 兜底着色
+        // (当前 ImageButton 不在 ThemeInterceptor 处理范围, 调用为空操作但保持一致性,
+        //  icon tint 由 Menu.applyTint 单独处理)
+        actionView.applyTheme()
         item.setActionView(actionView)
     }
 }

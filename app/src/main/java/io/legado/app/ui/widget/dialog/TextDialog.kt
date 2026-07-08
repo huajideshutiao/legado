@@ -15,7 +15,6 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -31,23 +30,17 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     constructor(
         title: String,
         content: String?,
-        mode: Mode = Mode.TEXT,
-        time: Long = 0,
-        autoClose: Boolean = false
+        mode: Mode = Mode.TEXT
     ) : this() {
         arguments = Bundle().apply {
             putString("title", title)
             putString("content", IntentData.put(content))
             putString("mode", mode.name)
-            putLong("time", time)
         }
         isCancelable = false
-        this.autoClose = autoClose
     }
 
     private val binding by viewBinding(DialogTextViewBinding::bind)
-    private var time = 0L
-    private var autoClose: Boolean = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(
@@ -87,27 +80,9 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                     }
                 }
             }
-            time = it.getLong("time", 0L)
         }
-        if (time > 0) {
-            binding.badgeView.setBadgeCount((time / 1000).toInt())
-            lifecycleScope.launch {
-                while (time > 0) {
-                    delay(1000)
-                    time -= 1000
-                    binding.badgeView.setBadgeCount((time / 1000).toInt())
-                    if (time <= 0) {
-                        view.post {
-                            dialog?.setCancelable(true)
-                            if (autoClose) dialog?.cancel()
-                        }
-                    }
-                }
-            }
-        } else {
-            view.post {
-                dialog?.setCancelable(true)
-            }
+        view.post {
+            dialog?.setCancelable(true)
         }
     }
 

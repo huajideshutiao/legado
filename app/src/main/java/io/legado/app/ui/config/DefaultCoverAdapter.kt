@@ -13,6 +13,8 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.graphics.drawable.toDrawable
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
+import io.legado.app.lib.theme.applyThemeTree
+import io.legado.app.lib.theme.space
 import io.legado.app.model.BookCover
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.dpToPx
@@ -28,7 +30,7 @@ class DefaultCoverAdapter(
 ) : RecyclerView.Adapter<DefaultCoverAdapter.VH>() {
 
     private val entries = mutableListOf<BookCover.DefaultCoverEntry>()
-    private val padding = 6.dpToPx()
+    private val padding = context.space.default
 
     // 整体替换数据集,数据量小,notifyDataSetChanged 比 DiffUtil 更简洁
     @SuppressLint("NotifyDataSetChanged")
@@ -63,6 +65,10 @@ class DefaultCoverAdapter(
             addView(cover)
             addView(add)
         }
+        // 动态构造的 View 不走 Factory2, 在 return 前整树着色
+        // (当前 ImageView/FrameLayout 不在 ThemeInterceptor 处理范围, 调用为空操作但保持一致性,
+        //  未来扩展 ImageView tint 时自动覆盖)
+        frame.applyThemeTree()
         return VH(frame, cover, add)
     }
 

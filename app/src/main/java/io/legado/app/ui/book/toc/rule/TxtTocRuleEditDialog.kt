@@ -12,8 +12,10 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.databinding.DialogTocRegexEditBinding
+import io.legado.app.databinding.DialogFormEditBinding
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
@@ -25,7 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
-class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit),
+class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long?) : this() {
@@ -35,12 +37,15 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
         }
     }
 
-    private val binding by viewBinding(DialogTocRegexEditBinding::bind)
+    private val binding by viewBinding(DialogFormEditBinding::bind)
+    private val adapter by lazy { FormAdapter() }
+    private val editEntities: ArrayList<EditEntity> = ArrayList()
     private val viewModel by viewModels<ViewModel>()
     private val callback get() = (parentFragment as? Callback) ?: activity as? Callback
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         initMenu()
+        binding.recyclerView.adapter = adapter
         viewModel.initData(arguments?.getLong("id")) {
             upRuleView(it)
         }
@@ -87,19 +92,25 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
     }
 
     private fun upRuleView(tocRule: TxtTocRule?) {
-        binding.tvRuleName.setText(tocRule?.name)
-        binding.tvRuleRegex.setText(tocRule?.rule)
-        binding.tvRuleExample.setText(tocRule?.example)
+        editEntities.clear()
+        editEntities.apply {
+            add(EditEntity("name", tocRule?.name, R.string.name))
+            add(EditEntity("rule", tocRule?.rule, R.string.regex))
+            add(EditEntity("example", tocRule?.example, R.string.example))
+        }
+        adapter.editEntities = editEntities
     }
 
     private fun getRuleFromView(): TxtTocRule {
         val tocRule = viewModel.tocRule ?: TxtTocRule().apply {
             viewModel.tocRule = this
         }
-        binding.run {
-            tocRule.name = tvRuleName.text.toString()
-            tocRule.rule = tvRuleRegex.text.toString()
-            tocRule.example = tvRuleExample.text.toString()
+        editEntities.forEach {
+            when (it.key) {
+                "name" -> tocRule.name = it.text.orEmpty()
+                "rule" -> tocRule.rule = it.text.orEmpty()
+                "example" -> tocRule.example = it.text.orEmpty()
+            }
         }
         return tocRule
     }

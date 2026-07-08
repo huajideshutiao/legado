@@ -8,6 +8,7 @@ import androidx.core.content.withStyledAttributes
 import io.legado.app.R
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.radius
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -17,7 +18,7 @@ class AccentBgTextView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : AppCompatTextView(context, attrs) {
 
-    private var radius = context.resources.getDimensionPixelOffset(R.dimen.arco_radius_default)
+    private var radius = context.radius.default
 
     init {
         context.withStyledAttributes(attrs, R.styleable.AccentBgTextView) {

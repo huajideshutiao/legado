@@ -52,6 +52,7 @@ class ImportDictRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_view)
         binding.rotateLoading.show()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.bottomLayout.visible()
         binding.tvCancel.visible()
         binding.tvCancel.setOnClickListener {
             dismissAllowingStateLoss()

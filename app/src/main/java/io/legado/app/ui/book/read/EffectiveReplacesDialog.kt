@@ -18,22 +18,24 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.databinding.DialogSourceFilterListBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.ThemeUtils
+import io.legado.app.lib.theme.space
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 
 /**
  * 展示当前章节起效的替换规则；点击单条编辑，底部"管理全部"跳 [ReplaceRuleActivity]。
- * 复用 [R.layout.dialog_source_filter_list] 布局，承担原"净化"入口职责。
+ * 复用 [R.layout.dialog_recycler_view] 布局，承担原"净化"入口职责。
  */
-class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter_list) {
+class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
-    private val binding by viewBinding(DialogSourceFilterListBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by activityViewModels<ReadBookViewModel>()
     private val adapter by lazy { ReplaceAdapter(requireContext()) }
     private val chineseConvert by lazy { ReplaceRule(0, "繁简转换") }
@@ -75,8 +77,13 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
         binding.tvEmpty.setText(R.string.empty)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        binding.tvClose.setOnClickListener { dismiss() }
-        binding.tvManage.setOnClickListener {
+        binding.bottomLayout.visible()
+        binding.tvCancel.visible()
+        binding.tvCancel.text = getString(R.string.close)
+        binding.tvCancel.setOnClickListener { dismiss() }
+        binding.tvOk.visible()
+        binding.tvOk.text = getString(R.string.source_filter_rule_manage)
+        binding.tvOk.setOnClickListener {
             manageActivity.launch(Intent(requireContext(), ReplaceRuleActivity::class.java))
         }
         val effectiveReplaceRules = ReadBook.curTextChapter?.effectiveReplaceRules ?: emptyList()
@@ -116,10 +123,10 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
                 setPadding(
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    parent.context.space.lg,
+                    parent.context.space.default,
+                    parent.context.space.lg,
+                    parent.context.space.default
                 )
                 // 点击编辑替换规则,需有 ripple 反馈
                 background = ThemeUtils.resolveDrawable(

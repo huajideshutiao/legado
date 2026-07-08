@@ -21,6 +21,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.ThemeUtils
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -83,10 +84,10 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 )
                 setPadding(
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                    0,
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                    0
+                    parent.context.space.default,
+                    parent.context.space.default,
+                    parent.context.space.default,
+                    parent.context.space.default
                 )
                 // 点击打开日志文件,需有 ripple 反馈
                 background = ThemeUtils.resolveDrawable(

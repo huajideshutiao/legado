@@ -17,6 +17,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.GSON
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.gone
@@ -32,12 +33,12 @@ class ThemeListDialog : BaseDialogFragment(0), Toolbar.OnMenuItemClickListener {
 
     override fun onCreateView(
         inflater: LayoutInflater,
-        parent: ViewGroup?,
+        container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val h = resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
-        container = LinearLayout(ctx).apply {
+        val h = space.lg
+        this@ThemeListDialog.container = LinearLayout(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
             orientation = LinearLayout.VERTICAL
             setPadding(h, 0, h, 0)
@@ -46,7 +47,7 @@ class ThemeListDialog : BaseDialogFragment(0), Toolbar.OnMenuItemClickListener {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
             isVerticalScrollBarEnabled = false
         }
-        scroll.addView(container)
+        scroll.addView(this@ThemeListDialog.container)
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             addView(inflater.inflate(R.layout.dialog_title_bar, this, false))

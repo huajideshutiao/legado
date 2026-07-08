@@ -28,10 +28,10 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.viewHeight
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.activity
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.removeLastElement
 import io.legado.app.utils.showDialogFragment
@@ -354,7 +354,10 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
 
                 val style = kind.style()
                 style.apply(tv)
-                tv.minimumHeight = 40.dpToPx() * style.rows.coerceAtLeast(1)
+                tv.minimumHeight =
+                    tv.context.viewHeight.large * style.rows.coerceAtLeast(
+                        1
+                    )
 
                 tv.setOnClickListener {
                     when {

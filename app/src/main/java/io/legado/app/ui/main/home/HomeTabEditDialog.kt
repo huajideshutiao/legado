@@ -16,7 +16,7 @@ import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.utils.dpToPx
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 
@@ -24,7 +24,7 @@ fun showHomeTabEditDialog(
     context: Context,
     oldTitle: String? = null
 ) {
-    val dp16 = 16.dpToPx()
+    val dp16 = context.space.lg
     val et = EditText(context).apply {
         inputType = InputType.TYPE_CLASS_TEXT
         maxLines = 1

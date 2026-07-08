@@ -6,14 +6,14 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
-import io.legado.app.R
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.radius
 import splitties.init.appCtx
 
 class BottomBackgroundDrawable : Drawable() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val radius = appCtx.resources.getDimension(R.dimen.arco_radius_default)
+    private val radius = appCtx.radius.defaultF
     private val rectF = RectF()
 
     override fun draw(canvas: Canvas) {

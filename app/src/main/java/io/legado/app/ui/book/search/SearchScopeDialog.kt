@@ -19,6 +19,7 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSearchScopeBinding
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -160,9 +161,9 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemViewHolder {
             return if (viewType == 1) {
                 val ctx = parent.context
-                val hPad = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
+                val hPad = parent.context.space.lg
                 val vPad =
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    parent.context.space.default
                 val root = FrameLayout(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -180,9 +181,9 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
                 ItemViewHolder(RadioButtonWrapper(root, radioButton))
             } else {
                 val ctx = parent.context
-                val hPad = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
+                val hPad = parent.context.space.lg
                 val vPad =
-                    parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    parent.context.space.default
                 val root = FrameLayout(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -265,17 +266,19 @@ class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
 
     }
 
-    private class CheckBoxWrapper(root: View, val checkBox: CheckBox) : ViewBinding {
-        override fun getRoot(): View = root
+    private class CheckBoxWrapper(private val rootView: View, val checkBox: CheckBox) :
+        ViewBinding {
+        override fun getRoot(): View = rootView
         init {
-            root.tag = this
+            rootView.tag = this
         }
     }
 
-    private class RadioButtonWrapper(root: View, val radio: RadioButton) : ViewBinding {
-        override fun getRoot(): View = root
+    private class RadioButtonWrapper(private val rootView: View, val radio: RadioButton) :
+        ViewBinding {
+        override fun getRoot(): View = rootView
         init {
-            root.tag = this
+            rootView.tag = this
         }
     }
 

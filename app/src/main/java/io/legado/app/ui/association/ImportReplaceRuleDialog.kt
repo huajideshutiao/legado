@@ -68,6 +68,7 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
         binding.rotateLoading.show()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.bottomLayout.visible()
         binding.tvCancel.visible()
         binding.tvCancel.setOnClickListener {
             dismissAllowingStateLoss()

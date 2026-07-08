@@ -10,6 +10,7 @@ import android.view.View
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import io.legado.app.R
+import io.legado.app.lib.theme.ThemeInterceptor
 import io.legado.app.utils.applyTint
 
 fun Context.alert(
@@ -124,11 +125,19 @@ fun AlertDialog.Builder.onDismiss(handler: (dialog: DialogInterface) -> Unit) {
 }
 
 fun AlertDialog.Builder.customTitle(view: () -> View) {
-    setCustomTitle(view())
+    // 动态创建的 View 不走 LayoutInflater.inflate, 不会被 ThemeInterceptor 的 Factory2 拦截,
+    // 这里在 setCustomTitle 前对整棵 View 树统一着色 (inflate 的子节点已被 apply 标记, 零成本跳过)。
+    val v = view()
+    ThemeInterceptor.applyToTree(v)
+    setCustomTitle(v)
 }
 
 fun AlertDialog.Builder.customView(view: () -> View) {
-    setView(view())
+    // 动态创建的 View 不走 LayoutInflater.inflate, 不会被 ThemeInterceptor 的 Factory2 拦截,
+    // 这里在 setView 前对整棵 View 树统一着色 (inflate 的子节点已被 apply 标记, 零成本跳过)。
+    val v = view()
+    ThemeInterceptor.applyToTree(v)
+    setView(v)
 }
 
 fun AlertDialog.Builder.items(

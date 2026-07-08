@@ -15,6 +15,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.lib.theme.ThemeUtils
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.showDialogFragment
@@ -65,7 +66,7 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LogViewHolder {
             val ctx = parent.context
-            val padding = ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+            val padding = ctx.space.default
             val root = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(padding)

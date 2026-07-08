@@ -155,6 +155,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var showHome by boolPref(PreferKey.showHome, true)
 
+    var bottomNavItemOrder by stringPref(PreferKey.bottomNavItemOrder, "")
+
     val autoRefreshBook by boolPref(PreferKey.autoRefresh)
 
     var threadCount by intPref(PreferKey.threadCount, 16)

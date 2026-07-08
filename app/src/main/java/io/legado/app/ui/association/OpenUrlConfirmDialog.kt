@@ -19,6 +19,7 @@ import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -38,7 +39,7 @@ object OpenUrlConfirmDialog {
             return
         }
 
-        val padding = activity.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
+        val padding = activity.space.lg
 
         // 应用 Style.DialogToolbar(elevation=0, titleTextAppearance, popupTheme), 与其他对话框 Toolbar 一致
         val toolbar =

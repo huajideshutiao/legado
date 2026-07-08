@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -23,14 +22,5 @@
             android:textIsSelectable="true" />
 
     </androidx.core.widget.NestedScrollView>
-
-    <io.legado.app.ui.widget.text.BadgeView
-        android:id="@+id/badge_view"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:layout_margin="@dimen/arco_spacing_xs"
-        android:visibility="invisible"
-        tools:visibility="visible" />
 
 </LinearLayout>

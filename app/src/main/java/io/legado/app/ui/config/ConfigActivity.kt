@@ -14,6 +14,10 @@ import io.legado.app.ui.widget.TitleBar
 
 class ConfigActivity : VMBaseActivity<ConfigActivity.Binding, ConfigViewModel>() {
 
+    companion object {
+        private val CONFIG_FRAME_ID = View.generateViewId()
+    }
+
     class Binding(private val root: View) : ViewBinding {
         override fun getRoot() = root
         lateinit var titleBar: TitleBar
@@ -28,10 +32,13 @@ class ConfigActivity : VMBaseActivity<ConfigActivity.Binding, ConfigViewModel>()
             orientation = LinearLayout.VERTICAL
             layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         }
-        val titleBar = layoutInflater.inflate(R.layout.dialog_title_bar, root, false) as TitleBar
+        val titleBar = TitleBar(ctx).apply {
+            id = R.id.title_bar
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        }
         root.addView(titleBar)
         val configFrameLayout = LinearLayout(ctx).apply {
-            id = View.generateViewId()
+            id = CONFIG_FRAME_ID
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
                 height = 0
                 weight = 1f

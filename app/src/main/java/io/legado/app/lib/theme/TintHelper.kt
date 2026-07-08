@@ -273,7 +273,27 @@ object TintHelper {
 
     @SuppressLint("RestrictedApi")
     fun setTint(editText: AppCompatEditText, @ColorInt color: Int, useDarker: Boolean) {
-        val editTextColorStateList = ColorStateList(
+        editText.supportBackgroundTintList =
+            createEditTextTintList(editText.context, color, useDarker)
+        setCursorTint(editText, color)
+    }
+
+    /**
+     * 创建含 disabled/enabled-unfocused/focused 三态的 ColorStateList。
+     *
+     * 抽取为独立方法的原因: 同时服务于两处 EditText 着色场景, 避免状态集逻辑重复:
+     * 1. [setTint]([AppCompatEditText]): 设置 EditText 自身的 supportBackgroundTintList
+     *    (BOX_BACKGROUND_NONE 模式, 或未包裹在 TextInputLayout 中的独立 EditText)。
+     * 2. [ThemeInterceptor.setTint]([TextInputLayout]): 设置 boxStrokeColorStateList。
+     *    TextInputLayout.updateBoxStrokeColorState 在聚焦时默认回退到 focusedStrokeColor
+     *    (取自主题 colorControlActivated 静态值), 用此 ColorStateList 覆盖后聚焦底线跟随动态主题色。
+     */
+    fun createEditTextTintList(
+        context: Context,
+        @ColorInt color: Int,
+        useDarker: Boolean
+    ): ColorStateList {
+        return ColorStateList(
             arrayOf(
                 intArrayOf(-android.R.attr.state_enabled),
                 intArrayOf(
@@ -285,18 +305,16 @@ object TintHelper {
             ),
             intArrayOf(
                 ContextCompat.getColor(
-                    editText.context,
+                    context,
                     if (useDarker) R.color.ate_text_disabled_dark else R.color.ate_text_disabled_light
                 ),
                 ContextCompat.getColor(
-                    editText.context,
+                    context,
                     if (useDarker) R.color.ate_control_normal_dark else R.color.ate_control_normal_light
                 ),
                 color
             )
         )
-        editText.supportBackgroundTintList = editTextColorStateList
-        setCursorTint(editText, color)
     }
 
     @SuppressLint("PrivateResource")

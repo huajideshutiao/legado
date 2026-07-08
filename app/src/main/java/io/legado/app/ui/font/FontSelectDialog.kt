@@ -23,11 +23,11 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.items
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RealPathUtil
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
@@ -75,7 +75,7 @@ class FontSelectDialog : BaseDialogFragment(0),
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val dp16 = 16.dpToPx()
+        val dp16 = ctx.space.lg
         return LinearLayout(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -197,7 +197,7 @@ class FontSelectDialog : BaseDialogFragment(0),
 
     private fun showFontList(items: List<FileDoc>) {
         val ctx = requireContext()
-        val vPad = 4.dpToPx()
+        val vPad = ctx.space.xs
         items.forEachIndexed { index, item ->
             val rb = RadioButton(ctx).apply {
                 layoutParams = RadioGroup.LayoutParams(

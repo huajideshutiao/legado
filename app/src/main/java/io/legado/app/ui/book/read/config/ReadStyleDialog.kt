@@ -24,6 +24,7 @@ import io.legado.app.databinding.DialogReadBookStyleBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.space
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.font.FontSelectDialog
@@ -250,7 +251,7 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
     ): StyleItemBinding {
         val ctx = parent.context
         val size = 48.dpToPx()
-        val margin = ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+        val margin = ctx.space.default
         val root = FrameLayout(ctx).apply {
             layoutParams = ViewGroup.MarginLayoutParams(size, size).apply {
                 marginStart = margin

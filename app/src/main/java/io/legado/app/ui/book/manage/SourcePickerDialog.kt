@@ -23,9 +23,9 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.DialogSourcePickerBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -122,7 +122,7 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                setPadding(16.dpToPx())
+                setPadding(context.space.lg)
             }
             return TextItemBinding(tv)
         }

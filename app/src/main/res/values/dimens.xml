@@ -27,6 +27,10 @@
     <dimen name="arco_spacing_lg">16dp</dimen>
     <dimen name="arco_spacing_max">20dp</dimen>
 
+    <!-- ==================== Arco Design 描边体系 ==================== -->
+    <dimen name="arco_stroke_width_thin">1dp</dimen>
+    <dimen name="arco_stroke_width_medium">2dp</dimen>
+
     <dimen name="fastscroll_bubble_radius">25dp</dimen>
     <dimen name="fastscroll_bubble_size">50dp</dimen>
     <dimen name="fastscroll_bubble_textsize">20sp</dimen>
@@ -44,4 +48,5 @@
     <dimen name="fastscroll_scrollbar_padding_end">0dp</dimen>
 
     <dimen name="fixed_height_bottom_padding">8dp</dimen>
+
 </resources>

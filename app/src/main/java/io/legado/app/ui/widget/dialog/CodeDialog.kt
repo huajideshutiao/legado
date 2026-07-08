@@ -9,12 +9,12 @@ import android.widget.LinearLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.help.IntentData
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.utils.disableEdit
-import io.legado.app.utils.dpToPx
 
 class CodeDialog() : BaseDialogFragment(0) {
 
@@ -33,7 +33,7 @@ class CodeDialog() : BaseDialogFragment(0) {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val dp12 = 12.dpToPx()
+        val dp12 = space.md
         return LinearLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

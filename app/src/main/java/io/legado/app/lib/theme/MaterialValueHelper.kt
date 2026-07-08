@@ -89,7 +89,7 @@ val Context.isDarkTheme: Boolean
 val Context.filletBackground: GradientDrawable
     get() {
         val background = GradientDrawable()
-        background.cornerRadius = resources.getDimension(R.dimen.arco_radius_default)
+        background.cornerRadius = radius.defaultF
         background.setColor(bottomBackground)
         return background
     }

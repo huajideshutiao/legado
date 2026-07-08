@@ -10,6 +10,7 @@ import androidx.annotation.ColorInt
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.graphics.drawable.toDrawable
 import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.radius
 
 /**
  * @author Karim Abou Zeid (kabouzeid)
@@ -40,7 +41,7 @@ object DrawableUtils {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(context.bottomBackground)
-            cornerRadius = 8f.dpToPx()
+            cornerRadius = context.radius.defaultF
         }
     }
 

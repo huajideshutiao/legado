@@ -10,7 +10,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.utils.dpToPx
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.hexString
 
@@ -27,7 +27,7 @@ class SearchContentAdapter(context: Context, val callback: Callback) :
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            val padding = 12.dpToPx()
+            val padding = context.space.md
             setPadding(padding, padding, padding, padding)
             val typedValue = TypedValue()
             context.theme.resolveAttribute(

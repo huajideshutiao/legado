@@ -17,6 +17,8 @@ import io.legado.app.databinding.ItemExploreVideoBinding
 import io.legado.app.databinding.ItemHomeCoverCardBinding
 import io.legado.app.databinding.ItemHomeRankBookBinding
 import io.legado.app.databinding.ViewHomeSectionTitleBinding
+import io.legado.app.lib.theme.applyThemeTree
+import io.legado.app.lib.theme.space
 import io.legado.app.model.BookCover
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.widget.recycler.LoadMoreView
@@ -81,7 +83,12 @@ class HomeSectionAdapter(
     private inner class SectionHolder(val section: HomeSection) {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 8.dpToPx(), 0, 4.dpToPx())
+            setPadding(
+                0,
+                context.space.default,
+                0,
+                context.space.xs
+            )
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -117,7 +124,12 @@ class HomeSectionAdapter(
             if (section.style != HomeSection.STYLE_INFINITE_GRID) {
                 // 随后 rv/stateView 追加到末尾,最终顺序: title → llFilter → rv → stateView
                 rv = RecyclerView(context).apply {
-                    setPadding(8.dpToPx(), 0, 8.dpToPx(), 0)
+                    setPadding(
+                        context.space.default,
+                        0,
+                        context.space.default,
+                        0
+                    )
                     clipToPadding = false
                     isNestedScrollingEnabled = false
 
@@ -207,6 +219,12 @@ class HomeSectionAdapter(
                     )
                 )
             }
+            // SectionHolder.root 是动态构造的 LinearLayout, 内部混合 inflate 子节点
+            // (titleBinding 走 Factory2 已着色) 和动态构造子节点 (llFilter/rv/stateView)。
+            // 此处整树着色: 已标记的 inflate 子节点零成本跳过, 动态构造子节点兜底着色。
+            // 注意: 此 root 后续被 container.addView 加入外部容器, 时序晚于 alert DSL customView
+            // 的 applyToTree, 必须在此单独兜底。
+            root.applyThemeTree()
         }
 
         private fun itemCountOf(): Int = when (val a = adapter) {
@@ -333,6 +351,8 @@ class HomeSectionAdapter(
                 isNestedScrollingEnabled = false
                 overScrollMode = RecyclerView.OVER_SCROLL_NEVER
             }
+            // 动态构造的 RecyclerView 不走 Factory2, 整树着色 (setEdgeEffectColor 会被处理)
+            rv.applyThemeTree()
             return FourColumnVH(rv, onClick)
         }
 

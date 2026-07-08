@@ -2,14 +2,26 @@ package io.legado.app.ui.config
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.SeekBar
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.indices
 import androidx.preference.Preference
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.AppContextWrapper
+import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.BottomNavTag
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogBookshelfConfigBinding
@@ -22,14 +34,18 @@ import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.checkByIndex
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.startActivity
+import java.util.Collections
 
 
 @Suppress("SameParameterValue")
@@ -144,15 +160,135 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("InflateParams")
     private fun configBottomNav() {
         val binding = DialogBottomNavConfigBinding.inflate(layoutInflater)
-        fun applyValues(
-            height: Int,
-            icon: Int,
-            label: Int,
-            showDiscovery: Boolean,
-            showHome: Boolean
+
+        data class NavItem(
+            val tag: String,
+            val filledIconRes: Int,
+            val outlinedIconRes: Int,
+            val nameRes: Int,
+            var enabled: Boolean,
         ) {
-            binding.swShowHome.isChecked = showHome
-            binding.swShowDiscovery.isChecked = showDiscovery
+            val locked get() = tag == BottomNavTag.BOOKSHELF || tag == BottomNavTag.MY
+        }
+
+        val defaultNavItems = listOf(
+            NavItem(
+                BottomNavTag.HOME,
+                R.drawable.ic_bottom_home_s,
+                R.drawable.ic_bottom_home_e,
+                R.string.home,
+                AppConfig.showHome
+            ),
+            NavItem(
+                BottomNavTag.BOOKSHELF,
+                R.drawable.ic_bottom_books_s,
+                R.drawable.ic_bottom_books_e,
+                R.string.bookshelf,
+                true
+            ),
+            NavItem(
+                BottomNavTag.DISCOVERY,
+                R.drawable.ic_bottom_explore_s,
+                R.drawable.ic_bottom_explore_e,
+                R.string.discovery,
+                AppConfig.showDiscovery
+            ),
+            NavItem(
+                BottomNavTag.MY,
+                R.drawable.ic_bottom_person_s,
+                R.drawable.ic_bottom_person_e,
+                R.string.my,
+                true
+            ),
+        )
+        val savedOrder = AppConfig.bottomNavItemOrder?.split(",").orEmpty()
+        val defaultTags = defaultNavItems.map { it.tag }.toSet()
+        val navItems = if (savedOrder.size == defaultNavItems.size
+            && savedOrder.toSet() == defaultTags
+        ) {
+            savedOrder.mapNotNull { tag -> defaultNavItems.find { it.tag == tag } }.toMutableList()
+        } else {
+            defaultNavItems.toMutableList()
+        }
+
+        fun iconSize() = AppConfig.bottomBarIconSize.dpToPx()
+
+        fun bindView(tv: TextView, item: NavItem) {
+            tv.setText(item.nameRes)
+            val ctx = requireContext()
+            val iconRes = if (item.enabled) item.filledIconRes else item.outlinedIconRes
+            val tint = if (item.enabled) ctx.accentColor else ctx.primaryTextColor
+            val icon: Drawable = ContextCompat.getDrawable(ctx, iconRes)!!
+                .mutate().also {
+                    it.setBounds(0, 0, iconSize(), iconSize())
+                    DrawableCompat.setTint(it, tint)
+                }
+            tv.setCompoundDrawables(null, icon, null, null)
+            tv.setTextColor(tint)
+        }
+
+        val adapter = object : RecyclerAdapter<NavItem, ViewBinding>(requireContext()) {
+            override fun getViewBinding(parent: ViewGroup): ViewBinding {
+                val tv = TextView(context).apply {
+                    layoutParams = RecyclerView.LayoutParams(
+                        RecyclerView.LayoutParams.MATCH_PARENT,
+                        RecyclerView.LayoutParams.WRAP_CONTENT
+                    )
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+                    textSize = 12f
+                    compoundDrawablePadding = 4.dpToPx()
+                    val pad = resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                    setPadding(pad, pad, pad, pad)
+                }
+                return ViewBinding { tv }
+            }
+
+            override fun convert(
+                holder: ItemViewHolder,
+                binding: ViewBinding,
+                item: NavItem,
+                payloads: MutableList<Any>
+            ) {
+                bindView(binding.root as TextView, item)
+            }
+
+            override fun registerListener(holder: ItemViewHolder, binding: ViewBinding) {
+                holder.itemView.setOnClickListener {
+                    val item =
+                        getItemByLayoutPosition(holder.layoutPosition) ?: return@setOnClickListener
+                    if (!item.locked) {
+                        item.enabled = !item.enabled
+                        notifyItemChanged(holder.layoutPosition)
+                    }
+                }
+            }
+        }.also { it.setItems(navItems) }
+
+        binding.rvNavItems.apply {
+            layoutManager = GridLayoutManager(requireContext(), navItems.size)
+            this.adapter = adapter
+        }
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.START or ItemTouchHelper.END, 0
+        ) {
+            override fun onMove(
+                rv: RecyclerView,
+                vh: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val from = vh.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                Collections.swap(navItems, from, to)
+                adapter.notifyItemMoved(from, to)
+                return true
+            }
+
+            override fun onSwiped(vh: RecyclerView.ViewHolder, dir: Int) {}
+        }).attachToRecyclerView(binding.rvNavItems)
+
+        @SuppressLint("SetTextI18n")
+        fun applyValues(height: Int, icon: Int, label: Int) {
             binding.sbHeight.progress = height - AppConfig.BOTTOM_BAR_HEIGHT_MIN
             binding.sbIcon.progress = icon - AppConfig.BOTTOM_BAR_ICON_MIN
             binding.tvHeightValue.text = "${height}dp"
@@ -168,25 +304,17 @@ class ThemeConfigFragment : PreferenceFragment(),
             applyValues(
                 AppConfig.bottomBarHeight,
                 AppConfig.bottomBarIconSize,
-                AppConfig.bottomBarLabelMode,
-                AppConfig.showDiscovery,
-                AppConfig.showHome
+                AppConfig.bottomBarLabelMode
             )
             sbHeight.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-                override fun onProgressChanged(
-                    seekBar: SeekBar,
-                    progress: Int,
-                    fromUser: Boolean
-                ) {
+                @SuppressLint("SetTextI18n")
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                     tvHeightValue.text = "${progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN}dp"
                 }
             })
             sbIcon.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-                override fun onProgressChanged(
-                    seekBar: SeekBar,
-                    progress: Int,
-                    fromUser: Boolean
-                ) {
+                @SuppressLint("SetTextI18n")
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                     tvIconValue.text = "${progress + AppConfig.BOTTOM_BAR_ICON_MIN}dp"
                 }
             })
@@ -194,6 +322,10 @@ class ThemeConfigFragment : PreferenceFragment(),
         alert(titleResource = R.string.bottom_nav_config) {
             customView { binding.root }
             okButton {
+                val newShowHome = navItems.find { it.tag == BottomNavTag.HOME }?.enabled ?: true
+                val newShowDiscovery =
+                    navItems.find { it.tag == BottomNavTag.DISCOVERY }?.enabled ?: true
+                val newOrder = navItems.joinToString(",") { it.tag }
                 val newHeight = binding.sbHeight.progress + AppConfig.BOTTOM_BAR_HEIGHT_MIN
                 val newIcon = binding.sbIcon.progress + AppConfig.BOTTOM_BAR_ICON_MIN
                 val newLabel = when (binding.rgLabelMode.checkedRadioButtonId) {
@@ -202,30 +334,22 @@ class ThemeConfigFragment : PreferenceFragment(),
                     R.id.rb_label_auto -> 3
                     else -> 0
                 }
-                val newShowDiscovery = binding.swShowDiscovery.isChecked
-                val newShowHome = binding.swShowHome.isChecked
-                var changed = false
-                if (AppConfig.showHome != newShowHome) {
-                    AppConfig.showHome = newShowHome
-                }
-                if (AppConfig.showDiscovery != newShowDiscovery) {
-                    AppConfig.showDiscovery = newShowDiscovery
-                }
+                var changed = AppConfig.showHome != newShowHome
+                    || AppConfig.showDiscovery != newShowDiscovery
+                    || AppConfig.bottomNavItemOrder != newOrder
+                AppConfig.showHome = newShowHome
+                AppConfig.showDiscovery = newShowDiscovery
+                AppConfig.bottomNavItemOrder = newOrder
                 if (AppConfig.bottomBarHeight != newHeight) {
-                    AppConfig.bottomBarHeight = newHeight
-                    changed = true
+                    AppConfig.bottomBarHeight = newHeight; changed = true
                 }
                 if (AppConfig.bottomBarIconSize != newIcon) {
-                    AppConfig.bottomBarIconSize = newIcon
-                    changed = true
+                    AppConfig.bottomBarIconSize = newIcon; changed = true
                 }
                 if (AppConfig.bottomBarLabelMode != newLabel) {
-                    AppConfig.bottomBarLabelMode = newLabel
-                    changed = true
+                    AppConfig.bottomBarLabelMode = newLabel; changed = true
                 }
-                if (changed) {
-                    recreateActivities()
-                }
+                if (changed) recreateActivities()
             }
             neutralButton(R.string.reset)
             cancelButton()
@@ -234,10 +358,11 @@ class ThemeConfigFragment : PreferenceFragment(),
                 applyValues(
                     AppConfig.BOTTOM_BAR_HEIGHT_DEFAULT,
                     AppConfig.BOTTOM_BAR_ICON_DEFAULT,
-                    AppConfig.BOTTOM_BAR_LABEL_DEFAULT,
-                    true,
-                    true
+                    AppConfig.BOTTOM_BAR_LABEL_DEFAULT
                 )
+                navItems.clear()
+                navItems.addAll(defaultNavItems.map { it.copy(enabled = true) })
+                adapter.setItems(navItems)
             }
         }
     }

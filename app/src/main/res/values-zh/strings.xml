@@ -998,4 +998,5 @@
     <string name="home_tab_delete_confirm_with_sections">分组"%1$s"包含%2$d个组件，将一并删除</string>
     <string name="home_manage_for_tab">管理"%1$s"组件</string>
     <string name="home_manage_empty">此分组无组件，点击右上角+添加</string>
+    <string name="bottom_nav_items_order">底栏项目顺序</string>
 </resources>

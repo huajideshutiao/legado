@@ -20,7 +20,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.DialogListPickerBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemTocRegexBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
@@ -39,6 +39,7 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -48,7 +49,7 @@ import kotlinx.coroutines.launch
 /**
  * txt目录规则
  */
-class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
+class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener, TxtTocRuleEditDialog.Callback {
 
     override val isFullHeight: Boolean = true
@@ -61,7 +62,7 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
 
     private val importTocRuleKey = "tocRuleUrl"
     private val viewModel: TxtTocRuleViewModel by viewModels()
-    private val binding by viewBinding(DialogListPickerBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { TocRegexAdapter(requireContext()) }
     var selectedName: String? = null
     private var durRegex: String? = null
@@ -86,6 +87,9 @@ class TxtTocRuleDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
 
     private fun initView() = binding.run {
         recyclerView.adapter = adapter
+        bottomLayout.visible()
+        tvCancel.visible()
+        tvOk.visible()
         val itemTouchCallback = ItemTouchCallback(adapter)
         itemTouchCallback.isCanDrag = true
         ItemTouchHelper(itemTouchCallback).attachToRecyclerView(recyclerView)

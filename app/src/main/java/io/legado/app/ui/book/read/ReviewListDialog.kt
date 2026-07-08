@@ -39,6 +39,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.space
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
@@ -378,7 +379,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         val divider = View(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                8.dpToPx()
+                ctx.space.default
             )
             setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider))
         }
@@ -388,10 +389,10 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             setPadding(
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs)
+                ctx.space.lg,
+                ctx.space.md,
+                ctx.space.lg,
+                ctx.space.xs
             )
             setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
             textSize = 14f
@@ -415,10 +416,10 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             gravity = android.view.Gravity.CENTER_VERTICAL
             orientation = LinearLayout.HORIZONTAL
             setPadding(
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs)
+                ctx.space.lg,
+                ctx.space.md,
+                ctx.space.default,
+                ctx.space.xs
             )
         }
         val tvListTitle = TextView(ctx).apply {
@@ -441,10 +442,10 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
             compoundDrawablePadding = 2.dpToPx()
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                4.dpToPx(),
-                ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                4.dpToPx()
+                ctx.space.default,
+                ctx.space.xs,
+                ctx.space.default,
+                ctx.space.xs
             )
             setTextColor(ContextCompat.getColor(ctx, R.color.secondaryText))
             textSize = 13f

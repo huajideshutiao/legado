@@ -6,44 +6,58 @@ import android.view.View
 import androidx.appcompat.widget.Toolbar
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.DialogDirectLinkConfigBinding
+import io.legado.app.databinding.DialogFormEditBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.ui.widget.text.EditEntity.ViewType
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import splitties.init.appCtx
-import splitties.views.onClick
 
-class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_config),
+class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_form_edit),
     Toolbar.OnMenuItemClickListener {
 
-    private val binding by viewBinding(DialogDirectLinkConfigBinding::bind)
+    private val binding by viewBinding(DialogFormEditBinding::bind)
+    private val adapter by lazy { FormAdapter() }
+    private val editEntities: ArrayList<EditEntity> = ArrayList()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(
             menuRes = R.menu.direct_link_upload_config,
             onMenuClick = ::onMenuItemClick
         )
-        upView(DirectLinkUpload.getRule())
-        binding.tvCancel.onClick {
-            dismiss()
+        binding.recyclerView.adapter = adapter
+        // 启用底部按钮栏: 左侧测试按钮 + 右侧取消/确定
+        binding.bottomLayout.visible()
+        binding.tvFooterLeft.apply {
+            visible()
+            text = getString(R.string.test)
+            setOnClickListener { test() }
         }
-        binding.tvFooterLeft.onClick {
-            test()
+        binding.tvCancel.apply {
+            visible()
+            setOnClickListener { dismiss() }
         }
-        binding.tvOk.onClick {
-            getRule()?.let { rule ->
-                DirectLinkUpload.putConfig(rule)
-                dismiss()
+        binding.tvOk.apply {
+            visible()
+            setOnClickListener {
+                getRule()?.let { rule ->
+                    DirectLinkUpload.putConfig(rule)
+                    dismiss()
+                }
             }
         }
+        upView(DirectLinkUpload.getRule())
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
@@ -66,26 +80,45 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_co
     }
 
     private fun upView(rule: DirectLinkUpload.Rule) {
-        binding.editUploadUrl.setText(rule.uploadUrl)
-        binding.editDownloadUrlRule.setText(rule.downloadUrlRule)
-        binding.editSummary.setText(rule.summary)
-        binding.cbCompress.isChecked = rule.compress
+        editEntities.clear()
+        editEntities.apply {
+            add(EditEntity("uploadUrl", rule.uploadUrl, R.string.upload_url))
+            add(EditEntity("downloadUrlRule", rule.downloadUrlRule, R.string.download_url_rule))
+            add(EditEntity("summary", rule.summary, R.string.summary))
+            add(
+                EditEntity(
+                    "compress",
+                    rule.compress.toString(),
+                    R.string.is_compress,
+                    ViewType.checkBox
+                )
+            )
+        }
+        adapter.editEntities = editEntities
     }
 
     private fun getRule(): DirectLinkUpload.Rule? {
-        val uploadUrl = binding.editUploadUrl.text?.toString()
-        val downloadUrlRule = binding.editDownloadUrlRule.text?.toString()
-        val summary = binding.editSummary.text?.toString()
-        val compress = binding.cbCompress.isChecked
-        if (uploadUrl.isNullOrBlank()) {
+        var uploadUrl = ""
+        var downloadUrlRule = ""
+        var summary = ""
+        var compress = false
+        editEntities.forEach {
+            when (it.key) {
+                "uploadUrl" -> uploadUrl = it.text.orEmpty()
+                "downloadUrlRule" -> downloadUrlRule = it.text.orEmpty()
+                "summary" -> summary = it.text.orEmpty()
+                "compress" -> compress = it.boolValue
+            }
+        }
+        if (uploadUrl.isBlank()) {
             toastOnUi("上传Url不能为空")
             return null
         }
-        if (downloadUrlRule.isNullOrBlank()) {
+        if (downloadUrlRule.isBlank()) {
             toastOnUi("下载Url规则不能为空")
             return null
         }
-        if (summary.isNullOrBlank()) {
+        if (summary.isBlank()) {
             toastOnUi("注释不能为空")
             return null
         }

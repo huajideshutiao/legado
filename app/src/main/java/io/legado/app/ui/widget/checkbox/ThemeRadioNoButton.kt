@@ -11,6 +11,7 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.stroke
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -47,7 +48,7 @@ class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
                 }
                 background = Selector.shapeBuild()
                     .setCornerRadius(2.dpToPx())
-                    .setStrokeWidth(2.dpToPx())
+                    .setStrokeWidth(context.stroke.medium)
                     .setCheckedBgColor(accentColor)
                     .setCheckedStrokeColor(accentColor)
                     .setDefaultStrokeColor(textColor)
@@ -70,7 +71,7 @@ class ThemeRadioNoButton(context: Context, attrs: AttributeSet) :
                 }
                 background = Selector.shapeBuild()
                     .setCornerRadius(2.dpToPx())
-                    .setStrokeWidth(2.dpToPx())
+                    .setStrokeWidth(context.stroke.medium)
                     .setCheckedBgColor(accentColor)
                     .setCheckedStrokeColor(accentColor)
                     .setDefaultStrokeColor(defaultTextColor)

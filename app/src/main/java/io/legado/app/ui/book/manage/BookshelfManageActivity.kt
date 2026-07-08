@@ -48,6 +48,7 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.space
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
@@ -64,7 +65,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.iconItemOnLongClick
@@ -492,7 +492,12 @@ class BookshelfManageActivity :
                 isChecked = LocalConfig.deleteBookOriginal
             }
             val view = LinearLayout(this@BookshelfManageActivity).apply {
-                setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                setPadding(
+                    space.lg,
+                    0,
+                    space.lg,
+                    0
+                )
                 addView(checkBox)
             }
             customView { view }
@@ -552,7 +557,12 @@ class BookshelfManageActivity :
                     isChecked = LocalConfig.deleteBookOriginal
                 }
                 val view = LinearLayout(this@BookshelfManageActivity).apply {
-                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                    setPadding(
+                        space.lg,
+                        0,
+                        space.lg,
+                        0
+                    )
                     addView(checkBox)
                 }
                 customView { view }

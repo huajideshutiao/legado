@@ -11,7 +11,9 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
-import io.legado.app.databinding.DialogDictRuleEditBinding
+import io.legado.app.databinding.DialogFormEditBinding
+import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
@@ -19,11 +21,13 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
+class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
     Toolbar.OnMenuItemClickListener {
 
     val viewModel by viewModels<DictRuleEditViewModel>()
-    val binding by viewBinding(DialogDictRuleEditBinding::bind)
+    val binding by viewBinding(DialogFormEditBinding::bind)
+    private val adapter by lazy { FormAdapter() }
+    private val editEntities: ArrayList<EditEntity> = ArrayList()
 
     constructor(name: String) : this() {
         arguments = Bundle().apply {
@@ -36,6 +40,7 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
             menuRes = R.menu.rule_edit,
             onMenuClick = ::onMenuItemClick
         )
+        binding.recyclerView.adapter = adapter
         viewModel.initData(arguments?.getString("name")) {
             upRuleView(viewModel.dictRule)
         }
@@ -55,16 +60,24 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit),
     }
 
     private fun upRuleView(dictRule: DictRule?) {
-        binding.tvRuleName.setText(dictRule?.name)
-        binding.tvUrlRule.setText(dictRule?.urlRule)
-        binding.tvShowRule.setText(dictRule?.showRule)
+        editEntities.clear()
+        editEntities.apply {
+            add(EditEntity("name", dictRule?.name, R.string.name))
+            add(EditEntity("urlRule", dictRule?.urlRule, R.string.url_rule))
+            add(EditEntity("showRule", dictRule?.showRule, R.string.show_rule))
+        }
+        adapter.editEntities = editEntities
     }
 
     private fun getDictRule(): DictRule {
         val dictRule = viewModel.dictRule?.copy() ?: DictRule()
-        dictRule.name = binding.tvRuleName.text.toString()
-        dictRule.urlRule = binding.tvUrlRule.text.toString()
-        dictRule.showRule = binding.tvShowRule.text.toString()
+        editEntities.forEach {
+            when (it.key) {
+                "name" -> dictRule.name = it.text.orEmpty()
+                "urlRule" -> dictRule.urlRule = it.text.orEmpty()
+                "showRule" -> dictRule.showRule = it.text.orEmpty()
+            }
+        }
         return dictRule
     }
 

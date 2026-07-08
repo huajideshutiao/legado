@@ -19,6 +19,7 @@ import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.theme.space
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.utils.dpToPx
 
@@ -49,7 +50,12 @@ private fun LinearLayout.buildOptionRow(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
         orientation = LinearLayout.HORIZONTAL
-        setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
+        setPadding(
+            context.space.default,
+            context.space.xs,
+            context.space.default,
+            context.space.xs
+        )
     }
     if (option.multiSelect) {
         bindMultiSelect(inflater, row, option, onOptionSelected)
@@ -162,13 +168,25 @@ private fun showMultiSelectDialog(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(16.dpToPx(), 8.dpToPx(), 16.dpToPx(), 4.dpToPx()) }
+            ).apply {
+                setMargins(
+                    context.space.lg,
+                    context.space.default,
+                    context.space.lg,
+                    context.space.xs
+                )
+            }
             doAfterTextChanged { adapter.filter(it?.toString().orEmpty()) }
         }
         val list = RecyclerView(context).apply {
             layoutManager = FlexboxLayoutManager(context).apply { flexWrap = FlexWrap.WRAP }
             overScrollMode = RecyclerView.OVER_SCROLL_NEVER
-            setPadding(6.dpToPx(), 4.dpToPx(), 6.dpToPx(), 8.dpToPx())
+            setPadding(
+                context.space.default,
+                context.space.xs,
+                context.space.default,
+                context.space.default
+            )
             clipToPadding = false
             // 给一个固定高度; wrap_content 会触发 FlexboxLayoutManager 预 measure 所有 item,
             // tag 上千时就变成一次性 inflate, 优化目的就白费了

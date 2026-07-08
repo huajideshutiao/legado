@@ -10,7 +10,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
-import io.legado.app.databinding.DialogHomeSectionManageBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.observeEvent
@@ -21,11 +21,11 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 /**
  * 管理某个分组（tabTitle）下的展示项。列表、拖序、增删全部限定在该 tab 内。
  */
-class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_manage) {
+class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogHomeSectionManageBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
 
     private val tabTitle: String get() = arguments?.getString(ARG_TAB_TITLE).orEmpty()
 
@@ -60,6 +60,7 @@ class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_home_section_
         titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.tvEmpty.text = getString(R.string.home_manage_empty)
         initDragSort()
         upData()
         observeEvent<HomeSectionEvent>(EventBus.HOME_SECTION) { event ->

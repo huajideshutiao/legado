@@ -17,18 +17,19 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.DialogListPickerBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemGroupSelectBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 
 
-class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
+class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
     constructor(groupId: Long, requestCode: Int = -1) : this() {
@@ -38,7 +39,7 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
         }
     }
 
-    private val binding by viewBinding(DialogListPickerBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private var requestCode: Int = -1
     private val viewModel: GroupViewModel by viewModels()
     private val adapter by lazy { GroupAdapter(requireContext()) }
@@ -62,6 +63,9 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_list_picker),
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.bottomLayout.visible()
+        binding.tvCancel.visible()
+        binding.tvOk.visible()
         val itemTouchCallback = ItemTouchCallback(adapter)
         itemTouchCallback.isCanDrag = true
         ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)

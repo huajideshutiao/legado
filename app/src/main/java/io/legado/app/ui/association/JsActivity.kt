@@ -13,6 +13,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ViewEmptyBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.space
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.JsFn
 import io.legado.app.utils.dpToPx
@@ -48,7 +49,7 @@ open class JsActivity : BaseActivity<ViewEmptyBinding>() {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         resources.displayMetrics.heightPixels
                     )
-                    setPadding(0, 20.dpToPx(), 0, 0)
+                    setPadding(0, space.max, 0, 0)
                     addView(dialogView)
                 }
             )

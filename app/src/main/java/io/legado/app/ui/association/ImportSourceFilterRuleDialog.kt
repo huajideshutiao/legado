@@ -52,6 +52,7 @@ class ImportSourceFilterRuleDialog() : BaseDialogFragment(R.layout.dialog_recycl
         binding.rotateLoading.show()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.bottomLayout.visible()
         binding.tvCancel.visible()
         binding.tvCancel.setOnClickListener { dismissAllowingStateLoss() }
         binding.tvOk.visible()

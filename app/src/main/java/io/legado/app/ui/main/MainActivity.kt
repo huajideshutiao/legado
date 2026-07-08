@@ -6,6 +6,7 @@ package io.legado.app.ui.main
 import android.graphics.Color
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.addCallback
@@ -22,6 +23,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.appInfo
+import io.legado.app.constant.BottomNavTag
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityMainBinding
@@ -411,15 +413,52 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun upBottomMenu() {
         val showHome = AppConfig.showHome
         val showDiscovery = AppConfig.showDiscovery
-        binding.bottomNavigationView.menu.let { menu ->
-            menu.findItem(R.id.menu_home).isVisible = showHome
-            menu.findItem(R.id.menu_discovery).isVisible = showDiscovery
+        val defaultTagOrder = listOf(
+            BottomNavTag.HOME,
+            BottomNavTag.BOOKSHELF,
+            BottomNavTag.DISCOVERY,
+            BottomNavTag.MY,
+        )
+        val savedTagOrder = AppConfig.bottomNavItemOrder?.split(",").orEmpty()
+        val orderedTags = savedTagOrder
+            .takeIf { it.size == 4 && it.toSet() == defaultTagOrder.toSet() }
+            ?: defaultTagOrder.also {
+                if (AppConfig.bottomNavItemOrder != null) AppConfig.bottomNavItemOrder = null
+            }
+
+        val menu = binding.bottomNavigationView.menu
+        menu.clear()
+        for (tag in orderedTags) {
+            when (tag) {
+                BottomNavTag.HOME -> menu.add(
+                    Menu.NONE, R.id.menu_home, Menu.NONE, R.string.home
+                ).setIcon(R.drawable.ic_bottom_home).isVisible = showHome
+
+                BottomNavTag.BOOKSHELF -> menu.add(
+                    Menu.NONE, R.id.menu_bookshelf, Menu.NONE, R.string.bookshelf
+                ).setIcon(R.drawable.ic_bottom_books)
+
+                BottomNavTag.DISCOVERY -> menu.add(
+                    Menu.NONE, R.id.menu_discovery, Menu.NONE, R.string.discovery
+                ).setIcon(R.drawable.ic_bottom_explore).isVisible = showDiscovery
+
+                BottomNavTag.MY -> menu.add(
+                    Menu.NONE, R.id.menu_my_config, Menu.NONE, R.string.my
+                ).setIcon(R.drawable.ic_bottom_person)
+            }
         }
+
         realPositions.clear()
-        if (showHome) realPositions.add(idHome)
-        realPositions.add(idBookshelf)
-        if (showDiscovery) realPositions.add(idExplore)
-        realPositions.add(idMy)
+        for (tag in orderedTags) {
+            when (tag) {
+                BottomNavTag.HOME -> if (showHome) realPositions.add(idHome)
+                BottomNavTag.BOOKSHELF -> realPositions.add(idBookshelf)
+                BottomNavTag.DISCOVERY -> if (showDiscovery) realPositions.add(idExplore)
+                BottomNavTag.MY -> realPositions.add(idMy)
+            }
+        }
+        if (realPositions.isEmpty()) realPositions.add(idBookshelf)
+
         bottomMenuCount = realPositions.size
         adapter.notifyDataSetChanged()
         applyBottomNavigationSize()

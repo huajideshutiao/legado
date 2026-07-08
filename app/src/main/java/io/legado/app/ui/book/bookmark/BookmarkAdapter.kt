@@ -6,11 +6,11 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.viewbinding.ViewBinding
-import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.lib.theme.ThemeUtils
+import io.legado.app.lib.theme.space
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 import splitties.views.onClick
@@ -30,8 +30,8 @@ class BookmarkAdapter(context: Context, val callback: Callback) :
 
     override fun getViewBinding(parent: ViewGroup): BookmarkBinding {
         val ctx = parent.context
-        val padding = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
-        val childPadding = parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs)
+        val padding = parent.context.space.default
+        val childPadding = parent.context.space.xs
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(

@@ -17,12 +17,14 @@ import androidx.viewbinding.ViewBinding
 import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.applyThemeTree
+import io.legado.app.lib.theme.space
+import io.legado.app.lib.theme.viewHeight
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
-import io.legado.app.utils.dpToPx
 
 class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
 
@@ -50,15 +52,15 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                 val root = LinearLayout(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        48.dpToPx()
+                        ctx.viewHeight.xl
                     )
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(
-                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
-                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
-                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_md),
-                        ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                        ctx.space.md,
+                        ctx.space.default,
+                        ctx.space.md,
+                        ctx.space.default
                     )
                 }
                 val textView = TextView(ctx).apply {
@@ -67,7 +69,7 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                         ViewGroup.LayoutParams.MATCH_PARENT
                     ).apply {
                         marginEnd =
-                            ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
+                            ctx.space.default
                     }
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 }
@@ -79,6 +81,8 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                 }
                 root.addView(textView)
                 root.addView(spinner)
+                // 动态构造的 View 不走 Factory2, 在 return 前整树着色 (TextView/Spinner 等会被 ThemeInterceptor 处理)
+                root.applyThemeTree()
                 SpinnerViewHolder(SourceEditSpinnerItemBinding(root, textView, spinner))
             }
             else -> {
@@ -88,7 +92,12 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
-                    setPadding(0, 4.dpToPx(), 0, 0)
+                    setPadding(
+                        0,
+                        ctx.space.xs,
+                        0,
+                        0
+                    )
                 }
                 val editText = CodeView(ctx).apply {
                     layoutParams = LinearLayout.LayoutParams(
@@ -109,6 +118,9 @@ class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewH
                         onCodeViewFocus?.invoke(v as CodeView)
                     }
                 }
+                // 动态构造的 TextInputLayout + CodeView 不走 Factory2, 在 return 前整树着色
+                // (TextInputLayout 的 boxStrokeColor/hintTextColor 和 CodeView 的底线/光标会被处理)
+                root.applyThemeTree()
                 TextViewHolder(SourceEditItemBinding(root, editText))
             }
         }

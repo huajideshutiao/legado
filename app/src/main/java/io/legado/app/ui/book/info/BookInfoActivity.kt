@@ -69,6 +69,7 @@ import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.space
 import io.legado.app.model.BookCover
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
@@ -96,7 +97,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyBottomActionInsets
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
@@ -773,7 +773,12 @@ class BookInfoActivity :
                     }
                     customView {
                         LinearLayout(this@BookInfoActivity).apply {
-                            setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                            setPadding(
+                                space.lg,
+                                0,
+                                space.lg,
+                                0
+                            )
                             addView(checkBox)
                         }
                     }

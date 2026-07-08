@@ -999,6 +999,7 @@
     <string name="home_tab_delete_confirm_with_sections">Group "%1$s" contains %2$d sections, all will be deleted</string>
     <string name="home_manage_for_tab">Manage "%1$s" sections</string>
     <string name="home_manage_empty">No sections in this group, tap + in upper right to add</string>
+    <string name="bottom_nav_items_order">Bottom bar items order</string>
 
     <!--Non-translatable strings-->
     <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>

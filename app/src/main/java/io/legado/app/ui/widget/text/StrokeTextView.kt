@@ -10,7 +10,9 @@ import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.radius
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.stroke
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -19,7 +21,7 @@ import io.legado.app.utils.getCompatColor
 open class StrokeTextView(context: Context, attrs: AttributeSet?) :
     AppCompatTextView(context, attrs) {
 
-    private var radius = context.resources.getDimensionPixelOffset(R.dimen.arco_radius_default)
+    private var radius = context.radius.default
     private val isBottomBackground: Boolean
 
     init {
@@ -45,7 +47,7 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
             isInEditMode -> {
                 background = Selector.shapeBuild()
                     .setCornerRadius(radius)
-                    .setStrokeWidth(1.dpToPx())
+                    .setStrokeWidth(context.stroke.thin)
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
                     .setDefaultStrokeColor(context.getCompatColor(R.color.secondaryText))
                     .setSelectedStrokeColor(context.getCompatColor(R.color.accent))
@@ -63,7 +65,7 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
                 val isLight = ColorUtils.isColorLight(context.bottomBackground)
                 background = Selector.shapeBuild()
                     .setCornerRadius(radius)
-                    .setStrokeWidth(1.dpToPx())
+                    .setStrokeWidth(context.stroke.thin)
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
                     .setDefaultStrokeColor(context.getPrimaryTextColor(isLight))
                     .setSelectedStrokeColor(context.accentColor)
@@ -80,7 +82,7 @@ open class StrokeTextView(context: Context, attrs: AttributeSet?) :
             else -> {
                 background = Selector.shapeBuild()
                     .setCornerRadius(radius)
-                    .setStrokeWidth(1.dpToPx())
+                    .setStrokeWidth(context.stroke.thin)
                     .setDisabledStrokeColor(context.getCompatColor(R.color.md_grey_500))
                     .setDefaultStrokeColor(context.secondaryTextColor)
                     .setSelectedStrokeColor(ThemeStore.accentColor)

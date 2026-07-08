@@ -13,7 +13,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SourceFilterRule
-import io.legado.app.databinding.DialogSourceFilterListBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.lib.dialogs.alert
@@ -23,6 +23,7 @@ import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showRuleItemMenu
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -31,7 +32,7 @@ import kotlinx.coroutines.withContext
  * 展示当前 scope 下命中（已启用且范围覆盖）的屏蔽规则。
  * 点击条目 → 弹出 [SourceFilterEditDialog] 编辑；底部"管理全部" → 跳 [SourceFilterRuleActivity]。
  */
-class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_source_filter_list),
+class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     SourceFilterEditDialog.Callback {
 
     companion object {
@@ -42,7 +43,7 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_source_f
         arguments = Bundle().apply { putString(ARG_SCOPE, scope) }
     }
 
-    private val binding by viewBinding(DialogSourceFilterListBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { RuleAdapter(requireContext()) }
 
     override val isFullHeight: Boolean = true
@@ -62,11 +63,17 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_source_f
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        binding.tvClose.setOnClickListener { dismiss() }
-        binding.tvManage.setOnClickListener {
+        binding.bottomLayout.visible()
+        binding.tvCancel.visible()
+        binding.tvCancel.text = getString(R.string.close)
+        binding.tvCancel.setOnClickListener { dismiss() }
+        binding.tvOk.visible()
+        binding.tvOk.text = getString(R.string.source_filter_rule_manage)
+        binding.tvOk.setOnClickListener {
             startActivity(Intent(requireContext(), SourceFilterRuleActivity::class.java))
             dismiss()
         }
+        binding.tvEmpty.text = getString(R.string.source_filter_rule_no_match)
         loadRules()
     }
 

@@ -7,9 +7,9 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
 import io.legado.app.R
+import io.legado.app.lib.theme.space
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.ui.widget.seekbar.ThemeSeekBar
-import io.legado.app.utils.dpToPx
 
 class SliderPopup(
     context: Context,
@@ -23,7 +23,7 @@ class SliderPopup(
     private val seekBar: ThemeSeekBar
 
     init {
-        val dp8 = 8.dpToPx()
+        val dp8 = context.space.default
         val root = LinearLayout(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

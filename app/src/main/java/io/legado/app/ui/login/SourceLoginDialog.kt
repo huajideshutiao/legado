@@ -26,6 +26,8 @@ import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.help.IntentData
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.positiveButton
+import io.legado.app.lib.theme.applyThemeToChildren
+import io.legado.app.lib.theme.space
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.widget.code.CodeView
@@ -117,7 +119,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
 
                     RowUi.Type.select -> {
                         val ctx = requireContext()
-                        val padding = 8.dpToPx()
+                        val padding =
+                            ctx.space.default
                         val root = LinearLayout(ctx).apply {
                             orientation = LinearLayout.HORIZONTAL
                             setPadding(padding)
@@ -175,7 +178,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                                 height = GridLayout.LayoutParams.MATCH_PARENT
                             }
                             gravity = android.view.Gravity.CENTER_VERTICAL
-                            setPadding(8.dpToPx())
+                            setPadding(ctx.space.default)
                             text = rowUi.name
                             isChecked = loginInfo?.get(rowUi.name) == "true"
                             setOnUserCheckedChangeListener {
@@ -189,7 +192,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         layoutInflater, binding.flexbox, false
                     ).apply {
                         textView.text = rowUi.name
-                        textView.setPadding(16.dpToPx())
+                        textView.setPadding(textView.context.space.lg)
                         root.onClick {
                             handleButtonClick(source, rowUi)
                         }
@@ -203,6 +206,12 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 view.minimumHeight = 60.dpToPx() * rowStyle.rows.coerceAtLeast(1)
                 binding.flexbox.addView(view)
             }
+            // 动态构造的登录行 (TextInputLayout/CodeView/TextView/SwitchCompat 等) 不走 Factory2,
+            // 在所有行 addView 完成后对 flexbox 子节点统一兜底着色。
+            // inflate 的 button 分支已通过 Factory2 着色并标记, applyThemeToChildren 遍历时零成本跳过。
+            // 注意: buildLoginUi 会被 REFRESH_LOGIN_UI 事件多次触发, removeAllViews 后重新 addView,
+            // 每次都需重新着色 (新构造的 View 未标记)。
+            binding.flexbox.applyThemeToChildren()
         } catch (e: Exception) {
             AppLog.put("登录UI 构建失败", e, true)
         }
@@ -222,7 +231,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                 width = GridLayout.LayoutParams.MATCH_PARENT
                 height = GridLayout.LayoutParams.WRAP_CONTENT
             }
-            setPadding(0, 4.dpToPx(), 0, 0)
+            setPadding(0, ctx.space.xs, 0, 0)
         }
         val editText = CodeView(ctx).apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(

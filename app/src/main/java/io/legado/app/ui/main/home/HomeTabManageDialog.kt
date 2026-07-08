@@ -9,7 +9,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeTab
-import io.legado.app.databinding.DialogHomeSectionManageBinding
+import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.HomeTabHelp
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.observeEvent
@@ -19,13 +19,13 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
  * 主页分组管理：item 点击进入该分组的展示项管理；编辑按钮改标题/删除；+ 添加分组；拖动排序。
- * 复用 dialog_home_section_manage 的 layout（同构）。
+ * 复用 dialog_recycler_view 的 layout（同构）。
  */
-class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_home_section_manage) {
+class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogHomeSectionManageBinding::bind)
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
 
     private val adapter by lazy {
         HomeTabManageAdapter(requireContext(), object : HomeTabManageAdapter.Callback {
