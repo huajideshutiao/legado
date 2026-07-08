@@ -44,6 +44,8 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
     var searchFinishLiveData = MutableLiveData<Boolean>()
     var isSearchLiveData = MutableLiveData<Boolean>()
     val searchOptionsLiveData = MutableLiveData<Unit>()
+    /** 新搜索开始时通知 UI 立即清空列表，避免 debounce 延迟导致旧结果残留 */
+    val clearAdapterLiveData = MutableLiveData<Unit>()
     var searchKey: String = ""
     var hasMore = true
     val searchOptions = mutableListOf<ExploreOption>()
@@ -155,6 +157,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
                 _searchBookFlow.tryEmit(emptyList())
                 searchKey = key
                 hasMore = true
+                clearAdapterLiveData.postValue(Unit)
                 if (resetOptions && searchOptions.isNotEmpty()) {
                     searchOptions.clear()
                     searchOptionsLiveData.postValue(Unit)

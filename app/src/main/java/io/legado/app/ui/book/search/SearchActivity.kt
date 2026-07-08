@@ -314,6 +314,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         viewModel.searchBookLiveData.observe(this) {
             adapter.setItems(it)
         }
+        viewModel.clearAdapterLiveData.observe(this) {
+            adapter.setItems(emptyList())
+        }
         viewModel.searchOptionsLiveData.observe(this) {
             initFilterView()
         }
@@ -361,7 +364,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initFilterView() {
         binding.llFilter.setUpExploreOptions(viewModel.searchOptions) {
-            adapter.setItems(emptyList())
             viewModel.search(viewModel.searchKey, resetOptions = false)
         }
     }
