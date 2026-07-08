@@ -14,6 +14,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.utils.RemoteAssetsUtils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 
 class BgAdapter(context: Context, val textColor: Int) :
@@ -31,8 +32,8 @@ class BgAdapter(context: Context, val textColor: Int) :
         val ctx = parent.context
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(2, 2, 2, 2)
-            layoutParams = ViewGroup.LayoutParams(66, 88)
+            setPadding(2.dpToPx(), 2.dpToPx(), 2.dpToPx(), 2.dpToPx())
+            layoutParams = ViewGroup.LayoutParams(66.dpToPx(), 88.dpToPx())
         }
         val ivBg = ImageView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(

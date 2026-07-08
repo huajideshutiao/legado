@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogRecyclerViewBinding
+import io.legado.app.lib.theme.ThemeUtils
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.showDialogFragment
@@ -72,7 +73,10 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                setBackgroundResource(android.R.drawable.list_selector_background)
+                // 用主题属性 selectableItemBackground(ripple 水波纹),
+                // 不用 list_selector_background(旧式黄色 state list, 视觉突兀)
+                background =
+                    ThemeUtils.resolveDrawable(ctx, android.R.attr.selectableItemBackground)
             }
             val textTime = TextView(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(

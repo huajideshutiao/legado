@@ -41,7 +41,7 @@
         android:layout_gravity="right"
         android:indeterminate="true"
         android:scrollbars="none"
-        android:visibility="gone"
+        android:visibility="invisible"
         app:indicatorSize="22dp"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"

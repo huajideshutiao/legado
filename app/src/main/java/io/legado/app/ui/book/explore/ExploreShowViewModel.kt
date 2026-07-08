@@ -202,11 +202,11 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    /** 设置列数（保留视频布局标志位）。范围 1..6。 */
+    /** 设置列数（保留视频布局标志位）。范围 0..6。 */
     fun setColumnCount(cols: Int) {
         bookSource?.let {
             val flag = it.exploreStyle and BookSource.EXPLORE_STYLE_VIDEO_FLAG
-            it.exploreStyle = flag or cols.coerceIn(1, 6)
+            it.exploreStyle = flag or cols.coerceIn(0, 6)
             execute {
                 appDb.bookSourceDao.update(it)
             }

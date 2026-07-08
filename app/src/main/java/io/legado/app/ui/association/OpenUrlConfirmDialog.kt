@@ -9,16 +9,15 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.net.toUri
-import com.google.android.flexbox.FlexDirection
-import com.google.android.flexbox.FlexboxLayout
-import com.google.android.flexbox.JustifyContent
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.SourceType
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.negativeButton
 import io.legado.app.lib.dialogs.noButton
+import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.toastOnUi
@@ -40,10 +39,10 @@ object OpenUrlConfirmDialog {
         }
 
         val padding = activity.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
-        val spacingLg = activity.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
 
-        // Toolbar
-        val toolbar = Toolbar(activity).apply {
+        // 应用 Style.DialogToolbar(elevation=0, titleTextAppearance, popupTheme), 与其他对话框 Toolbar 一致
+        val toolbar =
+            Toolbar(android.view.ContextThemeWrapper(activity, R.style.Style_DialogToolbar)).apply {
             setTitle("跳转确认")
             subtitle = sourceName
             inflateMenu(R.menu.open_url_confirm)
@@ -60,43 +59,20 @@ object OpenUrlConfirmDialog {
             setPadding(padding, padding, padding, padding)
         }
 
-        // Buttons
-        val btnNegative = TextView(activity).apply {
-            text = activity.getString(R.string.cancel)
-            layoutParams = ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-            setPadding(spacingLg, spacingLg, spacingLg, spacingLg)
-        }
-
-        val btnPositive = TextView(activity).apply {
-            text = activity.getString(R.string.ok)
-            layoutParams = ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-            setPadding(spacingLg, spacingLg, spacingLg, spacingLg)
-        }
-
-        val buttonBar = FlexboxLayout(activity).apply {
-            flexDirection = FlexDirection.ROW
-            justifyContent = JustifyContent.FLEX_END
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-            addView(btnNegative)
-            addView(btnPositive)
-        }
-
-        // Root
+        // customView 仅承载 Toolbar(带菜单) + 提示文案, 操作按钮交给 alert DSL 标准底栏(水平排布)
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(toolbar)
             addView(messageText)
-            addView(buttonBar)
         }
 
         val dialog = activity.alert {
             customView { root }
-        }
-
-        btnNegative.setOnClickListener { dialog.dismiss() }
-        btnPositive.setOnClickListener {
-            openUrl(uri, mimeType)
-            dialog.dismiss()
+            negativeButton(R.string.cancel)
+            // positiveButton 点击后 AlertDialog 默认 dismiss, openUrl 执行完即关闭
+            positiveButton(R.string.ok) {
+                openUrl(uri, mimeType)
+            }
         }
 
         toolbar.setOnMenuItemClickListener { item ->

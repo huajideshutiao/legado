@@ -85,40 +85,46 @@
         android:text="@string/bottom_bar_label_mode"
         android:textColor="@color/primaryText" />
 
-    <RadioGroup
-        android:id="@+id/rg_label_mode"
+    <HorizontalScrollView
         android:layout_width="match_parent"
-        android:layout_height="@dimen/arco_view_height_large"
-        android:orientation="horizontal">
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
 
-        <RadioButton
-            android:id="@+id/rb_label_unlabeled"
+        <RadioGroup
+            android:id="@+id/rg_label_mode"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="@string/bottom_bar_label_unlabeled"
-            tools:ignore="TouchTargetSizeCheck" />
+            android:layout_height="@dimen/arco_view_height_large"
+            android:orientation="horizontal">
 
-        <RadioButton
-            android:id="@+id/rb_label_labeled"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="@string/bottom_bar_label_labeled"
-            tools:ignore="TouchTargetSizeCheck" />
+            <RadioButton
+                android:id="@+id/rb_label_unlabeled"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/bottom_bar_label_unlabeled"
+                tools:ignore="TouchTargetSizeCheck" />
 
-        <RadioButton
-            android:id="@+id/rb_label_selected"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="@string/bottom_bar_label_selected"
-            tools:ignore="TouchTargetSizeCheck" />
+            <RadioButton
+                android:id="@+id/rb_label_labeled"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/bottom_bar_label_labeled"
+                tools:ignore="TouchTargetSizeCheck" />
 
-        <RadioButton
-            android:id="@+id/rb_label_auto"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="@string/bottom_bar_label_auto"
-            tools:ignore="TouchTargetSizeCheck" />
+            <RadioButton
+                android:id="@+id/rb_label_selected"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/bottom_bar_label_selected"
+                tools:ignore="TouchTargetSizeCheck" />
 
-    </RadioGroup>
+            <RadioButton
+                android:id="@+id/rb_label_auto"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/bottom_bar_label_auto"
+                tools:ignore="TouchTargetSizeCheck" />
+
+        </RadioGroup>
+    </HorizontalScrollView>
 
 </LinearLayout>

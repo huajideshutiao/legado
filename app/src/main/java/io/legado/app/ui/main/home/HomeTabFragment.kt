@@ -208,6 +208,7 @@ class HomeTabFragment() : VMBaseFragment<HomeViewModel>(R.layout.fragment_recycl
      * 由发现页 Grid/Video 适配器以网格项承载，header 作为其唯一头部随之滚动。
      */
     private fun renderSections(sections: List<HomeSection>) {
+        binding.tvEmptyMsg.setText(R.string.home_tab_empty)
         binding.tvEmptyMsg.isVisible = sections.isEmpty()
         binding.recyclerView.isVisible = sections.isNotEmpty()
         sectionViews.setSections(sections, viewModel.stateOf(tabTitle).sectionBooksMap)

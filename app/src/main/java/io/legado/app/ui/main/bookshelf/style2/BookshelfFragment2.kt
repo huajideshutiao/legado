@@ -4,9 +4,8 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
-import android.widget.LinearLayout
 import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,12 +18,13 @@ import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
-import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
@@ -54,7 +54,6 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
     override var groupId = BookGroup.IdRoot
     override var books: List<Book> = emptyList()
     private var enableRefresh = true
-    private var titleBar: TitleBar? = null
 
     private fun getSpanCount(): Int {
         if (AppConfig.bookshelfFixedWidthMode) {
@@ -67,28 +66,13 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        addTitleBar()
+        // 复用 XML 中的 title_bar(visibility=gone), 与 ExploreFragment 一致
+        binding.titleBar.isVisible = true
+        binding.titleBar.setTitle(R.string.bookshelf)
+        setSupportToolbar(binding.titleBar.toolbar)
         initRecyclerView()
         initBookGroupData()
         initBooksData()
-    }
-
-    private fun addTitleBar() {
-        val ctx = requireContext()
-        titleBar = TitleBar(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setTitle(R.string.bookshelf)
-        }
-        val root = binding.root as? ViewGroup ?: return
-        root.addView(titleBar, 0)
-        titleBar?.let { setSupportToolbar(it.toolbar) }
-
-        // Adjust SwipeRefreshLayout constraint to be below TitleBar
-        val lp = binding.refreshLayout.layoutParams as? ViewGroup.MarginLayoutParams
-        lp?.topMargin = 0
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -114,6 +98,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
 
     private fun initRecyclerView() {
         binding.refreshLayout.setColorSchemeColors(accentColor)
+        binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
             activityViewModel.upToc(books)
@@ -192,7 +177,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
         val group = bookGroups.find { it.groupId == groupId }
         enableRefresh = group?.enableRefresh ?: true
         val baseTitle = group?.groupName ?: getString(R.string.bookshelf)
-        titleBar?.title = if (AppConfig.bookshelfShowGroupCount) {
+        binding.titleBar.title = if (AppConfig.bookshelfShowGroupCount) {
             "$baseTitle (${books.size})"
         } else {
             baseTitle

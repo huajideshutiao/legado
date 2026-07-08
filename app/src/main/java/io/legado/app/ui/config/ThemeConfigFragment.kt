@@ -312,13 +312,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                                 progress: Int,
                                 fromUser: Boolean
                             ) {
-                                var p = progress
-                                if (p < 1) {
-                                    p = 1
-                                    seekBar?.progress = 1
-                                }
                                 tvColumnValue.text =
-                                    if (p <= 1) getString(R.string.layout_list) else p.toString()
+                                    if (progress <= 1) getString(R.string.layout_list) else progress.toString()
                                 updateListOnlyVisibility()
                             }
 
@@ -371,7 +366,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                     if (bookshelfSort != rgSort.getCheckedIndex()) {
                         AppConfig.bookshelfSort = rgSort.getCheckedIndex()
                     }
-                    val newLayout = if (sbColumnCount.progress <= 1) 0 else sbColumnCount.progress
+                    val newLayout = sbColumnCount.progress
                     val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 120
                     if (bookshelfLayout != newLayout ||
                         AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||

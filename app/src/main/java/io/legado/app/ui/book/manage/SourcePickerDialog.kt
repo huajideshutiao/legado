@@ -44,8 +44,7 @@ class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
 
     private val binding by viewBinding(DialogSourcePickerBinding::bind)
     private val searchView: SearchView by lazy {
-        // view_search 被 include 到布局顶部，SearchView 不再嵌在 TitleBar 内
-        binding.root.findViewById(R.id.search_view)
+        binding.titleBar.findViewById(R.id.search_view)
     }
     private val adapter by lazy {
         SourceAdapter(requireContext())

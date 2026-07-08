@@ -6,9 +6,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatSpinner
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
@@ -119,10 +121,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         val root = LinearLayout(ctx).apply {
                             orientation = LinearLayout.HORIZONTAL
                             setPadding(padding)
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT
-                            )
+                            layoutParams = GridLayout.LayoutParams().apply {
+                                width = GridLayout.LayoutParams.MATCH_PARENT
+                                height = GridLayout.LayoutParams.WRAP_CONTENT
+                            }
                         }
                         val tv = TextView(ctx).apply {
                             layoutParams = ViewGroup.LayoutParams(
@@ -132,7 +134,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                             setTextColor(ctx.getColor(R.color.primaryText))
                             text = rowUi.name
                         }
-                        val spinner = Spinner(ctx).apply {
+                        val spinner = AppCompatSpinner(ctx).apply {
                             layoutParams = LinearLayout.LayoutParams(
                                 0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
                             )
@@ -161,7 +163,6 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                             }
                         root.addView(tv)
                         root.addView(spinner)
-                        rowStyle.apply(root)
                         root.tag = spinner
                         root
                     }
@@ -169,10 +170,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                     RowUi.Type.toggle -> {
                         val ctx = requireContext()
                         val swt = SwitchCompat(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
+                            layoutParams = GridLayout.LayoutParams().apply {
+                                width = GridLayout.LayoutParams.MATCH_PARENT
+                                height = GridLayout.LayoutParams.MATCH_PARENT
+                            }
                             gravity = android.view.Gravity.CENTER_VERTICAL
                             setPadding(8.dpToPx())
                             text = rowUi.name
@@ -181,14 +182,12 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                                 handleButtonClick(source, rowUi)
                             }
                         }
-                        rowStyle.apply(swt)
                         swt
                     }
 
                     else -> ItemFilletTextBinding.inflate(
                         layoutInflater, binding.flexbox, false
                     ).apply {
-                        rowStyle.apply(root)
                         textView.text = rowUi.name
                         textView.setPadding(16.dpToPx())
                         root.onClick {
@@ -196,6 +195,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
                         }
                     }.root
                 }
+                // 统一在此处应用列宽样式: 所有分支的 view 的 layoutParams 均为 GridLayout.LayoutParams
+                // (text/password 由 createSourceEditView 设置, select/toggle 由各自分支设置,
+                //  button 由 inflate(parent=GridLayout) 自动生成), apply 不会因类型不匹配而静默失败
+                rowStyle.apply(view)
                 view.id = index + 1000
                 view.minimumHeight = 60.dpToPx() * rowStyle.rows.coerceAtLeast(1)
                 binding.flexbox.addView(view)
@@ -213,16 +216,18 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login) {
     ): View {
         val ctx = parent.context
         val root = com.google.android.material.textfield.TextInputLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            // 父容器是 GridLayout(columnCount=12),必须用 GridLayout.LayoutParams,
+            // 否则 FlexChildStyle.apply 的 as? GridLayout.LayoutParams 会返回 null 导致列宽失效
+            layoutParams = GridLayout.LayoutParams().apply {
+                width = GridLayout.LayoutParams.MATCH_PARENT
+                height = GridLayout.LayoutParams.WRAP_CONTENT
+            }
             setPadding(0, 4.dpToPx(), 0, 0)
         }
         val editText = CodeView(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             )
             inputType =
                 android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE

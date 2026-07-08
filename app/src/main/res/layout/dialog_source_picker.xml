@@ -6,9 +6,18 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <include layout="@layout/dialog_title_bar" />
-
-    <include layout="@layout/view_search" />
+    <io.legado.app.ui.widget.TitleBar
+        android:id="@+id/title_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:theme="?attr/actionBarStyle"
+        app:attachToActivity="false"
+        app:contentInsetStartWithNavigation="0dp"
+        app:contentLayout="@layout/view_search"
+        app:displayHomeAsUp="false"
+        app:fitStatusBar="false"
+        app:popupTheme="@style/AppTheme.PopupOverlay"
+        app:titleTextAppearance="@style/ToolbarTitle" />
 
     <FrameLayout
         android:layout_width="match_parent"

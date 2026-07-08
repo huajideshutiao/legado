@@ -35,22 +35,23 @@ class ThemeListDialog : BaseDialogFragment(0), Toolbar.OnMenuItemClickListener {
         parent: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        // 基类 super.onCreateView 会创建 LinearLayout(titleBar + 内容占位)，这里追加 ScrollView
-        val root = super.onCreateView(inflater, parent, savedInstanceState) as LinearLayout
         val ctx = requireContext()
-        val scroll = ScrollView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
-            isVerticalScrollBarEnabled = false
-        }
         val h = resources.getDimensionPixelSize(R.dimen.arco_spacing_lg)
         container = LinearLayout(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
             orientation = LinearLayout.VERTICAL
             setPadding(h, 0, h, 0)
         }
+        val scroll = ScrollView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+            isVerticalScrollBarEnabled = false
+        }
         scroll.addView(container)
-        root.addView(scroll)
-        return root
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
+            addView(scroll)
+        }
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

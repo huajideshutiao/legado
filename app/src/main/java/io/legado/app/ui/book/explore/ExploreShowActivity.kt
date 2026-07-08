@@ -132,11 +132,11 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     private fun showColumnPicker() {
-        val current = BookSource.exploreStyleCols(viewModel.exploreStyle).coerceIn(1, 6)
+        val current = BookSource.exploreStyleCols(viewModel.exploreStyle).coerceIn(0, 6)
         showNumberPicker(
             this,
             titleResId = R.string.explore_cols,
-            min = 1,
+            min = 0,
             max = 6,
             value = current,
         ) { cols ->

@@ -74,6 +74,9 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             binding.apply {
                 // padding 设在 root 上,使 ShapeableImageView 的 stroke 画在 padding 内(与原 CircleImageView 行为一致)
                 root.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
+                // padding 使 iv 缩小为 36dp,cornerSize 需从 24dp 调整为 18dp 才能保持正圆
+                ivStyle.shapeAppearanceModel =
+                    ivStyle.shapeAppearanceModel.withCornerSize(18.dpToPx().toFloat())
                 tvStyle.text = null
                 ivStyle.applyMenuThemeColorFilter(theme)
                 ivStyle.strokeColor = ColorStateList.valueOf(theme.textColor)
@@ -261,8 +264,11 @@ class ReadStyleDialog : BaseBottomDialogFragment(R.layout.dialog_read_book_style
             )
             scaleType = ImageView.ScaleType.CENTER_CROP
             setImageResource(R.drawable.image_cover_default)
-            shapeAppearanceModel = shapeAppearanceModel.withCornerSize(50f)
+            // 原 CircleImageView 为圆形, ShapeableImageView 用 size/2 的 cornerSize 实现等价效果
+            // (view 固定 48dp, cornerSize=24dp 即可形成正圆)
+            shapeAppearanceModel = shapeAppearanceModel.withCornerSize(24.dpToPx().toFloat())
             strokeWidth = 1.dpToPx().toFloat()
+            strokeColor = ColorStateList.valueOf(ContextCompat.getColor(ctx, R.color.primaryText))
         }
         val tvStyle = TextView(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(

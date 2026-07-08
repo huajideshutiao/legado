@@ -24,7 +24,6 @@ import io.legado.app.lib.dialogs.items
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RealPathUtil
@@ -83,13 +82,9 @@ class FontSelectDialog : BaseDialogFragment(0),
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             orientation = LinearLayout.VERTICAL
-            addView(TitleBar(ctx).apply {
-                id = R.id.title_bar
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            })
+            // 复用 dialog_title_bar 模板: attachToActivity=false / displayHomeAsUp=false / fitStatusBar=false,
+            // 避免 TitleBar 污染宿主 Activity ActionBar 导致返回箭头关闭宿主界面(如阅读界面)
+            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
             addView(ScrollView(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -212,6 +207,7 @@ class FontSelectDialog : BaseDialogFragment(0),
                 setPadding(0, vPad, 0, vPad)
                 text = item.name
                 tag = item
+                setTextColor(ctx.getColor(R.color.primaryText))
             }
             rgFonts.addView(rb)
             if (item.name == curName) rgFonts.check(rb.id)

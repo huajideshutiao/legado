@@ -10,6 +10,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.lib.theme.ThemeUtils
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 import splitties.views.onLongClick
@@ -37,7 +38,9 @@ class BookmarkAdapter(context: Context, val callback: Callback) :
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             setPadding(0, padding, 0, padding)
-            setBackgroundResource(android.R.drawable.list_selector_background)
+            // 用主题属性 selectableItemBackground(ripple 水波纹),
+            // 不用 list_selector_background(旧式黄色 state list, 视觉突兀)
+            background = ThemeUtils.resolveDrawable(ctx, android.R.attr.selectableItemBackground)
         }
         val tvChapterName = TextView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(

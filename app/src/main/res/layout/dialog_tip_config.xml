@@ -17,7 +17,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="@dimen/arco_spacing_lg">
+            android:paddingHorizontal="@dimen/arco_spacing_lg"
+            android:paddingBottom="@dimen/arco_spacing_lg">
 
             <RadioGroup
                 android:id="@+id/rg_title_mode"

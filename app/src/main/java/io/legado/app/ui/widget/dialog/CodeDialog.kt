@@ -9,7 +9,6 @@ import android.widget.LinearLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.help.IntentData
-import io.legado.app.ui.widget.TitleBar
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
@@ -41,13 +40,9 @@ class CodeDialog() : BaseDialogFragment(0) {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             orientation = LinearLayout.VERTICAL
-            addView(TitleBar(requireContext()).apply {
-                id = R.id.title_bar
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            })
+            // 复用 dialog_title_bar 模板: attachToActivity=false / displayHomeAsUp=false / fitStatusBar=false,
+            // 避免 TitleBar 污染宿主 Activity ActionBar 导致返回箭头关闭宿主界面
+            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
             addView(CodeView(requireContext()).apply {
                 codeView = this
                 layoutParams = LinearLayout.LayoutParams(

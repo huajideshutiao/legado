@@ -23,12 +23,12 @@ class WaitDialog(context: Context) {
     var onCancelListener: (() -> Unit)? = null
 
     init {
-        val dp24 = (24 * context.resources.displayMetrics.density).toInt()
+        val dp30 = (30 * context.resources.displayMetrics.density).toInt()
         val dp16 = (16 * context.resources.displayMetrics.density).toInt()
         val dp8 = (8 * context.resources.displayMetrics.density).toInt()
 
         val progressBar = ProgressBar(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp24, dp24)
+            layoutParams = LinearLayout.LayoutParams(dp30, dp30)
         }
 
         tvMsg = TextView(context).apply {

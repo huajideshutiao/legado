@@ -108,6 +108,7 @@
         android:id="@+id/dsb_text_size"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:paddingTop="@dimen/arco_spacing_xs"
         app:isBottomBackground="true"
         app:max="45"
         app:title="@string/text_size" />
@@ -270,7 +271,6 @@
         android:layout_marginBottom="@dimen/arco_spacing_lg"
         android:clipToPadding="false"
         android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/arco_spacing_md"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
 </LinearLayout>

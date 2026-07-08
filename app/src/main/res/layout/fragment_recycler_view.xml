@@ -1,13 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <io.legado.app.ui.widget.TitleBar
+        android:id="@+id/title_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:attachToActivity="false"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/refresh_layout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/title_bar">
 
         <io.legado.app.ui.widget.recycler.RecyclerViewAtPager2
             android:id="@+id/recycler_view"
@@ -23,13 +34,16 @@
         android:id="@+id/tv_empty_msg"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
         android:layout_margin="@dimen/arco_spacing_lg"
         android:gravity="center"
         android:text="@string/bookshelf_empty"
         android:textColor="@color/tv_text_summary"
         android:textSize="14sp"
         android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/refresh_layout"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/refresh_layout"
         tools:text="TextView" />
 
-</FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

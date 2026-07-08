@@ -36,6 +36,7 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.RemoteAssetsUtils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.longToast
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
@@ -136,8 +137,8 @@ class BgTextConfigDialog : BaseBottomDialogFragment(R.layout.dialog_read_bg_text
             val ctx = it.context
             val root = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(2, 2, 2, 2)
-                layoutParams = ViewGroup.LayoutParams(66, 88)
+                setPadding(2.dpToPx(), 2.dpToPx(), 2.dpToPx(), 2.dpToPx())
+                layoutParams = ViewGroup.LayoutParams(66.dpToPx(), 88.dpToPx())
                 val ivBg = ImageView(ctx).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f

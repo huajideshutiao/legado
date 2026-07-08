@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.bookshelf.style1
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.SearchView
@@ -91,6 +92,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_view_pager2
         return false
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     @Synchronized
     override fun upGroup(data: List<BookGroup>) {
         if (data.isEmpty()) {
@@ -99,8 +101,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_view_pager2
             if (data != bookGroups) {
                 bookGroups.clear()
                 bookGroups.addAll(data)
-                adapter.notifyItemRangeChanged(0, adapter.itemCount)
-                adapter.notifyItemInserted(0)
+                adapter.notifyDataSetChanged()
                 selectLastTab()
             }
         }

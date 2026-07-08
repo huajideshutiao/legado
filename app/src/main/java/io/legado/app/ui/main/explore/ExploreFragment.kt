@@ -2,7 +2,6 @@ package io.legado.app.ui.main.explore
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
@@ -12,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -37,16 +37,18 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.yesButton
+import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
-import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
@@ -80,9 +82,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
     private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
     private val adapter by lazy { ExploreAdapter(requireContext(), this) }
     private val linearLayoutManager by lazy { LinearLayoutManager(context) }
-    private var titleBar: TitleBar? = null
     private val searchView: SearchView by lazy {
-        titleBar!!.findViewById(R.id.search_view)
+        binding.titleBar.findViewById(R.id.search_view)
     }
     private val diffItemCallBack = ExploreDiffItemCallBack()
     private val groups = linkedSetOf<String>()
@@ -100,7 +101,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        addTitleBar()
+        initTitleBar()
+        setSupportToolbar(binding.titleBar.toolbar)
         initSearchView()
         initRecyclerView()
         initGroupData()
@@ -114,23 +116,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
         }
     }
 
-    private fun addTitleBar() {
-        val ctx = requireContext()
-        titleBar = TitleBar(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setTitle(R.string.discovery)
-            // 手动 inflate 搜索栏布局并添加到 TitleBar
-            LayoutInflater.from(ctx).inflate(R.layout.view_search, this, true)
-        }
-        val root = binding.root as? ViewGroup ?: return
-        root.addView(titleBar, 0)
-        titleBar?.let { setSupportToolbar(it.toolbar) }
-
-        // Hide SwipeRefreshLayout (Explore doesn't use pull-to-refresh)
-        binding.refreshLayout.visibility = View.GONE
+    private fun initTitleBar() {
+        binding.titleBar.isVisible = true
+        binding.titleBar.setTitle(R.string.discovery)
+        // view_search 作为 toolbar 的 content 显示在顶栏同行内部
+        // (与原 fragment_explore.xml 的 app:contentLayout 行为一致,
+        //  TitleBar 把 contentLayout inflate 到 toolbar, 而非 TitleBar 自身)
+        layoutInflater.inflate(R.layout.view_search, binding.titleBar.toolbar, true)
     }
 
     @SuppressLint("SetTextI18n")
@@ -235,6 +227,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
     }
 
     private fun initRecyclerView() {
+        binding.refreshLayout.isEnabled = false
+        binding.tvEmptyMsg.setText(R.string.explore_empty)
+        val padding = resources.getDimensionPixelSize(R.dimen.arco_spacing_md)
+        binding.recyclerView.setPadding(padding, 0, padding, 0)
+        binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = linearLayoutManager
         binding.recyclerView.adapter = adapter
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
@@ -374,7 +371,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            setPadding(ctx.resources.getDimensionPixelSize(R.dimen.arco_spacing_xs), 0, 0, 0)
+            setPadding(4.dpToPx(), 0, 0, 0)
             setText(R.string.favorite)
         }
         val flexbox = FlexboxLayout(ctx).apply {

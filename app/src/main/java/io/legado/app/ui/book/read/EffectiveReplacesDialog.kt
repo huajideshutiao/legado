@@ -20,6 +20,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.DialogSourceFilterListBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeUtils
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
@@ -120,6 +121,12 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_source_filter
                     parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_lg),
                     parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default)
                 )
+                // 点击编辑替换规则,需有 ripple 反馈
+                background = ThemeUtils.resolveDrawable(
+                    parent.context, android.R.attr.selectableItemBackground
+                )
+                isSingleLine = true
+                setTextColor(parent.context.getColor(R.color.primaryText))
             }
             return TextItemBinding(tv)
         }

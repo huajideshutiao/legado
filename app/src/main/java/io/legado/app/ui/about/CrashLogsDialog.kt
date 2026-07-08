@@ -20,6 +20,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeUtils
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -87,6 +88,12 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     parent.context.resources.getDimensionPixelSize(R.dimen.arco_spacing_default),
                     0
                 )
+                // 点击打开日志文件,需有 ripple 反馈
+                background = ThemeUtils.resolveDrawable(
+                    parent.context, android.R.attr.selectableItemBackground
+                )
+                isSingleLine = true
+                setTextColor(parent.context.getColor(R.color.primaryText))
             }
             return TextItemBinding(tv)
         }

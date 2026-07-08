@@ -98,38 +98,44 @@
                 android:text="@string/home_style"
                 android:textSize="13sp" />
 
-            <RadioGroup
-                android:id="@+id/rg_style"
+            <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:scrollbars="none">
 
-                <RadioButton
-                    android:id="@+id/rb_cover_row"
+                <RadioGroup
+                    android:id="@+id/rg_style"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="@string/home_style_cover_row" />
+                    android:orientation="horizontal">
 
-                <RadioButton
-                    android:id="@+id/rb_rank_list"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/home_style_rank_list" />
+                    <RadioButton
+                        android:id="@+id/rb_cover_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="@string/home_style_cover_row" />
 
-                <RadioButton
-                    android:id="@+id/rb_four_row"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/home_style_four_row" />
+                    <RadioButton
+                        android:id="@+id/rb_rank_list"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/home_style_rank_list" />
 
-                <RadioButton
-                    android:id="@+id/rb_infinite_grid"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/home_style_infinite_grid" />
+                    <RadioButton
+                        android:id="@+id/rb_four_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/home_style_four_row" />
 
-            </RadioGroup>
+                    <RadioButton
+                        android:id="@+id/rb_infinite_grid"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/home_style_infinite_grid" />
+
+                </RadioGroup>
+            </HorizontalScrollView>
 
             <CheckBox
                 android:id="@+id/cb_cover_video"
