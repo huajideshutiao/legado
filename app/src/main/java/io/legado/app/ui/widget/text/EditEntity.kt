@@ -48,7 +48,6 @@ data class EditEntity(
         const val text = 0
         const val checkBox = 1
         const val spinner = 2
-
         /** 需要语法高亮的代码字段，使用 [CodeView] 渲染 */
         const val code = 3
 

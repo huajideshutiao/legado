@@ -45,6 +45,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(0),
         val dp16 = (16 * ctx.resources.displayMetrics.density).toInt()
 
         _recyclerView = FastScrollRecyclerView(ctx).apply {
+            id = View.generateViewId()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT

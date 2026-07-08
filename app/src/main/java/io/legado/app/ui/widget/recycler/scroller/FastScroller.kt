@@ -102,7 +102,9 @@ class FastScroller : LinearLayout {
         defStyleAttr
     ) {
         layout(context, attrs)
-        layoutParams = generateLayoutParams(attrs)
+        // attrs 可能为 null（代码创建时），generateLayoutParams 要求非空 AttributeSet
+        layoutParams = attrs?.let { generateLayoutParams(it) }
+            ?: LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
     }
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams) {
@@ -115,9 +117,11 @@ class FastScroller : LinearLayout {
         val marginTop = resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_margin_top)
         val marginBottom =
             resources.getDimensionPixelSize(R.dimen.fastscroll_scrollbar_margin_bottom)
-        require(recyclerViewId != NO_ID) { "RecyclerView must have a view ID" }
+        // ID 仅在 ConstraintLayout/CoordinatorLayout/RelativeLayout 分支中使用，
+        // FrameLayout 分支仅用 gravity 定位，不需要 RecyclerView ID
         when (viewGroup) {
             is ConstraintLayout -> {
+                require(recyclerViewId != NO_ID) { "RecyclerView must have a view ID for ConstraintLayout parent" }
                 val constraintSet = ConstraintSet()
                 @IdRes val layoutId = id
                 constraintSet.clone(viewGroup)
@@ -145,6 +149,7 @@ class FastScroller : LinearLayout {
                 setLayoutParams(layoutParams)
             }
             is CoordinatorLayout -> {
+                require(recyclerViewId != NO_ID) { "RecyclerView must have a view ID for CoordinatorLayout parent" }
                 val layoutParams = layoutParams as CoordinatorLayout.LayoutParams
                 layoutParams.anchorId = recyclerViewId
                 layoutParams.anchorGravity = GravityCompat.END
@@ -158,6 +163,7 @@ class FastScroller : LinearLayout {
                 setLayoutParams(layoutParams)
             }
             is RelativeLayout -> {
+                require(recyclerViewId != NO_ID) { "RecyclerView must have a view ID for RelativeLayout parent" }
                 val layoutParams = layoutParams as RelativeLayout.LayoutParams
                 val endRule = RelativeLayout.ALIGN_END
                 layoutParams.addRule(RelativeLayout.ALIGN_TOP, recyclerViewId)

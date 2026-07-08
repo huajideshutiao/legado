@@ -23,6 +23,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.ThemeInterceptor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.filletBackground
+import io.legado.app.ui.widget.AutoShrinkLinearLayout
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.getCompatDrawable
@@ -80,14 +81,12 @@ abstract class BaseDialogFragment(
             if (isFullHeight) {
                 it.setLayout(width, maxHeight)
             } else {
-                val height = view?.let { v ->
-                    v.measure(
-                        View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.AT_MOST)
-                    )
-                    if (v.measuredHeight > maxHeight) maxHeight else WindowManager.LayoutParams.WRAP_CONTENT
-                } ?: WindowManager.LayoutParams.WRAP_CONTENT
-                it.setLayout(width, height)
+                // Window WRAP_CONTENT 让对话框高度自动适应内容；
+                // AutoShrinkLinearLayout.onMeasure 会限制总高度不超过 maxHeight，
+                // 并处理 0dp+weight 子 View 在 AT_MOST 模式下的测量问题。
+                // 数据变化后 View.requestLayout 会自动触发 Window 重新测量，无需手动 resize。
+                (view as? AutoShrinkLinearLayout)?.maxHeight = maxHeight
+                it.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
             }
         }
     }

@@ -44,14 +44,8 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setupTitleBar(
-            title = arguments?.getString("title"),
-            menuRes = R.menu.dialog_text
-        ) {
-            when (it?.itemId) {
-                R.id.menu_close -> dismissAllowingStateLoss()
-            }
-            true
-        }
+            title = arguments?.getString("title")
+        )
         arguments?.let {
             val content = IntentData.get(it.getString("content")) ?: ""
             when (it.getString("mode")) {

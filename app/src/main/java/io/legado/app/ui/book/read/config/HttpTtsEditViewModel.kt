@@ -25,11 +25,11 @@ class HttpTtsEditViewModel(app: Application) : BaseViewModel(app) {
                     return@execute appDb.httpTTSDao.get(argumentId)
                 }
             }
+            // id==null 且无有效 argumentId（新建规则），或 id 已有值（编辑已保存过的规则），返回 null
             return@execute null
         }.onSuccess {
-            it?.let {
-                success.invoke(it)
-            }
+            // 新建规则时查询结果为 null，需要用空 HttpTTS 回调以显示表单
+            success.invoke(it ?: HttpTTS())
         }
     }
 

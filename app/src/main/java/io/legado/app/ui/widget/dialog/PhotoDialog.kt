@@ -8,7 +8,7 @@ import android.util.Base64
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.net.toUri
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
@@ -55,17 +55,13 @@ class PhotoDialog() : BaseDialogFragment(0) {
     ): View {
         val ctx = inflater.context
         photoView = TouchImageView(ctx).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+            layoutParams = ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.MATCH_PARENT,
+                ConstraintLayout.LayoutParams.MATCH_PARENT
             )
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
         }
-        return FrameLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        return ConstraintLayout(ctx).apply {
             addView(photoView)
         }
     }

@@ -44,7 +44,14 @@ class FormAdapter : RecyclerView.Adapter<FormAdapter.FormViewHolder>() {
             notifyDataSetChanged()
         }
 
-    override fun getItemViewType(position: Int): Int = editEntities[position].viewType
+    override fun getItemViewType(position: Int): Int {
+        val entity = editEntities[position]
+        // code 类型无 pattern 时降级为 text，避免创建重量级 CodeView（含 AutoCompleteAdapter 等）
+        if (entity.viewType == EditEntity.ViewType.code && entity.codePatterns == 0) {
+            return EditEntity.ViewType.text
+        }
+        return entity.viewType
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FormViewHolder {
         val ctx = parent.context

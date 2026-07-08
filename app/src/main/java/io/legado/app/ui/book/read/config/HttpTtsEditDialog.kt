@@ -9,12 +9,13 @@ import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.databinding.DialogHttpTtsEditBinding
+import io.legado.app.databinding.DialogFormEditBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.widget.code.addJsPattern
-import io.legado.app.ui.widget.code.addJsonPattern
-import io.legado.app.ui.widget.code.addLegadoPattern
+import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.ui.widget.text.EditEntity.CodePattern
+import io.legado.app.ui.widget.text.EditEntity.ViewType
 import io.legado.app.utils.GSON
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
@@ -22,7 +23,7 @@ import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
+class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long) : this() {
@@ -31,27 +32,13 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
         }
     }
 
-    private val binding by viewBinding(DialogHttpTtsEditBinding::bind)
+    private val binding by viewBinding(DialogFormEditBinding::bind)
     private val viewModel by viewModels<HttpTtsEditViewModel>()
+    private val adapter by lazy { FormAdapter() }
+    private val editEntities: ArrayList<EditEntity> = ArrayList()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.tvUrl.run {
-            addLegadoPattern()
-            addJsonPattern()
-            addJsPattern()
-        }
-        binding.tvLoginUrl.run {
-            addLegadoPattern()
-            addJsonPattern()
-            addJsPattern()
-        }
-        binding.tvLoginUi.addJsonPattern()
-        binding.tvLoginCheckJs.addJsPattern()
-        binding.tvHeaders.run {
-            addLegadoPattern()
-            addJsonPattern()
-            addJsPattern()
-        }
+        binding.recyclerView.adapter = adapter
         viewModel.initData(arguments) {
             initView(httpTTS = it)
         }
@@ -66,14 +53,66 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
     }
 
     fun initView(httpTTS: HttpTTS) {
-        binding.tvName.setText(httpTTS.name)
-        binding.tvUrl.setText(httpTTS.url)
-        binding.tvContentType.setText(httpTTS.contentType)
-        binding.tvConcurrentRate.setText(httpTTS.concurrentRate)
-        binding.tvLoginUrl.setText(httpTTS.loginUrl)
-        binding.tvLoginUi.setText(httpTTS.loginUi)
-        binding.tvLoginCheckJs.setText(httpTTS.loginCheckJs)
-        binding.tvHeaders.setText(httpTTS.header)
+        editEntities.clear()
+        editEntities.apply {
+            // name: 简单文本字段
+            add(EditEntity("name", httpTTS.name, R.string.name))
+            // url: CodeView + 全部 pattern (legado + json + js)
+            add(
+                EditEntity(
+                    "url",
+                    httpTTS.url,
+                    "url",
+                    ViewType.code,
+                    codePatterns = CodePattern.all
+                )
+            )
+            // contentType: 短文本字段（MIME 类型），无需语法高亮
+            add(EditEntity("contentType", httpTTS.contentType, "Content-Type"))
+            // concurrentRate: 短文本字段（限速值），无需语法高亮
+            add(EditEntity("concurrentRate", httpTTS.concurrentRate, R.string.concurrent_rate))
+            // loginUrl: CodeView + 全部 pattern
+            add(
+                EditEntity(
+                    "loginUrl",
+                    httpTTS.loginUrl,
+                    R.string.login_url,
+                    ViewType.code,
+                    codePatterns = CodePattern.all
+                )
+            )
+            // loginUi: CodeView + json pattern
+            add(
+                EditEntity(
+                    "loginUi",
+                    httpTTS.loginUi,
+                    R.string.login_ui,
+                    ViewType.code,
+                    codePatterns = CodePattern.json
+                )
+            )
+            // loginCheckJs: CodeView + js pattern
+            add(
+                EditEntity(
+                    "loginCheckJs",
+                    httpTTS.loginCheckJs,
+                    R.string.login_check_js,
+                    ViewType.code,
+                    codePatterns = CodePattern.js
+                )
+            )
+            // header: CodeView + 全部 pattern
+            add(
+                EditEntity(
+                    "header",
+                    httpTTS.header,
+                    R.string.source_http_header,
+                    ViewType.code,
+                    codePatterns = CodePattern.all
+                )
+            )
+        }
+        adapter.editEntities = editEntities
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
@@ -113,17 +152,22 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
     }
 
     private fun dataFromView(): HttpTTS {
-        return HttpTTS(
-            id = viewModel.id ?: System.currentTimeMillis(),
-            name = binding.tvName.text.toString(),
-            url = binding.tvUrl.text.toString(),
-            contentType = binding.tvContentType.text?.toString(),
-            concurrentRate = binding.tvConcurrentRate.text?.toString(),
-            loginUrl = binding.tvLoginUrl.text?.toString(),
-            loginUi = binding.tvLoginUi.text?.toString(),
-            loginCheckJs = binding.tvLoginCheckJs.text?.toString(),
-            header = binding.tvHeaders.text?.toString()
+        val httpTTS = HttpTTS(
+            id = viewModel.id ?: System.currentTimeMillis()
         )
+        editEntities.forEach {
+            when (it.key) {
+                "name" -> httpTTS.name = it.text.orEmpty()
+                "url" -> httpTTS.url = it.text.orEmpty()
+                "contentType" -> httpTTS.contentType = it.text
+                "concurrentRate" -> httpTTS.concurrentRate = it.text
+                "loginUrl" -> httpTTS.loginUrl = it.text
+                "loginUi" -> httpTTS.loginUi = it.text
+                "loginCheckJs" -> httpTTS.loginCheckJs = it.text
+                "header" -> httpTTS.header = it.text
+            }
+        }
+        return httpTTS
     }
 
 }
