@@ -30,7 +30,8 @@
             android:indeterminate="true"
             android:visibility="invisible"
             app:indicatorSize="36dp"
-            app:trackThickness="2dp" />
+            app:trackThickness="2dp"
+            tools:visibility="visible" />
 
         <TextView
             android:id="@+id/tv_msg"
@@ -39,7 +40,8 @@
             android:layout_gravity="center"
             android:padding="@dimen/arco_spacing_lg"
             android:textColor="@color/secondaryText"
-            android:visibility="gone" />
+            android:visibility="gone"
+            tools:visibility="visible" />
 
         <!-- 空态提示，列表为空时由代码设 visible -->
         <TextView
@@ -48,7 +50,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="@color/secondaryText"
-            android:visibility="gone" />
+            android:visibility="gone"
+            tools:visibility="visible" />
 
     </FrameLayout>
 
@@ -57,10 +60,10 @@
         android:id="@+id/bottom_layout"
         android:layout_width="match_parent"
         android:layout_height="@dimen/arco_view_height_max"
-        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingBottom="@dimen/arco_spacing_default"
-        android:visibility="gone">
+        android:paddingHorizontal="@dimen/arco_spacing_default"
+        android:visibility="gone"
+        tools:visibility="visible">
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/tv_footer_left"

@@ -194,14 +194,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/arco_spacing_default"
+        android:paddingBottom="@dimen/arco_spacing_lg"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <io.legado.app.ui.widget.button.ArcoButton
             android:id="@+id/tv_shelf"
             style="@style/Widget.Arco.Button.Secondary.Large"
             android:layout_width="0dp"
-            android:layout_marginEnd="@dimen/arco_spacing_default"
+            android:layout_marginHorizontal="@dimen/arco_spacing_lg"
             android:layout_weight="1"
             android:text="@string/remove_from_bookshelf" />
 
@@ -209,6 +209,7 @@
             android:id="@+id/tv_read"
             style="@style/Widget.Arco.Button.Primary.Large"
             android:layout_width="0dp"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
             android:layout_weight="1"
             android:text="@string/reading" />
 
