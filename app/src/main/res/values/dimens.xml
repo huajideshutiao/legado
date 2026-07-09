@@ -49,4 +49,6 @@
 
     <dimen name="fixed_height_bottom_padding">8dp</dimen>
 
+    <dimen name="popup_menu_elevation">8dp</dimen>
+
 </resources>

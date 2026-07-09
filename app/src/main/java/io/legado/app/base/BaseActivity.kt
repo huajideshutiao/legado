@@ -78,7 +78,10 @@ abstract class BaseActivity<VB : ViewBinding>(
         attrs: AttributeSet
     ): View? {
         if (AppConst.menuViewNames.contains(name) && parent?.parent is FrameLayout) {
-            (parent.parent as View).background = BottomBackgroundDrawable()
+            (parent.parent as View).apply {
+                background = BottomBackgroundDrawable()
+                elevation = resources.getDimension(R.dimen.popup_menu_elevation)
+            }
         }
         val view = delegate.createView(parent, name, context, attrs)
             ?: takeIf { name.contains('.') }?.let {

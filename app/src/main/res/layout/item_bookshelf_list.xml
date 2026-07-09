@@ -9,7 +9,7 @@
     android:clickable="true"
     android:focusable="true"
     android:foreground="?android:attr/selectableItemBackground"
-    android:padding="@dimen/arco_spacing_default">
+    android:paddingHorizontal="@dimen/arco_spacing_default">
 
     <io.legado.app.ui.widget.image.CoverImageView
         android:id="@+id/iv_cover"
