@@ -56,6 +56,8 @@
 # 业务：数据实体（Gson 反射 + Room + JS 访问）
 ############################
 -keep class **.data.entities.** { *; }
+-keep class io.legado.app.model.fileBook.ZipEntry { *; }
+-keep class io.legado.app.model.fileBook.ZipImageCache { *; }
 
 ############################
 # 异常类型：保留类名以便堆栈和反射查找

@@ -214,6 +214,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="horizontal"
+        android:paddingBottom="@dimen/arco_spacing_lg"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@+id/guideline_vertical">
@@ -222,7 +223,7 @@
             android:id="@+id/tv_shelf"
             style="@style/Widget.Arco.Button.Secondary.Large"
             android:layout_width="0dp"
-            android:layout_margin="@dimen/arco_spacing_default"
+            android:layout_marginHorizontal="@dimen/arco_spacing_lg"
             android:layout_weight="1"
             android:text="@string/remove_from_bookshelf" />
 
@@ -230,7 +231,7 @@
             android:id="@+id/tv_read"
             style="@style/Widget.Arco.Button.Primary.Large"
             android:layout_width="0dp"
-            android:layout_margin="@dimen/arco_spacing_default"
+            android:layout_marginEnd="@dimen/arco_spacing_lg"
             android:layout_weight="1"
             android:text="@string/reading" />
 
