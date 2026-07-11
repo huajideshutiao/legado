@@ -119,18 +119,12 @@ void initJniValueConvertCache(JNIEnv *env) { doInitClassCache(env); }
 jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value) {
     ensureClassCache(env);
 
-    // 异常: 抛出 JSException,返回 null
+    // 异常: 抛出 JsNativeException,返回 null
     if (JS_IsException(value)) {
         // 获取异常对象, 构建含 stack 的完整错误消息 (含行号位置)
         JSValue exc = JS_GetException(ctx);
-        char *msgStr = buildExceptionMessage(ctx, exc);
+        throwJsNativeException(ctx, env, exc, "JS Exception");
         JS_FreeValue(ctx, exc);
-        jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
-        if (excCls) {
-            env->ThrowNew(excCls, msgStr ? msgStr : "JS Exception");
-            env->DeleteLocalRef(excCls);
-        }
-        std::free(msgStr);
         return nullptr;
     }
 
@@ -241,8 +235,8 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         jobject map = env->NewObject(g_NativeObjectCls, g_NativeObjectInitI, (jint) 3);
         if (!map) return nullptr;
         static const char *const kErrKeys[] = {"message", "name", "stack"};
-        for (int k = 0; k < 3; k++) {
-            JSValue val = JS_GetPropertyStr(ctx, value, kErrKeys[k]);
+        for (auto kErrKey: kErrKeys) {
+            JSValue val = JS_GetPropertyStr(ctx, value, kErrKey);
             jobject valObj = toJavaObject(ctx, env, val);
             JS_FreeValue(ctx, val);
             // 递归 toJavaObject 抛 JsNativeException 时必须立刻退出, 避免 pending
@@ -252,7 +246,7 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
                 env->DeleteLocalRef(map);
                 return nullptr;
             }
-            jstring keyStr = env->NewStringUTF(kErrKeys[k]);
+            jstring keyStr = env->NewStringUTF(kErrKey);
             env->CallObjectMethod(map, g_NativeObjectPut, keyStr, valObj);
             env->DeleteLocalRef(keyStr);
             if (valObj) env->DeleteLocalRef(valObj);
@@ -342,7 +336,7 @@ JSValue JniValueConvert::fromJavaObject(JSContext *ctx, JNIEnv *env, jobject jav
         // 用 UTF-16 (GetStringChars + JS_NewStringUTF16) 与 toJavaObject 对称。
         // GetStringUTFChars 返回 modified UTF-8, 含 NUL 时 JS_NewString 会截断或
         // 触发 overlong 替换为 U+FFFD; UTF-16 路径零损耗。
-        jstring jstr = (jstring) javaObj;
+        auto jstr = (jstring) javaObj;
         jsize len = env->GetStringLength(jstr);
         if (len == 0) {
             return JS_NewString(ctx, "");
@@ -448,6 +442,97 @@ static bool isWrapperFrame(const char *line, size_t len) {
     return false;
 }
 
+// 从 trimmed stack 首帧中解析 fileName, lineNumber, columnNumber。
+//
+// QuickJS stack trace 格式: "    at <funcName> (<fileName>:<line>:<col>)"
+// 或 "    at <funcName> (<fileName>:<line>)" (无 column 时)。
+//
+// 变量都存"字符索引", 直观易读。
+//
+// @param outFileName    输出: fileName (malloc 分配, 调用方 free)
+// @param outLineNumber  输出: 行号, 未知时 -1
+// @param outColumnNumber 输出: 列号, 未知时 -1
+static void parseFirstFrame(
+        const char *stack, size_t stackLen,
+        char **outFileName, int *outLineNumber, int *outColumnNumber
+) {
+    *outFileName = nullptr;
+    *outLineNumber = -1;
+    *outColumnNumber = -1;
+    if (!stack || stackLen == 0) return;
+
+    // 首行结尾
+    size_t lineEnd = stackLen;
+    for (size_t i = 0; i < stackLen; i++) {
+        if (stack[i] == '\n') {
+            lineEnd = i;
+            break;
+        }
+    }
+
+    // 找 ')' 索引
+    size_t idx = lineEnd;
+    while (idx > 0 && stack[idx - 1] != ')') idx--;
+    if (idx == 0) return;
+    size_t rparenIdx = idx - 1;
+
+    // ')' 前找第一个 ':' 索引 (若无 column, 这就是 line 前的 ':')
+    idx = rparenIdx;
+    while (idx > 0 && stack[idx - 1] != ':') idx--;
+    if (idx == 0) return;
+    size_t rightColonIdx = idx - 1;
+
+    // rightColon 前再找一个 ':' (若存在则右边是 column, 左边是 line)
+    idx = rightColonIdx;
+    while (idx > 0 && stack[idx - 1] != ':') idx--;
+    bool hasColumn = idx > 0;
+    size_t lineColonIdx = hasColumn ? idx - 1 : rightColonIdx;
+
+    // line 前的 ':' 之前找 '('
+    idx = lineColonIdx;
+    while (idx > 0 && stack[idx - 1] != '(') idx--;
+    if (idx == 0) return;
+    size_t lparenIdx = idx - 1;
+
+    // fileName: (lparenIdx, lineColonIdx) 开区间
+    size_t fnStart = lparenIdx + 1;
+    size_t fnEndExcl = lineColonIdx;
+    while (fnStart < fnEndExcl && stack[fnStart] == ' ') fnStart++;
+    while (fnEndExcl > fnStart && stack[fnEndExcl - 1] == ' ') fnEndExcl--;
+    if (fnStart < fnEndExcl) {
+        size_t fnLen = fnEndExcl - fnStart;
+        *outFileName = (char *) std::malloc(fnLen + 1);
+        if (*outFileName) {
+            std::memcpy(*outFileName, stack + fnStart, fnLen);
+            (*outFileName)[fnLen] = '\0';
+        }
+    }
+
+    // lineNumber: (lineColonIdx, hasColumn ? rightColonIdx : rparenIdx) 开区间
+    char numBuf[32];
+    size_t lineEndExcl = hasColumn ? rightColonIdx : rparenIdx;
+    if (lineEndExcl > lineColonIdx + 1) {
+        size_t numLen = lineEndExcl - lineColonIdx - 1;
+        if (numLen < sizeof(numBuf)) {
+            std::memcpy(numBuf, stack + lineColonIdx + 1, numLen);
+            numBuf[numLen] = '\0';
+            *outLineNumber = std::atoi(numBuf);
+            if (*outLineNumber <= 0) *outLineNumber = -1;
+        }
+    }
+
+    // columnNumber: (rightColonIdx, rparenIdx) 开区间, 仅 hasColumn 时提取
+    if (hasColumn && rparenIdx > rightColonIdx + 1) {
+        size_t colLen = rparenIdx - rightColonIdx - 1;
+        if (colLen < sizeof(numBuf)) {
+            std::memcpy(numBuf, stack + rightColonIdx + 1, colLen);
+            numBuf[colLen] = '\0';
+            *outColumnNumber = std::atoi(numBuf);
+            if (*outColumnNumber <= 0) *outColumnNumber = -1;
+        }
+    }
+}
+
 // 从 stack 文本末尾起,丢弃连续的 wrapper 壳帧,返回裁剪后的长度。
 // stack 形如 "    at foo (...)\n    at bar (...)\n",末尾可能带或不带 \n。
 static size_t trimTrailingWrapperFrames(const char *s, size_t n) {
@@ -465,6 +550,50 @@ static size_t trimTrailingWrapperFrames(const char *s, size_t n) {
         n = start;      // 整段(含前面的 \n)丢弃
     }
     return n;
+}
+
+void throwJsNativeException(JSContext *ctx, JNIEnv *env, JSValue exc, const char *fallbackMsg) {
+    char *msgStr = JniValueConvert::buildExceptionMessage(ctx, exc);
+
+    // 从 trimmed stack 首帧解析 fileName/lineNumber/columnNumber
+    char *parsedFileName = nullptr;
+    int parsedLine = -1, parsedCol = -1;
+    if (msgStr) {
+        size_t msgLen = std::strlen(msgStr);
+        const char *stackStart = nullptr;
+        for (size_t i = 0; i < msgLen; i++) {
+            if (msgStr[i] == '\n') {
+                stackStart = msgStr + i + 1;
+                break;
+            }
+        }
+        if (stackStart) {
+            size_t stackLen = msgLen - (stackStart - msgStr);
+            parseFirstFrame(stackStart, stackLen, &parsedFileName, &parsedLine, &parsedCol);
+        }
+    }
+
+    jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
+    if (excCls) {
+        jmethodID ctor = env->GetMethodID(excCls, "<init>",
+                                          "(Ljava/lang/String;Ljava/lang/String;II)V");
+        if (ctor) {
+            jstring msgJstr = env->NewStringUTF(msgStr ? msgStr : fallbackMsg);
+            jstring fnJstr = parsedFileName ? env->NewStringUTF(parsedFileName) : nullptr;
+            jobject excObj = env->NewObject(excCls, ctor, msgJstr, fnJstr, parsedLine, parsedCol);
+            if (msgJstr) env->DeleteLocalRef(msgJstr);
+            if (fnJstr) env->DeleteLocalRef(fnJstr);
+            if (excObj) {
+                env->Throw((jthrowable) excObj);
+                env->DeleteLocalRef(excObj);
+            }
+        } else {
+            env->ThrowNew(excCls, msgStr ? msgStr : fallbackMsg);
+        }
+        env->DeleteLocalRef(excCls);
+    }
+    std::free(parsedFileName);
+    std::free(msgStr);
 }
 
 char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {

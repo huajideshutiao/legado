@@ -91,6 +91,19 @@ public:
 extern jclass g_LongCls;
 extern jmethodID g_LongValueOf;
 
+/**
+ * 抛出 JsNativeException, 自动从 trimmed stack 首帧解析 fileName/lineNumber/columnNumber。
+ *
+ * 供 jni_bridge.cpp 的 nativeWrapJavaObject / nativeCompile / nativeEvalBytecode 复用,
+ * 避免每处重复 parseFirstFrame + JNI NewObject 逻辑。
+ *
+ * @param ctx    JSContext
+ * @param env    JNI env
+ * @param exc    JS_GetException 返回的异常对象 (调用方负责 FreeValue)
+ * @param fallbackMsg  buildExceptionMessage 失败时的兜底消息
+ */
+void throwJsNativeException(JSContext *ctx, JNIEnv *env, JSValue exc, const char *fallbackMsg);
+
 // JNI_OnLoad 阶段主动预热类缓存: 让 nativeNew* 等热路径直接读全局 refs,
 // 免掉每次 FindClass + DeleteLocalRef 的 ClassLoader 锁开销。
 // 幂等, 内部保 std::call_once, trap 首次触发即便早于 OnLoad 也能自愈。

@@ -126,7 +126,7 @@ object QuickJsEngine {
                 val result = QuickJsNative.nativeEval(scope.ctxPtr, js)
                 unwrapReturnValue(result)
             } catch (e: JsNativeException) {
-                throw ScriptException(e.message)
+                throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
             }
         }
     }
@@ -170,7 +170,7 @@ object QuickJsEngine {
                 val result = QuickJsNative.nativeEvalBytecode(scope.ctxPtr, bytecode)
                 unwrapReturnValue(result)
             } catch (e: JsNativeException) {
-                throw ScriptException(e.message)
+                throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
             }
         }
     }
@@ -195,11 +195,16 @@ object QuickJsEngine {
         QuickJsContext.threadLocalContext.set(scope)
         try {
             syncDangerousApiIfNeeded(scope)
+            // 快照当前 objectMap 中的句柄,eval 后释放新增的 binding 句柄,
+            // 避免 sharedScope 路径 objectMap 持续膨胀导致 OOM
+            val handleSnapshot = JavaObjectBridge.snapshotScopeHandles(scope.scopeId)
             enterBindings(scope, kvs)
             try {
                 return evalBytecode(compiled.bytecode, scope, coroutineContext)
             } finally {
                 exitBindings(scope)
+                // 释放本次 evalInSubScope 期间注册的 binding 句柄 (bytes 等大对象)
+                JavaObjectBridge.releaseNewHandles(scope.scopeId, handleSnapshot)
             }
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)
@@ -362,7 +367,7 @@ object QuickJsEngine {
         } catch (e: JsNativeException) {
             // native 层编译失败 (如语法错误) 会抛 JsNativeException 携带实际错误信息,
             // 转为 ScriptException 保持与 eval 路径一致的异常类型
-            throw ScriptException(e.message)
+            throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
         }
         bytecode ?: throw ScriptException("Compile failed", null)
         CompiledScript(bytecode)
