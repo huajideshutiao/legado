@@ -99,8 +99,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         val spanCount = if (cols <= 1) 1 else cols
         binding.recyclerView.layoutManager = GridLayoutManager(this, spanCount)
         adapter = when {
+            cols == 0 -> ExploreShowAdapter(this, this, isVideoStyle = isVideo)
             isVideo -> VideoExploreShowAdapter(this, this)
-            cols <= 1 -> ExploreShowAdapter(this, this)
+            cols == 1 -> ExploreShowAdapter(this, this)
             else -> GridExploreShowAdapter(this, this)
         }
     }

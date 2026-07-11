@@ -966,7 +966,6 @@
     <string name="explore_style">Style</string>
     <string name="explore_style_normal">Normal</string>
     <string name="explore_cols">Columns</string>
-    <string name="explore_cols_one_label">1 (grid: list / video: large card)</string>
     <string name="home">Home</string>
     <string name="home_add_section">Add section</string>
     <string name="home_edit_section">Edit section</string>

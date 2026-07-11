@@ -190,12 +190,12 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     /**
-     * 切换视频/非视频两类样式：切到非视频写 0（列表/单列），切到视频默认 2 列。
+     * 切换视频/非视频两类样式：切到非视频写 0（列表），切到视频写 0x10（视频标志）。
      */
     fun switchLayout() {
         bookSource?.let {
             it.exploreStyle = if (BookSource.exploreStyleIsVideo(it.exploreStyle)) 0
-            else BookSource.EXPLORE_STYLE_VIDEO_FLAG or 2
+            else BookSource.EXPLORE_STYLE_VIDEO_FLAG
             execute {
                 appDb.bookSourceDao.update(it)
             }

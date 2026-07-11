@@ -204,6 +204,11 @@ class BookSourceEditActivity :
             }
         }
         binding.recyclerView.adapter = adapter
+        binding.spExploreCols.adapter = android.widget.ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            (0..6).map { it.toString() }
+        )
         binding.tabLayout.setSelectedTabIndicatorColor(accentColor)
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabReselected(tab: TabLayout.Tab?) {
@@ -268,7 +273,7 @@ class BookSourceEditActivity :
             if (BookSource.exploreStyleIsVideo(bs.exploreStyle)) 1 else 0
         )
         val cols = BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(0, 6)
-        binding.spExploreCols.setSelection(if (cols == 0) 0 else cols - 1)
+        binding.spExploreCols.setSelection(cols)
         // 基本信息
         sourceEntities.clear()
         sourceEntities.apply {
@@ -425,8 +430,7 @@ class BookSourceEditActivity :
         source.enabledExplore = binding.cbEnabledExplore.isChecked
         source.enabledReview = binding.cbEnabledReview.isChecked
         val exploreVideo = binding.spExploreItemStyle.selectedItemPosition == 1
-        val colsPos = binding.spExploreCols.selectedItemPosition
-        val exploreCols = if (colsPos == 0) 0 else colsPos + 1
+        val exploreCols = binding.spExploreCols.selectedItemPosition
         source.exploreStyle = (if (exploreVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
             (exploreCols and BookSource.EXPLORE_STYLE_COLS_MASK)
         sourceEntities.forEach {

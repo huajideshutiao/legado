@@ -965,7 +965,6 @@
     <string name="explore_style">样式</string>
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">列数</string>
-    <string name="explore_cols_one_label">1（网格:列表 / 视频:大卡）</string>
     <string name="home">主页</string>
     <string name="home_add_section">添加组件</string>
     <string name="home_edit_section">编辑组件</string>

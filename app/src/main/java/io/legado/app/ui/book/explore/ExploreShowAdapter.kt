@@ -7,6 +7,7 @@ import androidx.core.view.isVisible
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.BookCover
 import io.legado.app.ui.main.bookshelf.applyCoverWidth
 import io.legado.app.ui.main.bookshelf.upIntro
 import io.legado.app.ui.main.bookshelf.upKind
@@ -14,8 +15,11 @@ import io.legado.app.ui.main.bookshelf.upLast
 import io.legado.app.utils.gone
 
 
-class ExploreShowAdapter(context: Context, callBack: CallBack) :
-    BaseExploreShowAdapter<ItemBookshelfListBinding>(context, callBack) {
+class ExploreShowAdapter(
+    context: Context,
+    callBack: CallBack,
+    private val isVideoStyle: Boolean = false,
+) : BaseExploreShowAdapter<ItemBookshelfListBinding>(context, callBack) {
 
     override fun getViewBinding(parent: ViewGroup): ItemBookshelfListBinding {
         return ItemBookshelfListBinding.inflate(inflater, parent, false)
@@ -31,6 +35,11 @@ class ExploreShowAdapter(context: Context, callBack: CallBack) :
             upLast(item.latestChapterTitle)
             upIntro(item.trimIntro(context))
             upKind(item.getKindList())
+            ivCover.coverRatio = if (isVideoStyle) {
+                BookCover.CoverRatio.VIDEO
+            } else {
+                BookCover.CoverRatio.NOVEL
+            }
             ivCover.load(
                 item.coverUrl,
                 item.name,

@@ -918,7 +918,6 @@
     <string name="explore_style">樣式</string>
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">欄數</string>
-    <string name="explore_cols_one_label">1（網格:列表 / 影片:大卡）</string>
     <string name="home">首頁</string>
     <string name="home_add_section">新增組件</string>
     <string name="home_edit_section">編輯組件</string>
