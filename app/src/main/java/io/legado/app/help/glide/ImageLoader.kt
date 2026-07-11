@@ -22,7 +22,6 @@ import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.isUri
 import io.legado.app.utils.lifecycle
-import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 
@@ -93,10 +92,8 @@ object ImageLoader {
                 imageUrl, bytes, isCover = false, bookSource, book
             )
         } ?: return null
-        return decodedBytes.also {
-            kotlinx.coroutines.CoroutineScope(coroutineContext).launch {
-                BookHelp.writeImage(book, imageUrl, it)
-            }
-        }
+        // 先写磁盘 (同步), 再返回。避免协程持有 decodedBytes 导致 OOM
+        BookHelp.writeImage(book, imageUrl, decodedBytes)
+        return decodedBytes
     }
 }
