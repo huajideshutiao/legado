@@ -14,10 +14,8 @@ import com.script.quickjs.JavaObjectBridge.classMap
 import com.script.quickjs.JavaObjectBridge.coerceToArray
 import com.script.quickjs.JavaObjectBridge.coerceValue
 import com.script.quickjs.JavaObjectBridge.findMethod
-import com.script.quickjs.JavaObjectBridge.getInstanceField
 import com.script.quickjs.JavaObjectBridge.getInstanceKeys
 import com.script.quickjs.JavaObjectBridge.getJavaPropertyRaw
-import com.script.quickjs.JavaObjectBridge.hasInstanceMethod
 import com.script.quickjs.JavaObjectBridge.javaToJsResult
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
@@ -226,7 +224,7 @@ object JavaObjectBridge {
                 Class.forName(fullClassName, false, this.javaClass.classLoader)
             }
             registerClass(clazz)
-        } catch (e: ClassNotFoundException) {
+        } catch (_: ClassNotFoundException) {
             0L
         } catch (e: LinkageError) {
             // NoClassDefFoundError / ExceptionInInitializerError 等,类加载失败
@@ -447,7 +445,7 @@ object JavaObjectBridge {
             is StringBuilder -> callStringBuilderMethod(obj, methodName, args, dangerousApi)
             is StringBuffer -> callStringBufferMethod(obj, methodName, args, dangerousApi)
             else -> if (obj.javaClass.isArray) {
-                callArrayMethod(obj, methodName, args, dangerousApi)
+                callArrayMethod(obj, methodName, args)
             } else NO_RESULT
         }
     }
@@ -479,8 +477,7 @@ object JavaObjectBridge {
     private fun callArrayMethod(
         array: Any,
         methodName: String,
-        args: Array<Any?>,
-        dangerousApi: Boolean
+        args: Array<Any?>
     ): Any? {
         return when (methodName) {
             "slice" -> arraySlice(array, args)
@@ -951,100 +948,6 @@ object JavaObjectBridge {
     }
 
     /**
-     * 一次性查 field + method 是否存在,合并 [getInstanceField] + [hasInstanceMethod] 两次 bridge。
-     *
-     * JS proxy.get 里 `__getJavaPropertyValue` 原本对每个属性访问都要 2 次 native 调用 (取 field
-     * + 判断 method 是否存在),实测书源 JS 循环里 (`sb.append(x)`、`list.get(i)`) 这是热点。
-     * 本函数把两次合并成一次,Kotlin 内部复用 collectMethods/findGetter/getCollectionField。
-     *
-     * 返回值 (List 元素):
-     *   - `[0] fieldValue`: 字段值(已经 javaToJsResult 包装),null 表示当前查询不到字段值
-     *   - `[1] fieldExists`: 字段空间内"可能存在"(即下次访问可能解析到 field 分支)。
-     *      用于 3.1 缓存判断:仅当 `!fieldExists && hasMethod` 时,JS 侧才能安全缓存 method
-     *      callable。Map 因为 key 空间动态可写,即使当前 key 缺失也标 true 防止缓存失效;
-     *      List/Array 的非数字 prop 永不会成为字段,可以放 false 让 JS 缓存。
-     *   - `[2] hasMethod`: 是否有同名实例方法
-     *
-     * @return null 表示 field 与 method 均不存在 (JS 侧返回 undefined);
-     *         否则返回 `[fieldValue, fieldExists, hasMethod]` 三元素 List
-     */
-    fun getJavaProperty(
-        objHandle: Long,
-        fieldName: String,
-        dangerousApi: Boolean
-    ): Any? {
-        val obj = getObject(objHandle) ?: return null
-        if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
-
-        // 集合类（Map/List/Array）是动态的，不走属性元数据缓存
-        val collectionVal = getCollectionField(obj, fieldName)
-        if (collectionVal != null) {
-            return javaToJsResult(collectionVal, dangerousApi)
-        }
-        if (obj is Map<*, *>) {
-            // Map: 任意 key 都可能后续被 setInstanceField 注入,标 fieldExists 阻断缓存
-            return listOf(null, true, false)
-        }
-
-        // 非集合类，使用 Triple 复合缓存加速
-        val cacheKey = Triple(obj.javaClass, fieldName, dangerousApi)
-        val info = propertyInfoCache.getOrPut(cacheKey) {
-            propertyInfoCache.checkCapacity()
-            val getterFound = findGetter(obj.javaClass, fieldName)
-            var fExists = false
-            var g: Method? = null
-            var f: java.lang.reflect.Field? = null
-
-            if (getterFound != null && JsSecurityPolicy.isMethodVisible(
-                    obj.javaClass.name,
-                    getterFound.name,
-                    dangerousApi
-                )
-            ) {
-                fExists = true
-                g = getterFound
-            } else {
-                val fieldFound = findField(obj.javaClass, fieldName)
-                if (fieldFound != null) {
-                    fExists = true
-                    f = fieldFound
-                }
-            }
-
-            val hasMethod =
-                if (JsSecurityPolicy.isMethodVisible(obj.javaClass.name, fieldName, dangerousApi)) {
-                    val candidates = mutableListOf<Method>()
-                    collectMethods(obj.javaClass, fieldName, candidates)
-                    candidates.isNotEmpty()
-                } else false
-
-            PropertyResult(fExists, hasMethod, g, f)
-        }
-
-        val fieldValue: Any? = try {
-            when {
-                info.getter != null -> {
-                    info.getter.isAccessible = true
-                    javaToJsResult(info.getter.invoke(obj), dangerousApi)
-                }
-
-                info.field != null -> {
-                    info.field.isAccessible = true
-                    javaToJsResult(info.field.get(obj), dangerousApi)
-                }
-
-                else -> null
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "getJavaProperty field failed: ${obj.javaClass.name}.$fieldName", e)
-            null
-        }
-
-        if (fieldValue == null && !info.fieldExists && !info.hasMethod) return null
-        return listOf(fieldValue, info.fieldExists, info.hasMethod)
-    }
-
-    /**
      * native 版本专用: 查 field + method, 返回原始 Java 对象 (不经过 javaToJsResult 包装)。
      *
      * 使用哨兵协议 (见 [METHOD_MARKER] / [NULL_FIELD_MARKER]) 返回单个对象,
@@ -1162,7 +1065,7 @@ object JavaObjectBridge {
                 info.innerClass != null -> info.innerClass
                 else -> null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
@@ -1799,6 +1702,42 @@ object JavaObjectBridge {
                 adapterMap.remove(h)
             }
             scopeHandles.remove(scopeId)
+        }
+    }
+
+    /**
+     * 获取某 scope 当前注册的句柄快照。
+     * 用于 [QuickJsEngine.evalInSubScope] 在 enterBindings 前记录,
+     * exitBindings 后对比释放新增句柄,避免 sharedScope 路径 objectMap 泄漏。
+     */
+    fun snapshotScopeHandles(scopeId: Long): Set<Long> {
+        synchronized(lock) {
+            val handles = scopeHandles.get(scopeId)
+            return handles?.toSet() ?: emptySet()
+        }
+    }
+
+    /**
+     * 释放某 scope 中不在 [snapshot] 中的句柄 (即 evalInSubScope 期间新增的)。
+     * 同步从 scopeHandles 中移除,避免长生命周期 scope 累积失效 Long。
+     */
+    fun releaseNewHandles(scopeId: Long, snapshot: Set<Long>) {
+        synchronized(lock) {
+            val handles = scopeHandles.get(scopeId) ?: return
+            val iterator = handles.iterator()
+            while (iterator.hasNext()) {
+                val h = iterator.next()
+                if (h !in snapshot) {
+                    objectMap.remove(h)
+                    val clazz = classMap[h]
+                    if (clazz != null) {
+                        classMap.remove(h)
+                        classIdentityCache.remove(clazz, h)
+                    }
+                    adapterMap.remove(h)
+                    iterator.remove()
+                }
+            }
         }
     }
 
