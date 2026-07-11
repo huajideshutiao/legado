@@ -68,6 +68,9 @@ class WebtoonFrame : FrameLayout {
     // 不再单独配速度衰减系数 / 时长。
     private val panScroller = OverScroller(context, DecelerateInterpolator())
 
+    // 是否允许拖动翻页：上一次 pan 在边界处松手后，下一次拖动才允许翻页
+    private var allowPageScroll = false
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         clickArea.setRect(w, h)
@@ -163,6 +166,15 @@ class WebtoonFrame : FrameLayout {
         // 清零小数累计，让每次手势独立结算
         scrollRemainderX = 0f
         scrollRemainderY = 0f
+        // 甩动惯性到达边界时，本次拖动即允许翻页（不需要再松手一次）
+        // clampMax < 1f 视为该轴没有可平移空间，避免 scale≈1 时 transX≈0 命中"边界"
+        if (!allowPageScroll) {
+            val cmx = clampMaxX()
+            val cmy = clampMaxY()
+            val atBoundary = (cmx >= 1f && abs(abs(transX) - cmx) < 1f) ||
+                (cmy >= 1f && abs(abs(transY) - cmy) < 1f)
+            allowPageScroll = atBoundary
+        }
     }
 
     private fun clampMaxX(): Float =
@@ -184,7 +196,9 @@ class WebtoonFrame : FrameLayout {
 
     fun resetZoom() {
         animateTo(DEFAULT_RATE, 0f, 0f)
+        allowPageScroll = false
     }
+
 
     private fun floatAnim(from: Float, to: Float, set: (Float) -> Unit): ValueAnimator =
         ValueAnimator.ofFloat(from, to).apply {
@@ -224,38 +238,48 @@ class WebtoonFrame : FrameLayout {
     }
 
     /**
-     * 单指 pan：finger delta 先吃进 transX/Y 做钳制，钳掉的余量按 1:1 直接喂给 RV.scrollBy ——
-     * 图片视觉停在 clamp 边沿，RV 在底下连续滚动，下一页/下一段内容跟手滑入，
-     * 与未缩放时拖动手感完全一致（"无限画布"）。
-     * 抬手是否翻页由 rv.fling(velocityX, velocityY) 让 PagerSnapHelper 自己用速度判，
-     * 这里不再累计距离。
+     * 单指 pan：finger delta 先吃进 transX/Y 做钳制。
+     *
+     * 如果上一次手势在边界处松手（allowPageScroll = true），本次拖动：
+     * - 拖向边界方向（继续前进）→ 将余量喂给 RV.scrollBy 实现翻页
+     * - 拖离边界方向（往回拉）→ 切回平移模式，让用户可以平滑拖回图片
+     * 否则只做平移，不允许连续拖动到下一张——必须松手后重新拖动才能翻页。
      */
     private fun panBy(dx: Float, dy: Float) {
+        if (allowPageScroll) {
+            val clampX = clampMaxX()
+            val clampY = clampMaxY()
+            val atRight = transX > clampX - 1f
+            val atLeft = transX < -clampX + 1f
+            val atBottom = transY > clampY - 1f
+            val atTop = transY < -clampY + 1f
+            // 拖离边界方向 → 切回平移模式
+            val awayFromBoundary = (atRight && dx < 0) || (atLeft && dx > 0) ||
+                (atBottom && dy < 0) || (atTop && dy > 0)
+            if (awayFromBoundary) {
+                allowPageScroll = false
+                // 落到下方平移逻辑
+            } else {
+                // 拖向边界方向 → 滚动 RV 翻页
+                val rv = recycler ?: return
+                scrollRemainderX += -dx / currentScale
+                scrollRemainderY += -dy / currentScale
+                val intDx = scrollRemainderX.toInt()
+                val intDy = scrollRemainderY.toInt()
+                if (intDx != 0 || intDy != 0) {
+                    rv.scrollBy(intDx, intDy)
+                    scrollRemainderX -= intDx
+                    scrollRemainderY -= intDy
+                }
+                return
+            }
+        }
+        // 普通平移模式：只移动图片，不滚动 RV
         val rawX = transX + dx
         val rawY = transY + dy
         transX = rawX
         transY = rawY
         applyClampedTranslation() // 钳制写回 transX/Y 并同步 recycler.translation
-        val residualX = rawX - transX
-        val residualY = rawY - transY
-        if (residualX == 0f && residualY == 0f) return
-
-        val rv = recycler ?: return
-        // 手指右拖（residual > 0）想看左侧内容（上一页），所以 scrollBy 取反向。
-        // 关键：RV.scrollBy 用的是 RV 内部布局坐标（pre-scale），而 RV 被整体放大了
-        // currentScale 倍，所以滚 N 像素在屏幕上看到的是 N * scale 像素的滑动。
-        // 除以 currentScale 抵消这层放大，让"手指 1px ↔ 页面屏幕 1px"严格 1:1，
-        // 同时让基于屏幕宽度的翻页阈值与肉眼可见的滑动距离一致。
-        // 小数累积到下一帧，避免 toInt 把每帧的 < 1 像素永远吃掉导致拖不动。
-        scrollRemainderX += -residualX / currentScale
-        scrollRemainderY += -residualY / currentScale
-        val intDx = scrollRemainderX.toInt()
-        val intDy = scrollRemainderY.toInt()
-        if (intDx != 0 || intDy != 0) {
-            rv.scrollBy(intDx, intDy)
-            scrollRemainderX -= intDx
-            scrollRemainderY -= intDy
-        }
     }
 
     /**
@@ -265,6 +289,8 @@ class WebtoonFrame : FrameLayout {
      * 到 smoothScrollToPosition(findCenterViewPosition())，PagerSnapHelper 把被
      * scrollBy 偏离的位置归位到 center 页。翻页后 transX 保持不变，
      * 上一页停在哪个角落，下一页也从同样的角落开始（applyClampedTranslation 保证不越界）。
+     *
+     * 如果图片已到达边界，设置 allowPageScroll = true，下一次拖动才允许翻页。
      */
     private fun finishPan() {
         val rv = recycler ?: return
@@ -273,12 +299,18 @@ class WebtoonFrame : FrameLayout {
         pendingFlingVelocityX = 0f
         pendingFlingVelocityY = 0f
 
+        // 判断图片是否已在边界处（容差 1px）；clampMax < 1f 视为该轴没有可平移空间
+        val cmx = clampMaxX()
+        val cmy = clampMaxY()
+        val atBoundary = (cmx >= 1f && abs(abs(transX) - cmx) < 1f) ||
+            (cmy >= 1f && abs(abs(transY) - cmy) < 1f)
+
         // 画面惯性：用 OverScroller 在 [-clampMax, +clampMax] 内 fling，撞边自然停。
-        // 横向/纵向同样处理，不区分翻页方向。
         flingPan(vx, vy)
 
         // RV 自身的 fling：与未缩放时手指直接给 RV 的量纲一致；横向由 PagerSnapHelper
         // 决定翻不翻，纵向就是普通滚动。反号是因为手指方向与 RV scroll 方向相反。
+        // fling 始终执行（释放手势），但连续拖动翻页只在边界处松手后的下一次拖动才允许。
         val flung = rv.fling(-vx.toInt(), -vy.toInt())
         if (!flung) {
             val center = rv.findCenterViewPosition()
@@ -286,6 +318,9 @@ class WebtoonFrame : FrameLayout {
                 rv.smoothScrollToPosition(center)
             }
         }
+
+        // 在边界处松手后，下一次拖动才允许连续拖动翻页
+        allowPageScroll = atBoundary
     }
 
     private fun flingPan(vx: Float, vy: Float) {
@@ -354,6 +389,7 @@ class WebtoonFrame : FrameLayout {
         override fun onScaleEnd(detector: ScaleGestureDetector) {
             // 缩小到 1× 以下时弹回 1×，实现橡皮筋手感
             if (currentScale < DEFAULT_RATE) resetZoom()
+            allowPageScroll = false
         }
     }
 
@@ -369,6 +405,7 @@ class WebtoonFrame : FrameLayout {
         override fun onDoubleTap(ev: MotionEvent): Boolean {
             animator?.cancel()
             panScroller.forceFinished(true) // 翻页惯性窗口内双击会被惯性反向覆写 transX，必须先停
+            allowPageScroll = false
             // 只要不是恰好 1×（无论放大还是缩小中的中间态），都先归位到 1×
             if (!isAtDefaultScale()) {
                 animateTo(DEFAULT_RATE, 0f, 0f)
