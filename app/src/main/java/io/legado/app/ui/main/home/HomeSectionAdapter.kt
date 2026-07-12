@@ -7,7 +7,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -21,6 +20,7 @@ import io.legado.app.lib.theme.applyThemeTree
 import io.legado.app.lib.theme.space
 import io.legado.app.model.BookCover
 import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.ui.book.explore.bindVideoCard
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.setUpExploreOptions
 import io.legado.app.utils.dpToPx
@@ -404,14 +404,12 @@ class HomeSectionAdapter(
         }
 
         fun bind(book: SearchBook, onClick: (SearchBook, Boolean) -> Unit) {
-            b.tvTitle.text = book.name
-            b.tvAuthor.text = book.getRealAuthor()
-            b.tvAuthor.isVisible = b.tvAuthor.text.isNotBlank()
-            val kinds = book.getKindList()
-            b.llKind.isVisible = kinds.isNotEmpty()
-            if (kinds.isNotEmpty()) b.llKind.setLabels(kinds)
-            b.ivCover.coverRatio = BookCover.CoverRatio.VIDEO
-            b.ivCover.load(book.coverUrl, book.name, book.author, false, book.origin)
+            b.bindVideoCard(
+                book,
+                book.coverUrl,
+                isInBookshelf = false,
+                showBookshelfBadge = false,
+            )
             b.root.setOnClickListener { onClick(book, false) }
             b.root.setOnLongClickListener { onClick(book, true); true }
         }

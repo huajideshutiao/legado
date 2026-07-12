@@ -24,8 +24,10 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.DialogBookshelfConfigBinding
 import io.legado.app.databinding.DialogBottomNavConfigBinding
+import io.legado.app.databinding.DialogSearchConfigBinding
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
@@ -120,6 +122,8 @@ class ThemeConfigFragment : PreferenceFragment(),
             }
 
             PreferKey.bookshelfLayout -> configBookshelf()
+
+            PreferKey.searchLayout -> configSearch()
 
             "bottomNavConfig" -> configBottomNav()
 
@@ -370,91 +374,80 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("InflateParams")
     fun configBookshelf() {
         alert(titleResource = R.string.bookshelf_layout) {
-            var bookshelfLayout = AppConfig.bookshelfLayout
+            val bookshelfLayout = AppConfig.bookshelfLayout
             var bookshelfSort = AppConfig.bookshelfSort
             var fixedWidthMode = AppConfig.bookshelfFixedWidthMode
             val gridWidth = AppConfig.bookshelfGridWidth
             var introLines = AppConfig.bookshelfListIntroLines
-            val alertBinding =
-                DialogBookshelfConfigBinding.inflate(layoutInflater)
-                    .apply {
-                        if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
-                            AppConfig.bookGroupStyle = 0
-                        }
-                        if (bookshelfLayout !in 0..6) {
-                            bookshelfLayout = 0
-                            AppConfig.bookshelfLayout = 0
-                        }
-                        if (bookshelfSort !in rgSort.indices) {
-                            bookshelfSort = 0
-                            AppConfig.bookshelfSort = 0
-                        }
-                        spGroupStyle.setSelection(AppConfig.bookGroupStyle)
-                        swShowUnread.isChecked = AppConfig.showUnread
-                        swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
-                        swShowGroupCount.isChecked = AppConfig.bookshelfShowGroupCount
-                        swShowKind.isChecked = AppConfig.bookshelfListShowKind
-                        swShowIntro.isChecked = AppConfig.bookshelfListShowIntro
-                        tvIntroLinesValue.text = introLines.toString()
-                        llIntroLines.alpha = if (swShowIntro.isChecked) 1f else 0.4f
-                        swShowIntro.setOnCheckedChangeListener { _, isChecked ->
-                            llIntroLines.alpha = if (isChecked) 1f else 0.4f
-                        }
-                        tvIntroLinesMinus.setOnClickListener {
-                            if (introLines > 1) {
-                                introLines--
-                                tvIntroLinesValue.text = introLines.toString()
-                            }
-                        }
-                        tvIntroLinesPlus.setOnClickListener {
-                            if (introLines < 5) {
-                                introLines++
-                                tvIntroLinesValue.text = introLines.toString()
-                            }
-                        }
-                        swFixedWidthMode.isChecked = fixedWidthMode
-                        sbColumnCount.progress = bookshelfLayout
-                        tvColumnValue.text =
-                            if (sbColumnCount.progress <= 1) getString(R.string.layout_list) else sbColumnCount.progress.toString()
-                        etGridWidth.setText(gridWidth.toString())
-                        llColumnCount.visibility =
-                            if (fixedWidthMode) View.GONE else View.VISIBLE
-                        llFixedWidth.visibility =
-                            if (fixedWidthMode) View.VISIBLE else View.GONE
-                        val updateListOnlyVisibility = {
-                            val isList = !swFixedWidthMode.isChecked && sbColumnCount.progress <= 1
-                            val v = if (isList) View.VISIBLE else View.GONE
-                            swShowKind.visibility = v
-                            swShowIntro.visibility = v
-                            llIntroLines.visibility = v
-                            swShowLastUpdateTime.visibility = v
-                        }
-                        updateListOnlyVisibility()
-                        sbColumnCount.setOnSeekBarChangeListener(object :
-                            SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(
-                                seekBar: SeekBar?,
-                                progress: Int,
-                                fromUser: Boolean
-                            ) {
-                                tvColumnValue.text =
-                                    if (progress <= 1) getString(R.string.layout_list) else progress.toString()
-                                updateListOnlyVisibility()
-                            }
+            var selectedCols = BookSource.exploreStyleCols(bookshelfLayout)
 
-                            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-                        })
-                        swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
-                            fixedWidthMode = isChecked
-                            llColumnCount.visibility =
-                                if (isChecked) View.GONE else View.VISIBLE
-                            llFixedWidth.visibility =
-                                if (isChecked) View.VISIBLE else View.GONE
-                            updateListOnlyVisibility()
-                        }
-                        rgSort.checkByIndex(bookshelfSort)
+            val alertBinding = DialogBookshelfConfigBinding.inflate(layoutInflater).apply {
+                if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
+                    AppConfig.bookGroupStyle = 0
+                }
+                if (bookshelfSort !in rgSort.indices) {
+                    bookshelfSort = 0
+                    AppConfig.bookshelfSort = 0
+                }
+                spGroupStyle.setSelection(AppConfig.bookGroupStyle)
+                spItemStyle.setSelection(
+                    if (BookSource.exploreStyleIsVideo(bookshelfLayout)) 1 else 0
+                )
+                swShowUnread.isChecked = AppConfig.showUnread
+                swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
+                swShowGroupCount.isChecked = AppConfig.bookshelfShowGroupCount
+                swShowKind.isChecked = AppConfig.bookshelfListShowKind
+                swShowIntro.isChecked = AppConfig.bookshelfListShowIntro
+                tvIntroLinesValue.text = introLines.toString()
+                llIntroLines.alpha = if (swShowIntro.isChecked) 1f else 0.4f
+                swShowIntro.setOnCheckedChangeListener { _, isChecked ->
+                    llIntroLines.alpha = if (isChecked) 1f else 0.4f
+                }
+                tvIntroLinesMinus.setOnClickListener {
+                    if (introLines > 1) {
+                        introLines--
+                        tvIntroLinesValue.text = introLines.toString()
                     }
+                }
+                tvIntroLinesPlus.setOnClickListener {
+                    if (introLines < 5) {
+                        introLines++
+                        tvIntroLinesValue.text = introLines.toString()
+                    }
+                }
+                swFixedWidthMode.isChecked = fixedWidthMode
+                sbColumnCount.progress = selectedCols
+                tvColumnValue.text = selectedCols.toString()
+                etGridWidth.setText(gridWidth.toString())
+                llColumnCount.visibility = if (fixedWidthMode) View.GONE else View.VISIBLE
+                llFixedWidth.visibility = if (fixedWidthMode) View.VISIBLE else View.GONE
+                val updateListOnlyVisibility = {
+                    val isList = !swFixedWidthMode.isChecked && sbColumnCount.progress <= 1
+                    val v = if (isList) View.VISIBLE else View.GONE
+                    swShowKind.visibility = v
+                    swShowIntro.visibility = v
+                    llIntroLines.visibility = v
+                    swShowLastUpdateTime.visibility = v
+                }
+                updateListOnlyVisibility()
+                sbColumnCount.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                    override fun onProgressChanged(
+                        seekBar: SeekBar, progress: Int, fromUser: Boolean
+                    ) {
+                        selectedCols = progress
+                        tvColumnValue.text = progress.toString()
+                        updateListOnlyVisibility()
+                    }
+                })
+                swFixedWidthMode.setOnCheckedChangeListener { _, isChecked ->
+                    fixedWidthMode = isChecked
+                    llColumnCount.visibility = if (isChecked) View.GONE else View.VISIBLE
+                    llFixedWidth.visibility = if (isChecked) View.VISIBLE else View.GONE
+                    updateListOnlyVisibility()
+                }
+                rgSort.checkByIndex(bookshelfSort)
+            }
+
             customView { alertBinding.root }
             okButton {
                 alertBinding.apply {
@@ -491,7 +484,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                     if (bookshelfSort != rgSort.getCheckedIndex()) {
                         AppConfig.bookshelfSort = rgSort.getCheckedIndex()
                     }
-                    val newLayout = sbColumnCount.progress
+                    val newLayout =
+                        makeLayoutStyle(selectedCols, spItemStyle.selectedItemPosition == 1)
                     val newGridWidth = etGridWidth.text?.toString()?.toIntOrNull() ?: 120
                     if (bookshelfLayout != newLayout ||
                         AppConfig.bookshelfFixedWidthMode != fixedWidthMode ||
@@ -507,6 +501,45 @@ class ThemeConfigFragment : PreferenceFragment(),
                     } else if (notifyMain) {
                         postEvent(EventBus.NOTIFY_MAIN, false)
                     }
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    private fun makeLayoutStyle(cols: Int, isVideo: Boolean): Int {
+        val flag = if (isVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0
+        return flag or (cols and BookSource.EXPLORE_STYLE_COLS_MASK)
+    }
+
+    @SuppressLint("InflateParams")
+    fun configSearch() {
+        val currentStyle = AppConfig.searchLayout
+        var selectedCols = BookSource.exploreStyleCols(currentStyle).coerceIn(0, 6)
+
+        val alertBinding = DialogSearchConfigBinding.inflate(layoutInflater).apply {
+            spItemStyle.setSelection(if (BookSource.exploreStyleIsVideo(currentStyle)) 1 else 0)
+            sbColumnCount.progress = selectedCols
+            tvColumnValue.text = selectedCols.toString()
+            sbColumnCount.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    selectedCols = progress
+                    tvColumnValue.text = progress.toString()
+                }
+            })
+        }
+
+        alert(titleResource = R.string.search_layout) {
+            customView { alertBinding.root }
+            okButton {
+                val newLayout =
+                    makeLayoutStyle(
+                        selectedCols,
+                        alertBinding.spItemStyle.selectedItemPosition == 1
+                    )
+                if (AppConfig.searchLayout != newLayout) {
+                    AppConfig.searchLayout = newLayout
+                    recreateActivities()
                 }
             }
             cancelButton()

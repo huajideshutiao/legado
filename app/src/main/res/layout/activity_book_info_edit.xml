@@ -16,7 +16,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="@dimen/arco_spacing_lg">
+        android:paddingHorizontal="@dimen/arco_spacing_default">
 
         <io.legado.app.ui.widget.image.CoverImageView
             android:id="@+id/iv_cover"
@@ -112,20 +112,19 @@
 
                 <io.legado.app.ui.widget.button.ArcoButton
                     android:id="@+id/tv_select_cover"
-                    style="@style/Widget.Arco.Button.Outline.default"
+                    style="@style/Widget.Arco.Button.Outline.Large"
                     android:text="@string/select_local_image" />
 
                 <io.legado.app.ui.widget.button.ArcoButton
                     android:id="@+id/tv_change_cover"
-                    style="@style/Widget.Arco.Button.Outline.default"
-                    android:layout_marginStart="@dimen/arco_spacing_md"
+                    style="@style/Widget.Arco.Button.Outline.Large"
+                    android:layout_marginHorizontal="@dimen/arco_spacing_md"
                     android:text="@string/change_cover_source"
                     tools:ignore="RtlHardcoded" />
 
                 <io.legado.app.ui.widget.button.ArcoButton
                     android:id="@+id/tv_refresh_cover"
-                    style="@style/Widget.Arco.Button.Outline.default"
-                    android:layout_marginStart="@dimen/arco_spacing_md"
+                    style="@style/Widget.Arco.Button.Outline.Large"
                     android:text="@string/refresh_cover"
                     tools:ignore="RtlHardcoded" />
 
@@ -135,7 +134,7 @@
                 android:id="@+id/til_book_jj"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_md"
+                android:layout_marginTop="@dimen/arco_spacing_xs"
                 android:hint="@string/book_intro">
 
                 <androidx.appcompat.widget.AppCompatEditText
@@ -148,7 +147,6 @@
                 android:id="@+id/til_book_url"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/arco_spacing_md"
                 android:hint="@string/book_url">
 
                 <androidx.appcompat.widget.AppCompatEditText

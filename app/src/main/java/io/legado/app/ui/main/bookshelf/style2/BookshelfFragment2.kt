@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.FragmentRecyclerViewBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
@@ -55,14 +56,39 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
     override var books: List<Book> = emptyList()
     private var enableRefresh = true
 
-    private fun getSpanCount(): Int {
+    /**
+     * 位运算魔数与发现界面共用: 低 4 位为列数, bit 4 (0x10) 为视频布局标志.
+     * 固定宽度模式下按屏宽/单元格宽度换算, 与用户配置的列数解耦.
+     */
+    private fun getCols(): Int {
         if (AppConfig.bookshelfFixedWidthMode) {
             val displayMetrics = resources.displayMetrics
             val screenWidthDp = displayMetrics.widthPixels / displayMetrics.density
             val spanCount = (screenWidthDp / AppConfig.bookshelfGridWidth).toInt()
             return maxOf(1, spanCount)
         }
-        return AppConfig.bookshelfLayout
+        return BookSource.exploreStyleCols(AppConfig.bookshelfLayout)
+    }
+
+    /**
+     * 结构对齐发现界面的 initAdapter: isVideo tier 用 [BooksAdapterVideo]
+     * 复用 item_explore_video 卡片 (与 VideoExploreShowAdapter 共享 bind).
+     */
+    private fun createAdapter(): BaseBooksAdapter<*> {
+        val style = AppConfig.bookshelfLayout
+        val isVideo = BookSource.exploreStyleIsVideo(style)
+        val cols = getCols()
+        val ctx = requireContext()
+        return when {
+            cols == 0 -> BooksAdapterList(ctx, this, isVideo)
+            isVideo -> BooksAdapterVideo(ctx, this)
+            cols == 1 -> BooksAdapterList(ctx, this, false)
+            else -> BooksAdapterGrid(ctx, this)
+        }
+    }
+
+    private fun spanCountFor(adapter: BaseBooksAdapter<*>): Int {
+        return if (adapter is BooksAdapterGrid || adapter is BooksAdapterVideo) getCols() else 1
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -81,10 +107,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
     }
 
     private fun updateLayoutManager() {
-        val spanCount = getSpanCount()
+        val adapter = booksAdapter ?: return
+        val spanCount = spanCountFor(adapter)
         val layoutManager = binding.recyclerView.layoutManager
         if (spanCount <= 1) {
-            if (layoutManager !is LinearLayoutManager) {
+            if (layoutManager !is LinearLayoutManager || layoutManager is GridLayoutManager) {
                 binding.recyclerView.layoutManager = LinearLayoutManager(context)
             }
         } else {
@@ -103,19 +130,15 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_recycler_vi
             binding.refreshLayout.isRefreshing = false
             activityViewModel.upToc(books)
         }
-        val spanCount = getSpanCount()
-        if (spanCount <= 1) {
-            binding.recyclerView.layoutManager = LinearLayoutManager(context)
-        } else {
-            binding.recyclerView.layoutManager = GridLayoutManager(context, spanCount)
-        }
         binding.recyclerView.itemAnimator = null
         val adapter = booksAdapter
         if (adapter == null) {
-            val newAdapter = if (spanCount <= 1) {
-                BooksAdapterList(requireContext(), this)
+            val newAdapter = createAdapter()
+            val spanCount = spanCountFor(newAdapter)
+            binding.recyclerView.layoutManager = if (spanCount <= 1) {
+                LinearLayoutManager(context)
             } else {
-                BooksAdapterGrid(requireContext(), this)
+                GridLayoutManager(context, spanCount)
             }
             binding.recyclerView.adapter = newAdapter
             newAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {

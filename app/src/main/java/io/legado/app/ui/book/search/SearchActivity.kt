@@ -12,6 +12,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
@@ -21,7 +22,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
 import io.legado.app.help.IntentData
@@ -37,7 +38,11 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.explore.BaseExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
+import io.legado.app.ui.book.explore.ExploreShowAdapter
+import io.legado.app.ui.book.explore.GridExploreShowAdapter
+import io.legado.app.ui.book.explore.VideoExploreShowAdapter
 import io.legado.app.ui.book.filter.SourceFilterRuleListDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
@@ -79,13 +84,13 @@ import kotlin.math.abs
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, SearchAdapter.CallBack {
+    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, BaseExploreShowAdapter.CallBack {
 
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
 
-    private val adapter by lazy { SearchAdapter(this, this) }
-    private val bookAdapter by lazy { BookAdapter(this, this) }
+    private lateinit var adapter: BaseExploreShowAdapter<*>
+    private lateinit var bookAdapter: BaseExploreShowAdapter<*>
     private val historyKeyAdapter by lazy {
         HistoryKeyAdapter(this, this).apply {
             setHasStableIds(true)
@@ -220,14 +225,13 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initRecyclerView() {
         binding.recyclerView.setFastScrollEnabled(true)
-        binding.rvBookshelfSearch.layoutManager = LinearLayoutManager(this)
         binding.rvBookshelfSearch.setHasFixedSize(true)
-        binding.rvBookshelfSearch.adapter = bookAdapter
+        initBookshelfSearchAdapter()
         binding.rvBookshelfSearch.applyNavigationBarMargin()
         binding.rvBookshelfSearch.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(recyclerView, newState)
-                // 当用户开始拖拽列表时清除焦点（收起键盘）
+                // 用户开始拖动列表时清 focus,顺便收起软键盘
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                     searchView.clearFocus()
                 }
@@ -244,8 +248,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 }
             }
         })
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
+        initSearchAdapter()
         binding.recyclerView.itemAnimator = null
         binding.recyclerView.applyNavigationBarPadding()
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
@@ -287,6 +290,45 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         })
     }
 
+    /**
+     * searchLayout 位运算魔数与发现界面共用:
+     * - 低 4 位: 列数 (0/1 单列; 2..6 N 列网格)
+     * - bit 4 (0x10): 视频布局标志
+     */
+    private fun initSearchAdapter() {
+        val style = AppConfig.searchLayout
+        val isVideo = BookSource.exploreStyleIsVideo(style)
+        val cols = BookSource.exploreStyleCols(style)
+        val spanCount = if (cols <= 1) 1 else cols
+        binding.recyclerView.layoutManager = GridLayoutManager(this, spanCount)
+        adapter = when {
+            cols == 0 -> ExploreShowAdapter(this, this, isVideoStyle = isVideo, showOrigins = true)
+            isVideo -> VideoExploreShowAdapter(this, this)
+            cols == 1 -> ExploreShowAdapter(this, this, showOrigins = true)
+            else -> GridExploreShowAdapter(this, this)
+        }
+        binding.recyclerView.adapter = adapter
+    }
+
+    /**
+     * 书架命中区与搜索结果共用 searchLayout, 保持视觉一致.
+     * 所有 item 都已在书架里, showBookshelfBadge=false 让绿点徽标恒隐避免噪音.
+     */
+    private fun initBookshelfSearchAdapter() {
+        val style = AppConfig.searchLayout
+        val isVideo = BookSource.exploreStyleIsVideo(style)
+        val cols = BookSource.exploreStyleCols(style)
+        val spanCount = if (cols <= 1) 1 else cols
+        binding.rvBookshelfSearch.layoutManager = GridLayoutManager(this, spanCount)
+        bookAdapter = when {
+            cols == 0 -> BookAdapter(this, this, isVideoStyle = isVideo)
+            isVideo -> VideoExploreShowAdapter(this, this, showBookshelfBadge = false)
+            cols == 1 -> BookAdapter(this, this)
+            else -> GridExploreShowAdapter(this, this, showBookshelfBadge = false)
+        }
+        binding.rvBookshelfSearch.adapter = bookAdapter
+    }
+
     private fun initOtherView() {
         binding.fbStartStop.backgroundTintList = Selector.colorBuild().setDefaultColor(accentColor)
             .setPressedColor(ColorUtils.darkenColor(accentColor)).create()
@@ -312,10 +354,10 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         }
         viewModel.searchBookLiveData.observe(this) {
-            adapter.setItems(it)
+            adapter.setItems(it, ExploreShowAdapter.itemCallback)
         }
         viewModel.clearAdapterLiveData.observe(this) {
-            adapter.setItems(emptyList())
+            adapter.clearItems()
         }
         viewModel.searchOptionsLiveData.observe(this) {
             initFilterView()
@@ -356,7 +398,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                     // 书架结果与历史词互斥
                     binding.llHistoryBar.isVisible = !found
                     binding.rvHistoryKey.isVisible = !found
-                    if (found) bookAdapter.setItems(books)
+                    if (found) bookAdapter.setItems(books, BookAdapter.itemCallback)
                 }
         }
     }
@@ -505,14 +547,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 是否已经加入书架
      */
-    override fun isInBookshelf(book: SearchBook): Boolean {
+    override fun isInBookshelf(book: BaseBook): Boolean {
         return viewModel.isInBookShelf(book)
     }
 
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: BaseBook, isClick: Boolean) {
+    override fun showBookInfo(book: BaseBook, longClick: Boolean) {
         searchView.clearFocus()
         val urlParts = book.bookUrl.split("::", limit = 2)
         if (urlParts.size == 2) {
@@ -526,7 +568,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         IntentData.book = book
         when {
-            !isClick || !AppConfig.devFeat -> startActivity<BookInfoActivity> {
+            longClick || !AppConfig.devFeat -> startActivity<BookInfoActivity> {
                 putExtra("name", book.name)
                 putExtra("author", book.author)
             }

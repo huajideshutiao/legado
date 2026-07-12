@@ -7,12 +7,14 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 
 
-abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val callBack: CallBack) :
-    RecyclerAdapter<SearchBook, VB>(context) {
+abstract class BaseExploreShowAdapter<VB : ViewBinding>(
+    context: Context,
+    val callBack: CallBack,
+    val showBookshelfBadge: Boolean = true,
+) : RecyclerAdapter<BaseBook, VB>(context) {
     override fun registerListener(holder: ItemViewHolder, binding: VB) {
         val tmp = getItemByLayoutPosition(holder.layoutPosition)?.apply {
             if (!callBack.isInBookshelf(this))
@@ -25,7 +27,7 @@ abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val ca
     override fun convert(
         holder: ItemViewHolder,
         binding: VB,
-        item: SearchBook,
+        item: BaseBook,
         payloads: MutableList<Any>
     ) {
         if (payloads.isEmpty()) {
@@ -38,8 +40,9 @@ abstract class BaseExploreShowAdapter<VB : ViewBinding>(context: Context, val ca
         }
 
     }
-    abstract fun bind(binding: VB, item: SearchBook)
-    abstract fun bindChange(binding: VB, item: SearchBook, bundle: Bundle)
+
+    abstract fun bind(binding: VB, item: BaseBook)
+    abstract fun bindChange(binding: VB, item: BaseBook, bundle: Bundle)
     interface CallBack {
         /**
          * 是否已经加入书架

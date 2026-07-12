@@ -37,15 +37,14 @@ import splitties.init.appCtx
 import splitties.views.bottomPadding
 import java.io.FileOutputStream
 
-class BookInfoEditActivity :
-    VMBaseActivity<ActivityBookInfoEditBinding, BookInfoEditViewModel>(),
+class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInfoEditViewModel>(),
     ChangeCoverDialog.CallBack {
 
     private val selectCover by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            coverChangeTo(uri)
-        }
+                coverChangeTo(uri)
+            }
         }
     }
 
@@ -121,7 +120,9 @@ class BookInfoEditActivity :
 
     private fun upCover() {
         viewModel.book?.let {
-            binding.ivCover.load(it.getDisplayCover(), it.name, it.author, false, it.origin, inBookshelf = true)
+            binding.ivCover.load(
+                it.getDisplayCover(), it.name, it.author, false, it.origin, inBookshelf = true
+            )
         }
     }
 
@@ -139,18 +140,26 @@ class BookInfoEditActivity :
             1 -> BookType.audio or local
             else -> BookType.text or local
         }
-        book.removeType(BookType.local, BookType.image, BookType.audio, BookType.text, BookType.video, BookType.webFile, BookType.rss)
+        book.removeType(
+            BookType.local,
+            BookType.image,
+            BookType.audio,
+            BookType.text,
+            BookType.video,
+            BookType.webFile,
+            BookType.rss
+        )
         book.addType(bookType)
         val customCoverUrl = tieCoverUrl.text?.toString()
         book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
         val customIntro = tieBookIntro.text?.toString()
         book.customIntro = if (customIntro == book.intro) null else customIntro
         BookHelp.updateCacheFolder(oldBook, book)
-        viewModel.saveBook(book,tieBookUrl.text?.toString()) {
+        viewModel.saveBook(book, tieBookUrl.text?.toString()) {
             setResult(RESULT_OK)
             tieBookUrl.text?.apply {
-                    book.bookUrl = this.toString()
-                }
+                book.bookUrl = this.toString()
+            }
             IntentData.book = book
             finish()
         }

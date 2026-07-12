@@ -23,7 +23,7 @@ class CoverConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_cover)
         upPreferenceSummary(PreferKey.defaultCover, null)
         upPreferenceSummary(PreferKey.defaultCoverDark, null)
-        upPreferenceSummary(PreferKey.bookshelfCoverWidth, null)
+        upPreferenceSummary(PreferKey.bookshelfCoverHeight, null)
         findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
             ?.isEnabled = getPrefBoolean(PreferKey.coverShowName)
         findPreference<SwitchPreference>(PreferKey.coverShowAuthorN)
@@ -51,7 +51,7 @@ class CoverConfigFragment : PreferenceFragment(),
             PreferKey.defaultCover,
             PreferKey.defaultCoverDark -> upPreferenceSummary(key, null)
 
-            PreferKey.bookshelfCoverWidth -> upPreferenceSummary(key, null)
+            PreferKey.bookshelfCoverHeight -> upPreferenceSummary(key, null)
 
             PreferKey.coverShowName -> {
                 findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
@@ -80,16 +80,16 @@ class CoverConfigFragment : PreferenceFragment(),
             PreferKey.defaultCoverDark ->
                 showDialogFragment(DefaultCoverGalleryDialog(isNight = true))
 
-            PreferKey.bookshelfCoverWidth -> showNumberPicker(
+            PreferKey.bookshelfCoverHeight -> showNumberPicker(
                 requireContext(),
-                titleResId = R.string.bookshelf_cover_width,
-                max = 160, min = 70, value = AppConfig.bookshelfCoverWidth,
+                titleResId = R.string.bookshelf_cover_height,
+                max = 220, min = 90, value = AppConfig.bookshelfCoverHeight,
                 neutralButton = R.string.btn_default_s to {
-                    AppConfig.bookshelfCoverWidth = 90
+                    AppConfig.bookshelfCoverHeight = 120
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
             ) {
-                AppConfig.bookshelfCoverWidth = it
+                AppConfig.bookshelfCoverHeight = it
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
@@ -109,9 +109,9 @@ class CoverConfigFragment : PreferenceFragment(),
                 }
             }
 
-            PreferKey.bookshelfCoverWidth -> {
-                val width = value ?: "${AppConfig.bookshelfCoverWidth}dp"
-                preference.summary = getString(R.string.bookshelf_cover_width_summary, width)
+            PreferKey.bookshelfCoverHeight -> {
+                val height = value ?: "${AppConfig.bookshelfCoverHeight}dp"
+                preference.summary = getString(R.string.bookshelf_cover_height_summary, height)
             }
 
             else -> preference.summary = value

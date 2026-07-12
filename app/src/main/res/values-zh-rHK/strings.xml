@@ -896,6 +896,7 @@
     <string name="explore_style">樣式</string>
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">列數</string>
+    <string name="search_layout">搜索佈局</string>
     <string name="explore_style_video">影片</string>
 
     <!--Review strings (缺失補充)-->
@@ -954,8 +955,8 @@
     <string name="bookshelf_list_show_kind">顯示分類</string>
     <string name="bookshelf_list_show_intro">顯示簡介</string>
     <string name="bookshelf_list_intro_lines">簡介行數</string>
-    <string name="bookshelf_cover_width">列表模式封面寬度</string>
-    <string name="bookshelf_cover_width_summary">當前：%s</string>
+    <string name="bookshelf_cover_height">列表模式封面高度</string>
+    <string name="bookshelf_cover_height_summary">當前高度：%s</string>
     <string name="click_book_open_read">直接播放影片書</string>
     <string name="click_book_open_read_summary">在搜索/發現中點擊影片書直接播放，跳過詳情頁</string>
     <string name="book_info_horizontal_layout">寬屏書籍詳情佈局</string>

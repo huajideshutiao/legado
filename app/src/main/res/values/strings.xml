@@ -956,8 +956,8 @@
     <string name="bookshelf_list_show_kind">Show category</string>
     <string name="bookshelf_list_show_intro">Show intro</string>
     <string name="bookshelf_list_intro_lines">Intro lines</string>
-    <string name="bookshelf_cover_width">Cover width in list mode</string>
-    <string name="bookshelf_cover_width_summary">Current: %s</string>
+    <string name="bookshelf_cover_height">Cover height in list mode</string>
+    <string name="bookshelf_cover_height_summary">Current: %s</string>
     <string name="click_book_open_read">Directly play video books</string>
     <string name="click_book_open_read_summary">Click video books in search/discovery to play directly, skipping details</string>
     <string name="book_info_horizontal_layout">Wide book details layout</string>
@@ -966,6 +966,7 @@
     <string name="explore_style">Style</string>
     <string name="explore_style_normal">Normal</string>
     <string name="explore_cols">Columns</string>
+    <string name="search_layout">Search layout</string>
     <string name="home">Home</string>
     <string name="home_add_section">Add section</string>
     <string name="home_edit_section">Edit section</string>

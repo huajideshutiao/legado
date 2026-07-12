@@ -6,10 +6,8 @@ import android.view.ViewGroup
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfGridBinding
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.invisible
-import io.legado.app.utils.visible
+import io.legado.app.ui.main.bookshelf.bindGridCard
+import io.legado.app.ui.main.bookshelf.upRefresh
 import splitties.views.onLongClick
 
 class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
@@ -26,34 +24,31 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         payloads: MutableList<Any>
     ) = binding.run {
         if (payloads.isEmpty()) {
-            tvName.text = item.name
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
-            upRefresh(binding, item)
+            bindGridCard(
+                item = item,
+                coverUrl = item.getDisplayCover(),
+                isInBookshelf = true,
+                showBookshelfBadge = false,
+            )
+            upRefresh(item, callBack.isUpdate(item.bookUrl))
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
                 bundle.keySet().forEach {
                     when (it) {
                         "name" -> tvName.text = item.name
-                        "cover" -> ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
-                        "refresh" -> upRefresh(binding, item)
+                        "cover" -> ivCover.load(
+                            item.getDisplayCover(),
+                            item.name,
+                            item.author,
+                            false,
+                            item.origin,
+                            inBookshelf = true
+                        )
+
+                        "refresh" -> upRefresh(item, callBack.isUpdate(item.bookUrl))
                     }
                 }
-            }
-        }
-    }
-
-    private fun upRefresh(binding: ItemBookshelfGridBinding, item: Book) {
-        if (!item.isLocal && callBack.isUpdate(item.bookUrl)) {
-            binding.bvUnread.invisible()
-            binding.rlLoading.visible()
-        } else {
-            binding.rlLoading.invisible()
-            if (AppConfig.showUnread) {
-                binding.bvUnread.setBadgeCount(item.getUnreadChapterNum())
-                binding.bvUnread.setHighlight(item.lastCheckCount > 0)
-            } else {
-                binding.bvUnread.invisible()
             }
         }
     }

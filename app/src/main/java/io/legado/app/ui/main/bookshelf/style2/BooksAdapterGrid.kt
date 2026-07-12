@@ -7,10 +7,8 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfGridBinding
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.invisible
-import io.legado.app.utils.visible
+import io.legado.app.ui.main.bookshelf.bindGridCard
+import io.legado.app.ui.main.bookshelf.upRefresh
 import splitties.views.onLongClick
 
 class BooksAdapterGrid(context: Context, callBack: CallBack) :
@@ -48,9 +46,13 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: Book) = binding.run {
-            tvName.text = item.name
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
-            upRefresh(this, item)
+            bindGridCard(
+                item = item,
+                coverUrl = item.getDisplayCover(),
+                isInBookshelf = true,
+                showBookshelfBadge = false,
+            )
+            upRefresh(item, callBack.isUpdate(item.bookUrl))
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
@@ -71,7 +73,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                                 inBookshelf = true
                             )
 
-                            "refresh" -> upRefresh(this, item)
+                            "refresh" -> upRefresh(item, callBack.isUpdate(item.bookUrl))
                         }
                     }
                 }
@@ -84,21 +86,6 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             }
             binding.root.onLongClick {
                 callBack.onItemLongClick(item)
-            }
-        }
-
-        private fun upRefresh(binding: ItemBookshelfGridBinding, item: Book) {
-            if (!item.isLocal && callBack.isUpdate(item.bookUrl)) {
-                binding.bvUnread.invisible()
-                binding.rlLoading.visible()
-            } else {
-                binding.rlLoading.invisible()
-                if (AppConfig.showUnread) {
-                    binding.bvUnread.setBadgeCount(item.getUnreadChapterNum())
-                    binding.bvUnread.setHighlight(item.lastCheckCount > 0)
-                } else {
-                    binding.bvUnread.invisible()
-                }
             }
         }
 

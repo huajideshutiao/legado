@@ -955,8 +955,8 @@
     <string name="bookshelf_list_show_kind">显示分类</string>
     <string name="bookshelf_list_show_intro">显示简介</string>
     <string name="bookshelf_list_intro_lines">简介行数</string>
-    <string name="bookshelf_cover_width">列表模式下封面宽度</string>
-    <string name="bookshelf_cover_width_summary">当前宽度：%s</string>
+    <string name="bookshelf_cover_height">列表模式下封面高度</string>
+    <string name="bookshelf_cover_height_summary">当前高度：%s</string>
     <string name="click_book_open_read">点击视频书籍直接播放</string>
     <string name="click_book_open_read_summary">在搜索、发现中点击视频书籍直接打开播放页，跳过详情</string>
     <string name="book_info_horizontal_layout">书籍详情横向布局</string>
@@ -965,6 +965,7 @@
     <string name="explore_style">样式</string>
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">列数</string>
+    <string name="search_layout">搜索布局</string>
     <string name="home">主页</string>
     <string name="home_add_section">添加组件</string>
     <string name="home_edit_section">编辑组件</string>

@@ -908,8 +908,8 @@
     <string name="bookshelf_list_show_kind">顯示分類</string>
     <string name="bookshelf_list_show_intro">顯示簡介</string>
     <string name="bookshelf_list_intro_lines">簡介行數</string>
-    <string name="bookshelf_cover_width">列表模式下封面寬度</string>
-    <string name="bookshelf_cover_width_summary">當前寬度：%s</string>
+    <string name="bookshelf_cover_height">列表模式下封面高度</string>
+    <string name="bookshelf_cover_height_summary">當前高度：%s</string>
     <string name="click_book_open_read">點擊影片書籍直接播放</string>
     <string name="click_book_open_read_summary">在搜尋、發現中點擊影片書籍直接打開播放頁，跳過詳情</string>
     <string name="book_info_horizontal_layout">書籍詳情橫向佈局</string>
@@ -918,6 +918,7 @@
     <string name="explore_style">樣式</string>
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">欄數</string>
+    <string name="search_layout">搜索佈局</string>
     <string name="home">首頁</string>
     <string name="home_add_section">新增組件</string>
     <string name="home_edit_section">編輯組件</string>

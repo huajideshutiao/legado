@@ -92,7 +92,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var bookshelfListShowKind by boolPref(PreferKey.bookshelfListShowKind, false)
     var bookshelfListShowIntro by boolPref(PreferKey.bookshelfListShowIntro, false)
     var bookshelfListIntroLines by intPref(PreferKey.bookshelfListIntroLines, 2, 1..3)
-    var bookshelfCoverWidth by intPref(PreferKey.bookshelfCoverWidth, 90, 70..160)
+    var bookshelfCoverHeight by intPref(PreferKey.bookshelfCoverHeight, 120, 90..220)
+
+    // 与 BookSource.exploreStyle 同一套位编码 (低 3 位列数, 0x10 视频)
+    var searchLayout by intPref(PreferKey.searchLayout, 1)
 
     var bottomBarHeight by intPref(
         PreferKey.bottomBarHeight,

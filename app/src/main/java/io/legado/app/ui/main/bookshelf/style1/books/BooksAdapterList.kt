@@ -9,19 +9,20 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.bindExploreCard
 import io.legado.app.ui.main.bookshelf.upIntro
 import io.legado.app.ui.main.bookshelf.upKind
 import io.legado.app.ui.main.bookshelf.upLastUpdateTime
+import io.legado.app.ui.main.bookshelf.upRead
 import io.legado.app.ui.main.bookshelf.upRefresh
-import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
 class BooksAdapterList(
     context: Context,
     private val fragment: Fragment,
     private val callBack: CallBack,
-    private val lifecycle: Lifecycle
+    private val lifecycle: Lifecycle,
+    private val isVideoStyle: Boolean
 ) : BaseBooksAdapter<ItemBookshelfListBinding>(context) {
 
     override fun getViewBinding(parent: ViewGroup): ItemBookshelfListBinding {
@@ -34,17 +35,16 @@ class BooksAdapterList(
         item: Book,
         payloads: MutableList<Any>
     ) = binding.run {
-        applyCoverWidth()
         if (payloads.isEmpty()) {
-            tvName.text = item.name
-            tvAuthor.text = item.getRealAuthor()
-            tvRead.text = item.durChapterTitle
-            tvLast.text = item.latestChapterTitle
-            ivRead.visible()
-            tvRead.visible()
-            ivLast.visible()
-            tvLast.visible()
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
+            bindExploreCard(
+                item = item,
+                coverUrl = item.getDisplayCover(),
+                isVideoStyle = isVideoStyle,
+                isInBookshelf = true,
+                showBookshelfBadge = false,
+                loadCoverOnlyWifi = false,
+            )
+            upRead(item.durChapterTitle)
             upRefresh(item, callBack.isUpdate(item.bookUrl))
             upLastUpdateTime(item)
             upKindAndIntro(item)

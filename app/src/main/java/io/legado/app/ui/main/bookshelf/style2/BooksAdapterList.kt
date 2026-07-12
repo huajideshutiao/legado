@@ -7,13 +7,15 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfListBinding
-import io.legado.app.ui.main.bookshelf.applyCoverWidth
+import io.legado.app.ui.main.bookshelf.applyCoverHeight
+import io.legado.app.ui.main.bookshelf.bindExploreCard
+import io.legado.app.ui.main.bookshelf.upRead
 import io.legado.app.ui.main.bookshelf.upRefresh
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 import splitties.views.onLongClick
 
-class BooksAdapterList(context: Context, callBack: CallBack) :
+class BooksAdapterList(context: Context, callBack: CallBack, private val isVideoStyle: Boolean) :
     BaseBooksAdapter<RecyclerView.ViewHolder>(context, callBack) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -31,13 +33,11 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
     ) {
         when (holder) {
             is BookViewHolder -> (getItem(position) as? Book)?.let {
-                holder.binding.applyCoverWidth()
                 holder.registerListener(it)
                 holder.onBind(it, payloads)
             }
 
             is GroupViewHolder -> (getItem(position) as? BookGroup)?.let {
-                holder.binding.applyCoverWidth()
                 holder.registerListener(it)
                 holder.onBind(it, payloads)
             }
@@ -48,18 +48,18 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: Book) = binding.run {
-            tvName.text = item.name
-            tvAuthor.text = item.getRealAuthor()
-            tvRead.text = item.durChapterTitle
-            tvLast.text = item.latestChapterTitle
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
+            bindExploreCard(
+                item = item,
+                coverUrl = item.getDisplayCover(),
+                isVideoStyle = isVideoStyle,
+                isInBookshelf = true,
+                showBookshelfBadge = false,
+                loadCoverOnlyWifi = false,
+            )
             flHasNew.visible()
             ivAuthor.visible()
-            ivLast.visible()
-            ivRead.visible()
-            tvRead.visible()
             tvAuthor.visible()
-            tvLast.visible()
+            upRead(item.durChapterTitle)
             upRefresh(item, callBack.isUpdate(item.bookUrl))
         }
 
@@ -106,6 +106,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: BookGroup) = binding.run {
+            applyCoverHeight(isVideoStyle)
             tvName.text = item.groupName
             ivCover.load(item.cover, inBookshelf = true)
             flHasNew.gone()
