@@ -71,19 +71,6 @@
                     android:paddingHorizontal="@dimen/arco_spacing_md"
                     android:paddingVertical="@dimen/arco_spacing_default"
                     android:text="@string/auto_save_cookie" />
-            </LinearLayout>
-        </HorizontalScrollView>
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:scrollbars="none">
-
-            <LinearLayout
-                android:id="@+id/ll_row2"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
 
                 <CheckBox
                     android:id="@+id/cb_enable_dangerous_api"

@@ -63,7 +63,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
-                if (!recyclerView.canScrollVertically(1)) {
+                val lm = recyclerView.layoutManager as? GridLayoutManager ?: return
+                if (lm.findLastVisibleItemPosition() >= lm.itemCount - 2) {
                     scrollToBottom()
                 }
             }

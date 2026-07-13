@@ -15,7 +15,7 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
+import io.legado.app.ui.widget.recycler.AccurateScrollRangeLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.google.android.flexbox.FlexboxLayout
@@ -81,7 +81,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_rec
     override val viewModel by viewModels<ExploreViewModel>()
     private val binding by viewBinding(FragmentRecyclerViewBinding::bind)
     private val adapter by lazy { ExploreAdapter(requireContext(), this) }
-    private val linearLayoutManager by lazy { LinearLayoutManager(context) }
+    private val linearLayoutManager by lazy { AccurateScrollRangeLayoutManager(context) }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
