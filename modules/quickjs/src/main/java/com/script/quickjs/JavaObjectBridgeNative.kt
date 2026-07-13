@@ -200,7 +200,11 @@ object JavaObjectBridgeNative {
     fun newJavaInstanceRaw(classHandle: Long, args: Array<Any?>, dangerousApi: Boolean): Any? {
         val objHandle = JavaObjectBridge.newJavaInstance(classHandle, args, dangerousApi)
         if (objHandle == 0L) return null
+        // 刚注册的 handle 紧接着 getObject 却查不到, 必然是生命周期 bug, 不应静默返回 null
         return JavaObjectBridge.getObject(objHandle)
+            ?: throw IllegalStateException(
+                "Newly created instance handle $objHandle not in objectMap (lifecycle bug)."
+            )
     }
 
     /**
@@ -211,7 +215,11 @@ object JavaObjectBridgeNative {
     fun newJavaAdapterRaw(classHandle: Long, jsFnHandle: Long, dangerousApi: Boolean): Any? {
         val adapterHandle = JavaObjectBridge.newJavaAdapter(classHandle, jsFnHandle, dangerousApi)
         if (adapterHandle == 0L) return null
+        // 刚注册的 handle 紧接着 getObject 却查不到, 必然是生命周期 bug, 不应静默返回 null
         return JavaObjectBridge.getObject(adapterHandle)
+            ?: throw IllegalStateException(
+                "Newly created adapter handle $adapterHandle not in objectMap (lifecycle bug)."
+            )
     }
 
     // ============ 类加载 (Phase 3 Packages/JavaImporter 用) ============
@@ -224,7 +232,11 @@ object JavaObjectBridgeNative {
     fun loadJavaClass(fullName: String, dangerousApi: Boolean): Class<*>? {
         val handle = JavaObjectBridge.loadJavaClass(fullName, dangerousApi)
         if (handle == 0L) return null
+        // 刚注册的 handle 紧接着 getClass 却查不到, 必然是生命周期 bug, 不应静默返回 null
         return JavaObjectBridge.getClass(handle)
+            ?: throw IllegalStateException(
+                "Newly loaded class handle $handle not in classMap (lifecycle bug)."
+            )
     }
 
     /**
@@ -251,13 +263,23 @@ object JavaObjectBridgeNative {
     /**
      * 解包 JavaObjectBridge 返回的句柄 Map 为原始 Java 对象。
      * javaToJsResult 返回 mapOf("__java_handle__" to handle), 这里解包为原始对象。
+     *
+     * 注意: handle 失效 (getObject 返回 null) 时抛异常而非静默返回 null。
+     * result 是 Map 句柄格式说明刚注册过 handle, 紧接着 getObject 却查不到,
+     * 必然是 handle 生命周期 bug (如 releaseNewHandles 提前释放)。
+     * 静默返回 null 会让调用方误判 (如 getStaticField 误认为字段不存在,
+     * __wrapClass 落到 method callable 兜底, 把枚举常量变成 function)。
      */
     private fun unwrapResult(result: Any?): Any? {
         if (result == null) return null
         if (result is Map<*, *>) {
             val handle = result["__java_handle__"]
             if (handle is Long && handle != 0L) {
-                return JavaObjectBridge.getObject(handle)
+                val obj = JavaObjectBridge.getObject(handle) ?: throw IllegalStateException(
+                    "Java object handle $handle released before unwrapResult " +
+                        "(objectMap miss). This is a handle lifecycle bug."
+                )
+                return obj
             }
         }
         return result

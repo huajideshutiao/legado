@@ -20,6 +20,7 @@ import com.script.quickjs.JavaObjectBridge.javaToJsResult
 import com.script.quickjs.JavaObjectBridge.jsToJavaArgs
 import com.script.quickjs.JavaObjectBridge.jsToJavaValue
 import com.script.quickjs.JavaObjectBridge.loadJavaClass
+import com.script.quickjs.JavaObjectBridge.releaseNewHandles
 import com.script.quickjs.JavaObjectBridge.releaseScope
 import com.script.quickjs.JavaObjectBridge.setInstanceField
 import java.lang.reflect.InvocationHandler
@@ -1605,14 +1606,12 @@ object JavaObjectBridge {
         val clazz = getClass(classHandle) ?: return false
         if (!JsSecurityPolicy.isClassVisible(clazz, dangerousApi)) return false
         // 异常不 catch: 传播到 native 层, 对齐 rhino (见 callInstanceMethodRaw 注释)
-        val field = findField(clazz, fieldName)
-        if (field == null) {
-            // 对齐 rhino: 找不到静态字段时抛异常, 不静默 return false 让 JS 赋值无声成功。
+        val field =
+            findField(clazz, fieldName) ?: // 对齐 rhino: 找不到静态字段时抛异常, 不静默 return false 让 JS 赋值无声成功。
             // native 静态成员 trap 的 ExceptionCheck 分支会 wrap 此 Throwable 传给 JS catch。
             throw IllegalStateException(
                 "Cannot set static field '$fieldName' on ${clazz.name}: field not found"
             )
-        }
         field.isAccessible = true
         field.set(null, jsToJavaValue(value, field.type))
         return true
@@ -2389,12 +2388,19 @@ object JavaObjectBridge {
      *
      * 命中 [QuickJsContext.identityHandles] 直接返回旧 handle, 未命中则 registerObject + 写入映射。
      * 没有 ctx (如 JavaAdapter 回调线程无 threadLocalContext) 时退化为直接 registerObject。
+     *
+     * 注意: [QuickJsEngine.evalInSubScope] 的 [releaseNewHandles] 会释放子 scope 期间新增的
+     * objectMap 条目, 但 identityHandles 是 per-ctx 的不随之清理。
+     * 因此命中缓存后必须验证 handle 在 objectMap 中仍有效, 否则返回已释放的 handle 会导致
+     * unwrapResult → getObject 返回 null, 静态字段访问偶现返回 null (如 Bitmap.Config.ARGB_8888
+     * 变成 method callable, 传给 createBitmap 时类型不匹配)。
      */
     internal fun getOrRegisterIdentityHandle(obj: Any): Long {
         val ctx = QuickJsContext.threadLocalContext.get()
             ?: return registerObject(obj)
         val existing = ctx.identityHandles[obj]
-        if (existing != null) return existing
+        // 验证缓存的 handle 仍有效: releaseNewHandles 可能已从 objectMap 移除该 handle
+        if (existing != null && getObject(existing) != null) return existing
         val handle = registerObject(obj)
         ctx.identityHandles[obj] = handle
         return handle
