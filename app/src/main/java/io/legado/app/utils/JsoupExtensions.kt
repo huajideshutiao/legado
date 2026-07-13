@@ -1,24 +1,19 @@
 package io.legado.app.utils
 
-import org.jsoup.internal.StringUtil
-import org.jsoup.nodes.CDataNode
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
-import org.jsoup.nodes.TextNode
-import org.jsoup.select.Elements
-import org.jsoup.select.NodeTraversor
-import org.jsoup.select.NodeVisitor
-
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.nodes.Node
+import com.fleeksoft.ksoup.nodes.TextNode
+import com.fleeksoft.ksoup.select.Elements
 
 fun Element.textArray(): Array<String> {
-    val sb = StringUtil.borrowBuilder()
-    NodeTraversor.traverse(object : NodeVisitor {
+    val sb = StringBuilder()
+    traverse(object : com.fleeksoft.ksoup.select.NodeVisitor {
         override fun head(node: Node, depth: Int) {
             if (node is TextNode) {
                 appendNormalisedText(sb, node)
             } else if (node is Element) {
                 if (sb.isNotEmpty() &&
-                    (node.isBlock || node.tag().name == "br") &&
+                    (node.isBlock() || node.tagName() == "br") &&
                     !lastCharIsWhitespace(sb)
                 ) sb.append("\n")
             }
@@ -26,15 +21,15 @@ fun Element.textArray(): Array<String> {
 
         override fun tail(node: Node, depth: Int) {
             if (node is Element) {
-                if (node.isBlock && node.nextSibling() is TextNode
+                if (node.isBlock() && node.nextSibling() is TextNode
                     && !lastCharIsWhitespace(sb)
                 ) {
                     sb.append("\n")
                 }
             }
         }
-    }, this)
-    val text = StringUtil.releaseBuilder(sb).trim()
+    })
+    val text = sb.toString().trim()
     return text.splitNotBlank("\n")
 }
 
@@ -53,15 +48,33 @@ fun Element.findNSPrefix(namespaceURI: String): HashSet<String> {
 fun List<Element>.toElements() = Elements(this)
 
 private fun appendNormalisedText(sb: StringBuilder, textNode: TextNode) {
-    val text = textNode.wholeText
-    if (preserveWhitespace(textNode.parentNode()) || textNode is CDataNode)
+    val text = textNode.getWholeText()
+    if (preserveWhitespace(textNode.parentNode()) || textNode is com.fleeksoft.ksoup.nodes.CDataNode)
         sb.append(text)
-    else StringUtil.appendNormalisedWhitespace(sb, text, lastCharIsWhitespace(sb))
+    else sb.appendNormalisedWhitespace(text, lastCharIsWhitespace(sb))
+}
+
+private fun StringBuilder.appendNormalisedWhitespace(string: String, lastCharIsWhitespace: Boolean) {
+    val collector = StringBuilder()
+    var lastWasWhite = lastCharIsWhitespace
+    for (i in string.indices) {
+        val c = string[i]
+        if (c.isWhitespace()) {
+            if (!lastWasWhite) {
+                collector.append(' ')
+                lastWasWhite = true
+            }
+        } else {
+            collector.append(c)
+            lastWasWhite = false
+        }
+    }
+    append(collector.toString())
 }
 
 private fun preserveWhitespace(node: Node?): Boolean {
     if (node is Element) {
-        var el = node as Element?
+        var el: Element? = node
         var i = 0
         do {
             if (el!!.tag().preserveWhitespace()) return true
@@ -72,7 +85,6 @@ private fun preserveWhitespace(node: Node?): Boolean {
     return false
 }
 
-private fun lastCharIsWhitespace(sb: java.lang.StringBuilder): Boolean {
+private fun lastCharIsWhitespace(sb: StringBuilder): Boolean {
     return sb.isNotEmpty() && sb[sb.length - 1] == ' '
 }
-

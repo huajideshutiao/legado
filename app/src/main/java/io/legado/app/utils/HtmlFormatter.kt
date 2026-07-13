@@ -1,9 +1,9 @@
 package io.legado.app.utils
 
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
-import org.jsoup.nodes.TextNode
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.nodes.Node
+import com.fleeksoft.ksoup.nodes.TextNode
 import java.util.LinkedList
 
 object HtmlFormatter {
@@ -48,7 +48,7 @@ object HtmlFormatter {
                 str.append(oo)
             }
         } else {
-            val content = Jsoup.parse(html, redirectUrl ?: "").body()
+            val content = Ksoup.parse(html, redirectUrl ?: "").body()
             val nodes = LinkedList<Node>()
             nodes.add(content)
 
@@ -58,7 +58,7 @@ object HtmlFormatter {
                 val node = nodes.pollFirst() ?: continue
                 when (node) {
                     is TextNode -> {
-                        val text = node.wholeText.trim()
+                        val text = node.getWholeText().trim()
                         if (text.isNotEmpty()) {
                             if (lastIsBlock) {
                                 if (str.isNotEmpty()) str.append("\n")
@@ -89,7 +89,7 @@ object HtmlFormatter {
                             lastIsBlock = false
                         } else {
                             // 块级标签处理
-                            val isBlock = node.isBlock || tagName == "br"
+                            val isBlock = node.isBlock() || tagName == "br"
                             if (isBlock && !lastIsBlock) {
                                 lastIsBlock = true
                             }

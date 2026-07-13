@@ -113,9 +113,9 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.TextNode
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.nodes.TextNode
 import splitties.views.onClick
 import splitties.views.onLongClick
 
@@ -625,7 +625,7 @@ class BookInfoActivity :
             text = intro
             return
         }
-        val body = Jsoup.parseBodyFragment(intro).body()
+        val body = Ksoup.parseBodyFragment(intro).body()
         val builder = SpannableStringBuilder()
         appendIntroNodes(builder, body, this)
         movementMethod = LinkMovementMethod.getInstance()
@@ -637,7 +637,7 @@ class BookInfoActivity :
     ) {
         for (node in parent.childNodes()) {
             when (node) {
-                is TextNode -> builder.append(node.wholeText)
+                is TextNode -> builder.append(node.getWholeText())
                 is Element -> when (node.tagName().lowercase()) {
                     "button" -> appendActionSpan(builder, node)
                     "img" -> appendImageSpan(builder, node, target)

@@ -8,6 +8,7 @@ import android.widget.RelativeLayout
 import androidx.annotation.ColorInt
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.view.contains
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 
@@ -18,9 +19,7 @@ open class FastScrollRecyclerView : RecyclerView {
 
     @JvmOverloads
     constructor(
-        context: Context,
-        attrs: AttributeSet? = null,
-        defStyleAttr: Int = 0
+        context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
     ) : super(context, attrs, defStyleAttr) {
         // FastScrollRecyclerView 使用自定义 FastScroller，禁用系统默认滚动条
         isVerticalScrollBarEnabled = false
@@ -152,7 +151,7 @@ open class FastScrollRecyclerView : RecyclerView {
         var parent = parent
         while (parent != null) {
             when (parent) {
-                is ConstraintLayout, is RelativeLayout -> break
+                is ConstraintLayout, is RelativeLayout -> if (parent.contains(this)) break
                 is CoordinatorLayout, is FrameLayout -> break
             }
             parent = parent.parent

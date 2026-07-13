@@ -48,7 +48,7 @@ import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
-import org.jsoup.Jsoup
+import com.fleeksoft.ksoup.Ksoup
 import splitties.views.bottomPadding
 
 /**
@@ -286,7 +286,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
                 val html = EscapeUtils.unescapeJson(it)
                     .replace("^\"|\"$".toRegex(), "")
                 viewModel.readAloud(
-                    Jsoup.parse(html)
+                    Ksoup.parse(html)
                         .textArray()
                         .joinToString("\n")
                 )

@@ -1,13 +1,11 @@
 package io.legado.app.model.analyzeRule
 
 import androidx.annotation.Keep
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
-import org.jsoup.parser.Parser
-import org.jsoup.select.Collector
-import org.jsoup.select.Elements
-import org.jsoup.select.Evaluator
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.nodes.Node
+import com.fleeksoft.ksoup.parser.Parser
+import com.fleeksoft.ksoup.select.Elements
 
 /**
  * Created by GKF on 2018/1/25.
@@ -23,14 +21,14 @@ class AnalyzeByJSoup(doc: Any) {
             return doc
         }
         if (doc is Node) {
-            return Jsoup.parse(doc.toString())
+            return Ksoup.parse(doc.toString())
         }
         kotlin.runCatching {
             if (doc.toString().startsWith("<?xml", true)) {
-                return Jsoup.parse(doc.toString(), Parser.xmlParser())
+                return Ksoup.parse(doc.toString(), parser = Parser.xmlParser())
             }
         }
-        return Jsoup.parse(doc.toString())
+        return Ksoup.parse(doc.toString())
     }
 
     /**
@@ -286,7 +284,10 @@ class AnalyzeByJSoup(doc: Any) {
                         "children" -> temp.children() //允许索引直接作为根元素，此时前置规则为空，效果与children相同
                         "class" -> temp.getElementsByClass(rules[1])
                         "tag" -> temp.getElementsByTag(rules[1])
-                        "id" -> Collector.collect(Evaluator.Id(rules[1]), temp)
+                        "id" -> {
+                            val el = temp.getElementById(rules[1])
+                            if (el != null) Elements(el) else Elements()
+                        }
                         "text" -> temp.getElementsContainingOwnText(rules[1])
                         else -> temp.select(beforeRule)
                     }
@@ -407,7 +408,7 @@ class AnalyzeByJSoup(doc: Any) {
                                 //为保证查找顺序，区间和单个索引都添加到同一集合
                                 if (curList.isEmpty()) {
 
-                                    if (curInt == null) break //是jsoup选择器而非索引列表，跳出
+                                    if (curInt == null) break //是选择器而非索引列表，跳出
 
                                     indexes.add(curInt)
                                 } else {

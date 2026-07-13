@@ -1,8 +1,8 @@
 package io.legado.app.utils
 
 import android.text.TextUtils
+import com.fleeksoft.ksoup.Ksoup
 import io.legado.app.lib.icu4j.CharsetDetector
-import org.jsoup.Jsoup
 import java.io.File
 
 /**
@@ -24,7 +24,7 @@ object EncodingDetect {
                     head = String(bytes.copyOfRange(startIndex, endIndex + headCloseBytes.size))
                 }
             }
-            val doc = Jsoup.parseBodyFragment(head ?: headTagRegex.find(String(bytes))!!.value)
+            val doc = Ksoup.parseBodyFragment(head ?: headTagRegex.find(String(bytes))!!.value)
             val metaTags = doc.getElementsByTag("meta")
             var charsetStr: String
             for (metaTag in metaTags) {

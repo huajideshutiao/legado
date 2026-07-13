@@ -3,11 +3,11 @@ package io.legado.app.data.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import com.jayway.jsonpath.DocumentContext
-import io.legado.app.utils.GSON
-import io.legado.app.utils.jsonPath
+import io.legado.app.utils.readJsonString
 import io.legado.app.utils.readLong
 import io.legado.app.utils.readString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonArray
 
 /**
  * 在线朗读引擎
@@ -46,45 +46,42 @@ data class HttpTTS(
         return io.legado.app.constant.SourceType.tts
     }
 
-    @Suppress("MemberVisibilityCanBePrivate")
-    companion object {
+    @Suppress("unused")
+    companion object
+}
 
-        fun fromJsonDoc(doc: DocumentContext): Result<HttpTTS> {
-            return kotlin.runCatching {
-                val loginUi = doc.read<Any>("$.loginUi")
-                HttpTTS(
-                    id = doc.readLong("$.id") ?: System.currentTimeMillis(),
-                    name = doc.readString("$.name")!!,
-                    url = doc.readString("$.url")!!,
-                    contentType = doc.readString("$.contentType"),
-                    concurrentRate = doc.readString("$.concurrentRate"),
-                    loginUrl = doc.readString("$.loginUrl"),
-                    loginUi = if (loginUi is List<*>) GSON.toJson(loginUi) else loginUi?.toString(),
-                    header = doc.readString("$.header"),
-                    loginCheckJs = doc.readString("$.loginCheckJs"),
-                    lastUpdateTime = doc.readLong("$.lastUpdateTime") ?: System.currentTimeMillis()
-                )
-            }
-        }
-
-        fun fromJson(json: String): Result<HttpTTS> {
-            return fromJsonDoc(jsonPath.parse(json))
-        }
-
-        fun fromJsonArray(jsonArray: String): Result<ArrayList<HttpTTS>> {
-            return kotlin.runCatching {
-                val sources = arrayListOf<HttpTTS>()
-                val doc = jsonPath.parse(jsonArray).read<List<*>>("$")
-                doc.forEach {
-                    val jsonItem = jsonPath.parse(it)
-                    fromJsonDoc(jsonItem).getOrThrow().let { source ->
-                        sources.add(source)
-                    }
-                }
-                return@runCatching sources
-            }
-        }
-
+fun HttpTTS.Companion.fromJsonElement(doc: JsonElement): Result<HttpTTS> {
+    return kotlin.runCatching {
+        //loginUi 必须保留 JSON 数组格式, 用 readJsonString 避免 readString 展开数组破坏结构
+        HttpTTS(
+            id = doc.readLong("$.id") ?: System.currentTimeMillis(),
+            name = doc.readString("$.name")!!,
+            url = doc.readString("$.url")!!,
+            contentType = doc.readString("$.contentType"),
+            concurrentRate = doc.readString("$.concurrentRate"),
+            loginUrl = doc.readString("$.loginUrl"),
+            loginUi = doc.readJsonString("$.loginUi"),
+            header = doc.readString("$.header"),
+            loginCheckJs = doc.readString("$.loginCheckJs"),
+            lastUpdateTime = doc.readLong("$.lastUpdateTime") ?: System.currentTimeMillis()
+        )
     }
+}
 
+fun HttpTTS.Companion.fromJson(json: String): Result<HttpTTS> {
+    return fromJsonElement(io.legado.app.utils.parseJsonElement(json))
+}
+
+fun HttpTTS.Companion.fromJsonArray(jsonArray: String): Result<ArrayList<HttpTTS>> {
+    return kotlin.runCatching {
+        val sources = arrayListOf<HttpTTS>()
+        val jsonElement = io.legado.app.utils.parseJsonElement(jsonArray)
+        val doc = jsonElement.jsonArray
+        doc.forEach {
+            fromJsonElement(it).getOrThrow().let { source ->
+                sources.add(source)
+            }
+        }
+        return@runCatching sources
+    }
 }

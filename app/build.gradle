@@ -237,8 +237,10 @@ dependencies {
     ksp(libs.room.compiler)
     androidTestImplementation(libs.room.testing)
 
-    implementation(libs.jsoup)
-    implementation(libs.json.path)
+    implementation(libs.ksoup)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(project(path: ':modules:rjpath'))
+    implementation(project(path: ':modules:jsoup-compat'))
     implementation(project(path: ':modules:quickjs'))
     // rhino 引擎: 抽象层 rhino 适配(RhinoJsEngine/RhinoJsTypes/RhinoSharedJsScopeProvider)及
     // JsEngines 双判谓词直接 import com.script.* 和 org.mozilla.javascript.*,

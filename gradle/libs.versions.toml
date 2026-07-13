@@ -2,6 +2,7 @@
 
 cronet = "143.7445.0"
 kotlin = "2.3.21"
+ksoup = "0.2.6"
 ksp = "2.3.7"
 #agp影响范围太大，暂不升级
 #noinspection AndroidGradlePluginVersion
@@ -19,6 +20,7 @@ libarchive = "1.1.6"
 glide = "5.0.7"
 gson = "2.14.0"
 jsonPath = "3.0.0"
+kotlinxSerializationJson = "1.8.1"
 coroutines = "1.11.0"
 # 作者已声明项目暂停维护（最后发布 2021），但 Android 平台无同等功能的活跃替代品
 markwon = "4.6.2"
@@ -81,6 +83,7 @@ core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 
+ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
 play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 
@@ -139,6 +142,7 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 
@@ -161,3 +165,4 @@ kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref =
 
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

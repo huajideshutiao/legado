@@ -5,6 +5,8 @@ import android.os.Bundle
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.data.entities.fromJson
+import io.legado.app.data.entities.fromJsonArray
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.ReadAloud
 import io.legado.app.utils.getClipText

@@ -4,6 +4,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.data.entities.fromJsonArray
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.config.LocalConfig

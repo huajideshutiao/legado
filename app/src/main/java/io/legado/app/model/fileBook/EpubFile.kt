@@ -26,10 +26,10 @@ import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isXml
 import io.legado.app.utils.printOnDebug
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
-import org.jsoup.parser.Parser
-import org.jsoup.select.Elements
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.parser.Parser
+import com.fleeksoft.ksoup.select.Elements
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -219,7 +219,7 @@ class EpubFile(var book: Book) {
 
     private fun getBody(res: Resource, startFragmentId: String?, endFragmentId: String?): Element {
         // Jsoup可能会修复不规范的xhtml文件 解析处理后再获取
-        var bodyElement = Jsoup.parse(String(res.data ?: ByteArray(0), mCharset)).body()
+        var bodyElement = Ksoup.parse(String(res.data ?: ByteArray(0), mCharset)).body()
         bodyElement.children().run {
             select("script").remove()
             select("style").remove()
@@ -253,7 +253,7 @@ class EpubFile(var book: Book) {
         }
         //截取过再重新解析
         if (bodyString != originBodyString) {
-            bodyElement = Jsoup.parse(bodyString).body()
+            bodyElement = Ksoup.parse(bodyString).body()
         }
         /*选择去除正文中的H标签，部分书籍标题与阅读标题重复待优化*/
         val tag = Book.hTag
@@ -360,7 +360,7 @@ class EpubFile(var book: Book) {
             if (metadata.descriptions.isNotEmpty()) {
                 val desc = metadata.descriptions[0]
                 book.intro = if (desc.isXml()) {
-                    Jsoup.parse(metadata.descriptions[0] ?: "").text()
+                    Ksoup.parse(metadata.descriptions[0] ?: "").text()
                 } else {
                     desc
                 }
@@ -383,7 +383,7 @@ class EpubFile(var book: Book) {
                     if (TextUtils.isEmpty(title)) {
                         try {
                             val doc =
-                                Jsoup.parse(String(resource?.data ?: ByteArray(0), mCharset))
+                                Ksoup.parse(String(resource?.data ?: ByteArray(0), mCharset))
                             val elements = doc.getElementsByTag("title")
                             if (elements.isNotEmpty()) {
                                 title = elements[0].text()
@@ -443,7 +443,7 @@ class EpubFile(var book: Book) {
             val chapter = BookChapter()
             var title = content.title
             if (TextUtils.isEmpty(title)) {
-                val elements = Jsoup.parse(
+                val elements = Ksoup.parse(
                     String(
                         epubBook!!.resources.getByHref(content.getHref())?.data ?: ByteArray(0),
                         mCharset

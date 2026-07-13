@@ -1,6 +1,6 @@
 package io.legado.app.utils
 
-import org.jsoup.parser.Parser
+import com.fleeksoft.ksoup.parser.Parser
 
 object EscapeUtils {
 

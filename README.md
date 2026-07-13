@@ -74,20 +74,20 @@ https://gedoor.github.io/Disclaimer
 </a>
 
 # Grateful-感谢 [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-)
-> * org.jsoup:jsoup
-> * cn.wanghaomiao:JsoupXpath
-> * com.jayway.jsonpath:json-path
-> * com.github.gedoor:rhino-android
-> * com.squareup.okhttp3:okhttp
-> * com.github.bumptech.glide:glide
-> * org.nanohttpd:nanohttpd
-> * org.nanohttpd:nanohttpd-websocket
-> * cn.bingoogolapple:bga-qrcode-zxing
-> * com.jaredrummler:colorpicker
-> * io.noties.markwon:core
-> * io.noties.markwon:image-glide
-> * com.hankcs:hanlp
-> * com.positiondev.epublib:epublib-core
+> * org.jsoup:jsoup - HTML解析器
+> * com.fleeksoft.ksoup:ksoup - KMP版HTML解析器（用于XPath）
+> * jershell/rjpath - KMP JSONPath实现（替代jayway）
+> * com.github.gedoor:rhino-android - JavaScript引擎
+> * com.squareup.okhttp3:okhttp - HTTP客户端
+> * com.github.bumptech.glide:glide - 图片加载
+> * org.nanohttpd:nanohttpd - 内置HTTP服务器
+> * org.nanohttpd:nanohttpd-websocket - WebSocket支持
+> * cn.bingoogolapple:bga-qrcode-zxing - 二维码扫描
+> * com.jaredrummler:colorpicker - 颜色选择器
+> * io.noties.markwon:core - Markdown渲染
+> * io.noties.markwon:image-glide - Markdown图片加载
+> * com.hankcs:hanlp - 中文分词
+> * com.positiondev.epublib:epublib-core - EPUB解析
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>

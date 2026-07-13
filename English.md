@@ -108,20 +108,20 @@ https://gedoor.github.io/Disclaimer
 
 # Grateful [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-)
 
-> * org.jsoup:jsoup
-> * cn.wanghaomiao:JsoupXpath
-> * com.jayway.jsonpath:json-path
-> * com.github.gedoor:rhino-android
-> * com.squareup.okhttp3:okhttp
-> * com.github.bumptech.glide:glide
-> * org.nanohttpd:nanohttpd
-> * org.nanohttpd:nanohttpd-websocket
-> * cn.bingoogolapple:bga-qrcode-zxing
-> * com.jaredrummler:colorpicker
-> * io.noties.markwon:core
-> * io.noties.markwon:image-glide
-> * com.hankcs:hanlp
-> * com.positiondev.epublib:epublib-core
+> * org.jsoup:jsoup - HTML Parser
+> * com.fleeksoft.ksoup:ksoup - KMP HTML Parser (for XPath)
+> * jershell/rjpath - KMP JSONPath implementation (replacing jayway)
+> * com.github.gedoor:rhino-android - JavaScript Engine
+> * com.squareup.okhttp3:okhttp - HTTP Client
+> * com.github.bumptech.glide:glide - Image Loading
+> * org.nanohttpd:nanohttpd - Built-in HTTP Server
+> * org.nanohttpd:nanohttpd-websocket - WebSocket Support
+> * cn.bingoogolapple:bga-qrcode-zxing - QR Code Scanner
+> * com.jaredrummler:colorpicker - Color Picker
+> * io.noties.markwon:core - Markdown Rendering
+> * io.noties.markwon:image-glide - Markdown Image Loading
+> * com.hankcs:hanlp - Chinese Segmentation
+> * com.positiondev.epublib:epublib-core - EPUB Parser
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">

@@ -2,13 +2,14 @@ package io.legado.app.model.analyzeRule
 
 import android.text.TextUtils
 import androidx.annotation.Keep
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
-import org.jsoup.nodes.TextNode
-import org.jsoup.parser.Parser
-import org.jsoup.select.Elements
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.nodes.Document
+import com.fleeksoft.ksoup.nodes.Element
+import com.fleeksoft.ksoup.nodes.Node
+import com.fleeksoft.ksoup.nodes.TextNode
+import com.fleeksoft.ksoup.parser.Parser
+import com.fleeksoft.ksoup.select.Elements
+import org.jsoup.select.selectXpath
 
 @Keep
 class AnalyzeByXPath(doc: Any) {
@@ -18,8 +19,8 @@ class AnalyzeByXPath(doc: Any) {
         return when (doc) {
             is Document -> doc
             is Element -> doc
-            is Elements -> doc.first() ?: Jsoup.parse("")
-            is Node -> Jsoup.parse(doc.toString())
+            is Elements -> doc.first() ?: Ksoup.parse("")
+            is Node -> Ksoup.parse(doc.toString())
             else -> strToElement(doc.toString())
         }
     }
@@ -34,10 +35,10 @@ class AnalyzeByXPath(doc: Any) {
         }
         kotlin.runCatching {
             if (html1.trim().startsWith("<?xml", true)) {
-                return Jsoup.parse(html1, Parser.xmlParser())
+                return Ksoup.parse(html1, parser = Parser.xmlParser())
             }
         }
-        return Jsoup.parse(html1)
+        return Ksoup.parse(html1)
     }
 
     private fun getResult(xPath: String): List<Node>? {

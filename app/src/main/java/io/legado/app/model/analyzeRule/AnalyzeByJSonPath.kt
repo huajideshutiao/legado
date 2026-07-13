@@ -1,10 +1,14 @@
 package io.legado.app.model.analyzeRule
 
 import androidx.annotation.Keep
-import com.jayway.jsonpath.JsonPath
-import com.jayway.jsonpath.ReadContext
+import com.github.jershell.rjpath.RJPath
 import io.legado.app.utils.printOnDebug
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
+private val jsonParser = Json { ignoreUnknownKeys = true }
 
 @Suppress("RegExpRedundantEscape")
 @Keep
@@ -12,21 +16,21 @@ class AnalyzeByJSonPath(json: Any) {
 
     companion object {
 
-        fun parse(json: Any): ReadContext {
+        fun parse(json: Any): JsonElement {
             return when (json) {
-                is ReadContext -> json
-                is String -> JsonPath.parse(json) //JsonPath.parse<String>(json)
-                else -> JsonPath.parse(json) //JsonPath.parse<Any>(json)
+                is JsonElement -> json
+                is String -> jsonParser.parseToJsonElement(json)
+                else -> jsonParser.parseToJsonElement(json.toString())
             }
         }
     }
 
-    private var ctx: ReadContext = parse(json)
+    private var element: JsonElement = parse(json)
 
     /**
      * 改进解析方法
-     * 解决阅读”&&“、”||“与jsonPath支持的”&&“、”||“之间的冲突
-     * 解决{$.rule}形式规则可能匹配错误的问题，旧规则用正则解析内容含‘}’的json文本时，用规则中的字段去匹配这种内容会匹配错误.现改用平衡嵌套方法解决这个问题
+     * 解决阅读"&&"、"||"与jsonPath支持的"&&"、"||"之间的冲突
+     * 解决{$.rule}形式规则可能匹配错误的问题，旧规则用正则解析内容含'}'的json文本时，用规则中的字段去匹配这种内容会匹配错误.现改用平衡嵌套方法解决这个问题
      * */
     fun getString(rule: String): String? {
         if (rule.isEmpty()) return null
@@ -42,11 +46,14 @@ class AnalyzeByJSonPath(json: Any) {
 
             if (result.isEmpty()) { //st为空，表明无成功替换的内嵌规则
                 try {
-                    val ob = ctx.read<Any>(rule)
-                    result = if (ob is List<*>) {
-                        ob.joinToString("\n")
-                    } else {
-                        ob.toString()
+                    //保持 jayway read 语义: 单值直接返回, 数组才 joinToString
+                    val results = RJPath.selector(rule).getAll(element)
+                    result = when {
+                        results.isEmpty() -> ""
+                        //单值: 不强制套数组, 直接取该元素
+                        results.size == 1 -> elementToString(results[0])
+                        //多值: 各自转换后 joinToString
+                        else -> results.joinToString("\n") { elementToString(it) }
                     }
                 } catch (e: Exception) {
                     e.printOnDebug()
@@ -68,6 +75,20 @@ class AnalyzeByJSonPath(json: Any) {
         }
     }
 
+    /**
+     * 将 JsonElement 转为字符串, 保持 jayway read 行为:
+     * 基本类型取字面值, 数组展开元素后 joinToString, 对象取 JSON 字符串
+     */
+    private fun elementToString(element: JsonElement): String {
+        return when (element) {
+            is JsonPrimitive -> element.content
+            is JsonArray -> element.joinToString("\n") { item ->
+                (item as? JsonPrimitive)?.content ?: item.toString()
+            }
+            else -> element.toString()
+        }
+    }
+
     internal fun getStringList(rule: String): List<String> {
         val result = ArrayList<String>()
         if (rule.isEmpty()) return result
@@ -79,11 +100,18 @@ class AnalyzeByJSonPath(json: Any) {
             val st = ruleAnalyzes.innerRule("{$.") { getString(it) } //替换所有{$.rule...}
             if (st.isEmpty()) { //st为空，表明无成功替换的内嵌规则
                 try {
-                    val obj = ctx.read<Any>(rule)
-                    if (obj is List<*>) {
-                        for (o in obj) result.add(o.toString())
-                    } else {
-                        result.add(obj.toString())
+                    //保持 jayway read 语义: 单值作为整体加入, 数组才展开逐个加入
+                    val results = RJPath.selector(rule).getAll(element)
+                    for (r in results) {
+                        when (r) {
+                            is JsonPrimitive -> result.add(r.content)
+                            is JsonArray -> {
+                                for (item in r) {
+                                    result.add((item as? JsonPrimitive)?.content ?: item.toString())
+                                }
+                            }
+                            else -> result.add(r.toString())
+                        }
                     }
                 } catch (e: Exception) {
                     e.printOnDebug()
@@ -111,29 +139,47 @@ class AnalyzeByJSonPath(json: Any) {
     }
 
     internal fun getObject(rule: String): Any {
-        return ctx.read(rule)
+        return try {
+            //使用 RJPath.read 恢复 jayway read 语义: 单值返回单值, 不强制套 List
+            RJPath.selector(rule).read(element) ?: emptyList<Any>()
+        } catch (e: Exception) {
+            e.printOnDebug()
+            emptyList<Any>()
+        }
     }
 
-    internal fun getList(rule: String): ArrayList<Any>? {
+    internal fun getList(rule: String): ArrayList<Any> {
         val result = ArrayList<Any>()
         if (rule.isEmpty()) return result
         val ruleAnalyzes = RuleAnalyzer(rule, true) //设置平衡组为代码平衡
         val rules = ruleAnalyzes.splitRule("&&", "||", "%%")
         if (rules.size == 1) {
-            ctx.let {
-                try {
-                    val tmp = it.read<Any>(rules[0])
-                    return if (tmp is ArrayList<*>) tmp as ArrayList<Any>
-                    else arrayListOf(tmp)
-                } catch (e: Exception) {
-                    e.printOnDebug()
+            try {
+                //使用 rules[0] 而非 rule, 避免规则含分隔符残留导致解析失败
+                val elements = RJPath.selector(rules[0]).getAll(element)
+                val resultList = ArrayList<Any>()
+                for (item in elements) {
+                    when (item) {
+                        is JsonPrimitive -> resultList.add(item.content)
+                        is JsonArray -> {
+                            //路径直接指向数组时展开元素, 与 jayway read 行为一致
+                            for (child in item) {
+                                resultList.add((child as? JsonPrimitive)?.content ?: child)
+                            }
+                        }
+                        //保持 JsonElement 原生对象, 不强制 toString, 便于后续解析
+                        else -> resultList.add(item)
+                    }
                 }
+                return resultList
+            } catch (e: Exception) {
+                e.printOnDebug()
             }
         } else {
             val results = ArrayList<ArrayList<*>>()
             for (rl in rules) {
                 val temp = getList(rl)
-                if (!temp.isNullOrEmpty()) {
+                if (temp.isNotEmpty()) {
                     results.add(temp)
                     if (temp.isNotEmpty() && ruleAnalyzes.elementsType == "||") {
                         break

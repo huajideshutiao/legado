@@ -13,8 +13,8 @@ import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import org.jsoup.Jsoup
-import org.jsoup.parser.Parser
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.parser.Parser
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.Charset
@@ -178,7 +178,8 @@ class CbzFile(var book: Book) {
         val entry = zf.getEntry("ComicInfo.xml") ?: return
         runCatching {
             zf.getInputStream(entry)?.use { input ->
-                val doc = Jsoup.parse(input, "UTF-8", "", Parser.xmlParser())
+                val xml = input.bufferedReader().readText()
+                val doc = Ksoup.parse(xml, parser = Parser.xmlParser())
 
                 fun field(tag: String) =
                     doc.selectFirst(tag)?.text()?.trim()?.takeUnless { it.isBlank() }

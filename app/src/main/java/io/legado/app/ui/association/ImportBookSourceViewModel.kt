@@ -3,7 +3,7 @@ package io.legado.app.ui.association
 import android.app.Application
 import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
-import com.jayway.jsonpath.JsonPath
+import com.github.jershell.rjpath.RJPath
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
@@ -29,7 +29,9 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
+import io.legado.app.utils.parseJsonElement
 import io.legado.app.utils.splitNotBlank
+import kotlinx.serialization.json.JsonPrimitive
 
 
 class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
@@ -108,8 +110,10 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 }
 
                 mText.isJsonObject() && mText.contains("sourceUrls") -> {
-                    JsonPath.parse(mText).read<List<String>>("$.sourceUrls").forEach {
-                        importSourceUrl(it)
+                    val json = parseJsonElement(mText)
+                    RJPath.selector("$.sourceUrls").getAll(json).forEach { element ->
+                        val url = (element as? JsonPrimitive)?.content
+                        url?.let { importSourceUrl(it) }
                     }
                 }
 

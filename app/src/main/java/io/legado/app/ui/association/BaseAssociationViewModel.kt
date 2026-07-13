@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.utils.inputStream
-import io.legado.app.utils.jsonPath
+import io.legado.app.utils.parseJsonElement
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 
 abstract class BaseAssociationViewModel(application: Application) : BaseViewModel(application) {
 
@@ -13,11 +15,25 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
     val errorLive = MutableLiveData<String>()
 
     fun importJson(uri: Uri) {
-        val map = uri.inputStream(context).getOrThrow().use {
-            jsonPath.parse(it).read<Map<String, *>>("$[0]")
-        } ?: uri.inputStream(context).getOrThrow().use {
-            jsonPath.parse(it).read("$")
+        //只读取一次流, 避免旧版二次打开流的浪费
+        val text = uri.inputStream(context).getOrThrow().use {
+            it.bufferedReader().readText()
         }
+        val jsonElement = try {
+            parseJsonElement(text)
+        } catch (e: Exception) {
+            errorLive.postValue("格式不对")
+            return
+        }
+        //先尝试数组格式取首个元素, 失败则当作对象处理 (模拟旧版 jayway SUPPRESS_EXCEPTIONS 行为)
+        val map = (jsonElement as? JsonArray)
+            ?.firstOrNull()
+            ?.let { it as? JsonObject }
+            ?: jsonElement as? JsonObject
+            ?: run {
+                errorLive.postValue("格式不对")
+                return
+            }
 
         when {
             map.containsKey("bookSourceUrl") ->
@@ -35,9 +51,11 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
             map.containsKey("showRule") ->
                 successLive.postValue("dictRule" to uri.toString())
 
+            //TxtTocRule 含 name+rule 字段
             map.containsKey("name") && map.containsKey("rule") ->
                 successLive.postValue("txtRule" to uri.toString())
 
+            //HttpTTS 含 name+url 字段
             map.containsKey("name") && map.containsKey("url") ->
                 successLive.postValue("httpTts" to uri.toString())
 

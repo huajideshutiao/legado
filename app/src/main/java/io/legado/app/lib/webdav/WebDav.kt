@@ -27,8 +27,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.intellij.lang.annotations.Language
-import org.jsoup.Jsoup
-import org.jsoup.parser.Parser
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.parser.Parser
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -180,9 +180,9 @@ open class WebDav(
     private fun parseBody(s: String): List<WebDavFile> {
         val list = ArrayList<WebDavFile>()
         val document = kotlin.runCatching {
-            Jsoup.parse(s, Parser.xmlParser())
+            Ksoup.parse(s, parser = Parser.xmlParser())
         }.getOrElse {
-            Jsoup.parse(s)
+            Ksoup.parse(s)
         }
         val ns = document.findNSPrefix("DAV:")
         val elements = document.findNS("response", ns)
@@ -445,7 +445,7 @@ open class WebDav(
             if (response.message.isNotBlank() || body.isBlank()) {
                 throw WebDavException("${url}\n${response.code}:${response.message}")
             }
-            val document = Jsoup.parse(body)
+            val document = Ksoup.parse(body)
             val exception = document.getElementsByTag("s:exception").firstOrNull()?.text()
             val message = document.getElementsByTag("s:message").firstOrNull()?.text()
             if (exception == "ObjectNotFound") {

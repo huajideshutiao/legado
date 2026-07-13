@@ -4,21 +4,25 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.jsonPath
+import io.legado.app.utils.parseJsonElement
 import io.legado.app.utils.readBool
 import io.legado.app.utils.readInt
 import io.legado.app.utils.readLong
 import io.legado.app.utils.readString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 object ReplaceAnalyzer {
 
     fun jsonToReplaceRules(json: String): Result<MutableList<ReplaceRule>> {
         return kotlin.runCatching {
             val replaceRules = mutableListOf<ReplaceRule>()
-            val items: List<Map<String, Any>> = jsonPath.parse(json).read("$")
+            val jsonElement = parseJsonElement(json)
+            val items: JsonArray = jsonElement.jsonArray
             for (item in items) {
-                val jsonItem = jsonPath.parse(item)
-                jsonToReplaceRule(jsonItem.jsonString()).getOrThrow().let {
+                val jsonItem = item.jsonObject
+                jsonToReplaceRule(jsonItem.toString()).getOrThrow().let {
                     if (it.isValid()) {
                         replaceRules.add(it)
                     }
@@ -33,20 +37,27 @@ object ReplaceAnalyzer {
             val replaceRule: ReplaceRule? =
                 GSON.fromJsonObject<ReplaceRule>(json.trim()).getOrNull()
             if (replaceRule == null || replaceRule.pattern.isEmpty()) {
-                val jsonItem = jsonPath.parse(json.trim())
+                val jsonItem = parseJsonElement(json.trim())
                 val rule = ReplaceRule()
                 rule.id = jsonItem.readLong("$.id") ?: System.currentTimeMillis()
                 rule.pattern = jsonItem.readString("$.regex") ?: ""
                 if (rule.pattern.isEmpty()) throw NoStackTraceException("格式不对")
-                rule.name = jsonItem.readString("$.replaceSummary") ?: ""
+                rule.isRegex = jsonItem.readBool("$.isRegex") ?: false
                 rule.replacement = jsonItem.readString("$.replacement") ?: ""
-                rule.isRegex = jsonItem.readBool("$.isRegex") == true
-                rule.scope = jsonItem.readString("$.useTo")
-                rule.isEnabled = jsonItem.readBool("$.enable") == true
-                rule.order = jsonItem.readInt("$.serialNumber") ?: 0
-                return@runCatching rule
+                //兼容旧字段: name/replaceSummary, scope/useTo, isEnabled/enable, order/serialNumber
+                rule.name = jsonItem.readString("$.name")
+                    ?: jsonItem.readString("$.replaceSummary") ?: ""
+                rule.isEnabled = jsonItem.readBool("$.isEnabled")
+                    ?: jsonItem.readBool("$.enable") ?: true
+                rule.order = jsonItem.readInt("$.order")
+                    ?: jsonItem.readInt("$.serialNumber") ?: 0
+                rule.scope = jsonItem.readString("$.scope")
+                    ?: jsonItem.readString("$.useTo")
+                rule.group = jsonItem.readString("$.group") ?: ""
+                rule
+            } else {
+                replaceRule
             }
-            return@runCatching replaceRule
         }
     }
 

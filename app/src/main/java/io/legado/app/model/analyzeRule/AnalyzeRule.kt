@@ -33,7 +33,7 @@ import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.jsoup.nodes.Node
+import com.fleeksoft.ksoup.nodes.Node
 import java.io.Closeable
 import java.net.URL
 import java.util.Locale
