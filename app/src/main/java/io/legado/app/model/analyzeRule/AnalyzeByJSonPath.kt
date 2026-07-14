@@ -6,6 +6,7 @@ import io.legado.app.utils.printOnDebug
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 
 private val jsonParser = Json { ignoreUnknownKeys = true }
@@ -138,13 +139,13 @@ class AnalyzeByJSonPath(json: Any) {
         }
     }
 
-    internal fun getObject(rule: String): Any {
+    internal fun getObject(rule: String): Any? {
         return try {
-            //使用 RJPath.read 恢复 jayway read 语义: 单值返回单值, 不强制套 List
-            RJPath.selector(rule).read(element) ?: emptyList<Any>()
+            //对齐旧 jayway: ctx.read(rule) 直接返回, null 就是 null
+            RJPath.selector(rule).read(element)
         } catch (e: Exception) {
             e.printOnDebug()
-            emptyList<Any>()
+            null
         }
     }
 
@@ -157,9 +158,11 @@ class AnalyzeByJSonPath(json: Any) {
             try {
                 //使用 rules[0] 而非 rule, 避免规则含分隔符残留导致解析失败
                 val elements = RJPath.selector(rules[0]).getAll(element)
-                val resultList = ArrayList<Any>()
+                val resultList = ArrayList<Any?>()
                 for (item in elements) {
                     when (item) {
+                        //对齐旧 jayway: tmp 为 null 时 arrayListOf(null) = [null]
+                        is JsonNull -> resultList.add(null)
                         is JsonPrimitive -> resultList.add(item.content)
                         is JsonArray -> {
                             //路径直接指向数组时展开元素, 与 jayway read 行为一致
@@ -171,7 +174,8 @@ class AnalyzeByJSonPath(json: Any) {
                         else -> resultList.add(item)
                     }
                 }
-                return resultList
+                @Suppress("UNCHECKED_CAST")
+                return resultList as ArrayList<Any>
             } catch (e: Exception) {
                 e.printOnDebug()
             }
