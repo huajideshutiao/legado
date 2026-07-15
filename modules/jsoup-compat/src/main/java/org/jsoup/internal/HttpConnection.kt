@@ -6,12 +6,16 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.source
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
+import org.jsoup.HttpStatusException
 import java.io.InputStream
 import java.net.URL
+import java.nio.charset.Charset
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
@@ -131,6 +135,16 @@ class HttpConnection : Connection {
         val okRequest = buildOkRequest()
         val okClient = buildOkClient()
         val okResponse = okClient.newCall(okRequest).execute()
+
+        // 与原版 jsoup 行为一致:4xx/5xx 抛异常(除非 ignoreHttpErrors=true)
+        val code = okResponse.code
+        if ((code !in 200..<400) && !requestDelegate.ignoreHttpErrors()) {
+            okResponse.close()
+            throw HttpStatusException(
+                "HTTP error fetching URL", code, okResponse.request.url.toString()
+            )
+        }
+
         val resp = HttpResponse(okResponse, requestDelegate)
         requestDelegate.response = resp
         return resp
@@ -154,51 +168,162 @@ class HttpConnection : Connection {
     }
 
     private fun buildOkRequest(): Request {
-        val url = requestDelegate.url()
+        val origUrl = requestDelegate.url()
             ?: throw IllegalStateException("url must be set before execute()")
-        val builder = Request.Builder().url(url)
+        val method = requestDelegate.method()
+        val body = requestDelegate.requestBody()
+        var dataCollection = requestDelegate.data()
+        val supportsBody = method.hasBody
 
-        // 写入所有 headers (含 cookies 合并到 Cookie 头)
+        require(supportsBody || body == null) {
+            "Cannot set a request body for HTTP method $method"
+        }
+
+        // data → query string:方法无 body,或 body 已被显式 requestBody 占用
+        // (同 jsoup serialiseRequestUrl,含 "GET 不接受流字段" 校验)
+        var finalUrl = origUrl
+        if (dataCollection.isNotEmpty() && (!supportsBody || body != null)) {
+            require(dataCollection.none { it.hasInputStream() }) {
+                "InputStream data not supported in URL query string."
+            }
+            finalUrl = serializeToUrl(origUrl, dataCollection, requestDelegate.postDataCharset)
+            dataCollection = emptyList()
+        }
+
+        val builder = Request.Builder().url(finalUrl)
+
+        // 写入 headers (cookies 合并到 Cookie 头;Content-Type 由 body 构建统一处理)
         val cookies = requestDelegate.cookies()
         if (cookies.isNotEmpty()) {
             val cookieHeader = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
             builder.header("Cookie", cookieHeader)
         }
+        val userContentType = requestDelegate.header("Content-Type")
         requestDelegate.multiHeaders().forEach { (name, values) ->
-            // 跳过 Cookie,已单独处理
             if (name.equals("Cookie", ignoreCase = true)) return@forEach
+            if (name.equals("Content-Type", ignoreCase = true)) return@forEach
             values.forEach { builder.addHeader(name, it) }
         }
 
-        val method = requestDelegate.method()
-        val body = requestDelegate.requestBody()
-        val dataCollection = requestDelegate.data()
-        val hasBody = method.hasBody
+        if (supportsBody) {
+            builder.method(
+                method.name,
+                buildRequestBody(builder, body, dataCollection, userContentType)
+            )
+        } else {
+            builder.method(method.name, null)
+        }
+        return builder.build()
+    }
 
-        when {
-            // 显式 body 优先
-            body != null -> {
-                val mediaType = ("text/plain; charset=${requestDelegate.postDataCharset}")
-                    .toMediaTypeOrNull()
-                builder.method(method.name, body.toRequestBody(mediaType))
-            }
-            // 表单数据
-            dataCollection.isNotEmpty() && hasBody -> {
-                val formBuilder = okhttp3.FormBody.Builder()
-                dataCollection.forEach { formBuilder.add(it.key(), it.value()) }
-                builder.method(method.name, formBuilder.build())
-            }
+    /**
+     * 构建请求 body,决策表同 jsoup setOutputContentType + implWritePost:
+     * 1. 有流字段或用户显式 multipart → multipart/form-data
+     * 2. 显式 requestBody → 原样发送,CT 缺省 form-urlencoded
+     * 3. 其余(含空 data 的 POST) → form-urlencoded
+     *
+     * body 一律先按 [HttpConnectionRequest.postDataCharset] 编码为字节再包装,
+     * 避免 OkHttp 的 String.toRequestBody 改写 charset。
+     */
+    private fun buildRequestBody(
+        builder: Request.Builder,
+        body: String?,
+        data: Collection<Connection.KeyVal>,
+        userContentType: String?,
+    ): okhttp3.RequestBody {
+        val charsetName = requestDelegate.postDataCharset
+        val needsMultipart = data.any { it.hasInputStream() } ||
+            userContentType?.contains("multipart/form-data", ignoreCase = true) == true
 
-            hasBody -> {
-                builder.method(method.name, "".toRequestBody(null))
-            }
+        if (needsMultipart) {
+            // 用户 CT 自带 boundary 则复用,否则生成;header 与 body 必须用同一个 boundary
+            val boundary = userContentType?.let { parseBoundary(it) }
+                ?: UUID.randomUUID().toString()
+            builder.header(
+                "Content-Type",
+                userContentType?.takeIf { parseBoundary(it) != null }
+                    ?: "multipart/form-data; boundary=$boundary"
+            )
+            return buildMultipartBody(data, boundary)
+        }
 
-            else -> {
-                builder.method(method.name, null)
+        val ct = userContentType
+            ?: "application/x-www-form-urlencoded; charset=$charsetName"
+        val content = body ?: buildFormBody(data, charsetName)
+        return content.toByteArray(Charset.forName(charsetName))
+            .toRequestBody(ct.toMediaTypeOrNull())
+    }
+
+    /** 将 data 序列化到 URL query string,同 jsoup serialiseRequestUrl;query 插在 fragment 之前 */
+    private fun serializeToUrl(
+        origUrl: URL,
+        data: Collection<Connection.KeyVal>,
+        charset: String
+    ): URL {
+        val params = buildFormBody(data, charset)
+        val external = origUrl.toExternalForm()
+        val hashIdx = external.indexOf('#')
+        val base = if (hashIdx >= 0) external.substring(0, hashIdx) else external
+        val fragment = if (hashIdx >= 0) external.substring(hashIdx) else ""
+        val sep = if (origUrl.query.isNullOrEmpty()) "?" else "&"
+        return URL("$base$sep$params$fragment")
+    }
+
+    /** 构建 application/x-www-form-urlencoded body 字符串 */
+    private fun buildFormBody(
+        data: Collection<Connection.KeyVal>,
+        charset: String
+    ): String {
+        return data.joinToString("&") { kv ->
+            "${urlEncode(kv.key(), charset)}=${urlEncode(kv.value(), charset)}"
+        }
+    }
+
+    /** 构建 multipart/form-data body;boundary 必须与 Content-Type 头一致 */
+    private fun buildMultipartBody(
+        data: Collection<Connection.KeyVal>,
+        boundary: String
+    ): okhttp3.RequestBody {
+        val body = okhttp3.MultipartBody.Builder(boundary)
+            .setType(okhttp3.MultipartBody.FORM)
+
+        for (kv in data) {
+            val stream = kv.inputStream()
+            if (stream != null) {
+                val contentType = kv.contentType() ?: "application/octet-stream"
+                val fileBody = object : okhttp3.RequestBody() {
+                    override fun contentType() = contentType.toMediaTypeOrNull()
+                    override fun contentLength() = -1L
+
+                    // 流只能消费一次,禁止 OkHttp 在重试/重定向时二次 writeTo
+                    override fun isOneShot() = true
+                    override fun writeTo(sink: okio.BufferedSink) {
+                        stream.source().use { sink.writeAll(it) }
+                    }
+                }
+                // jsoup 语义:文件字段的 value() 即 filename
+                body.addFormDataPart(kv.key(), kv.value(), fileBody)
+            } else {
+                body.addFormDataPart(kv.key(), kv.value())
             }
         }
 
-        return builder.build()
+        return body.build()
+    }
+
+    /** 从用户 Content-Type 中取已有 boundary,没有则返回 null */
+    private fun parseBoundary(contentType: String): String? {
+        val idx = contentType.indexOf("boundary=", ignoreCase = true)
+        if (idx < 0) return null
+        return contentType.substring(idx + "boundary=".length)
+            .split(';', limit = 2)[0]
+            .trim()
+            .removeSurrounding("\"")
+            .takeIf { it.isNotEmpty() }
+    }
+
+    private fun urlEncode(value: String, charset: String): String {
+        return java.net.URLEncoder.encode(value, charset)
     }
 
     companion object {

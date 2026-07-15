@@ -14,6 +14,9 @@ import java.io.UncheckedIOException
 import java.net.URL
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.util.zip.GZIPInputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 /**
  * [Connection.Response] 的 OkHttp 实现。
@@ -170,11 +173,21 @@ class HttpResponse(
 
     /**
      * 读取并缓冲 body 字节。多次调用幂等。
+     *
+     * OkHttp 只在自己注入 Accept-Encoding 时透明解压;调用方手动设置该头时
+     * 拿到的是原始压缩字节,这里按 Content-Encoding 补解压,同 jsoup。
      */
     private fun ensureBuffered() {
         if (bodyBytes != null) return
         val bytes = try {
-            raw.body?.bytes() ?: ByteArray(0)
+            val rawBytes = raw.body?.bytes() ?: ByteArray(0)
+            when (raw.header("Content-Encoding")?.lowercase()) {
+                "gzip" -> GZIPInputStream(rawBytes.inputStream()).use { it.readBytes() }
+                "deflate" -> InflaterInputStream(rawBytes.inputStream(), Inflater(true))
+                    .use { it.readBytes() }
+
+                else -> rawBytes
+            }
         } catch (e: IOException) {
             throw UncheckedIOException(e)
         }

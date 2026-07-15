@@ -24,9 +24,13 @@ class HttpKeyVal private constructor(
 
     override fun hasInputStream(): Boolean = inputStream != null
 
+    override fun contentType(contentType: String): HttpKeyVal =
+        apply { this.contentType = contentType }
+
+    override fun contentType(): String? = contentType
+
     /** 文件名(若有) */
     fun filename(): String? = filename
-    fun contentType(): String? = contentType
 
     companion object {
         @JvmStatic

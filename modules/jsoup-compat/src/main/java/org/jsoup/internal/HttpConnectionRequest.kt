@@ -38,6 +38,19 @@ class HttpConnectionRequest : Connection.Request {
     /** 表单编码,默认 UTF-8 */
     var postDataCharset: String = "UTF-8"
 
+    init {
+        // 与原版 jsoup 对齐的默认 UA。
+        // 不加 jsoup 的 "Accept-Encoding: gzip":OkHttp 只在调用方未显式设置该头时
+        // 才透明压缩并自动解压,手动设置反而拿到未解压的原始字节。
+        addHeader("User-Agent", DEFAULT_USER_AGENT)
+    }
+
+    companion object {
+        /** 同 jsoup HttpConnection.DEFAULT_UA */
+        private const val DEFAULT_USER_AGENT =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    }
+
     /** 由 [HttpConnection.execute] 写回 */
     var response: Connection.Response? = null
 
@@ -56,30 +69,36 @@ class HttpConnectionRequest : Connection.Request {
     override fun method(): Method = method
     override fun method(method: Method): HttpConnectionRequest = apply { this.method = method }
 
+    /** 大小写不敏感地找到已存在的 header 名,与 jsoup 一致避免 "accept-encoding"/"Accept-Encoding" 并存 */
+    private fun findHeaderName(name: String): String? =
+        headers.keys.firstOrNull { it.equals(name, ignoreCase = true) }
+
     override fun header(name: String): String? {
-        return headers[name]?.firstOrNull()
+        return findHeaderName(name)?.let { headers[it]?.firstOrNull() }
     }
 
     override fun headers(name: String): List<String> {
-        return headers[name]?.toList() ?: emptyList()
+        return findHeaderName(name)?.let { headers[it]?.toList() } ?: emptyList()
     }
 
     override fun header(name: String, value: String): HttpConnectionRequest = apply {
+        removeHeader(name)
         headers[name] = mutableListOf(value)
     }
 
     override fun addHeader(name: String, value: String): HttpConnectionRequest = apply {
-        headers.getOrPut(name) { mutableListOf() }.add(value)
+        val key = findHeaderName(name) ?: name
+        headers.getOrPut(key) { mutableListOf() }.add(value)
     }
 
     override fun hasHeader(name: String): Boolean =
-        !headers[name].isNullOrEmpty()
+        findHeaderName(name) != null
 
     override fun hasHeaderWithValue(name: String, value: String): Boolean =
-        headers[name]?.any { it.equals(value, ignoreCase = true) } == true
+        headers(name).any { it.equals(value, ignoreCase = true) }
 
     override fun removeHeader(name: String): HttpConnectionRequest = apply {
-        headers.remove(name)
+        findHeaderName(name)?.let { headers.remove(it) }
     }
 
     override fun headers(): Map<String, String> {

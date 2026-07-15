@@ -104,6 +104,8 @@ interface Connection {
         fun inputStream(): InputStream?
         fun inputStream(inputStream: InputStream): KeyVal
         fun hasInputStream(): Boolean
+        fun contentType(contentType: String): KeyVal
+        fun contentType(): String?
     }
 
     // --- 链式配置方法 ---
