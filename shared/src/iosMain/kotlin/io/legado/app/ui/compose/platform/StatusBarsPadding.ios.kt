@@ -1,0 +1,31 @@
+package io.legado.app.ui.compose.platform
+
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
+/**
+ * [platformStatusBarPadding] 的 iOS actual: 接入 Compose Multiplatform WindowInsets
+ * (内部映射到 iOS safeAreaInsets), 顶栏让位状态栏。
+ *
+ * 替代原 stub `this`; 与 Android 端 `Modifier.statusBarsPadding()` 实现对齐。
+ * 注: 不能用 `WindowInsets.statusBars.asPaddingValues()`, 因本函数非 @Composable
+ * (expect 见 sharedUiMain), 而 asPaddingValues 是 @Composable 扩展。
+ * `statusBarsPadding()` 内部走 `windowInsetsPadding(WindowInsets.statusBars)`,
+ * 非 @Composable, 在 iOS 上由 CMP 映射到 UIView.safeAreaInsets.top。
+ */
+actual fun Modifier.platformStatusBarPadding(): Modifier = this.statusBarsPadding()
+
+/**
+ * [rememberNavigationBarPaddingValues] 的 iOS actual: 接入 WindowInsets.navigationBars
+ * (映射到 iOS safeAreaInsets.bottom), 底栏让位 home indicator。
+ *
+ * 替代原 stub `PaddingValues(0.dp)`; 与 Android 端行为对齐。
+ */
+@Composable
+actual fun rememberNavigationBarPaddingValues(): PaddingValues =
+    WindowInsets.navigationBars.asPaddingValues()

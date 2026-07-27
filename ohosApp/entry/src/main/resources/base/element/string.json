@@ -1,0 +1,14 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "Legado 阅读器 entry 模块" },
+    { "name": "EntryAbility_desc", "value": "Legado" },
+    { "name": "EntryAbility_label", "value": "Legado" },
+    { "name": "bookshelf_title", "value": "书架" },
+    { "name": "reader_title", "value": "阅读" },
+    { "name": "kmp_interop_title", "value": "KMP 互操作测试" },
+    { "name": "bookshelf_empty", "value": "书架暂无书籍" },
+    { "name": "reader_prev", "value": "上一页" },
+    { "name": "reader_next", "value": "下一页" },
+    { "name": "reader_back", "value": "返回书架" }
+  ]
+}

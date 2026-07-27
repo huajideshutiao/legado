@@ -1,29 +1,51 @@
 package io.legado.app.ui.book.changecover
 
 import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle.State.STARTED
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.DialogChangeCoverBinding
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.delay
+import io.legado.app.base.BaseComposeDialogFragment
+import io.legado.app.data.entities.SearchBook
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.widget.image.CoverImageView
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * 换封面
  */
-class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
-    Toolbar.OnMenuItemClickListener,
-    CoverAdapter.CallBack {
+class ChangeCoverDialog() : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
@@ -34,70 +56,97 @@ class ChangeCoverDialog() : BaseDialogFragment(R.layout.dialog_change_cover),
         }
     }
 
-    private val binding by viewBinding(DialogChangeCoverBinding::bind)
     private val callBack: CallBack? get() = activity as? CallBack
     private val viewModel: ChangeCoverViewModel by viewModels()
-    private val adapter by lazy { CoverAdapter(requireContext(), this) }
+    private val itemsFlow = MutableStateFlow<List<SearchBook>>(emptyList())
 
-    private val startStopMenuItem: MenuItem?
-        get() = titleBar!!.menu.findItem(R.id.menu_start_stop)
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        val items by itemsFlow.collectAsStateWithLifecycle()
+        var searching by remember { mutableStateOf(false) }
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            val observer = androidx.lifecycle.Observer<Boolean> { searching = it }
+            viewModel.searchStateData.observe(this@ChangeCoverDialog, observer)
+            onDispose { viewModel.searchStateData.removeObserver(observer) }
+        }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.change_cover_source),
-            menuRes = R.menu.change_cover,
-            onMenuClick = ::onMenuItemClick
-        )
-        viewModel.initData(arguments)
-        initView()
-        initData()
-    }
-
-    private fun initView() {
-        binding.recyclerView.layoutManager = GridLayoutManager(requireContext(), 3)
-        binding.recyclerView.adapter = adapter
-    }
-
-    private fun initData() {
-        lifecycleScope.launch {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            viewModel.initData(arguments)
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
             viewModel.dataFlow.conflate().collect {
-                adapter.setItems(it)
+                itemsFlow.value = it
                 delay(1000)
             }
         }
-    }
 
-    override fun observeLiveBus() {
-        super.observeLiveBus()
-        viewModel.searchStateData.observe(viewLifecycleOwner) {
-            binding.refreshProgressBar.isAutoLoading = it
-            if (it) {
-                startStopMenuItem?.let { item ->
-                    item.setIcon(R.drawable.ic_stop_black_24dp)
-                    item.setTitle(R.string.stop)
-                }
-            } else {
-                startStopMenuItem?.let { item ->
-                    item.setIcon(R.drawable.ic_refresh_black_24dp)
-                    item.setTitle(R.string.refresh)
+        Column(Modifier.fillMaxSize()) {
+            DialogTitleBar(
+                title = stringResource(R.string.change_cover_source),
+                onBack = { dismissAllowingStateLoss() }
+            ) {
+                IconButton(onClick = { viewModel.startOrStopSearch() }) {
+                    Icon(
+                        painter = painterResource(
+                            if (searching) R.drawable.ic_stop_black_24dp
+                            else R.drawable.ic_refresh_black_24dp
+                        ),
+                        contentDescription = stringResource(
+                            if (searching) R.string.stop else R.string.refresh
+                        ),
+                        tint = colors.primaryText
+                    )
                 }
             }
-            titleBar!!.menu.applyTint(requireContext())
+            if (searching) {
+                LinearProgressIndicator(
+                    color = colors.accent,
+                    trackColor = colors.bottomBackground,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                )
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                items(items, key = { it.bookUrl }) { item ->
+                    CoverItem(item) { callBack?.coverChangeTo(item.coverUrl ?: ""); dismissAllowingStateLoss() }
+                }
+            }
         }
-
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_start_stop -> viewModel.startOrStopSearch()
+    @Composable
+    private fun CoverItem(item: SearchBook, onClick: () -> Unit) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+                .clickable(onClick = onClick)
+        ) {
+            AndroidView(
+                factory = { ctx -> CoverImageView(ctx) },
+                update = { it.load(item.coverUrl, item.name, item.author, false, item.origin) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.66f)
+            )
+            Text(
+                text = item.originName,
+                color = AppTheme.colors.primaryText,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
         }
-        return false
-    }
-
-    override fun changeTo(coverUrl: String) {
-        callBack?.coverChangeTo(coverUrl)
-        dismissAllowingStateLoss()
     }
 
     interface CallBack {

@@ -1,7 +1,6 @@
 package io.legado.app.ui.main
 
 import android.app.Application
-import androidx.collection.LruCache
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
@@ -11,99 +10,78 @@ import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.DefaultData
 import io.legado.app.help.NotificationHelp
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.addType
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isUpError
-import io.legado.app.help.book.removeType
-import io.legado.app.help.book.sync
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.service.UpdateBookCallback
+import io.legado.app.help.service.UpdateBookShared
 import io.legado.app.help.setLiveProgress
-import io.legado.app.model.CacheBook
-import io.legado.app.model.ReadBook
-import io.legado.app.model.webBook.WebBook
-import io.legado.app.service.CacheBookService
 import io.legado.app.service.UpdateBookService
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
-import io.legado.app.utils.onEachParallel
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.min
 
+/**
+ * app 端主 ViewModel (书架数据层刷新引擎)。
+ *
+ * # 业务编排下沉说明 (UpdateBookShared)
+ *
+ * 原本目录更新 / 强制刷新 / 自动更新 / 预下载调度等编排逻辑全部在本类内实现
+ * (upToc / forceRefresh / scheduleAutoUpdate / refreshBook / updateToc / addDownload /
+ * cacheBook / startUpTocJob / onUpTocJobCompleted / addToWaitUp / pollWaitUpTocBook /
+ * upPool 等), 与桌面端 `DesktopMainViewModel` 高度重复。本类已把这些**非平台特有**
+ * 的编排逻辑下沉到 shared commonMain 的 [UpdateBookShared], 本类仅保留:
+ * - **平台特有方法**: [observeGroupBooks] (依赖 Android Lifecycle) / [postLoad]
+ *   (依赖 assets DefaultData) / [restoreWebDav] (依赖 app 端 AppWebDav)
+ * - **平台特有状态**: [isActivityVisible] (callback 内判断是否显示通知) /
+ *   [booksListRecycledViewPool] / [booksGridRecycledViewPool] (RecyclerView 复用池)
+ * - **Android 通知实现**: [AndroidUpdateBookCallback] inner class, 桥接
+ *   [UpdateBookCallback] 到 `NotificationManagerCompat` + `startService<UpdateBookService>`
+ * - **转发方法**: [upToc] / [forceRefresh] / [scheduleAutoUpdate] / [cancelRefreshJobs] /
+ *   [isUpdate] / [markGroupAutoUpdated] / [onCleared] 直接转发到 [updateBookShared]
+ *
+ * 与桌面端 `DesktopMainViewModel` 改造对齐 (桌面端 callback 用 NotificationProgresses +
+ * Toasters, 本类 callback 用 NotificationManagerCompat + context.toastOnUi)。
+ *
+ * # UpdateBookService.kt 关系
+ *
+ * `io.legado.app.service.UpdateBookService` 是 Android Service 薄壳, 仅负责通知管理
+ * (onCreate/onDestroy/startForegroundNotification/updateNotification), 无业务编排逻辑。
+ * 本类通过 [AndroidUpdateBookCallback.onProgressUpdate] 内 `startService<UpdateBookService>`
+ * 启动 Service 显示通知, 与原 `updateUpdateNotification` 行为一致; Service 本身不参与编排,
+ * 业务编排全部在 [updateBookShared] 内 (与原 MainViewModel 一致)。
+ */
 class MainViewModel(application: Application) : BaseViewModel(application) {
-    private var threadCount = AppConfig.threadCount
-    private var poolSize = min(threadCount, AppConst.MAX_THREAD)
-    private var upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
-    private val waitLock = Any()
-    private val waitUpTocBooks = LinkedHashSet<String>()
-    private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
 
-    private var upTocJob: Job? = null
-    private var refreshJob: Job? = null
-    private var cacheBookJob: Job? = null
+    /**
+     * UpdateBook 编排核心 (shared commonMain 下沉件), 持有实例并转发公共方法。
+     *
+     * scope 用 viewModelScope (随 Activity 销毁取消任务, 与原 MainViewModel 一致);
+     * callback 用 [AndroidUpdateBookCallback] (桥接 Android 通知 + toast)。
+     */
+    private val updateBookShared: UpdateBookShared by lazy {
+        UpdateBookShared(viewModelScope, AndroidUpdateBookCallback())
+    }
 
     var isActivityVisible = true
 
-    private val upTocTotal = AtomicInteger(0)
-    private val upTocCount = AtomicInteger(0)
-    private val refreshTotal = AtomicInteger(0)
-    private val refreshCount = AtomicInteger(0)
-
-    /**
-     * 更新目录/刷新书籍信息时缓存最近用过的书源, 避免每本书都走 DB.
-     * LruCache 内部 synchronized, 配合 onEachParallel 并发安全.
-     * 大小 16: 一次自动更新批次里活跃书源数通常远少于该上限.
-     * 同时也缓存 "未找到" (null) 状态, 避免书源被删后重复查库.
-     */
-    private val bookSourceCache = LruCache<String, SourceWrapper>(16)
-
-    private class SourceWrapper(val source: BookSource?)
-
-    private fun getBookSource(origin: String): BookSource? {
-        val wrapper = bookSourceCache[origin]
-        if (wrapper != null) return wrapper.source
-        val source = appDb.bookSourceDao.getBookSource(origin)
-        bookSourceCache.put(origin, SourceWrapper(source))
-        return source
-    }
     val booksListRecycledViewPool = RecycledViewPool().apply {
         setMaxRecycledViews(0, 30)
     }
@@ -112,223 +90,65 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
 
     /**
-     * 本次应用进程内已触发过自动更新的分组ID, 避免 fragment 回收重建后再次触发
+     * 本次应用进程内已触发过自动更新的分组ID, 避免 fragment 回收重建后再次触发。
+     *
+     * 注: [UpdateBookShared] 内部也持有同名状态 (供 Native 端使用), app 端保留独立状态
+     * 与原行为一致 ([markGroupAutoUpdated] 转发到 [updateBookShared] 后, 本地集合仅作
+     * UI 层快速判断; 实际去重由 [updateBookShared] 内部保证)。
      */
-    private val autoUpdatedGroups = ConcurrentHashMap.newKeySet<Long>()
+    private val autoUpdatedGroups = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
 
-    fun markGroupAutoUpdated(groupId: Long): Boolean = autoUpdatedGroups.add(groupId)
-
-    init {
-        FlowBus.with(EventBus.STOP_UP_BOOK).onEach {
-            upTocJob?.cancel()
-            refreshJob?.cancel()
-            synchronized(waitLock) {
-                waitUpTocBooks.clear()
-            }
-            val urls = onUpTocBooks.toList()
-            onUpTocBooks.clear()
-            urls.forEach {
-                postEvent(EventBus.UP_BOOKSHELF, it)
-            }
-            upTocTotal.set(0)
-            upTocCount.set(0)
-            refreshTotal.set(0)
-            refreshCount.set(0)
-            updateUpdateNotification()
-        }.launchIn(viewModelScope)
-    }
-
-    companion object {
-        /** 自动更新时, 距上次检查不足该时长的书籍跳过 */
-        private const val AUTO_UPDATE_STALE_MS = 10 * 60 * 1000L
-    }
-
-//    init {
-//        deleteNotShelfBook()
-//    }
-
-    override fun onCleared() {
-        super.onCleared()
-        upTocPool.close()
-    }
-
-    fun upPool() {
-        threadCount = AppConfig.threadCount
-        if (upTocJob?.isActive == true || refreshJob?.isActive == true || cacheBookJob?.isActive == true) {
-            return
-        }
-        val newPoolSize = min(threadCount, AppConst.MAX_THREAD)
-        if (poolSize == newPoolSize) {
-            return
-        }
-        poolSize = newPoolSize
-        upTocPool.close()
-        upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
+    fun markGroupAutoUpdated(groupId: Long): Boolean {
+        // 双写: 本地集合 (UI 层快速判断) + UpdateBookShared (Native 端共用)
+        autoUpdatedGroups.add(groupId)
+        return updateBookShared.markGroupAutoUpdated(groupId)
     }
 
     /**
      * 取消刷新/更新目录任务, 用于退出应用时清理, 避免弹出通知
      */
     fun cancelRefreshJobs() {
-        upTocJob?.cancel()
-        refreshJob?.cancel()
-        synchronized(waitLock) {
-            waitUpTocBooks.clear()
-        }
-        onUpTocBooks.clear()
-        upTocTotal.set(0)
-        upTocCount.set(0)
-        refreshTotal.set(0)
-        refreshCount.set(0)
-        context.stopService<UpdateBookService>()
+        updateBookShared.cancelRefreshJobs()
     }
 
-    @Synchronized
+    /**
+     * Activity 可见性变化时刷新通知状态 (对照原 MainViewModel.updateUpdateNotification)。
+     * Activity 可见时取消通知, 不可见时按当前任务状态显示通知。
+     */
     fun updateUpdateNotification() {
-        val upTocActive = upTocJob?.isActive == true
-        val refreshActive = refreshJob?.isActive == true
-        if ((!upTocActive && !refreshActive) || isActivityVisible) {
-            context.stopService<UpdateBookService>()
-            return
-        }
-        context.startService<UpdateBookService>()
-        val title = if (refreshActive) {
-            context.getString(R.string.force_refresh_book)
-        } else {
-            context.getString(R.string.update_toc)
-        }
-        val count = upTocCount.get() + refreshCount.get()
-        val total = upTocTotal.get() + refreshTotal.get()
-        // progress_show 形如 "%1$s      进度 %2$d/%3$d", 第一个槽位本是书源/书名;
-        // 这里整批更新没有单本名字, 传 "" 会残留 6 个前导空格使正文与标题不对齐, 故 trim 掉。
-        val msg = context.getString(R.string.progress_show, "", count, total).trim()
+        updateBookShared.refreshProgress()
+    }
 
-        if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
-            val notificationBuilder =
-                NotificationCompat.Builder(context, AppConst.channelIdDownload)
-                    .setSmallIcon(R.drawable.ic_update)
-                    .setOngoing(true)
-                    .setOnlyAlertOnce(true)
-                    .setContentTitle(title)
-                    .setContentText(msg)
-                    .setLiveProgress(
-                        count,
-                        total,
-                        shortText = if (total > 0) "$count/$total" else null
-                    )
-                    .addAction(
-                        R.drawable.ic_stop_black_24dp,
-                        context.getString(R.string.cancel),
-                        context.servicePendingIntent<UpdateBookService>(IntentAction.stop)
-                    )
-                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            try {
-                val notification = notificationBuilder.build()
-                NotificationHelp.logPromotable(notification)
-                NotificationManagerCompat.from(appCtx)
-                    .notify(NotificationId.UpdateBookService, notification)
-            } catch (e: Exception) {
-                AppLog.put("更新通知失败\n${e.localizedMessage}", e)
-            }
-        }
+    /**
+     * threadCount 改变时重建线程池 (对照原 MainViewModel.upPool)。
+     */
+    fun upPool() {
+        updateBookShared.upPool()
     }
 
     fun isUpdate(bookUrl: String): Boolean {
-        return onUpTocBooks.contains(bookUrl)
+        return updateBookShared.isUpdate(bookUrl)
     }
 
     /**
      * 主动更新目录, 不做时间窗判断 (用于下拉刷新 / 菜单项)
      */
     fun upToc(books: List<Book>) {
-        if (books.isEmpty()) return
-        viewModelScope.launch(Dispatchers.Default) {
-            val urls = books.mapNotNull {
-                if (!it.isLocal && it.canUpdate) it.bookUrl else null
-            }
-            addToWaitUp(urls)
-        }
+        updateBookShared.upToc(books)
     }
 
     /**
      * 强制刷新书籍信息, 无视 canUpdate 属性 (用于菜单项)
      */
     fun forceRefresh(books: List<Book>) {
-        if (books.isEmpty()) return
-        if (upTocJob?.isActive == true || refreshJob?.isActive == true) {
-            context.toastOnUi(R.string.force_refresh_busy)
-            return
-        }
-        refreshJob = viewModelScope.launch(Dispatchers.Default) {
-            val urls = books.filterNot { it.isLocal }.map { it.bookUrl }
-            if (urls.isEmpty()) return@launch
-            refreshTotal.set(urls.size)
-            refreshCount.set(0)
-            updateUpdateNotification()
-            refreshBook(urls)
-        }
-    }
-
-    /**
-     * 并发刷新书籍信息.
-     * 入参是 bookUrl 而非 Book: onEachParallel 限流后排书可能等较久,
-     * 期间用户可能修改进度/分组等, 必须执行时从 DB 重查最新值,
-     * 否则 sync(oldBook) 拷回的是入队时的旧快照, update 会冲掉用户的并发修改.
-     */
-    private suspend fun refreshBook(bookUrls: List<String>) {
-        upPool()
-        bookUrls.asFlow()
-            .onEachParallel(threadCount) { bookUrl ->
-                val book = appDb.bookDao.getBook(bookUrl) ?: return@onEachParallel
-                val source = getBookSource(book.origin) ?: return@onEachParallel
-                runCatching {
-                    val oldBook = book.copy()
-                    WebBook.getBookInfoAwait(source, book)
-                    val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
-                    book.sync(oldBook)
-                    book.removeType(BookType.updateError)
-                    val bookUrlChanged = book.bookUrl != bookUrl
-                    // 合并 DB 写入, 减少 invalidationTracker 触发
-                    appDb.runInTransaction {
-                        if (bookUrlChanged) appDb.bookDao.replace(oldBook, book)
-                        else appDb.bookDao.update(book)
-                        appDb.bookChapterDao.delByBook(bookUrl)
-                        appDb.bookChapterDao.insert(*toc.toTypedArray())
-                    }
-                    if (bookUrlChanged) BookHelp.updateCacheFolder(oldBook, book)
-                    ReadBook.onChapterListUpdated(book)
-                    addDownload(source, book)
-                    postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
-                }.onFailure {
-                    currentCoroutineContext().ensureActive()
-                    AppLog.put("${book.name} 强制刷新失败\n${it.localizedMessage}", it)
-                }
-                refreshCount.incrementAndGet()
-                updateUpdateNotification()
-            }.onCompletion {
-                refreshCount.set(0)
-                refreshTotal.set(0)
-                onRefreshJobCompleted()
-                updateUpdateNotification()
-            }.catch {
-                AppLog.put("强制刷新书籍出错\n${it.localizedMessage}", it)
-            }.collect()
+        updateBookShared.forceRefresh(books)
     }
 
     /**
      * 自动更新目录, 跳过最近已检查过的书籍
      */
     fun scheduleAutoUpdate(books: List<Book>) {
-        if (books.isEmpty()) return
-        val now = System.currentTimeMillis()
-        viewModelScope.launch(Dispatchers.Default) {
-            val urls = books.mapNotNull {
-                if (!it.isLocal && it.canUpdate
-                    && now - it.lastCheckTime > AUTO_UPDATE_STALE_MS
-                ) it.bookUrl else null
-            }
-            addToWaitUp(urls)
-        }
+        updateBookShared.scheduleAutoUpdate(books)
     }
 
     /**
@@ -342,202 +162,34 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         groupId: Long,
         lifecycle: Lifecycle,
         sorter: (List<Book>) -> List<Book>,
-    ): Flow<List<Book>> = appDb.bookDao.flowByGroup(groupId)
-        .map { sorter(it) }
-        .flowWithLifecycleAndDatabaseChangeFirst(
-            lifecycle,
-            Lifecycle.State.RESUMED,
-            AppDatabase.BOOK_TABLE_NAME
-        )
-        .catch { AppLog.put("书架更新出错", it) }
-        .onEach { list ->
-            if (markGroupAutoUpdated(groupId) && AppConfig.autoRefreshBook) {
-                scheduleAutoUpdate(list)
-            }
-        }
-        .conflate()
-        .flowOn(Dispatchers.Default)
-
-    @Synchronized
-    private fun addToWaitUp(urls: Collection<String>) {
-        if (urls.isEmpty()) return
-        synchronized(waitLock) {
-            urls.forEach { url ->
-                if (url !in onUpTocBooks) {
-                    if (waitUpTocBooks.add(url)) {
-                        upTocTotal.incrementAndGet()
-                    }
+    ): Flow<List<Book>> = runBlocking {
+        appDb.bookDao.flowByGroup(groupId)
+            .map { sorter(it) }
+            .flowWithLifecycleAndDatabaseChangeFirst(
+                lifecycle,
+                Lifecycle.State.RESUMED,
+                AppDatabase.BOOK_TABLE_NAME
+            )
+            .catch { AppLog.put("书架更新出错", it) }
+            .onEach { list ->
+                if (markGroupAutoUpdated(groupId) && AppConfig.autoRefreshBook) {
+                    scheduleAutoUpdate(list)
                 }
             }
-        }
-        updateUpdateNotification()
-        if (upTocJob == null && refreshJob?.isActive != true) {
-            startUpTocJob()
-        }
+            .conflate()
+            .flowOn(Dispatchers.Default)
     }
 
-    private fun pollWaitUpTocBook(): String? = synchronized(waitLock) {
-        val iter = waitUpTocBooks.iterator()
-        if (iter.hasNext()) {
-            val value = iter.next()
-            iter.remove()
-            value
-        } else null
-    }
-
-    private fun waitUpTocBooksEmpty(): Boolean = synchronized(waitLock) {
-        waitUpTocBooks.isEmpty()
-    }
-
-
-    @Synchronized
-    private fun onUpTocJobCompleted() {
-        upTocJob = null
-        if (!waitUpTocBooksEmpty()) {
-            startUpTocJob()
-        } else {
-            tryEvictBookSourceCache()
-        }
-    }
-
-    @Synchronized
-    private fun onRefreshJobCompleted() {
-        refreshJob = null
-        if (upTocJob == null) {
-            if (!waitUpTocBooksEmpty()) {
-                startUpTocJob()
-            } else {
-                tryEvictBookSourceCache()
-            }
-        }
-    }
-
-    /**
-     * 使用书源缓存的两类 job (updateToc / refreshBook) 都空闲时才清,
-     * 任一仍在跑就保留以提升命中率.
-     */
-    private fun tryEvictBookSourceCache() {
-        if (upTocJob?.isActive == true) return
-        if (refreshJob?.isActive == true) return
-        bookSourceCache.evictAll()
-    }
-
-    private fun startUpTocJob() {
-        if (refreshJob?.isActive == true) return
-        upPool()
-        upTocJob = viewModelScope.launch(upTocPool) {
-            flow {
-                while (true) {
-                    emit(pollWaitUpTocBook() ?: break)
-                }
-            }.onEachParallel(threadCount) {
-                onUpTocBooks.add(it)
-                postEvent(EventBus.UP_BOOKSHELF, it)
-                updateToc(it)
-                onUpTocBooks.remove(it)
-                upTocCount.incrementAndGet()
-                updateUpdateNotification()
-                postEvent(EventBus.UP_BOOKSHELF, it)
-            }.onCompletion {
-                upTocCount.set(0)
-                upTocTotal.set(0)
-                onUpTocJobCompleted()
-                updateUpdateNotification()
-                if (it == null && cacheBookJob == null && !CacheBookService.isRun) {
-                    //所有目录更新完再开始缓存章节
-                    cacheBook()
-                }
-            }.catch {
-                AppLog.put("更新目录出错\n${it.localizedMessage}", it)
-            }.collect()
-        }
-    }
-
-    private suspend fun updateToc(bookUrl: String) {
-        val book = appDb.bookDao.getBook(bookUrl) ?: return
-        val source = getBookSource(book.origin)
-        if (source == null) {
-            if (!book.isUpError) {
-                book.addType(BookType.updateError)
-                appDb.bookDao.update(book)
-            }
-            return
-        }
-        kotlin.runCatching {
-            val oldBook = book.copy()
-            var tocResult = if (book.tocUrl.isBlank()) {
-                WebBook.getBookInfoAwait(source, book)
-                WebBook.getChapterListAwait(source, book)
-            } else {
-                WebBook.runPreUpdateJs(source, book)
-                WebBook.getChapterListAwait(source, book)
-            }
-
-            // 失败回退逻辑：如果带 tocUrl 刷新失败，尝试从详情页重新开始
-            if (tocResult.isFailure && book.tocUrl.isNotBlank()) {
-                WebBook.getBookInfoAwait(source, book)
-                tocResult = WebBook.getChapterListAwait(source, book)
-            }
-
-            val toc = tocResult.getOrThrow()
-            book.sync(oldBook)
-            book.removeType(BookType.updateError)
-            val bookUrlChanged = book.bookUrl != bookUrl
-            // 合并 DB 写入, 减少 invalidationTracker 触发
-            appDb.runInTransaction {
-                if (bookUrlChanged) appDb.bookDao.replace(oldBook, book)
-                else appDb.bookDao.update(book)
-                appDb.bookChapterDao.delByBook(bookUrl)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
-            }
-            if (bookUrlChanged) BookHelp.updateCacheFolder(oldBook, book)
-            ReadBook.onChapterListUpdated(book)
-            addDownload(source, book)
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            AppLog.put("${book.name} 更新目录失败\n${it.localizedMessage}", it)
-            //这里可能因为时间太长书籍信息已经更改,所以重新获取
-            appDb.bookDao.getBook(book.bookUrl)?.let { book ->
-                book.addType(BookType.updateError)
-                book.lastCheckTime = System.currentTimeMillis()
-                appDb.bookDao.update(book)
-            }
-        }
-    }
-
-
-    @Synchronized
-    private fun addDownload(source: BookSource, book: Book) {
-        if (AppConfig.preDownloadNum == 0) return
-        val endIndex = min(
-            book.totalChapterNum - 1,
-            book.durChapterIndex.plus(AppConfig.preDownloadNum)
-        )
-        val cacheBook = CacheBook.getOrCreate(source, book)
-        cacheBook.addDownload(book.durChapterIndex, endIndex)
-    }
-
-    /**
-     * 缓存书籍
-     */
-    private fun cacheBook() {
-        if (AppConfig.preDownloadNum == 0) return
-        cacheBookJob?.cancel()
-        cacheBookJob = viewModelScope.launch(upTocPool) {
-            launch {
-                while (isActive && CacheBook.isRun) {
-                    //有目录更新是不缓存,优先更新目录,现在更多网站限制并发
-                    CacheBook.setWorkingState(waitUpTocBooksEmpty() && onUpTocBooks.isEmpty())
-                    delay(1000)
-                }
-            }
-            CacheBook.startProcessJob(upTocPool)
-        }
+    override fun onCleared() {
+        super.onCleared()
+        // UpdateBookShared.onCleared 内部调 cancelRefreshJobs (含 stopService<UpdateBookService>
+        // 经 callback.onProgressCancel) + close upTocPool, 与原 MainViewModel.onCleared 行为对齐
+        updateBookShared.onCleared()
     }
 
     fun postLoad() {
         execute {
-            if (appDb.httpTTSDao.count == 0) {
+            if (appDb.httpTTSDao.count() == 0) {
                 DefaultData.httpTTS.let {
                     appDb.httpTTSDao.insert(*it.toTypedArray())
                 }
@@ -548,6 +200,82 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     fun restoreWebDav(name: String) {
         execute {
             AppWebDav.restoreWebDav(name)
+        }
+    }
+
+    /**
+     * [UpdateBookCallback] 的 Android actual 实现 (inner class, 持有 MainViewModel this)。
+     *
+     * 桥接 [UpdateBookShared] 的进度回调到 app 端 Android 通知栏:
+     * - [onProgressUpdate]: `startService<UpdateBookService>` + `NotificationManagerCompat.notify`
+     *   (NotificationCompat.Builder 设置进度, 与原 `updateUpdateNotification` 一致)
+     * - [onProgressCancel]: `stopService<UpdateBookService>` (取消通知)
+     * - [toastForceRefreshBusy]: `context.toastOnUi(R.string.force_refresh_busy)`
+     * - [toastForceRefreshStart] / [toastForceRefreshDone]: app 端原 MainViewModel 无此 toast
+     *   (仅桌面端有), no-op
+     *
+     * # isActivityVisible 处理
+     * 原 `updateUpdateNotification` 在 `isActivityVisible=true` 时直接 `stopService` 不显示通知
+     * (避免 Activity 可见时打扰用户)。本 callback 在 [onProgressUpdate] 内自行检查
+     * [isActivityVisible], 行为对齐 (UpdateBookShared 不感知 isActivityVisible, 由 callback 处理)。
+     */
+    private inner class AndroidUpdateBookCallback : UpdateBookCallback {
+
+        override fun onProgressUpdate(active: Boolean, title: String, content: String, count: Int, total: Int) {
+            // Activity 可见时不显示通知 (与原 updateUpdateNotification 一致)
+            if (isActivityVisible) {
+                context.stopService<UpdateBookService>()
+                return
+            }
+            context.startService<UpdateBookService>()
+            if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
+                // title/content 已由 UpdateBookShared 计算 ("更新目录" / "强制刷新" + "count/total"),
+                // 这里直接用, 与原 updateUpdateNotification 内 R.string.update_toc / R.string.force_refresh_book 等价
+                // (原 title 用 R.string.update_toc = "更新目录", R.string.force_refresh_book = "强制刷新",
+                //  UpdateBookShared 内硬编码 "更新目录" / "强制刷新" 与之对齐)
+                val notificationBuilder =
+                    NotificationCompat.Builder(context, AppConst.channelIdDownload)
+                        .setSmallIcon(R.drawable.ic_update)
+                        .setOngoing(true)
+                        .setOnlyAlertOnce(true)
+                        .setContentTitle(title)
+                        .setContentText(content)
+                        .setLiveProgress(
+                            count,
+                            total,
+                            shortText = if (total > 0) "$count/$total" else null
+                        )
+                        .addAction(
+                            R.drawable.ic_stop_black_24dp,
+                            context.getString(R.string.cancel),
+                            context.servicePendingIntent<UpdateBookService>(IntentAction.stop)
+                        )
+                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                try {
+                    val notification = notificationBuilder.build()
+                    NotificationHelp.logPromotable(notification)
+                    NotificationManagerCompat.from(appCtx)
+                        .notify(NotificationId.UpdateBookService, notification)
+                } catch (e: Exception) {
+                    AppLog.put("更新通知失败\n${e.localizedMessage}", e)
+                }
+            }
+        }
+
+        override fun onProgressCancel() {
+            context.stopService<UpdateBookService>()
+        }
+
+        override fun toastForceRefreshBusy() {
+            context.toastOnUi(R.string.force_refresh_busy)
+        }
+
+        override fun toastForceRefreshStart(count: Int) {
+            // app 端原 MainViewModel 无此 toast (仅桌面端有), no-op
+        }
+
+        override fun toastForceRefreshDone() {
+            // app 端原 MainViewModel 无此 toast (仅桌面端有), no-op
         }
     }
 

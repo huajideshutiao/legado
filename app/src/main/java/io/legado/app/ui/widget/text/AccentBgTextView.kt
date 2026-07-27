@@ -2,11 +2,12 @@ package io.legado.app.ui.widget.text
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.withStyledAttributes
 import io.legado.app.R
-import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.radius
 import io.legado.app.utils.ColorUtils
@@ -38,11 +39,18 @@ class AccentBgTextView @JvmOverloads constructor(
         } else {
             ThemeStore.accentColor
         }
-        background = Selector.shapeBuild()
-            .setCornerRadius(radius)
-            .setDefaultBgColor(accentColor)
-            .setPressedBgColor(ColorUtils.darkenColor(accentColor))
-            .create()
+        // accent 底圆角，按压加深(原 Selector.shapeBuild 语义)
+        fun shape(color: Int) = GradientDrawable().apply {
+            cornerRadius = this@AccentBgTextView.radius.toFloat()
+            setColor(color)
+        }
+        background = StateListDrawable().apply {
+            addState(
+                intArrayOf(android.R.attr.state_pressed),
+                shape(ColorUtils.darkenColor(accentColor))
+            )
+            addState(intArrayOf(), shape(accentColor))
+        }
         setTextColor(
             if (ColorUtils.isColorLight(accentColor)) {
                 Color.BLACK

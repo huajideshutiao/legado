@@ -1,8 +1,10 @@
 plugins {
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
-    alias libs.plugins.kotlin.parcelize
-    alias libs.plugins.room
+    alias libs.plugins.kotlin.serialization
+    alias libs.plugins.compose.compiler
+    // K5-c Phase 5: @Database 已下沉 shared/commonMain, room 插件移至 shared 模块
+    // alias libs.plugins.room
     alias libs.plugins.ksp
 }
 static def releaseTime() {
@@ -13,9 +15,8 @@ def name = "legado"
 def version = "3." + releaseTime()
 def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
 
-room {
-    schemaDirectory "$projectDir/schemas"
-}
+// K5-c Phase 5: @Database 已下沉 shared/commonMain, room schema 由 shared 模块生成
+// room { schemaDirectory "$projectDir/schemas" }
 
 android {
     compileSdk = compile_sdk_version
@@ -67,6 +68,7 @@ android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
+        compose = true
     }
     androidResources {
         localeFilters += ["en", "zh", "zh-rHK", "zh-rTW"]
@@ -143,13 +145,15 @@ android {
     }
 
 
-    // 设定Room的KSP参数
+    // KSP 参数
     ksp {
-        arg("room.incremental", "true")
-        arg("room.expandProjection", "true")
-        arg("room.generateKotlin", "false")
+        // K5-c Phase 5: Room KSP 已移至 shared 模块, room.* arg 不再需要
+        // arg("room.incremental", "true")
+        // arg("room.expandProjection", "true")
+        // arg("room.generateKotlin", "false")
         //arg("room.schemaLocation", "$projectDir/schemas")
-
+        // BaseSource 已下沉 shared，@JsApi 分派表仍由 app 侧 KSP 从 classpath 解析生成
+        arg("jsapi.extraClasses", "io.legado.app.data.entities.BaseSource")
     }
 
     compileOptions {
@@ -193,6 +197,13 @@ android {
     }
 }
 
+// 从 shared/jvmMain/resources/web 同步到 app/src/main/assets/web（单一数据源）
+tasks.register('copyWebResources', Copy) {
+    from "${rootProject.projectDir}/shared/src/jvmMain/resources/web"
+    into "${projectDir}/src/main/assets/web"
+}
+preBuild.dependsOn('copyWebResources')
+
 dependencies {
     coreLibraryDesugaring(libs.desugar)
     testImplementation(libs.junit)
@@ -201,12 +212,23 @@ dependencies {
     implementation(libs.kotlin.stdlib)
 
     implementation(libs.bundles.coroutines)
+    // KJ3 并发原语下沉前置：atomicfu locks 门面(commonMain-ready synchronized)
+    implementation(libs.kotlinx.atomicfu)
 
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)
     implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)
-    implementation(libs.preference.ktx)
+
+    //compose：BOM 统一版本，platform 引入
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.activity)
+    implementation(libs.compose.lifecycle.runtime)
+    // 拖拽排序：P2 规则管理 10 个界面统一用它替代 ItemTouchHelper
+    implementation(libs.reorderable)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.recyclerview)
@@ -217,7 +239,6 @@ dependencies {
     //google
     implementation(libs.material)
     implementation(libs.flexbox)
-    implementation(libs.gson)
 
     //lifecycle
     implementation(libs.lifecycle.service)
@@ -234,20 +255,20 @@ dependencies {
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    // K5-c Phase 5: @Database 已下沉 shared/commonMain, room.compiler KSP 由 shared 模块处理
+    // ksp(libs.room.compiler)
     androidTestImplementation(libs.room.testing)
 
     implementation(libs.ksoup)
     implementation(libs.kotlinx.serialization.json)
-    implementation(project(path: ':modules:rjpath'))
-    implementation(project(path: ':modules:jsoup-compat'))
+    // 原 modules:rjpath/book-file/jsoup-compat 已合并到 modules:shared (KMP 最佳范式: 单一 KMP 共享模块)
+    implementation(project(path: ':shared'))
     implementation(project(path: ':modules:quickjs'))
-    // rhino 引擎: 抽象层 rhino 适配(RhinoJsEngine/RhinoJsTypes/RhinoSharedJsScopeProvider)及
-    // JsEngines 双判谓词直接 import com.script.* 和 org.mozilla.javascript.*,
-    // 必须在编译期可见。切换开关后运行时分派,两个模块同时打包进 APK。
-    implementation(project(path: ':modules:rhino'))
+    // @JsApi 静态分派表生成 (JsExtensions/BaseSource/CookieStore/CacheManager/image 等 JS 面)
+    ksp(project(path: ':modules:quickjs-processor'))
 
     implementation(libs.okhttp)
+    implementation(libs.okio)
     implementation(libs.play.services.cronet)
 
     // 1. 提供 Cronet 核心 API（包含对 HttpEngine 的桥接支持）
@@ -265,13 +286,8 @@ dependencies {
 
     implementation(libs.androidsvg)
 
-    // 图片查看手势库（缩放/平移/双击），替代已停滞的 chrisbanes/PhotoView
-    implementation(libs.touchimageview)
-
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
-
-    implementation(libs.colorpicker)
 
     implementation libs.libarchive
 

@@ -3,6 +3,7 @@ package io.legado.app.help.glide
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.view.View
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
@@ -28,6 +29,28 @@ import kotlin.coroutines.CoroutineContext
 //https://bumptech.github.io/glide/doc/generatedapi.html
 //Instead of GlideApp, use com.bumptech.Glide
 object ImageLoader {
+
+    /**
+     * RequestManager 获取统一走这里,业务代码不直接引用 Glide 入口。
+     */
+    fun with(context: Context): RequestManager = Glide.with(context)
+
+    fun with(view: View): RequestManager = Glide.with(view)
+
+    fun with(fragment: Fragment, lifecycle: Lifecycle): RequestManager =
+        Glide.with(fragment).lifecycle(lifecycle)
+
+    fun clearMemory(context: Context) {
+        Glide.get(context).clearMemory()
+    }
+
+    /**
+     * 漫画页请求:磁盘缓存禁用(loadManga 字节旁路已自管 BookHelp 磁盘缓存)。
+     */
+    fun loadManga(context: Context, model: MangaModel): RequestBuilder<Drawable> {
+        return Glide.with(context).load(model)
+            .diskCacheStrategy(DiskCacheStrategy.NONE)
+    }
 
     /**
      * 自动判断path类型

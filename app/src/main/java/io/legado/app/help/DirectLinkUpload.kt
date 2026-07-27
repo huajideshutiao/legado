@@ -1,6 +1,5 @@
 package io.legado.app.help
 
-import androidx.annotation.Keep
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -12,20 +11,42 @@ import io.legado.app.utils.createFileReplace
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.toJson
+import io.legado.app.utils.toJsonElement
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.io.File
 
-object DirectLinkUpload {
-
-    const val ruleFileName = "directLinkUploadRule.json"
+/**
+ * 直链上传 Android 实现 (与 shared [DirectLinkUploadShared] 配套)。
+ *
+ * # 下沉说明
+ * [DirectLinkUploadRule] data class / [ruleFileName] 常量 / 配置访问接口 已下沉
+ * shared/commonMain (见 [DirectLinkUploadShared])。本 object 保留 Android 专属实现:
+ * - [upLoad]: 依赖 java.io.File / ZipUtils / FileUtils / appCtx.externalCache / AnalyzeUrl(app 端子类)
+ * - [getConfig] / [putConfig]: 依赖 ACache (Android 文件缓存)
+ * - [defaultRules]: 依赖 appCtx.assets (Android assets)
+ *
+ * 本 object 实现 [DirectLinkUploadStoreProvider] + [DirectLinkUploadDefaultsProvider],
+ * 宿主启动早期通过 `registerAndroidDirectLinkUploadProviders()` 注册到 shared,
+ * 供 shared 端 (如 BackupShared/RestoreShared) 跨平台访问。
+ *
+ * # 类型映射
+ * 原 `DirectLinkUpload.Rule` → shared [DirectLinkUploadRule] (同包, 直接引用)
+ * 原 `DirectLinkUpload.ruleFileName` → shared [ruleFileName] (同包 top-level 常量)
+ *
+ * # @Keep 注解移除
+ * 原 Rule 上的 @Keep (androidx.annotation) 随 Rule 下沉移除,
+ * 反射保活由 shared consumer-rules.pro 的 keep 规则覆盖。
+ */
+object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefaultsProvider {
 
     @Throws(NoStackTraceException::class)
     suspend fun upLoad(
         fileName: String,
         file: Any,
         contentType: String,
-        rule: Rule = getRule()
+        rule: DirectLinkUploadRule = getRule()
     ): String {
         val url = rule.uploadUrl
         if (url.isBlank()) {
@@ -51,7 +72,8 @@ object DirectLinkUpload {
 
                 is ByteArray -> ZipUtils.zipByteArray(file, fileName)
                 is String -> ZipUtils.zipByteArray(file.toByteArray(), fileName)
-                else -> ZipUtils.zipByteArray(GSON.toJson(file).toByteArray(), fileName)
+                // Phase D: GSON.toJson(file) 反射序列化 Any → toJsonElement().toString() 处理任意类型
+                else -> ZipUtils.zipByteArray(file.toJsonElement().toString().toByteArray(), fileName)
             }
         }
         val analyzeUrl = AnalyzeUrl(url)
@@ -72,43 +94,49 @@ object DirectLinkUpload {
         }
     }
 
-    val defaultRules: List<Rule> by lazy {
+    // 命名为 defaultRulesCache 避免与 override fun getDefaultRules() 的 JVM 签名 (getDefaultRules()) 冲突
+    private val defaultRulesCache: List<DirectLinkUploadRule> by lazy {
         val json = String(
             appCtx.assets.open("defaultData${File.separator}directLinkUpload.json")
                 .readBytes()
         )
-        GSON.fromJsonArray<Rule>(json).getOrThrow()
+        GSON.fromJsonArray<DirectLinkUploadRule>(json).getOrThrow()
     }
 
-    fun getRule(): Rule {
-        return getConfig() ?: defaultRules[0]
+    fun getRule(): DirectLinkUploadRule {
+        return getConfig() ?: defaultRulesCache[0]
     }
 
-    fun getConfig(): Rule? {
+    override fun getConfig(): DirectLinkUploadRule? {
         val json = ACache.get(cacheDir = false).getAsString(ruleFileName)
-        return GSON.fromJsonObject<Rule>(json).getOrNull()
+        return GSON.fromJsonObject<DirectLinkUploadRule>(json).getOrNull()
     }
 
-    fun putConfig(rule: Rule) {
+    override fun putConfig(rule: DirectLinkUploadRule) {
         ACache.get(cacheDir = false).put(ruleFileName, GSON.toJson(rule))
     }
+
+    override fun getDefaultRules(): List<DirectLinkUploadRule> = defaultRulesCache
 
     fun getSummary(): String {
         return getRule().summary
     }
 
-    @Keep
-    data class Rule(
-        var uploadUrl: String, //创建分享链接
-        var downloadUrlRule: String, //下载链接规则
-        var summary: String, //注释
-        var compress: Boolean = false, //是否压缩
-    ) {
+}
 
-        override fun toString(): String {
-            return summary
-        }
-
-    }
-
+/**
+ * 安卓宿主启动早期注册 [DirectLinkUploadStoreProvider] + [DirectLinkUploadDefaultsProvider]。
+ *
+ * [DirectLinkUpload] object 已实现这两个接口, 注册后 shared/commonMain 内可通过
+ * [DirectLinkUploadStoreProviders.get] / [DirectLinkUploadDefaultsProviders.get]
+ * 跨平台访问直链上传配置 (如 BackupShared/RestoreShared 备份恢复 directLinkUploadRule.json)。
+ *
+ * 调用时机: App.onCreate, 在任何 shared 模块备份/恢复之前。
+ *
+ * 模式参考 [io.legado.app.help.storage.registerAndroidPasswordProvider] /
+ * [io.legado.app.help.ExploreKindsCacheProviders] (JsEnginesAndroid.kt 注册先例)。
+ */
+fun registerAndroidDirectLinkUploadProviders() {
+    DirectLinkUploadStoreProviders.register(DirectLinkUpload)
+    DirectLinkUploadDefaultsProviders.register(DirectLinkUpload)
 }

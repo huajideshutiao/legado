@@ -13,7 +13,6 @@ import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -23,10 +22,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.Status
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -36,17 +32,18 @@ import io.legado.app.help.media.MediaPlaybackLock
 import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.AudioPlay.durLrcData
 import io.legado.app.model.BookCover
-import io.legado.app.model.LrcParser
 import io.legado.app.model.ReadTimeRecorder
-import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
-import io.legado.app.model.webBook.WebBook.getContentAwait
+import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactoryImpl
+import io.legado.app.model.audio.AudioPlayController
+import io.legado.app.model.audio.AudioPlayControllerListener
+import io.legado.app.model.audio.AudioPlayManager
+import io.legado.app.model.audio.AudioPlayManagerListener
+import io.legado.app.model.audio.ExoPlayerAudioPlayController
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.book.audio.AudioPlayActivity
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import io.legado.app.utils.postEvent
@@ -54,19 +51,18 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import splitties.systemservices.notificationManager
 
 /**
  * 音频播放服务
+ *
+ * 纯逻辑 (进度上报 / LRC 推进 / 章节加载) 已下沉到 [AudioPlayManager] (commonMain),
+ * 本类只保留平台相关编排: ExoPlayer setMediaItem / MediaSession / Notification /
+ * AudioFocus / WakeLock / Glide 封面加载。播放器状态回调经 [AudioPlayControllerListener]
+ * 从 [ExoPlayerAudioPlayController] 透传, 章节加载副作用经 [AudioPlayManagerListener]
+ * 回调本类。
  */
-class AudioPlayService : BaseService(), Player.Listener {
+class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayManagerListener {
 
     companion object {
         @JvmStatic
@@ -104,9 +100,6 @@ class AudioPlayService : BaseService(), Player.Listener {
 
         private const val APP_ACTION_STOP = "Stop"
         private const val APP_ACTION_TIMER = "Timer"
-
-        /** 歌词同步补偿偏移量 (毫秒) */
-        private const val LRC_OFFSET_MS = 60
     }
 
     private val playbackLock by lazy {
@@ -127,19 +120,23 @@ class AudioPlayService : BaseService(), Player.Listener {
     private val exoPlayer: ExoPlayer by lazy {
         ExoPlayerHelper.createHttpExoPlayer(this, audioOnly = true)
     }
+    private val audioController: AudioPlayController by lazy {
+        ExoPlayerAudioPlayController(exoPlayer)
+    }
+    private val audioPlayManager: AudioPlayManager by lazy {
+        AudioPlayManager(
+            controller = audioController,
+            scope = lifecycleScope,
+            analyzeRuleFactory = AudioPlayAnalyzeRuleFactoryImpl,
+            listener = this,
+        )
+    }
     private var mediaSessionCompat: MediaSessionCompat? = null
     private var position = AudioPlay.book?.durChapterPos ?: 0
     private var upNotificationJob: Coroutine<*>? = null
-    private var upPlayProgressJob: Job? = null
-    private var upPlayProgressForLrcJob: Job? = null
     private var cover: Bitmap = BookCover.notificationDefaultCover
 
     private var hasRefreshedOnPlayError = false
-
-    private val loadingChapters = arrayListOf<Int>()
-
-    /** 上次发出的歌词 position;切章 / seek 时由调用方置回 -1 */
-    private var lastLrcPosition = -1
 
     /** 上次成功加载封面的 URL,用于避免同 URL 重复触发 Glide + 通知 rebuild */
     private var lastCoverUrl: String? = null
@@ -158,14 +155,17 @@ class AudioPlayService : BaseService(), Player.Listener {
     override fun onCreate() {
         super.onCreate()
         isRun = true
+        // controller init 时已 exoPlayer.addListener(controller), 这里挂接状态回调
+        audioController.listener = this
+        // 同步 companion playSpeed -> manager (LRC 推进 delay 时长按此缩放)
+        audioPlayManager.playSpeed = playSpeed
         sleepTimer = SleepTimer(
             scope = lifecycleScope,
-            eventKey = EventBus.AUDIO_DS,
+            postMinute = { postEvent(EventBus.AUDIO_DS, it) },
             isPaused = { pause },
             onTimeout = { AudioPlay.stop() },
             onTick = { upAudioPlayNotification() }
         )
-        exoPlayer.addListener(this)
         initMediaSession()
         noisyReceiver.register(this)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -187,12 +187,11 @@ class AudioPlayService : BaseService(), Player.Listener {
                 IntentAction.play -> triggerPlay(playNew = false)
                 IntentAction.playNew -> triggerPlay(playNew = true)
 
-                IntentAction.loadPlayUrl -> loadPlayUrl()
+                IntentAction.loadPlayUrl -> audioPlayManager.loadPlayUrl()
 
                 IntentAction.stopPlay -> {
                     exoPlayer.stop()
-                    upPlayProgressJob?.cancel()
-                    upPlayProgressForLrcJob?.cancel()
+                    audioPlayManager.cancelProgressJobs()
                     AudioPlay.status = Status.STOP
                     AudioPlay.book?.save()
                     postEvent(EventBus.AUDIO_STATE, Status.STOP)
@@ -220,12 +219,11 @@ class AudioPlayService : BaseService(), Player.Listener {
      * 已经有 [AudioPlay.durPlayUrl] 时启动播放,做好状态/资源同步。
      */
     private fun triggerPlay(playNew: Boolean) {
-        if (url == AudioPlay.durPlayUrl && !playNew && exoPlayer.playbackState != Player.STATE_IDLE) {
+        if (url == AudioPlay.durPlayUrl && !playNew && exoPlayer.playbackState != AudioPlayController.STATE_IDLE) {
             return
         }
         exoPlayer.stop()
-        upPlayProgressJob?.cancel()
-        upPlayProgressForLrcJob?.cancel()
+        audioPlayManager.cancelProgressJobs()
         pause = false
         position = if (playNew) 0 else AudioPlay.book?.durChapterPos ?: 0
         url = AudioPlay.durPlayUrl
@@ -244,6 +242,7 @@ class AudioPlayService : BaseService(), Player.Listener {
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
         AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
         AudioPlay.saveRead()
+        audioPlayManager.onDestroy()
         exoPlayer.release()
         mediaSessionCompat?.release()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -262,8 +261,7 @@ class AudioPlayService : BaseService(), Player.Listener {
         execute(context = Main) {
             AudioPlay.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            upPlayProgressJob?.cancel()
-            upPlayProgressForLrcJob?.cancel()
+            audioPlayManager.cancelProgressJobs()
             val analyzeUrl = AnalyzeUrl(
                 url,
                 source = AudioPlay.bookSource,
@@ -288,8 +286,7 @@ class AudioPlayService : BaseService(), Player.Listener {
             pause = true
             ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
             if (abandonFocus) audioFocus.abandon()
-            upPlayProgressJob?.cancel()
-            upPlayProgressForLrcJob?.cancel()
+            audioPlayManager.cancelProgressJobs()
             position = exoPlayer.currentPosition.toInt()
             if (exoPlayer.isPlaying) exoPlayer.pause()
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
@@ -312,8 +309,8 @@ class AudioPlayService : BaseService(), Player.Listener {
                 return
             }
             if (!exoPlayer.isPlaying) exoPlayer.play()
-            upPlayProgress()
-            upPlayProgressForLrc()
+            audioPlayManager.upPlayProgress()
+            audioPlayManager.upPlayProgressForLrc()
             upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
             AudioPlay.status = Status.PLAY
             postEvent(EventBus.AUDIO_STATE, Status.PLAY)
@@ -330,8 +327,8 @@ class AudioPlayService : BaseService(), Player.Listener {
         upMediaSessionPlaybackState(
             if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
         )
-        lastLrcPosition = -1
-        upPlayProgressForLrc()
+        // lastLrcPosition 重置由 manager.upPlayProgressForLrc 内部新协程首帧完成
+        audioPlayManager.upPlayProgressForLrc()
     }
 
     @SuppressLint(value = ["ObsoleteSdkInt"])
@@ -339,21 +336,21 @@ class AudioPlayService : BaseService(), Player.Listener {
         kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 playSpeed = adjust
+                audioPlayManager.playSpeed = adjust
                 exoPlayer.setPlaybackSpeed(playSpeed)
                 postEvent(EventBus.AUDIO_SPEED, playSpeed)
                 // 事件驱动版 lrc 推进的 delay 时长按 playSpeed 缩放,变速时需要重启重算
-                upPlayProgressForLrc()
+                audioPlayManager.upPlayProgressForLrc()
             }
         }
     }
 
-    override fun onPlaybackStateChanged(playbackState: Int) {
-        super.onPlaybackStateChanged(playbackState)
-        when (playbackState) {
-            Player.STATE_IDLE,
-            Player.STATE_BUFFERING -> Unit
+    override fun onPlaybackStateChanged(state: Int) {
+        when (state) {
+            AudioPlayController.STATE_IDLE,
+            AudioPlayController.STATE_BUFFERING -> Unit
 
-            Player.STATE_READY -> {
+            AudioPlayController.STATE_READY -> {
                 hasRefreshedOnPlayError = false
                 postEvent(EventBus.AUDIO_LOADING, false)
                 AudioPlay.status = if (exoPlayer.playWhenReady) Status.PLAY else Status.PAUSE
@@ -363,14 +360,13 @@ class AudioPlayService : BaseService(), Player.Listener {
                 upMediaSessionPlaybackState(
                     if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
                 )
-                upPlayProgress()
-                upPlayProgressForLrc()
+                audioPlayManager.upPlayProgress()
+                audioPlayManager.upPlayProgressForLrc()
                 AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
-            Player.STATE_ENDED -> {
-                upPlayProgressJob?.cancel()
-                upPlayProgressForLrcJob?.cancel()
+            AudioPlayController.STATE_ENDED -> {
+                audioPlayManager.cancelProgressJobs()
                 AudioPlay.playPositionChanged(exoPlayer.duration.toInt())
                 AudioPlay.next()
             }
@@ -389,112 +385,19 @@ class AudioPlayService : BaseService(), Player.Listener {
         mediaSessionCompat?.setMetadata(metadata)
     }
 
-    override fun onPlayerError(error: PlaybackException) {
+    override fun onPlayerError(error: Throwable) {
         if (!hasRefreshedOnPlayError) {
             hasRefreshedOnPlayError = true
-            refreshChapter()
+            audioPlayManager.refreshChapter()
             return
         }
-        super.onPlayerError(error)
         AudioPlay.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
         postEvent(EventBus.AUDIO_LOADING, false)
-        val errorMsg = "音频播放出错\n${error.errorCodeName} ${error.errorCode}"
+        val playbackError = error as? PlaybackException
+        val errorMsg = "音频播放出错\n${playbackError?.errorCodeName} ${playbackError?.errorCode}"
         AppLog.put(errorMsg, error)
         toastOnUi(errorMsg)
-    }
-
-    /**
-     * 每隔 1 秒发送播放进度
-     */
-    private fun upPlayProgress() {
-        upPlayProgressJob?.cancel()
-        upPlayProgressJob = lifecycleScope.launch {
-            while (isActive) {
-                AudioPlay.durChapterPos = exoPlayer.currentPosition.toInt()
-                postEvent(EventBus.AUDIO_BUFFER_PROGRESS, exoPlayer.bufferedPosition.toInt())
-                postEvent(EventBus.AUDIO_PROGRESS, AudioPlay.durChapterPos)
-                delay(1000)
-            }
-        }
-    }
-
-    /**
-     * 推进当前章节歌词高亮位置。
-     *
-     * 节能策略两层:
-     * 1. 事件驱动: 按下一句歌词时间戳精确 delay,而非高频轮询;
-     *    一首歌只唤醒 N 行次,而非 时长(s)*20 次。
-     * 2. 订阅门控: 通过 FlowBus 的 subscriptionCount 感知是否有 Activity 在收事件,
-     *    没有时直接挂起整个循环,后台/锁屏场景零空转。
-     *
-     * 调用方在以下场景触发重启: STATE_READY / adjustProgress / 调整播放速度。
-     */
-    private fun upPlayProgressForLrc() {
-        upPlayProgressForLrcJob?.cancel()
-        val lrc = durLrcData ?: return
-        if (lrc.isEmpty() || lrc.last().first == -1) return
-        // 切歌中(stop 后未 prepare 新 mediaItem)player 处于 IDLE,
-        // exoPlayer.currentPosition 仍是上一首的残留位置,据此推进会把新章节歌词跳到旧位置;
-        // 新媒体 prepare 完成后 STATE_READY 会再次触发本方法,这里直接退出。
-        if (exoPlayer.playbackState == Player.STATE_IDLE) return
-        val subCount = FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount
-
-        // 注意: 此协程绑定主线程(lifecycleScope 默认 Main),因为 ExoPlayer 默认绑定主 looper,
-        // 从其它线程访问 currentPosition 会抛 IllegalStateException。
-        // 内层循环需要保证每条路径都至少经过一个挂起点(withTimeoutOrNull / return),否则当
-        // currentPosition 停滞时,逐行 ++position 会变成无挂起的紧密循环,配合 SharedFlow.tryEmit
-        // 内部 synchronized 累积出 ANR。
-        upPlayProgressForLrcJob = lifecycleScope.launch {
-            while (isActive) {
-                subCount.first { it > 0 }
-                val curLrc = durLrcData ?: break
-                val curMs = exoPlayer.currentPosition + LRC_OFFSET_MS
-                // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上,否则从 0 起重新单向扫
-                var position = lastLrcPosition.takeIf {
-                    it in 0 until curLrc.size && curLrc[it].first <= curMs
-                } ?: 0
-                while (position + 1 < curLrc.size && curLrc[position + 1].first <= curMs) {
-                    position++
-                }
-                if (position != lastLrcPosition) {
-                    lastLrcPosition = position
-                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                }
-                // 已停在末行: 直接结束协程。线性播放不会再前进,需要重启的事件
-                // (seek/换章/换速/新 lrc 到货) 都已在对应入口显式调用 upPlayProgressForLrc。
-                // 不退出会导致外层 subCount.first { it > 0 } 在已订阅时同步返回,变成无挂起紧密循环。
-                if (position >= curLrc.size - 1) return@launch
-
-                while (isActive && position < curLrc.size - 1) {
-                    val remain =
-                        ((curLrc[position + 1].first - exoPlayer.currentPosition - LRC_OFFSET_MS)
-                        / playSpeed).toLong()
-                    if (remain > 0) {
-                        val dropped = withTimeoutOrNull(remain) {
-                            subCount.first { it == 0 }
-                            true
-                        } == true
-                        if (dropped) break
-                        position++
-                        lastLrcPosition = position
-                        postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                        continue
-                    }
-                    // 时间戳已过期: 可能是 seek 跳跃,也可能是 currentPosition 停滞。
-                    // 单向向前扫到真实位置;若仍未前进,直接退出协程,由 upPlayProgress 的 1s 心跳
-                    // 在 player 真正推进后重启,避免无挂起点的忙等。
-                    val before = position
-                    val nowMs = exoPlayer.currentPosition + LRC_OFFSET_MS
-                    while (position + 1 < curLrc.size && curLrc[position + 1].first <= nowMs) {
-                        position++
-                    }
-                    if (position == before) return@launch
-                    lastLrcPosition = position
-                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                }
-            }
-        }
     }
 
     private fun upMediaSessionPlaybackState(state: Int) {
@@ -664,151 +567,22 @@ class AudioPlayService : BaseService(), Player.Listener {
         }
     }
 
-    // ---------- 章节数据加载 ----------
+    // ---------- AudioPlayManagerListener (commonMain 章节加载逻辑的平台副作用回调) ----------
 
-    /**
-     * 同一章节不允许并发加载,失败时也要 remove。
-     */
-    private fun addLoading(index: Int): Boolean = synchronized(loadingChapters) {
-        if (loadingChapters.contains(index)) return false
-        loadingChapters.add(index)
-        true
+    override fun onTriggerPlay(playNew: Boolean) {
+        triggerPlay(playNew)
     }
 
-    private fun removeLoading(index: Int) = synchronized(loadingChapters) {
-        loadingChapters.remove(index)
+    override fun onLoadCover(url: String?) {
+        loadCover(url)
     }
 
-    /**
-     * 清掉当前章节 URL 并重新加载,用于播放器报错后的自动重试。
-     */
-    private fun refreshChapter() {
-        val chapter = AudioPlay.durChapter ?: return
-        chapter.resourceUrl = null
-        AudioPlay.durPlayUrl = ""
-        loadPlayUrl()
+    override fun onResetCoverCache() {
+        lastCoverUrl = null
     }
 
-    /**
-     * 加载当前章节的播放 URL,并联动拉取封面 + 歌词。
-     *
-     * 流程:
-     * 1. 取 chapter.resourceUrl,没有则 fetch 章节内容
-     * 2. 内容回来后写回章节并触发 [triggerPlay]
-     * 3. 同时并行启动 [loadCoverUrl] 与 [loadLrcData]
-     */
-    private fun loadPlayUrl() {
-        val index = AudioPlay.durChapterIndex
-        if (!addLoading(index)) return
-        val book = AudioPlay.book
-        val bookSource = AudioPlay.bookSource
-        if (book == null || bookSource == null) {
-            removeLoading(index)
-            toastOnUi("book or source is null")
-            return
-        }
-        lifecycleScope.launch {
-            AudioPlay.upDurChapter()
-            val chapter = AudioPlay.durChapter
-            if (chapter == null) {
-                removeLoading(index)
-                return@launch
-            }
-            if (chapter.isVolume) {
-                AudioPlay.skipTo(index + 1)
-                removeLoading(index)
-                return@launch
-            }
-            postEvent(EventBus.AUDIO_LOADING, true)
-            AudioPlay.durCoverUrl = null
-            AudioPlay.durLrcData = null
-            lastLrcPosition = -1
-            lastCoverUrl = null
-            loadCoverUrl(bookSource, book, chapter)
-            loadLrcData(bookSource, book, chapter)
-            execute {
-                chapter.resourceUrl
-                    ?: getContentAwait(bookSource, book, chapter, needSave = false)
-            }.onSuccess { content ->
-                if (content.isEmpty()) {
-                    toastOnUi("未获取到资源链接")
-                } else {
-                    if (chapter.resourceUrl != content) {
-                        chapter.resourceUrl = content
-                        if (AudioPlay.inBookshelf) appDb.bookChapterDao.update(chapter)
-                    }
-                    contentLoadFinish(chapter, content)
-                }
-            }.onError {
-                AppLog.put("获取资源链接出错\n$it", it, true)
-                postEvent(EventBus.AUDIO_LOADING, false)
-            }.onCancel {
-                removeLoading(index)
-            }.onFinally {
-                removeLoading(index)
-            }
-        }
-    }
-
-    /**
-     * 用书源的 musicCover 规则计算封面 URL,空规则就用书的默认 cover。
-     */
-    private fun loadCoverUrl(bookSource: BookSource, book: Book, chapter: BookChapter) {
-        execute {
-            val musicCover = bookSource.contentRule.musicCover
-            AudioPlay.durCoverUrl = if (!musicCover.isNullOrBlank()) {
-                val rule = AnalyzeRule(book, bookSource).apply {
-                    coroutineContext = currentCoroutineContext()
-                    setBaseUrl(chapter.url)
-                    this.chapter = chapter
-                }
-                rule.evalJS(musicCover).toString()
-            } else book.getDisplayCover()
-        }.onSuccess {
-            val coverUrl = AudioPlay.durCoverUrl ?: return@onSuccess
-            postEvent(EventBus.AUDIO_COVER, coverUrl)
-            loadCover(coverUrl)
-        }
-    }
-
-    /**
-     * 用书源的 subContent 规则计算歌词数据。
-     */
-    private fun loadLrcData(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter
-    ): Coroutine<List<Pair<Int, String>>> {
-        return execute {
-            val subContent = bookSource.contentRule.subContent
-            if (subContent.isNullOrBlank()) return@execute emptyList()
-            val rule = AnalyzeRule(book, bookSource).apply {
-                coroutineContext = currentCoroutineContext()
-                setBaseUrl(chapter.url)
-                this.chapter = chapter
-            }
-            val raw = rule.evalJS(subContent) as? List<*> ?: return@execute emptyList()
-            LrcParser.parse(raw)
-        }.onSuccess {
-            if (it.isEmpty()) return@onSuccess
-            AudioPlay.durLrcData = it
-            lastLrcPosition = -1
-            postEvent(EventBus.AUDIO_LRC, it)
-            postEvent(EventBus.AUDIO_LRCPROGRESS, 0)
-            // 歌词到货后显式启动推进协程 (STATE_READY 可能早于歌词加载完成)
-            upPlayProgressForLrc()
-        }.onError {
-            AppLog.put("获取歌词出错\n$it", it, true)
-        }
-    }
-
-    private fun contentLoadFinish(chapter: BookChapter, content: String) {
-        if (chapter.index != AudioPlay.book?.durChapterIndex) return
-        AudioPlay.durPlayUrl = content
-        val isPlayToEnd =
-            AudioPlay.durChapterIndex + 1 == AudioPlay.simulatedChapterSize &&
-                AudioPlay.durChapterPos == AudioPlay.durAudioSize
-        triggerPlay(playNew = isPlayToEnd)
+    override fun onToast(message: String) {
+        toastOnUi(message)
     }
 
 }

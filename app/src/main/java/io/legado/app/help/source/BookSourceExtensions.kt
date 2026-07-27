@@ -1,147 +1,20 @@
 package io.legado.app.help.source
 
-import io.legado.app.constant.BookSourceType
-import io.legado.app.constant.BookType
-import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.rule.ExploreKind
-import io.legado.app.data.entities.rule.FlexChildStyle
-import io.legado.app.data.entities.rule.RowUi
-import io.legado.app.model.script.runScriptWithContext
-import io.legado.app.utils.ACache
-import io.legado.app.utils.GSON
-import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.isJsonArray
-import io.legado.app.utils.printOnDebug
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
-
-/**
- * 采用md5作为key可以在分类修改后自动重新计算,不需要手动刷新
+/*
+ * BookSource/BookSourcePart 扩展函数下沉说明 (app 端残留文件)。
+ *
+ * 原本文件的 exploreKinds() / BookSourcePart.exploreKinds() / getExploreKindsKey() (private) /
+ * exploreKindsMap (internal) / mutexMap / aCache 已全部下沉到 shared commonMain
+ * (BookSourceExtensionsShared.kt), ACache 读写经 ExploreKindsCacheProviders provider 转发。
+ *
+ * - getBookType() / exploreKindsJson(): 已提升为 BookSource 成员方法 (实现 IBookSource 接口),
+ *   调用方直接 bookSource.getBookType() / bookSource.exploreKindsJson(), 无需 import 扩展函数。
+ * - clearExploreKindsCache() / exploreKinds(): 已下沉到 shared BookSourceExtensionsShared.kt,
+ *   跨模块同包名同签名扩展自动合并, 消费方 import `io.legado.app.help.source.exploreKinds`
+ *   / `clearExploreKindsCache` 零改动。
+ * - app 端 JsEnginesAndroid.kt 的 ExploreKindsCacheProvider 实现 (getAsString/put/remove)
+ *   转发到 ACache.get("explore"); exploreKindsMap 内存缓存由 shared 侧 clearExploreKindsCache 清理。
+ *
+ * 后续若有 app 平台专属的 BookSource 扩展 (依赖 ACache/runScriptWithContext 之外 app 单例),
+ * 可在此文件追加; 无 app 专属依赖的扩展请优先放 shared BookSourceExtensionsShared.kt。
  */
-
-private val mutexMap by lazy { hashMapOf<String, Mutex>() }
-private val exploreKindsMap by lazy { ConcurrentHashMap<String, List<ExploreKind>>() }
-private val aCache by lazy { ACache.get("explore") }
-
-private fun BookSource.getExploreKindsKey(): String {
-    return MD5Utils.md5Encode(bookSourceUrl + exploreUrl)
-}
-
-private fun BookSourcePart.getExploreKindsKey(): String {
-    return getBookSource()!!.getExploreKindsKey()
-}
-
-suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
-    return getBookSource()!!.exploreKinds()
-}
-
-suspend fun BookSource.exploreKinds(): List<ExploreKind> {
-    val exploreKindsKey = getExploreKindsKey()
-    exploreKindsMap[exploreKindsKey]?.let { return it }
-    val exploreUrl = exploreUrl
-    if (exploreUrl.isNullOrBlank()) {
-        return emptyList()
-    }
-    val mutex = mutexMap[bookSourceUrl] ?: Mutex().apply { mutexMap[bookSourceUrl] = this }
-    mutex.withLock {
-        exploreKindsMap[exploreKindsKey]?.let { return it }
-        val kinds = arrayListOf<ExploreKind>()
-        withContext(Dispatchers.IO) {
-            kotlin.runCatching {
-                var ruleStr = exploreUrl
-                if (exploreUrl.startsWith("<js>", true)
-                    || exploreUrl.startsWith("@js:", true)
-                ) {
-                    ruleStr = aCache.getAsString(exploreKindsKey)
-                    if (ruleStr.isNullOrBlank()) {
-                        val jsStr = if (exploreUrl.startsWith("@")) {
-                            exploreUrl.substring(4)
-                        } else {
-                            exploreUrl.substring(4, exploreUrl.lastIndexOf("<"))
-                        }
-                        ruleStr = runScriptWithContext {
-                            evalJS(jsStr).toString().trim()
-                        }
-                        aCache.put(exploreKindsKey, ruleStr)
-                    }
-                }
-                if (ruleStr.isJsonArray()) {
-                    GSON.fromJsonArray<ExploreKind>(ruleStr).getOrThrow().let {
-                        kinds.addAll(it)
-                    }
-                } else {
-                    ruleStr.split("(&&|\n)+".toRegex()).forEach { kindStr ->
-                        val kindCfg = kindStr.split("::")
-                        var title = kindCfg.first()
-                        var type = RowUi.Type.text
-                        var cols: Int? = null
-                        when {
-                            title.startsWith("BUTTON:") -> {
-                                title = title.substring(7)
-                                type = RowUi.Type.button
-                            }
-
-                            title.startsWith("TITLE:") -> {
-                                title = title.substring(6)
-                                type = RowUi.Type.title
-                                cols = 1
-                            }
-                        }
-                        kinds.add(
-                            ExploreKind(
-                                title,
-                                type,
-                                kindCfg.getOrNull(1),
-                                cols?.let { FlexChildStyle(cols = it) }
-                            )
-                        )
-                    }
-                }
-            }.onFailure {
-                kinds.add(ExploreKind("ERROR:${it.localizedMessage}", url = it.stackTraceToString()))
-                it.printOnDebug()
-            }
-        }
-        exploreKindsMap[exploreKindsKey] = kinds
-        return kinds
-    }
-}
-
-suspend fun BookSourcePart.clearExploreKindsCache() {
-    withContext(Dispatchers.IO) {
-        val exploreKindsKey = getExploreKindsKey()
-        aCache.remove(exploreKindsKey)
-        exploreKindsMap.remove(exploreKindsKey)
-    }
-}
-
-suspend fun BookSource.clearExploreKindsCache() {
-    withContext(Dispatchers.IO) {
-        val exploreKindsKey = getExploreKindsKey()
-        aCache.remove(exploreKindsKey)
-        exploreKindsMap.remove(exploreKindsKey)
-    }
-}
-
-fun BookSource.exploreKindsJson(): String {
-    val exploreKindsKey = getExploreKindsKey()
-    return aCache.getAsString(exploreKindsKey)?.takeIf { it.isJsonArray() }
-        ?: exploreUrl.takeIf { it.isJsonArray() }
-        ?: ""
-}
-
-fun BookSource.getBookType(): Int {
-    return when (bookSourceType) {
-        BookSourceType.file -> BookType.text or BookType.webFile
-        BookSourceType.image -> BookType.image
-        BookSourceType.audio -> BookType.audio
-        BookSourceType.video -> BookType.video
-        BookSourceType.rss -> BookType.rss
-        else -> BookType.text
-    }
-}

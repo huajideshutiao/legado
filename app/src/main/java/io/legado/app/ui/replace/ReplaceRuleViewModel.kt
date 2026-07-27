@@ -1,135 +1,71 @@
 package io.legado.app.ui.replace
 
 import android.app.Application
-import android.text.TextUtils
+import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.utils.splitNotBlank
 
 /**
- * 替换规则数据修改
- * 修改数据要copy,直接修改会导致界面不刷新
+ * 替换规则数据修改 VM (Android 端)。
+ *
+ * # KMP 化重构说明
+ *
+ * 全部业务逻辑 (12 个 DAO 写方法) 已下沉到 shared commonMain
+ * [ReplaceRuleViewModelShared]。本类采用**组合委托**模式持有 [shared] 实例,
+ * 不通过继承 `ReplaceRuleViewModelShared`:
+ * - 本类必须继承 [BaseViewModel] (AndroidViewModel 子类, 提供 `execute` / `context` /
+ *   `viewModelScope`), Kotlin 单继承无法同时继承 [ReplaceRuleViewModelShared];
+ * - 通过构造函数注入 [viewModelScope] 到 [shared], 所有方法转发到 [shared]。
+ *
+ * # 调用方兼容
+ *
+ * [ReplaceRuleActivity] / [ReplaceRuleListViewModel] 调用方式保持不变:
+ * - `viewModel.update(rule)` / `viewModel.delete(rule)` / `viewModel.toTop(rule)` 等
+ * - 方法签名 (vararg / List 参数) 完全一致
+ *
+ * # Android 专属依赖移除
+ *
+ * - 原 `android.text.TextUtils.join(",", set)` 已在 [shared] 中替换为
+ *   `set.joinToString(",")` (Kotlin 标准库);
+ * - 原 `io.legado.app.utils.splitNotBlank` 已下沉 commonMain, 直接由 [shared] 复用;
+ * - 本类不再 import Android 专属 API。
+ *
+ * 修改数据要 copy, 直接修改会导致界面不刷新 (data class equals 按 id)。
  */
 class ReplaceRuleViewModel(application: Application) : BaseViewModel(application) {
 
-    fun update(vararg rule: ReplaceRule) {
-        execute {
-            appDb.replaceRuleDao.update(*rule)
-        }
-    }
+    /**
+     * 共享核心 VM (KMP), 注入 [viewModelScope]。
+     *
+     * 无平台专属 lambda 注入 (本 VM 全部操作走 DAO, 无 Android 专属依赖)。
+     */
+    private val shared: ReplaceRuleViewModelShared = ReplaceRuleViewModelShared(
+        scope = viewModelScope,
+    )
 
-    fun delete(rule: ReplaceRule) {
-        execute {
-            appDb.replaceRuleDao.delete(rule)
-        }
-    }
+    fun update(vararg rule: ReplaceRule) = shared.update(*rule)
 
-    fun toTop(rule: ReplaceRule) {
-        execute {
-            rule.order = appDb.replaceRuleDao.minOrder - 1
-            appDb.replaceRuleDao.update(rule)
-        }
-    }
+    fun delete(rule: ReplaceRule) = shared.delete(rule)
 
-    fun topSelect(rules: List<ReplaceRule>) {
-        execute {
-            var minOrder = appDb.replaceRuleDao.minOrder - rules.size
-            rules.forEach {
-                it.order = ++minOrder
-            }
-            appDb.replaceRuleDao.update(*rules.toTypedArray())
-        }
-    }
+    fun toTop(rule: ReplaceRule) = shared.toTop(rule)
 
-    fun toBottom(rule: ReplaceRule) {
-        execute {
-            rule.order = appDb.replaceRuleDao.maxOrder + 1
-            appDb.replaceRuleDao.update(rule)
-        }
-    }
+    fun topSelect(rules: List<ReplaceRule>) = shared.topSelect(rules)
 
-    fun bottomSelect(rules: List<ReplaceRule>) {
-        execute {
-            var maxOrder = appDb.replaceRuleDao.maxOrder
-            rules.forEach {
-                it.order = maxOrder++
-            }
-            appDb.replaceRuleDao.update(*rules.toTypedArray())
-        }
-    }
+    fun toBottom(rule: ReplaceRule) = shared.toBottom(rule)
 
-    fun upOrder() {
-        execute {
-            val rules = appDb.replaceRuleDao.all
-            for ((index, rule) in rules.withIndex()) {
-                rule.order = index + 1
-            }
-            appDb.replaceRuleDao.update(*rules.toTypedArray())
-        }
-    }
+    fun bottomSelect(rules: List<ReplaceRule>) = shared.bottomSelect(rules)
 
-    fun enableSelection(rules: List<ReplaceRule>) {
-        execute {
-            val array = Array(rules.size) {
-                rules[it].copy(isEnabled = true)
-            }
-            appDb.replaceRuleDao.update(*array)
-        }
-    }
+    fun upOrder() = shared.upOrder()
 
-    fun disableSelection(rules: List<ReplaceRule>) {
-        execute {
-            val array = Array(rules.size) {
-                rules[it].copy(isEnabled = false)
-            }
-            appDb.replaceRuleDao.update(*array)
-        }
-    }
+    fun enableSelection(rules: List<ReplaceRule>) = shared.enableSelection(rules)
 
-    fun delSelection(rules: List<ReplaceRule>) {
-        execute {
-            appDb.replaceRuleDao.delete(*rules.toTypedArray())
-        }
-    }
+    fun disableSelection(rules: List<ReplaceRule>) = shared.disableSelection(rules)
 
-    fun addGroup(group: String) {
-        execute {
-            val sources = appDb.replaceRuleDao.noGroup
-            sources.forEach { source ->
-                source.group = group
-            }
-            appDb.replaceRuleDao.update(*sources.toTypedArray())
-        }
-    }
+    fun delSelection(rules: List<ReplaceRule>) = shared.delSelection(rules)
 
-    fun upGroup(oldGroup: String, newGroup: String?) {
-        execute {
-            val sources = appDb.replaceRuleDao.getByGroup(oldGroup)
-            sources.forEach { source ->
-                source.group?.splitNotBlank(",")?.toHashSet()?.let {
-                    it.remove(oldGroup)
-                    if (!newGroup.isNullOrEmpty())
-                        it.add(newGroup)
-                    source.group = TextUtils.join(",", it)
-                }
-            }
-            appDb.replaceRuleDao.update(*sources.toTypedArray())
-        }
-    }
+    fun addGroup(group: String) = shared.addGroup(group)
 
-    fun delGroup(group: String) {
-        execute {
-            execute {
-                val sources = appDb.replaceRuleDao.getByGroup(group)
-                sources.forEach { source ->
-                    source.group?.splitNotBlank(",")?.toHashSet()?.let {
-                        it.remove(group)
-                        source.group = TextUtils.join(",", it)
-                    }
-                }
-                appDb.replaceRuleDao.update(*sources.toTypedArray())
-            }
-        }
-    }
+    fun upGroup(oldGroup: String, newGroup: String?) = shared.upGroup(oldGroup, newGroup)
+
+    fun delGroup(group: String) = shared.delGroup(group)
 }

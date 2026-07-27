@@ -1,0 +1,168 @@
+package io.legado.app.ui.about
+
+// I18N KEYS (已注册于 ResourceProvider.jvm.kt):
+//   "log" to "日志",
+//   "clear" to "清空"
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import io.legado.app.constant.AppLog
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.widget.dialog.TextDialog
+
+/** Arco Design arco_radius_lg = 16dp。 */
+private val ArcoRadiusLg = 16.dp
+
+/**
+ * 应用日志对话框内容 (KMP 共享, app + desktop 复用)。
+ *
+ * 对应 app 端 `io.legado.app.ui.about.AppLogDialog` 的 Content，去掉对 BaseComposeDialogFragment /
+ * showDialogFragment / LogUtils / autoLinkText 的依赖，改为纯 @Composable:
+ * - 标题栏: 返回 + "日志" + 清空按钮
+ * - 列表: LazyColumn，行=时间+消息 (消息可选)，带异常的行可点击查看堆栈
+ *
+ * [AppLog] 已在 commonMain，直接读取其内存日志快照。
+ *
+ * @param onDismiss 用户取消 (返回按钮)
+ */
+@Composable
+fun AppLogDialogContent(
+    onDismiss: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    // 日志列表快照: 进入对话框时取一次, 清空时刷新
+    var logs by remember { mutableStateOf(AppLog.logs) }
+    // 选中的堆栈日志 (非 null 时弹出堆栈对话框)
+    var stackTraceItem by remember { mutableStateOf<Triple<Long, String, Throwable?>?>(null) }
+
+    Column(Modifier.fillMaxWidth()) {
+        DialogTitleBar(
+            title = rememberString("log"),
+            onBack = onDismiss,
+            actions = {
+                AppTextButton(text = rememberString("clear")) {
+                    AppLog.clear()
+                    logs = emptyList()
+                }
+            },
+        )
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            itemsIndexed(logs) { _, item ->
+                LogItem(item) { stackTraceItem = item }
+            }
+        }
+    }
+
+    // 堆栈信息弹窗 (点击带异常的日志行触发)
+    stackTraceItem?.let { item ->
+        TextDialog(
+            title = rememberString("log"),
+            content = item.third?.stackTraceToString() ?: "",
+            onConfirm = { stackTraceItem = null },
+            onDismiss = { stackTraceItem = null },
+        )
+    }
+}
+
+/**
+ * 单条日志行: 时间 + 消息, 带 throwable 时可点击查看堆栈。
+ */
+@Composable
+private fun LogItem(
+    item: Triple<Long, String, Throwable?>,
+    onClick: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val (time, message, throwable) = item
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = throwable != null, onClick = onClick)
+            .padding(8.dp),
+    ) {
+        Text(
+            text = formatLogTime(time),
+            color = colors.primaryText,
+        )
+        SelectionContainer {
+            Text(
+                text = message,
+                color = colors.primaryText,
+            )
+        }
+    }
+}
+
+/**
+ * 应用日志对话框 (带 Dialog 窗口, 供桌面 / iOS 端直接使用)。
+ *
+ * app 端使用 [AppLogDialogContent] 嵌入自身 DialogFragment，不调用本函数 (避免双层窗口)。
+ *
+ * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部)
+ */
+@Composable
+fun AppLogDialog(
+    onDismiss: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(ArcoRadiusLg),
+            color = colors.background,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            AppLogDialogContent(onDismiss)
+        }
+    }
+}
+
+/**
+ * 将 epoch 毫秒格式化为 "yy-MM-dd HH:mm:ss.SSS" (UTC, 对齐 app 端 LogUtils.logTimeFormat)。
+ *
+ * 使用 Howard Hinnant 的 civil_from_days 算法将天数转换为年月日, 纯 Kotlin 实现,
+ * 不依赖 java.util.Date / SimpleDateFormat (KMP 安全)。
+ */
+private fun formatLogTime(epochMillis: Long): String {
+    val totalSeconds = epochMillis / 1000
+    val millis = (epochMillis % 1000).toInt().let { if (it < 0) it + 1000 else it }
+    val secs = (totalSeconds % 60).toInt().let { if (it < 0) it + 60 else it }
+    val totalMinutes = totalSeconds / 60
+    val mins = (totalMinutes % 60).toInt().let { if (it < 0) it + 60 else it }
+    val totalHours = totalMinutes / 60
+    val hrs = (totalHours % 24).toInt().let { if (it < 0) it + 24 else it }
+    val totalDays = totalHours / 24
+
+    // Howard Hinnant civil_from_days (UTC, days since 1970-01-01 → y/m/d)
+    val z = totalDays.toInt() + 719468
+    val era = if (z >= 0) z / 146097 else (z - 146096) / 146097
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val y = yoe + era * 400
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = if (mp < 10) mp + 3 else mp - 9
+    val year = if (m <= 2) y + 1 else y
+    val yy = year % 100
+
+    return "%02d-%02d %02d:%02d:%02d.%03d".format(yy, m, d, hrs, mins, secs, millis)
+}

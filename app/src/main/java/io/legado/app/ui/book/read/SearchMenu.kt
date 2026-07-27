@@ -1,47 +1,28 @@
 package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.PorterDuff
-import android.util.AttributeSet
-import android.view.LayoutInflater
-import android.view.animation.Animation
-import android.widget.FrameLayout
-import androidx.core.view.isVisible
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.legado.app.R
-import io.legado.app.databinding.ViewSearchMenuBinding
-import io.legado.app.lib.theme.Selector
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.activity
-import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.invisible
-import io.legado.app.utils.loadAnimation
-import io.legado.app.utils.visible
 
 /**
- * 搜索界面菜单
+ * 搜索界面菜单：Compose 状态持有者（app 端薄壳）。
+ *
+ * UI Composable 已下沉到 shared/sharedUiMain 的 [SearchMenuOverlay]，本类仅保留
+ * 状态属性 + Android 专属逻辑（ReadBook / R.string / CallBack 桥接到
+ * [ReadBookActivity] 等，属 L3 不可下沉），实现 [SearchMenuState] 供 shared
+ * Composable 解耦访问。
+ *
+ * 对外 API(runMenuIn/runMenuOut/upSearchResultList/updateSearchResultIndex/invisible)
+ * 与原 View 版一致，UI 由 shared [SearchMenuOverlay] 渲染。
  */
-class SearchMenu @JvmOverloads constructor(
-    context: Context, attrs: AttributeSet? = null
-) : FrameLayout(context, attrs) {
+class SearchMenu(internal val activity: ReadBookActivity) : SearchMenuState {
 
-    private val callBack: CallBack get() = activity as CallBack
-    private val binding = ViewSearchMenuBinding.inflate(LayoutInflater.from(context), this, true)
-
-    private val menuBottomIn: Animation = loadAnimation(context, R.anim.anim_readbook_bottom_in)
-    private val menuBottomOut: Animation = loadAnimation(context, R.anim.anim_readbook_bottom_out)
-    private val bgColor: Int = context.bottomBackground
-    private val textColor: Int = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
-    private val bottomBackgroundList: ColorStateList =
-        Selector.colorBuild().setDefaultColor(bgColor)
-            .setPressedColor(ColorUtils.darkenColor(bgColor)).create()
-    private var onMenuOutEnd: (() -> Unit)? = null
-    private var isMenuOutAnimating = false
+    private val callBack: CallBack get() = activity
 
     private val searchResultList: MutableList<SearchResult> = mutableListOf()
     private var currentSearchResultIndex: Int = -1
@@ -50,14 +31,32 @@ class SearchMenu @JvmOverloads constructor(
         get() = searchResultList.isNotEmpty()
     val selectedSearchResult: SearchResult?
         get() = searchResultList.getOrNull(currentSearchResultIndex)
-    val bottomMenuVisible get() = isVisible && binding.llBottomMenu.isVisible
 
-    init {
-        initAnimation()
-        initView()
-        bindEvent()
-        updateSearchInfo()
-    }
+    /** 整体可见性(原 SearchMenu 根 View 的 visible/invisible) */
+    override var rootVisible by mutableStateOf(false)
+        private set
+
+    /** 底部菜单出入场(原 ll_bottom_menu 动画) */
+    override val bottomVisibleState = MutableTransitionState(false)
+    val bottomMenuVisible: Boolean
+        get() = rootVisible && (bottomVisibleState.currentState || bottomVisibleState.targetState)
+
+    /** 上/下一处 FAB(原 fabLeft/fabRight，菜单收起后仍驻留) */
+    override var fabsVisible by mutableStateOf(false)
+        private set
+
+    /** 原 vw_menu_bg 可见性(随底部菜单出入场) */
+    override var bgVisible by mutableStateOf(false)
+        private set
+    private var bgClickEnabled = true
+
+    override var searchInfo by mutableStateOf("")
+        private set
+
+    private var isMenuOutAnimating = false
+    private var pendingInEnd = false
+    private var pendingOutEnd = false
+    private var onMenuOutEnd: (() -> Unit)? = null
 
     fun upSearchResultList(resultList: List<SearchResult>) {
         searchResultList.clear()
@@ -65,49 +64,11 @@ class SearchMenu @JvmOverloads constructor(
         updateSearchInfo()
     }
 
-    private fun initView() = binding.run {
-        llSearchBaseInfo.setBackgroundColor(bgColor)
-        tvCurrentSearchInfo.setTextColor(bottomBackgroundList)
-        llBottomBg.setBackgroundColor(bgColor)
-        fabLeft.backgroundTintList = bottomBackgroundList
-        fabLeft.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        fabRight.backgroundTintList = bottomBackgroundList
-        fabRight.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvMainMenu.setTextColor(textColor)
-        tvSearchResults.setTextColor(textColor)
-        tvSearchExit.setTextColor(textColor)
-        ivMainMenu.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        ivSearchResults.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        ivSearchExit.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        ivSearchContentUp.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        ivSearchContentDown.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvCurrentSearchInfo.setTextColor(textColor)
-        applyNavigationBarPadding()
-    }
-
-
-    fun runMenuIn() {
-        this.visible()
-        binding.llBottomMenu.visible()
-        binding.vwMenuBg.visible()
-        binding.llBottomMenu.startAnimation(menuBottomIn)
-    }
-
-    fun runMenuOut(onMenuOutEnd: (() -> Unit)? = null) {
-        if (isMenuOutAnimating) {
-            return
-        }
-        this.onMenuOutEnd = onMenuOutEnd
-        if (this.isVisible) {
-            binding.llBottomMenu.startAnimation(menuBottomOut)
-        }
-    }
-
     @SuppressLint("SetTextI18n")
     fun updateSearchInfo() {
         ReadBook.curTextChapter?.let {
-            binding.tvCurrentSearchInfo.text =
-                """${context.getString(R.string.search_content_size)}: ${searchResultList.size} / 当前章节: ${it.title}"""
+            searchInfo =
+                """${activity.getString(R.string.search_content_size)}: ${searchResultList.size} / 当前章节: ${it.title}"""
         }
     }
 
@@ -120,113 +81,103 @@ class SearchMenu @JvmOverloads constructor(
         }
     }
 
-    private fun bindEvent() = binding.run {
-        //搜索结果
-        llSearchResults.setOnClickListener {
-            runMenuOut {
-                callBack.openSearchActivity(selectedSearchResult?.query)
-            }
-        }
+    /** 隐藏整个搜索菜单(原 View invisible()) */
+    fun invisible() {
+        rootVisible = false
+    }
 
-        //主菜单
-        llMainMenu.setOnClickListener {
-            runMenuOut {
-                callBack.cancelSelect()
-                callBack.showMenuBar()
-                this@SearchMenu.invisible()
-            }
+    fun runMenuIn() {
+        rootVisible = true
+        bgVisible = true
+        // 原 menuBottomIn.onAnimationStart
+        fabsVisible = hasSearchResult
+        callBack.upSystemUiVisibility()
+        pendingOutEnd = false
+        isMenuOutAnimating = false
+        onMenuOutEnd = null
+        if (bottomVisibleState.targetState && bottomVisibleState.isIdle) {
+            menuInEnd()
+            return
         }
+        pendingInEnd = true
+        bottomVisibleState.targetState = true
+    }
 
-        //退出
-        llSearchExit.setOnClickListener {
-            runMenuOut {
-                callBack.exitSearchMenu()
-            }
+    fun runMenuOut(onMenuOutEnd: (() -> Unit)? = null) {
+        if (isMenuOutAnimating) {
+            return
         }
-
-        fabLeft.setOnClickListener {
-            updateSearchResultIndex(currentSearchResultIndex - 1)
-            callBack.navigateToSearch(
-                searchResultList[currentSearchResultIndex],
-                currentSearchResultIndex
-            )
-        }
-
-        ivSearchContentUp.setOnClickListener {
-            updateSearchResultIndex(currentSearchResultIndex - 1)
-            callBack.navigateToSearch(
-                searchResultList[currentSearchResultIndex],
-                currentSearchResultIndex
-            )
-        }
-
-        ivSearchContentDown.setOnClickListener {
-            updateSearchResultIndex(currentSearchResultIndex + 1)
-            callBack.navigateToSearch(
-                searchResultList[currentSearchResultIndex],
-                currentSearchResultIndex
-            )
-        }
-
-        fabRight.setOnClickListener {
-            updateSearchResultIndex(currentSearchResultIndex + 1)
-            callBack.navigateToSearch(
-                searchResultList[currentSearchResultIndex],
-                currentSearchResultIndex
-            )
+        this.onMenuOutEnd = onMenuOutEnd
+        if (rootVisible) {
+            // 原 menuBottomOut.onAnimationStart
+            isMenuOutAnimating = true
+            bgClickEnabled = false
+            pendingInEnd = false
+            pendingOutEnd = true
+            bottomVisibleState.targetState = false
         }
     }
 
-    private fun initAnimation() {
-        //显示菜单
-        menuBottomIn.setAnimationListener(object : Animation.AnimationListener {
-            override fun onAnimationStart(animation: Animation) {
-                callBack.upSystemUiVisibility()
-                binding.fabLeft.visible(hasSearchResult)
-                binding.fabRight.visible(hasSearchResult)
-            }
+    /** 原 menuBottomIn.onAnimationEnd */
+    private fun menuInEnd() {
+        bgClickEnabled = true
+        callBack.upSystemUiVisibility()
+    }
 
-            @SuppressLint("RtlHardcoded")
-            override fun onAnimationEnd(animation: Animation) {
-                binding.vwMenuBg.setOnClickListener { runMenuOut() }
-                callBack.upSystemUiVisibility()
-            }
+    /** 原 menuBottomOut.onAnimationEnd */
+    private fun menuOutEnd() {
+        isMenuOutAnimating = false
+        bgVisible = false
+        bgClickEnabled = true
+        onMenuOutEnd?.invoke()
+        onMenuOutEnd = null
+        callBack.upSystemUiVisibility()
+    }
 
-            override fun onAnimationRepeat(animation: Animation) = Unit
-        })
+    override fun onTransitionIdle(shown: Boolean) {
+        if (shown && pendingInEnd) {
+            pendingInEnd = false
+            menuInEnd()
+        } else if (!shown && pendingOutEnd) {
+            pendingOutEnd = false
+            menuOutEnd()
+        }
+    }
 
-        //隐藏菜单
-        menuBottomOut.setAnimationListener(object : Animation.AnimationListener {
-            override fun onAnimationStart(animation: Animation) {
-                isMenuOutAnimating = true
-                binding.vwMenuBg.setOnClickListener(null)
-            }
+    override fun onBgClick() {
+        if (bgClickEnabled) runMenuOut()
+    }
 
-            override fun onAnimationEnd(animation: Animation) {
-                isMenuOutAnimating = false
-                binding.llBottomMenu.invisible()
-                binding.vwMenuBg.invisible()
-                binding.vwMenuBg.setOnClickListener { runMenuOut() }
+    /** 上一处/下一处 */
+    override fun navigate(delta: Int) {
+        if (searchResultList.isEmpty()) return
+        updateSearchResultIndex(currentSearchResultIndex + delta)
+        callBack.navigateToSearch(
+            searchResultList[currentSearchResultIndex],
+            currentSearchResultIndex
+        )
+    }
 
-                onMenuOutEnd?.invoke()
-                callBack.upSystemUiVisibility()
-            }
+    override fun clickResults() = runMenuOut {
+        callBack.openSearchActivity(selectedSearchResult?.query)
+    }
 
-            override fun onAnimationRepeat(animation: Animation) = Unit
-        })
+    override fun clickMainMenu() = runMenuOut {
+        callBack.cancelSelect()
+        callBack.showMenuBar()
+        invisible()
+    }
+
+    override fun clickExit() = runMenuOut {
+        callBack.exitSearchMenu()
     }
 
     interface CallBack {
-        var isShowingSearchResult: Boolean
         fun openSearchActivity(searchWord: String?)
-        fun showSearchSetting()
         fun upSystemUiVisibility()
         fun exitSearchMenu()
         fun showMenuBar()
         fun navigateToSearch(searchResult: SearchResult, index: Int)
-        fun onMenuShow()
-        fun onMenuHide()
         fun cancelSelect()
     }
-
 }

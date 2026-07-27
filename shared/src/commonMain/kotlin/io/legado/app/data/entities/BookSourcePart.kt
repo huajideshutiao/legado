@@ -1,0 +1,72 @@
+package io.legado.app.data.entities
+
+import androidx.room.DatabaseView
+import io.legado.app.constant.AppPattern
+import io.legado.app.utils.splitNotBlank
+
+
+@DatabaseView(
+    """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore,
+    (ifnull(trim(loginUrl), '') <> '' or ifnull(trim(loginUi), '') <> '') hasLoginUrl, lastUpdateTime, respondTime, weight,
+    (ifnull(trim(exploreUrl), '') <> '') hasExploreUrl
+    from book_sources""",
+    viewName = "book_sources_part"
+)
+data class BookSourcePart(
+    // 地址，包括 http/https
+    var bookSourceUrl: String = "",
+    // 名称
+    var bookSourceName: String = "",
+    // 分组
+    var bookSourceGroup: String? = null,
+    // 手动排序编号
+    var customOrder: Int = 0,
+    // 是否启用
+    var enabled: Boolean = true,
+    // 启用发现
+    var enabledExplore: Boolean = true,
+    // 是否有登录地址
+    var hasLoginUrl: Boolean = false,
+    // 最后更新时间，用于排序
+    var lastUpdateTime: Long = 0,
+    // 响应时间，用于排序
+    var respondTime: Long = 180000L,
+    // 智能排序的权重
+    var weight: Int = 0,
+    // 是否有发现url
+    var hasExploreUrl: Boolean = false
+) {
+
+    override fun hashCode(): Int {
+        return bookSourceUrl.hashCode()
+    }
+
+    override fun equals(other: Any?): Boolean {
+        return if (other is BookSourcePart) other.bookSourceUrl == bookSourceUrl else false
+    }
+
+    fun getDisPlayNameGroup(): String {
+        return if (bookSourceGroup.isNullOrBlank()) {
+            bookSourceName
+        } else {
+            // String.format 改字符串模板，避免 commonMain 引入 java.lang.String.format 平台依赖
+            "$bookSourceName ($bookSourceGroup)"
+        }
+    }
+
+    fun addGroup(groups: String) {
+        bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
+            it.addAll(groups.splitNotBlank(AppPattern.splitGroupRegex))
+            bookSourceGroup = it.joinToString(",")
+        }
+        if (bookSourceGroup.isNullOrBlank()) bookSourceGroup = groups
+    }
+
+    fun removeGroup(groups: String) {
+        bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
+            it.removeAll(groups.splitNotBlank(AppPattern.splitGroupRegex).toSet())
+            bookSourceGroup = it.joinToString(",")
+        }
+    }
+
+}

@@ -1,27 +1,62 @@
 package io.legado.app.ui.book.read.config
 
+import android.graphics.Color as AColor
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.widget.TextView
+import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toDrawable
+import androidx.fragment.app.DialogFragment
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogClickActionConfigBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
+import io.legado.app.ui.compose.platform.AndroidEventBusProvider
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * 点击区域设置
+ * 点击区域设置：全屏 3x3 半透明网格，点击各格弹动作选择。
+ * 全屏沉浸窗口自管，不走 BaseComposeDialogFragment 的 0.9w/0.8h 约束。
  */
-class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_config) {
-    override val applyFilletBackground: Boolean = false
-    private val binding by viewBinding(DialogClickActionConfigBinding::bind)
+class ClickActionConfigDialog : DialogFragment() {
+
     private val actions by lazy {
         linkedMapOf(
             Pair(0, getString(R.string.menu)),
@@ -39,9 +74,46 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
         )
     }
 
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View = ComposeView(requireContext()).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setContent {
+            // 注入 Android actual Provider，供 commonMain AppTheme 通过 LocalXxx 取依赖
+            val themeStoreProvider = remember { AndroidThemeStoreProvider() }
+            val appConfigProvider = remember { AndroidAppConfigProvider() }
+            val eventBusProvider = remember { AndroidEventBusProvider() }
+            val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
+            CompositionLocalProvider(
+                LocalThemeStoreProvider provides themeStoreProvider,
+                LocalAppConfigProvider provides appConfigProvider,
+                LocalEventBusProvider provides eventBusProvider,
+                LocalPreferenceStoreProvider provides preferenceStoreProvider,
+            ) {
+                AppTheme {
+                    GridContent()
+                }
+            }
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         dialog?.window?.let { window ->
+            window.decorView.setPadding(0, 0, 0, 0)
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            window.setBackgroundDrawable(AColor.TRANSPARENT.toDrawable())
+            val attr = window.attributes
+            if (AppConfig.isEInkMode) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                attr.dimAmount = 0.0f
+                attr.windowAnimations = 0
+            } else {
+                attr.windowAnimations = R.style.Animation_Dialog
+            }
+            window.attributes = attr
             window.setLayout(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -72,89 +144,80 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initData()
-        initViewEvent()
-    }
+    @Composable
+    private fun GridContent() {
+        val context = LocalContext.current
+        val translucent = colorResource(R.color.translucent)
+        val cardShape = RoundedCornerShape(3.dp)
 
-    private fun initData() = binding.run {
-        tvTopLeft.text = actions[AppConfig.clickActionTL]
-        tvTopCenter.text = actions[AppConfig.clickActionTC]
-        tvTopRight.text = actions[AppConfig.clickActionTR]
-        tvMiddleLeft.text = actions[AppConfig.clickActionML]
-        tvMiddleCenter.text = actions[AppConfig.clickActionMC]
-        tvMiddleRight.text = actions[AppConfig.clickActionMR]
-        tvBottomLeft.text = actions[AppConfig.clickActionBL]
-        tvBottomCenter.text = actions[AppConfig.clickActionBC]
-        tvBottomRight.text = actions[AppConfig.clickActionBR]
-    }
+        // 9 个区域：AppConfig 写入口 + 当前动作值
+        val setters = listOf<(Int) -> Unit>(
+            { AppConfig.clickActionTL = it }, { AppConfig.clickActionTC = it },
+            { AppConfig.clickActionTR = it }, { AppConfig.clickActionML = it },
+            { AppConfig.clickActionMC = it }, { AppConfig.clickActionMR = it },
+            { AppConfig.clickActionBL = it }, { AppConfig.clickActionBC = it },
+            { AppConfig.clickActionBR = it },
+        )
+        val values = listOf(
+            AppConfig.clickActionTL, AppConfig.clickActionTC, AppConfig.clickActionTR,
+            AppConfig.clickActionML, AppConfig.clickActionMC, AppConfig.clickActionMR,
+            AppConfig.clickActionBL, AppConfig.clickActionBC, AppConfig.clickActionBR,
+        )
+        val states = remember { values.map { mutableIntStateOf(it) } }
 
-    private fun initViewEvent() {
-        binding.ivClose.setOnClickListener {
-            dismissAllowingStateLoss()
-        }
-        binding.tvTopLeft.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionTL, action)
-                (it as? TextView)?.text = actions[action]
+        Box(Modifier.fillMaxSize().background(translucent)) {
+            Column(Modifier.fillMaxSize()) {
+                repeat(3) { row ->
+                    Row(Modifier.fillMaxWidth().weight(1f)) {
+                        repeat(3) { col ->
+                            val index = row * 3 + col
+                            var value by states[index]
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .padding(1.dp)
+                                    .background(translucent, cardShape)
+                                    .clickable {
+                                        context.selector(
+                                            getString(R.string.select_action),
+                                            actions.values.toList()
+                                        ) { _, i ->
+                                            val action = actions.keys.toList()[i]
+                                            setters[index](action)
+                                            value = action
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(actions[value].orEmpty(), color = Color.White)
+                            }
+                        }
+                    }
+                }
             }
-        }
-        binding.tvTopCenter.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionTC, action)
-                (it as? TextView)?.text = actions[action]
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .background(translucent, cardShape)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.click_regional_config),
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_close),
+                    contentDescription = stringResource(R.string.close),
+                    tint = Color.White,
+                    modifier = Modifier
+                        .padding(4.dp)
+                        .clickable { dismissAllowingStateLoss() },
+                )
             }
-        }
-        binding.tvTopRight.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionTR, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvMiddleLeft.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionML, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvMiddleCenter.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionMC, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvMiddleRight.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionMR, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvBottomLeft.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionBL, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvBottomCenter.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionBC, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-        binding.tvBottomRight.setOnClickListener {
-            selectAction { action ->
-                putPrefInt(PreferKey.clickActionBR, action)
-                (it as? TextView)?.text = actions[action]
-            }
-        }
-    }
-
-    private fun selectAction(success: (action: Int) -> Unit) {
-        context?.selector(
-            getString(R.string.select_action),
-            actions.values.toList()
-        ) { _, index ->
-            success.invoke(actions.keys.toList()[index])
         }
     }
 
@@ -162,5 +225,4 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
         super.onDestroy()
         AppConfig.detectClickArea()
     }
-
 }

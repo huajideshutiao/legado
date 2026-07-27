@@ -1,180 +1,258 @@
 package io.legado.app.ui.book.read.config
 
-import android.content.Context
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import android.widget.RadioButton
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemSelectableOptionBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.association.ImportHttpTtsDialog
+import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.splitNotBlank
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
- * tts引擎管理
+ * tts 引擎管理：系统引擎 + HttpTTS 列表单选，底部"书籍/通用"两种保存范围。
  */
-class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener {
+class SpeakEngineDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel: SpeakEngineViewModel by viewModels()
     private val ttsUrlKey = "ttsUrlKey"
-    private val adapter by lazy { Adapter(requireContext()) }
-    private var ttsEngine: String? = ReadAloud.ttsEngine
-    private val sysTtsViews = arrayListOf<RadioButton>()
+    private var ttsEngine: String? by mutableStateOf(ReadAloud.ttsEngine)
     private val callBack: CallBack? get() = parentFragment as? CallBack
     private val importDocResult by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            showDialogFragment(ImportHttpTtsDialog(uri.toString()))
-        }
+                showDialogFragment(ImportHttpTtsDialog(uri.toString()))
+            }
         }
     }
     private val exportDirResult by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            showExportSuccess(uri)
-        }
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initView()
-        initData()
-    }
-
-    private fun initView() = binding.run {
-        setupTitleBar(
-            title = getString(R.string.speak_engine),
-            menuRes = R.menu.speak_engine,
-            onMenuClick = ::onMenuItemClick
-        )
-        recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        recyclerView.adapter = adapter
-        adapter.addHeaderView {
-            ItemSelectableOptionBinding.inflate(layoutInflater, recyclerView, false).apply {
-                sysTtsViews.add(rbSelect)
-                ivEdit.gone()
-                ivDelete.gone()
-                rbSelect.text = "系统默认"
-                rbSelect.tag = ""
-                rbSelect.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
-                        && GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                    .getOrNull()?.value.isNullOrEmpty()
-                rbSelect.setOnClickListener {
-                    upTts(GSON.toJson(SelectItem("系统默认", "")))
-                }
+                showExportSuccess(uri)
             }
         }
-        viewModel.sysEngines.forEach { engine ->
-            adapter.addHeaderView {
-                ItemSelectableOptionBinding.inflate(layoutInflater, recyclerView, false).apply {
-                    sysTtsViews.add(rbSelect)
-                    ivEdit.gone()
-                    ivDelete.gone()
-                    rbSelect.text = engine.label
-                    rbSelect.tag = engine.name
-                    rbSelect.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                        .getOrNull()?.value == rbSelect.tag
-                    rbSelect.setOnClickListener {
-                        upTts(GSON.toJson(SelectItem(engine.label, engine.name)))
-                    }
-                }
-            }
-        }
-        tvFooterLeft.setText(R.string.book)
-        tvFooterLeft.visible()
-        tvFooterLeft.setOnClickListener {
-            ReadBook.book?.let { it.config.ttsEngine = ttsEngine }
-            callBack?.upSpeakEngineSummary()
-            ReadAloud.upReadAloudClass()
-            dismissAllowingStateLoss()
-        }
-        tvOk.setText(R.string.general)
-        tvOk.visible()
-        tvOk.setOnClickListener {
-            ReadBook.book?.let { it.config.ttsEngine = null }
-            AppConfig.ttsEngine = ttsEngine
-            callBack?.upSpeakEngineSummary()
-            ReadAloud.upReadAloudClass()
-            dismissAllowingStateLoss()
-        }
-        tvCancel.visible()
-        tvCancel.setOnClickListener {
-            dismissAllowingStateLoss()
-        }
     }
 
-    private fun initData() {
-        lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        var items by remember { mutableStateOf(emptyList<HttpTTS>()) }
+        LaunchedEffect(Unit) {
             appDb.httpTTSDao.flowAll().catch {
                 AppLog.put("朗读引擎界面获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect {
-                adapter.setItems(it)
+                items = it
+            }
+        }
+        // 与原实现一致：选中值为 SelectItem json（系统）或 HttpTTS id 字符串
+        val sysValue = GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.value
+
+        Column(Modifier.fillMaxSize()) {
+            DialogTitleBar(
+                title = stringResource(R.string.speak_engine),
+                onBack = { dismissAllowingStateLoss() },
+                actions = {
+                    IconButton(onClick = { showDialogFragment<HttpTtsEditDialog>() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_add),
+                            contentDescription = stringResource(R.string.add),
+                            tint = colors.primaryText,
+                        )
+                    }
+                    OverflowMenu { dismiss ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.import_default_rule)) },
+                            onClick = { dismiss(); viewModel.importDefault() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.import_local)) },
+                            onClick = {
+                                dismiss()
+                                importDocResult.launch {
+                                    mode = HandleFileContract.FILE
+                                    allowExtensions = arrayOf("txt", "json")
+                                }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.import_on_line)) },
+                            onClick = { dismiss(); importAlert() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.export)) },
+                            onClick = {
+                                dismiss()
+                                exportDirResult.launch {
+                                    mode = HandleFileContract.EXPORT
+                                    fileData = HandleFileContract.FileData(
+                                        "httpTts.json",
+                                        GSON.toJson(items).toByteArray(),
+                                        "application/json"
+                                    )
+                                }
+                            },
+                        )
+                    }
+                },
+            )
+            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                item(key = "sysDefault") {
+                    EngineRow(
+                        name = "系统默认",
+                        checked = ttsEngine == null || ttsEngine!!.isJsonObject()
+                                && GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
+                            .getOrNull()?.value.isNullOrEmpty(),
+                    ) { upTts(GSON.toJson(SelectItem("系统默认", ""))) }
+                }
+                items(viewModel.sysEngines.size, key = { "sys_${viewModel.sysEngines[it].name}" }) { i ->
+                    val engine = viewModel.sysEngines[i]
+                    EngineRow(
+                        name = engine.label,
+                        checked = sysValue == engine.name,
+                    ) { upTts(GSON.toJson(SelectItem(engine.label, engine.name))) }
+                }
+                items(items.size, key = { items[it].id }) { i ->
+                    val httpTTS = items[i]
+                    EngineRow(
+                        name = httpTTS.name,
+                        checked = httpTTS.id.toString() == ttsEngine,
+                        onEdit = { showDialogFragment(HttpTtsEditDialog(httpTTS.id)) },
+                        onDelete = { runBlocking { appDb.httpTTSDao.delete(httpTTS) } },
+                    ) {
+                        upTts(httpTTS.id.toString())
+                        if (httpTTS.hasLogin() && httpTTS.getLoginInfo().isNullOrBlank()) {
+                            httpTTS.showLoginDialog(activity as AppCompatActivity)
+                        }
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppTextButton(stringResource(R.string.book)) {
+                    ReadBook.book?.let { it.config.ttsEngine = ttsEngine }
+                    callBack?.upSpeakEngineSummary()
+                    ReadAloud.upReadAloudClass()
+                    dismissAllowingStateLoss()
+                }
+                Spacer(Modifier.weight(1f))
+                AppTextButton(stringResource(R.string.cancel)) {
+                    dismissAllowingStateLoss()
+                }
+                AppTextButton(stringResource(R.string.general)) {
+                    ReadBook.book?.let { it.config.ttsEngine = null }
+                    AppConfig.ttsEngine = ttsEngine
+                    callBack?.upSpeakEngineSummary()
+                    ReadAloud.upReadAloudClass()
+                    dismissAllowingStateLoss()
+                }
             }
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_add -> showDialogFragment<HttpTtsEditDialog>()
-            R.id.menu_default -> viewModel.importDefault()
-            R.id.menu_import_local -> importDocResult.launch {
-                mode = HandleFileContract.FILE
-                allowExtensions = arrayOf("txt", "json")
+    /** 引擎行：单选钮 + 名称，HttpTTS 项带编辑/删除 */
+    @Composable
+    private fun EngineRow(
+        name: String,
+        checked: Boolean,
+        onEdit: (() -> Unit)? = null,
+        onDelete: (() -> Unit)? = null,
+        onSelect: () -> Unit,
+    ) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clickable(onClick = onSelect),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppRadioButton(selected = checked, onClick = onSelect)
+            Text(
+                name, color = colors.primaryText, maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            if (onEdit != null) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_edit),
+                        contentDescription = stringResource(R.string.edit),
+                        tint = colors.primaryText,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
-
-            R.id.menu_import_onLine -> importAlert()
-            R.id.menu_export -> exportDirResult.launch {
-                mode = HandleFileContract.EXPORT
-                fileData = HandleFileContract.FileData(
-                    "httpTts.json",
-                    GSON.toJson(adapter.getItems()).toByteArray(),
-                    "application/json"
-                )
+            if (onDelete != null) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_clear_all),
+                        contentDescription = stringResource(R.string.delete),
+                        tint = colors.primaryText,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
-        return true
+    }
+
+    private fun upTts(tts: String) {
+        ttsEngine = tts
     }
 
     private fun importAlert() {
@@ -184,17 +262,16 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
         alert(R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
+            val getUrl = editTextView(
+                hint = "url",
+                filterValues = cacheUrls,
+                onDelete = {
                     cacheUrls.remove(it)
                     aCache.put(ttsUrlKey, cacheUrls.joinToString(","))
-                }
-            }
-            customView { alertBinding.root }
+                },
+            )
             okButton {
-                alertBinding.editView.text?.toString()?.let { url ->
+                getUrl().let { url ->
                     if (url.isAbsUrl() && !cacheUrls.contains(url)) {
                         cacheUrls.add(0, url)
                         aCache.put(ttsUrlKey, cacheUrls.joinToString(","))
@@ -205,65 +282,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
     }
 
-    private fun upTts(tts: String) {
-        ttsEngine = tts
-        sysTtsViews.forEach {
-            it.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                .getOrNull()?.value == it.tag
-        }
-        adapter.notifyItemRangeChanged(adapter.getHeaderCount(), adapter.itemCount)
-    }
-
-    inner class Adapter(context: Context) :
-        RecyclerAdapter<HttpTTS, ItemSelectableOptionBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemSelectableOptionBinding {
-            return ItemSelectableOptionBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemSelectableOptionBinding,
-            item: HttpTTS,
-            payloads: MutableList<Any>
-        ) {
-            binding.apply {
-                rbSelect.text = item.name
-                rbSelect.isChecked = item.id.toString() == ttsEngine
-            }
-        }
-
-        override fun registerListener(
-            holder: ItemViewHolder,
-            binding: ItemSelectableOptionBinding
-        ) {
-            binding.run {
-                rbSelect.setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
-                        val id = httpTTS.id.toString()
-                        upTts(id)
-                        if (httpTTS.hasLogin() && httpTTS.getLoginInfo().isNullOrBlank()
-                        ) {
-                            httpTTS.showLoginDialog(activity as AppCompatActivity)
-                        }
-                    }
-                }
-                ivEdit.setOnClickListener {
-                    val id = getItemByLayoutPosition(holder.layoutPosition)!!.id
-                    showDialogFragment(HttpTtsEditDialog(id))
-                }
-                ivDelete.setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
-                        appDb.httpTTSDao.delete(httpTTS)
-                    }
-                }
-            }
-        }
-
-    }
-
     interface CallBack {
         fun upSpeakEngineSummary()
     }
-
 }

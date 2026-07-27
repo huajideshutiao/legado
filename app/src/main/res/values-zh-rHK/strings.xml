@@ -986,7 +986,6 @@
 
     <!--Additional strings from English version-->
     <string name="default_home_page">默認主頁</string>
-    <string name="js_engine_title">JS 引擎</string>
     <string name="cronet_enabled">Cronet 已啟用</string>
     <string name="cronet_download_failed">Cronet 下載失敗</string>
     <string name="resolution">分辨率</string>

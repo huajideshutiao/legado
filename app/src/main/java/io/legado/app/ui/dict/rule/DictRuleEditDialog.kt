@@ -2,32 +2,39 @@ package io.legado.app.ui.dict.rule
 
 import android.app.Application
 import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.viewModels
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.appDb
+import androidx.lifecycle.viewModelScope
 import io.legado.app.data.entities.DictRule
-import io.legado.app.databinding.DialogFormEditBinding
-import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FormEditFields
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
-    Toolbar.OnMenuItemClickListener {
+class DictRuleEditDialog() : BaseComposeDialogFragment() {
 
     val viewModel by viewModels<DictRuleEditViewModel>()
-    val binding by viewBinding(DialogFormEditBinding::bind)
-    private val adapter by lazy { FormAdapter() }
-    private val editEntities: ArrayList<EditEntity> = ArrayList()
+    private var editEntities by mutableStateOf<List<EditEntity>>(emptyList())
 
     constructor(name: String) : this() {
         arguments = Bundle().apply {
@@ -35,38 +42,67 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            menuRes = R.menu.rule_edit,
-            onMenuClick = ::onMenuItemClick
-        )
-        binding.recyclerView.adapter = adapter
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         viewModel.initData(arguments?.getString("name")) {
             upRuleView(viewModel.dictRule)
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_save -> viewModel.save(getDictRule()) {
-                dismissAllowingStateLoss()
-            }
-            R.id.menu_copy_rule -> viewModel.copyRule(getDictRule())
-            R.id.menu_paste_rule -> viewModel.pasteRule {
-                upRuleView(it)
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = "",
+                onBack = { dismissAllowingStateLoss() },
+                actions = {
+                    IconButton(onClick = {
+                        viewModel.save(getDictRule()) {
+                            dismissAllowingStateLoss()
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = stringResource(R.string.action_save),
+                            tint = colors.primaryText,
+                        )
+                    }
+                    OverflowMenu { dismissMenu ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_rule), color = colors.primaryText) },
+                            onClick = {
+                                dismissMenu()
+                                viewModel.copyRule(getDictRule())
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.paste_rule), color = colors.primaryText) },
+                            onClick = {
+                                dismissMenu()
+                                viewModel.pasteRule { upRuleView(it) }
+                            },
+                        )
+                    }
+                },
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                FormEditFields(editEntities)
             }
         }
-        return true
     }
 
     private fun upRuleView(dictRule: DictRule?) {
-        editEntities.clear()
-        editEntities.apply {
-            add(EditEntity("name", dictRule?.name, R.string.name))
-            add(EditEntity("urlRule", dictRule?.urlRule, R.string.url_rule))
-            add(EditEntity("showRule", dictRule?.showRule, R.string.show_rule))
-        }
-        adapter.editEntities = editEntities
+        editEntities = listOf(
+            EditEntity("name", dictRule?.name, R.string.name),
+            EditEntity("urlRule", dictRule?.urlRule, R.string.url_rule),
+            EditEntity("showRule", dictRule?.showRule, R.string.show_rule),
+        )
     }
 
     private fun getDictRule(): DictRule {
@@ -83,47 +119,35 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
 
     class DictRuleEditViewModel(application: Application) : BaseViewModel(application) {
 
-        var dictRule: DictRule? = null
+        // 委托给 commonMain 的 DictRuleEditViewModelShared, 业务逻辑下沉供多端复用
+        // (Android=viewModelScope + getClipText + sendToClip / desktop=应用 scope + AWT Clipboard)
+        private val shared: DictRuleEditViewModelShared =
+            DictRuleEditViewModelShared(
+                viewModelScope,
+                { getClipText() },
+                { text -> context.sendToClip(text) }
+            )
+
+        var dictRule: DictRule?
+            get() = shared.dictRule
+            set(value) {
+                shared.dictRule = value
+            }
 
         fun initData(name: String?, onFinally: () -> Unit) {
-            execute {
-                if (dictRule == null && name != null) {
-                    dictRule = appDb.dictRuleDao.getByName(name)
-                }
-            }.onFinally {
-                onFinally.invoke()
-            }
+            shared.initData(name, onFinally)
         }
 
         fun save(newDictRule: DictRule, onFinally: () -> Unit) {
-            execute {
-                dictRule?.let {
-                    appDb.dictRuleDao.delete(it)
-                }
-                appDb.dictRuleDao.insert(newDictRule)
-                dictRule = newDictRule
-            }.onFinally {
-                onFinally.invoke()
-            }
+            shared.save(newDictRule, onFinally)
         }
 
         fun copyRule(dictRule: DictRule) {
-            context.sendToClip(GSON.toJson(dictRule))
+            shared.copyRule(dictRule)
         }
 
         fun pasteRule(success: (DictRule) -> Unit) {
-            val text = getClipText()
-            if (text.isNullOrBlank()) {
-                context.toastOnUi("剪贴板没有内容")
-                return
-            }
-            execute {
-                GSON.fromJsonObject<DictRule>(text).getOrThrow()
-            }.onSuccess {
-                success.invoke(it)
-            }.onError {
-                context.toastOnUi("格式不对")
-            }
+            shared.pasteRule(success)
         }
 
     }

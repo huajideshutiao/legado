@@ -21,10 +21,8 @@ import androidx.fragment.app.commit
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.dialogs.selector
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.model.Download
 import io.legado.app.ui.association.FileAssociationFragment
 import io.legado.app.ui.widget.anima.RefreshProgressBar
@@ -127,7 +125,7 @@ object WebViewUtil {
             // Arco: 可交互 Snackbar 换成对话框
             activity.alert(fileName) {
                 positiveButton(R.string.action_download) {
-                    Download.start(activity, url, fileName)
+                    Download.start(url, fileName)
                 }
                 cancelButton()
             }

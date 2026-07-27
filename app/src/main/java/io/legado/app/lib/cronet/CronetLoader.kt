@@ -10,6 +10,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.model.fileBook.RangedSource
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.utils.LogUtils
 import okhttp3.Request
@@ -103,7 +104,10 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                             .execute()
                     val fileSize = response.header("Content-Length")?.toLong() ?: -1L
                     if (fileSize <= 0) throw IOException("Failed to get file size")
-                    val remoteZip = RemoteZipWrapper(webDav, "cronet.aar", fileSize)
+                    val remoteZip = RemoteZipWrapper(
+                        RangedSource { offset, length, fs -> webDav.readRange(offset, length, fs) },
+                        "cronet.aar", fileSize
+                    )
                     val entry = remoteZip.entries().asSequence().find {
                         it.name.startsWith("jni/${getCpuAbi(appCtx)}/libcronet") && it.name.endsWith(
                             ".so"

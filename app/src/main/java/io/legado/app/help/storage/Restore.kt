@@ -4,7 +4,6 @@ import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
 import android.net.Uri
 import androidx.core.content.edit
-import androidx.documentfile.provider.DocumentFile
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -25,8 +24,10 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.toBookSource
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.LauncherIconHelp
+import io.legado.app.help.ruleFileName
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.LocalConfig
@@ -34,13 +35,14 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.ACache
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.decodeAnyMapOrNull
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -58,7 +60,6 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import splitties.init.appCtx
 import java.io.File
-import java.io.FileInputStream
 
 /**
  * 恢复
@@ -74,7 +75,7 @@ object Restore {
         kotlin.runCatching {
             FileUtils.delete(Backup.backupPath)
             if (uri.isContentScheme()) {
-                DocumentFile.fromSingleUri(context, uri)!!.openInputStream()!!.use {
+                FileDoc.fromUri(uri, false).openInputStream().getOrThrow().use {
                     ZipUtils.unZipToPath(it, Backup.backupPath)
                 }
             } else {
@@ -177,11 +178,11 @@ object Restore {
         }?.onFailure {
             AppLog.put("恢复服务器配置出错\n${it.localizedMessage}", it)
         }
-        File(path, DirectLinkUpload.ruleFileName).takeIf {
+        File(path, ruleFileName).takeIf {
             it.exists()
         }?.runCatching {
             val json = readText()
-            ACache.get(cacheDir = false).put(DirectLinkUpload.ruleFileName, json)
+            ACache.get(cacheDir = false).put(ruleFileName, json)
         }?.onFailure {
             AppLog.put("恢复直链上传出错\n${it.localizedMessage}", it)
         }
@@ -221,7 +222,7 @@ object Restore {
         val configFile = File(path, "config.json")
         if (configFile.exists()) {
             val json = configFile.readText()
-            GSON.fromJsonObject<Map<String, Any?>>(json).getOrNull()?.let {
+            decodeAnyMapOrNull(json)?.let {
                 configMap.putAll(it)
             }
         } else {
@@ -349,10 +350,9 @@ object Restore {
             val file = File(path, fileName)
             if (file.exists()) {
                 LogUtils.d(TAG, "阅读恢复备份 $fileName 文件大小 ${file.length()}")
-                FileInputStream(file).use {
-                    return GSON.fromJsonArray<T>(it).getOrThrow().also { list ->
-                        LogUtils.d(TAG, "阅读恢复备份 $fileName 列表大小 ${list.size}")
-                    }
+                // Phase D: GSON.fromJsonArray(Reader) 重载不存在于 kotlinx-serialization, 改用 file.readText() 一次性读取
+                return GSON.fromJsonArray<T>(file.readText()).getOrThrow().also { list ->
+                    LogUtils.d(TAG, "阅读恢复备份 $fileName 列表大小 ${list.size}")
                 }
             } else {
                 LogUtils.d(TAG, "阅读恢复备份 $fileName 文件不存在")
@@ -380,7 +380,7 @@ object Restore {
         val lastRead: Long = 0
     )
 
-    private fun restoreReadRecord(path: String) {
+    private suspend fun restoreReadRecord(path: String) {
         val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
         if (backups.isEmpty()) return
         val dao = appDb.readRecordDao
@@ -399,7 +399,7 @@ object Restore {
         }
     }
 
-    private fun restoreOldRecord(
+    private suspend fun restoreOldRecord(
         dao: io.legado.app.data.dao.ReadRecordDao,
         bookName: String, day: Int, remainingSecs: Long, endSec: Long
     ) {

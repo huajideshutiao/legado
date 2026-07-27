@@ -1,249 +1,87 @@
 package io.legado.app.ui.book.read.config
 
-import android.os.Bundle
-import android.view.View
-import androidx.core.view.indices
-import com.jaredrummler.android.colorpicker.ColorPickerDialog
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.constant.EventBus
-import io.legado.app.databinding.DialogTipConfigBinding
+import androidx.compose.runtime.Composable
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.utils.checkByIndex
-import io.legado.app.utils.getIndexById
-import io.legado.app.utils.hexString
-import io.legado.app.utils.observeEvent
-import io.legado.app.utils.postEvent
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.ui.book.read.ReadBookEvents
 
+/**
+ * 页眉页脚/标题信息位 + 提示色 + 字号/间距 配置对话框。
+ *
+ * 实现已下沉到 shared/sharedUiMain 的 [TipConfigScreen]（app + desktop 共用），
+ * 本类作为 thin wrapper 保留 `BaseComposeDialogFragment` 宿主：
+ * - 提供 ComposeView / Provider 注入 / 窗口尺寸 / 圆角（由 BaseComposeDialogFragment）
+ * - 通过 [TipConfigController] 桥接 app 端 `ReadBookConfig` / `ReadTipConfig`（object 单例）
+ * - 通过 `onPostConfig` 回调桥接 app 端 `ReadBookEvents.postConfig`
+ * - 通过 `onBack` 回调桥接 `dismissAllowingStateLoss`
+ *
+ * 调用方契约不变：`TipConfigDialog().show(childFragmentManager, "tipConfigDialog")`。
+ */
+class TipConfigDialog : BaseComposeDialogFragment() {
 
-class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
+    @Composable
+    override fun Content() {
+        TipConfigScreen(
+            controller = object : TipConfigController {
+                override var titleMode: Int
+                    get() = ReadBookConfig.titleMode
+                    set(value) { ReadBookConfig.titleMode = value }
 
-    companion object {
-        const val TIP_COLOR = 7897
-        const val TIP_DIVIDER_COLOR = 7898
-    }
+                override var titleSize: Int
+                    get() = ReadBookConfig.titleSize
+                    set(value) { ReadBookConfig.titleSize = value }
 
-    private val binding by viewBinding(DialogTipConfigBinding::bind)
+                override var titleTop: Int
+                    get() = ReadBookConfig.titleTopSpacing
+                    set(value) { ReadBookConfig.titleTopSpacing = value }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(title = getString(R.string.body_title))
-        initView()
-        initEvent()
-        observeEvent<String>(EventBus.TIP_COLOR) {
-            upTvTipColor()
-            upTvTipDividerColor()
-        }
-    }
+                override var titleBottom: Int
+                    get() = ReadBookConfig.titleBottomSpacing
+                    set(value) { ReadBookConfig.titleBottomSpacing = value }
 
-    private fun initView() {
-        if (ReadBookConfig.titleMode !in binding.rgTitleMode.indices) {
-            ReadBookConfig.titleMode = 0
-        }
-        binding.rgTitleMode.checkByIndex(ReadBookConfig.titleMode)
-        binding.dsbTitleSize.progress = ReadBookConfig.titleSize
-        binding.dsbTitleTop.progress = ReadBookConfig.titleTopSpacing
-        binding.dsbTitleBottom.progress = ReadBookConfig.titleBottomSpacing
+                override var headerMode: Int
+                    get() = ReadTipConfig.headerMode
+                    set(value) { ReadTipConfig.headerMode = value }
 
-        binding.tvHeaderShow.text =
-            ReadTipConfig.getHeaderModes(requireContext())[ReadTipConfig.headerMode]
-        binding.tvFooterShow.text =
-            ReadTipConfig.getFooterModes(requireContext())[ReadTipConfig.footerMode]
+                override var footerMode: Int
+                    get() = ReadTipConfig.footerMode
+                    set(value) { ReadTipConfig.footerMode = value }
 
-        ReadTipConfig.run {
-            tipNames.let { tipNames ->
-                binding.tvHeaderLeft.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipHeaderLeft)) { tipNames[none] }
-                binding.tvHeaderMiddle.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipHeaderMiddle)) { tipNames[none] }
-                binding.tvHeaderRight.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipHeaderRight)) { tipNames[none] }
-                binding.tvFooterLeft.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipFooterLeft)) { tipNames[none] }
-                binding.tvFooterMiddle.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipFooterMiddle)) { tipNames[none] }
-                binding.tvFooterRight.text =
-                    tipNames.getOrElse(tipValues.indexOf(tipFooterRight)) { tipNames[none] }
-            }
-        }
-        upTvTipColor()
-        upTvTipDividerColor()
-    }
+                override var tipHeaderLeft: Int
+                    get() = ReadTipConfig.tipHeaderLeft
+                    set(value) { ReadTipConfig.tipHeaderLeft = value }
 
-    private fun upTvTipColor() {
-        val tipColorNames = ReadTipConfig.tipColorNames
-        val tipColor = ReadTipConfig.tipColor
-        binding.tvTipColor.text = if (tipColor == 0) {
-            tipColorNames.first()
-        } else {
-            "#${tipColor.hexString}"
-        }
-    }
+                override var tipHeaderMiddle: Int
+                    get() = ReadTipConfig.tipHeaderMiddle
+                    set(value) { ReadTipConfig.tipHeaderMiddle = value }
 
-    private fun upTvTipDividerColor() {
-        val tipDividerColorNames = ReadTipConfig.tipDividerColorNames
-        val tipDividerColor = ReadTipConfig.tipDividerColor
-        binding.tvTipDividerColor.text = when (tipDividerColor) {
-            -1, 0 -> tipDividerColorNames[tipDividerColor + 1]
-            else -> "#${tipDividerColor.hexString}"
-        }
-    }
+                override var tipHeaderRight: Int
+                    get() = ReadTipConfig.tipHeaderRight
+                    set(value) { ReadTipConfig.tipHeaderRight = value }
 
-    private fun initEvent() = binding.run {
-        rgTitleMode.setOnCheckedChangeListener { _, checkedId ->
-            ReadBookConfig.titleMode = rgTitleMode.getIndexById(checkedId)
-            postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-        }
-        bindSeekBarConfigs(
-            listOf(
-                SeekBarConfigBinding(dsbTitleSize, { ReadBookConfig.titleSize = it }, listOf(8, 5)),
-                SeekBarConfigBinding(
-                    dsbTitleTop,
-                    { ReadBookConfig.titleTopSpacing = it },
-                    listOf(8, 5)
-                ),
-                SeekBarConfigBinding(
-                    dsbTitleBottom,
-                    { ReadBookConfig.titleBottomSpacing = it },
-                    listOf(8, 5)
-                )
-            )
+                override var tipFooterLeft: Int
+                    get() = ReadTipConfig.tipFooterLeft
+                    set(value) { ReadTipConfig.tipFooterLeft = value }
+
+                override var tipFooterMiddle: Int
+                    get() = ReadTipConfig.tipFooterMiddle
+                    set(value) { ReadTipConfig.tipFooterMiddle = value }
+
+                override var tipFooterRight: Int
+                    get() = ReadTipConfig.tipFooterRight
+                    set(value) { ReadTipConfig.tipFooterRight = value }
+
+                override var tipColor: Int
+                    get() = ReadTipConfig.tipColor
+                    set(value) { ReadTipConfig.tipColor = value }
+
+                override var tipDividerColor: Int
+                    get() = ReadTipConfig.tipDividerColor
+                    set(value) { ReadTipConfig.tipDividerColor = value }
+            },
+            onBack = { dismissAllowingStateLoss() },
+            onPostConfig = { changes -> ReadBookEvents.postConfig(changes) },
         )
-        llHeaderShow.setOnClickListener {
-            val headerModes = ReadTipConfig.getHeaderModes(requireContext())
-            context?.selector(items = headerModes.values.toList()) { _, i ->
-                ReadTipConfig.headerMode = headerModes.keys.toList()[i]
-                tvHeaderShow.text = headerModes[ReadTipConfig.headerMode]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-            }
-        }
-        llFooterShow.setOnClickListener {
-            val footerModes = ReadTipConfig.getFooterModes(requireContext())
-            context?.selector(items = footerModes.values.toList()) { _, i ->
-                ReadTipConfig.footerMode = footerModes.keys.toList()[i]
-                tvFooterShow.text = footerModes[ReadTipConfig.footerMode]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-            }
-        }
-        llHeaderLeft.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipHeaderLeft = tipValue
-                tvHeaderLeft.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llHeaderMiddle.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipHeaderMiddle = tipValue
-                tvHeaderMiddle.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llHeaderRight.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipHeaderRight = tipValue
-                tvHeaderRight.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llFooterLeft.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipFooterLeft = tipValue
-                tvFooterLeft.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llFooterMiddle.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipFooterMiddle = tipValue
-                tvFooterMiddle.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llFooterRight.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipNames) { _, i ->
-                val tipValue = ReadTipConfig.tipValues[i]
-                clearRepeat(tipValue)
-                ReadTipConfig.tipFooterRight = tipValue
-                tvFooterRight.text = ReadTipConfig.tipNames[i]
-                postEvent(EventBus.UP_CONFIG, arrayListOf(2, 6))
-            }
-        }
-        llTipColor.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipColorNames) { _, i ->
-                when (i) {
-                    0 -> {
-                        ReadTipConfig.tipColor = 0
-                        upTvTipColor()
-                        postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                    }
-
-                    1 -> ColorPickerDialog.newBuilder()
-                        .setShowAlphaSlider(false)
-                        .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
-                        .setDialogId(TIP_COLOR)
-                        .show(requireActivity())
-                }
-            }
-        }
-        llTipDividerColor.setOnClickListener {
-            context?.selector(items = ReadTipConfig.tipDividerColorNames) { _, i ->
-                when (i) {
-                    0, 1 -> {
-                        ReadTipConfig.tipDividerColor = i - 1
-                        upTvTipDividerColor()
-                        postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                    }
-
-                    2 -> ColorPickerDialog.newBuilder()
-                        .setShowAlphaSlider(false)
-                        .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
-                        .setDialogId(TIP_DIVIDER_COLOR)
-                        .show(requireActivity())
-                }
-            }
-        }
     }
-
-    private fun clearRepeat(repeat: Int) = ReadTipConfig.apply {
-        if (repeat != none) {
-            if (tipHeaderLeft == repeat) {
-                tipHeaderLeft = none
-                binding.tvHeaderLeft.text = tipNames[none]
-            }
-            if (tipHeaderMiddle == repeat) {
-                tipHeaderMiddle = none
-                binding.tvHeaderMiddle.text = tipNames[none]
-            }
-            if (tipHeaderRight == repeat) {
-                tipHeaderRight = none
-                binding.tvHeaderRight.text = tipNames[none]
-            }
-            if (tipFooterLeft == repeat) {
-                tipFooterLeft = none
-                binding.tvFooterLeft.text = tipNames[none]
-            }
-            if (tipFooterMiddle == repeat) {
-                tipFooterMiddle = none
-                binding.tvFooterMiddle.text = tipNames[none]
-            }
-            if (tipFooterRight == repeat) {
-                tipFooterRight = none
-                binding.tvFooterRight.text = tipNames[none]
-            }
-        }
-    }
-
 }

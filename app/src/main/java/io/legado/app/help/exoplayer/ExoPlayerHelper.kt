@@ -24,10 +24,11 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
-import com.google.gson.reflect.TypeToken
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.utils.GSON
+import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.externalCache
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import okhttp3.CacheControl
 import splitties.init.appCtx
 import java.io.File
@@ -38,14 +39,10 @@ object ExoPlayerHelper {
 
     private const val SPLIT_TAG = "\uD83D\uDEA7"
 
-    private val mapType by lazy {
-        object : TypeToken<Map<String, String>>() {}.type
-    }
-
     fun createMediaItem(url: String, headers: Map<String, String>): MediaItem {
         val realUri = url.toUri()
         val contentType = Util.inferContentType(realUri)
-        val formatUrl = url + SPLIT_TAG + GSON.toJson(headers, mapType)
+        val formatUrl = url + SPLIT_TAG + KS_JSON.encodeToString(headers)
         val builder = MediaItem.Builder().setUri(formatUrl)
         when (contentType) {
             C.CONTENT_TYPE_HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -123,7 +120,7 @@ object ExoPlayerHelper {
                 val url = urls[0]
                 res = res.withUri(url.toUri())
                 try {
-                    val headers: Map<String, String> = GSON.fromJson(urls[1], mapType)
+                    val headers: Map<String, String> = KS_JSON.decodeFromString(urls[1])
                     okhttpDataFactory.setDefaultRequestProperties(headers)
                 } catch (_: Exception) {
                 }

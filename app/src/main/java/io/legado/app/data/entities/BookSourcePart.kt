@@ -1,81 +1,18 @@
 package io.legado.app.data.entities
 
-import android.text.TextUtils
-import androidx.room.DatabaseView
-import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
-import io.legado.app.utils.splitNotBlank
+import kotlinx.coroutines.runBlocking
 
+/*
+ * K5-c Phase 2: BookSourcePart data class 已下沉 shared jvmAndAndroidMain (同包名跨模块自动合并)。
+ * 本文件仅保留依赖 app 端 appDb 的扩展函数 (getBookSource/toBookSource), 无法下沉 shared。
+ * 跨模块同包名同签名扩展自动合并, 消费方 import 零改动。
+ */
 
-@DatabaseView(
-    """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore,
-    (ifnull(trim(loginUrl), '') <> '' or ifnull(trim(loginUi), '') <> '') hasLoginUrl, lastUpdateTime, respondTime, weight,
-    (ifnull(trim(exploreUrl), '') <> '') hasExploreUrl
-    from book_sources""",
-    viewName = "book_sources_part"
-)
-data class BookSourcePart(
-    // 地址，包括 http/https
-    var bookSourceUrl: String = "",
-    // 名称
-    var bookSourceName: String = "",
-    // 分组
-    var bookSourceGroup: String? = null,
-    // 手动排序编号
-    var customOrder: Int = 0,
-    // 是否启用
-    var enabled: Boolean = true,
-    // 启用发现
-    var enabledExplore: Boolean = true,
-    // 是否有登录地址
-    var hasLoginUrl: Boolean = false,
-    // 最后更新时间，用于排序
-    var lastUpdateTime: Long = 0,
-    // 响应时间，用于排序
-    var respondTime: Long = 180000L,
-    // 智能排序的权重
-    var weight: Int = 0,
-    // 是否有发现url
-    var hasExploreUrl: Boolean = false
-) {
-
-    override fun hashCode(): Int {
-        return bookSourceUrl.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        return if (other is BookSourcePart) other.bookSourceUrl == bookSourceUrl else false
-    }
-
-    fun getDisPlayNameGroup(): String {
-        return if (bookSourceGroup.isNullOrBlank()) {
-            bookSourceName
-        } else {
-            String.format("%s (%s)", bookSourceName, bookSourceGroup)
-        }
-    }
-
-    fun getBookSource(): BookSource? {
-        return appDb.bookSourceDao.getBookSource(bookSourceUrl)
-    }
-
-    fun addGroup(groups: String) {
-        bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
-            it.addAll(groups.splitNotBlank(AppPattern.splitGroupRegex))
-            bookSourceGroup = TextUtils.join(",", it)
-        }
-        if (bookSourceGroup.isNullOrBlank()) bookSourceGroup = groups
-    }
-
-    fun removeGroup(groups: String) {
-        bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
-            it.removeAll(groups.splitNotBlank(AppPattern.splitGroupRegex).toSet())
-            bookSourceGroup = TextUtils.join(",", it)
-        }
-    }
-
+fun BookSourcePart.getBookSource(): BookSource? {
+    return runBlocking { appDb.bookSourceDao.getBookSource(bookSourceUrl) }
 }
 
 fun List<BookSourcePart>.toBookSource(): List<BookSource> {
-    return appDb.bookSourceDao.getBookSourcesFix(map { it.bookSourceUrl })
+    return runBlocking { appDb.bookSourceDao.getBookSourcesFix(map { it.bookSourceUrl }) }
 }

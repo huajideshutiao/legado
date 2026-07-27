@@ -3,18 +3,18 @@ package io.legado.app.ui.book.read.page.provider
 import android.graphics.RectF
 import androidx.core.os.postDelayed
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isPad
-import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 
@@ -92,10 +92,10 @@ object ChapterProvider {
     val contentPaintTextHeight: Float get() = TextStyleProvider.contentPaintTextHeight
 
     @JvmStatic
-    val titlePaintFontMetrics get() = TextStyleProvider.titlePaintFontMetrics
+    val titlePaintDescent get() = TextStyleProvider.titlePaintDescent
 
     @JvmStatic
-    val contentPaintFontMetrics get() = TextStyleProvider.contentPaintFontMetrics
+    val contentPaintDescent get() = TextStyleProvider.contentPaintDescent
 
     @JvmStatic
     val typeface get() = TextStyleProvider.typeface
@@ -185,7 +185,7 @@ object ChapterProvider {
         viewWidth = width
         viewHeight = height
         upLayout()
-        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+        ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
     }
 
     /**
@@ -214,15 +214,12 @@ object ChapterProvider {
         paddingTop = ReadBookConfig.paddingTop.dpToPx()
         paddingRight = ReadBookConfig.paddingRight.dpToPx()
         paddingBottom = ReadBookConfig.paddingBottom.dpToPx()
-        visibleWidth = if (doublePage) {
-            viewWidth / 2 - paddingLeft - paddingRight
-        } else {
-            viewWidth - paddingLeft - paddingRight
-        }
+        // 几何算式下沉 shared commonMain（TextLayoutMath.calcVisibleXxx），配置入口仍留 androidMain
+        visibleWidth = calcVisibleWidth(viewWidth, paddingLeft, paddingRight, doublePage)
         //留1dp画最后一行下划线
-        visibleHeight = viewHeight - paddingTop - paddingBottom
-        visibleRight = viewWidth - paddingRight
-        visibleBottom = paddingTop + visibleHeight
+        visibleHeight = calcVisibleHeight(viewHeight, paddingTop, paddingBottom)
+        visibleRight = calcVisibleRight(viewWidth, paddingRight)
+        visibleBottom = calcVisibleBottom(paddingTop, visibleHeight)
 
         if (paddingLeft >= visibleRight || paddingTop >= visibleBottom) {
             AppLog.put("边距设置过大，请重新设置", toast = true)
@@ -243,15 +240,11 @@ object ChapterProvider {
         paddingTop = 5.dpToPx()
         paddingRight = 20.dpToPx()
         paddingBottom = 5.dpToPx()
-        visibleWidth = if (doublePage) {
-            viewWidth / 2 - paddingLeft - paddingRight
-        } else {
-            viewWidth - paddingLeft - paddingRight
-        }
+        visibleWidth = calcVisibleWidth(viewWidth, paddingLeft, paddingRight, doublePage)
         //留1dp画最后一行下划线
-        visibleHeight = viewHeight - paddingTop - paddingBottom
-        visibleRight = viewWidth - paddingRight
-        visibleBottom = paddingTop + visibleHeight
+        visibleHeight = calcVisibleHeight(viewHeight, paddingTop, paddingBottom)
+        visibleRight = calcVisibleRight(viewWidth, paddingRight)
+        visibleBottom = calcVisibleBottom(paddingTop, visibleHeight)
     }
 
 }

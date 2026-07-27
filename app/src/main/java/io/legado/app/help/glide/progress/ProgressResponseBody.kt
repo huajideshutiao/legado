@@ -57,10 +57,6 @@ class ProgressResponseBody internal constructor(
         }
     }
 
-    interface InternalProgressListener {
-        fun onProgress(url: String, bytesRead: Long, totalBytes: Long, isComplete: Boolean)
-    }
-
     companion object {
         private val mainThreadHandler = Handler(Looper.getMainLooper())
     }

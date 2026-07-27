@@ -5,6 +5,11 @@ on:
     - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
+# 定时/手动触发时, 同一分支只跑一个实例, 取消旧实例避免重复 Release
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -124,3 +129,330 @@ jobs:
           allowUpdates: true
           draft: false
           prerelease: false
+
+  # ===== 多端桌面产物 (与 Android build 串行: 等 build 创建 Release 后再上传) =====
+  # Windows MSI: Windows runner 上 jpackage 调 WiX 打包
+  desktop-build:
+    needs: [ prepare, build ]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Unify Desktop packageVersion
+        shell: bash
+        run: |
+          # MSI 要求 x.y.z[.w] 格式; release VERSION 形如 3.25.0722 (4 段) 满足
+          sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
+      - name: Build Quickjs Native Lib (Windows .dll)
+        # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dll) 落到 jvm/native 目录
+        # Windows runner 自带 cmake + MSVC, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
+        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
+        continue-on-error: true
+      - name: Build MSI
+        run: ./gradlew :desktop:packageMsi --build-cache --parallel --daemon --warning-mode all
+      - name: Collect MSI
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/msi/
+          find ${{ github.workspace }}/desktop/build/compose/binaries/msi -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
+      - name: Upload MSI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop.msi
+          path: ${{ github.workspace }}/msi/*.msi
+          if-no-files-found: ignore
+      - name: Upload MSI to Release
+        # build job 已创建 tag=VERSION 的 Release, 这里 allowUpdates 追加 MSI 资产
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/msi/*.msi
+
+  # Linux DEB/RPM: Ubuntu runner 上 jpackage 调 dpkg-deb / rpmbuild
+  linux-build:
+    needs: [ prepare, build ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Install Linux packaging deps
+        # jpackage 打 deb 需要 dpkg-deb, 打 rpm 需要 rpmbuild; ubuntu-latest 默认无 rpmbuild
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rpm
+      - name: Unify Desktop packageVersion
+        run: |
+          sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
+      - name: Build Quickjs Native Lib (Linux .so)
+        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
+        continue-on-error: true
+      - name: Build DEB & RPM
+        run: ./gradlew :desktop:packageDeb :desktop:packageRpm --build-cache --parallel --daemon --warning-mode all
+      - name: Collect Linux packages
+        run: |
+          mkdir -p ${{ github.workspace }}/linux/
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/ \;
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/ \;
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop.linux
+          path: |
+            ${{ github.workspace }}/linux/*.deb
+            ${{ github.workspace }}/linux/*.rpm
+          if-no-files-found: ignore
+      - name: Upload Linux packages to Release
+        # 追加 deb/rpm 到同一 Release (与 desktop-build 并行, 各自更新 Release)
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: |
+            ${{ github.workspace }}/linux/*.deb
+            ${{ github.workspace }}/linux/*.rpm
+
+  # macOS DMG: macOS runner 上 jpackage 打包, 追加到 Release
+  desktop-macos:
+    needs: [ prepare, build ]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Unify Desktop packageVersion
+        # macOS 自带 BSD sed, -i 需要空字符串备份后缀 (与 GNU sed 语法不同)
+        run: |
+          sed -i '' "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts
+      - name: Build Quickjs Native Lib (macOS .dylib)
+        # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dylib) 落到 jvm/native 目录
+        # macos-latest 自带 cmake + clang, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
+        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
+        continue-on-error: true
+      - name: Build macOS DMG
+        run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
+      - name: Collect DMG
+        run: |
+          mkdir -p ${{ github.workspace }}/dmg/
+          find ${{ github.workspace }}/desktop/build/compose/binaries/dmg -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop.dmg
+          path: ${{ github.workspace }}/dmg/*.dmg
+          if-no-files-found: ignore
+      - name: Upload DMG to Release
+        # build job 已创建 tag=VERSION 的 Release, 这里 allowUpdates 追加 DMG 资产
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/dmg/*.dmg
+
+  # iOS IPA: macOS runner 上完整 archive + export 流程, 追加到 Release
+  # 流程: 1.编 shared.framework(release) 2.xcodegen 生成工程 3.xcodebuild archive 4.xcodebuild -exportArchive 导 IPA
+  ios-build:
+    needs: [ prepare, build ]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build shared iOS framework (release)
+        # 1. 编译 shared.framework (iosArm64 release), 供 Xcode archive 链接
+        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --warning-mode all
+      - name: Install XcodeGen
+        # 2. 用 xcodegen 从 project.yml 生成 .xcodeproj (避免二进制工程文件冲突)
+        run: brew install xcodegen
+      - name: Patch project.yml for release framework
+        # 3. project.yml 中 dependencies.framework 硬编码 debugFramework, release 构建前改成 releaseFramework
+        #    只替换 dependencies 那一行 (含 "framework: " 前缀), 不影响 preBuildScripts 里的 if 判断
+        run: |
+          sed -i '' "s|framework: ../shared/build/bin/iosArm64/debugFramework/shared.framework|framework: ../shared/build/bin/iosArm64/releaseFramework/shared.framework|" $GITHUB_WORKSPACE/iosApp/project.yml
+      - name: Generate Xcode project
+        working-directory: iosApp/
+        run: xcodegen generate
+      - name: Archive
+        # 4. xcodebuild archive 生成 .xcarchive
+        #    CODE_SIGNING_ALLOWED=NO: CI 无 Apple 证书, 跳过签名生成未签名 archive
+        #    continue-on-error: 无证书时 archive 可能失败, 不阻塞其他产物发布
+        working-directory: iosApp/
+        run: |
+          xcodebuild archive \
+            -scheme iosApp \
+            -configuration Release \
+            -archivePath build/iosApp.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO
+        continue-on-error: true
+      - name: Export IPA
+        # 5. xcodebuild -exportArchive 导出 IPA (需 ExportOptions.plist)
+        #    先用 sed 把 ExportOptions.plist 里的 ${APPLE_TEAM_ID} 占位符替换成实际 secret
+        #    无证书/无 teamID 时导出可能失败, continue-on-error 不阻塞
+        working-directory: iosApp/
+        run: |
+          sed -i '' "s|\${APPLE_TEAM_ID}|${{ secrets.APPLE_TEAM_ID }}|" ExportOptions.plist
+          xcodebuild -exportArchive \
+            -archivePath build/iosApp.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist ExportOptions.plist \
+            CODE_SIGNING_ALLOWED=NO
+        continue-on-error: true
+      - name: Collect IPA
+        run: |
+          mkdir -p ${{ github.workspace }}/ipa/
+          find ${{ github.workspace }}/iosApp/build/ipa -name "*.ipa" -exec mv {} ${{ github.workspace }}/ipa/ \;
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios.ipa
+          path: ${{ github.workspace }}/ipa/*.ipa
+          if-no-files-found: ignore
+      - name: Upload IPA to Release
+        # 追加 IPA 到同一 Release (有证书时产出 IPA, 无证书时无文件跳过)
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/ipa/*.ipa
+
+  # 鸿蒙 .so (release): Ubuntu runner 上编译 shared linuxArm64 .so, 追加到 Release
+  # 鸿蒙 HAP 需自托管 runner (见下面 ohos-build), 这里只产出 .so 供鸿蒙 DevEco 本地打包链接
+  ohos-so:
+    needs: [ prepare, build ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build HarmonyOS .so (release)
+        # 鸿蒙 target 默认禁用, 必须加 -PenableOhosTarget=true
+        # 鸿蒙 ABI 与 linuxArm64 一致, 复用 Kotlin/Native linuxArm64 目标
+        run: ./gradlew :shared:assembleLinuxArm64Release -PenableOhosTarget=true --warning-mode all
+      - name: Collect HarmonyOS .so
+        run: |
+          mkdir -p ${{ github.workspace }}/ohos/
+          find ${{ github.workspace }}/shared/build/bin/linuxArm64/releaseDefault -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
+      - name: Upload HarmonyOS .so Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos.so.release
+          path: ${{ github.workspace }}/ohos/*.so
+          if-no-files-found: ignore
+      - name: Upload HarmonyOS .so to Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/ohos/*.so
+
+  # ===== 鸿蒙 HAP (自托管 runner, 默认禁用) =====
+  # 鸿蒙 DevEco Studio / hvigor / HarmonyOS SDK (API 12+) 无官方公开 Docker 镜像,
+  # GitHub-hosted runner 不预装, 需自托管 runner (harmonyos 标签) + 预装 SDK.
+  # 用 if 条件控制: runner 就位后在仓库 Settings → Variables 设置 ENABLE_HARMONYOS_CI=true 即自动启用.
+  #
+  # 用户本地构建 HAP 步骤 (CI 未就位时):
+  #   1. 安装 DevEco Studio: https://developer.huawei.com/consumer/cn/deveco-studio/
+  #   2. 通过 DevEco Studio SDK Manager 安装 HarmonyOS SDK (API 12+, 即 compatibleSdkVersion 5.0.0(12))
+  #   3. 命令行打包 (在项目根 ohosApp/ 目录下):
+  #        # Windows: hvigorw.bat / Linux/macOS: ./hvigorw
+  #        node ./hvigorw assembleHap --mode module -p product=default --no-daemon
+  #   4. 产物路径:
+  #      - 未签名: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
+  #      - 已签名: ohosApp/entry/build/default/outputs/default/entry-default-signed.hap
+  ohos-build:
+    needs: [ prepare, build ]
+    # 默认禁用: 自托管 runner 就位后在仓库 Settings → Variables 设 ENABLE_HARMONYOS_CI=true 启用
+    if: ${{ vars.ENABLE_HARMONYOS_CI == 'true' }}
+    runs-on: [self-hosted, harmonyos]   # 需自托管 runner, 预装 DevEco 命令行工具
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HOS_SDK_HOME: ${{ secrets.HOS_SDK_HOME }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build HAP
+        working-directory: ohosApp/
+        run: node ./hvigorw assembleHap --mode module -p product=default --no-daemon
+      - name: Collect HAP
+        run: |
+          mkdir -p ${{ github.workspace }}/hap/
+          find ${{ github.workspace }}/ohosApp/entry/build/default/outputs/default -name "*.hap" -exec mv {} ${{ github.workspace }}/hap/ \;
+      - name: Upload HAP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos.hap
+          path: ${{ github.workspace }}/hap/*.hap
+          if-no-files-found: ignore
+      - name: Upload HAP to Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          artifacts: ${{ github.workspace }}/hap/*.hap

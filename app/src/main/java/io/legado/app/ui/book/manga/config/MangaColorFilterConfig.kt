@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.manga.config
 
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 
 data class MangaColorFilterConfig(
     var r: Int = 0,

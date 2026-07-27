@@ -1,34 +1,43 @@
 package io.legado.app.ui.book.toc.rule
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.BaseViewModel
+import androidx.lifecycle.viewModelScope
 import io.legado.app.constant.AppLog
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.databinding.DialogFormEditBinding
-import io.legado.app.exception.NoStackTraceException
-import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FormEditFields
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.toJson
 import io.legado.app.utils.getClipText
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.Dispatchers
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
-class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
-    Toolbar.OnMenuItemClickListener {
+class TxtTocRuleEditDialog() : BaseComposeDialogFragment() {
 
     constructor(id: Long?) : this() {
         id ?: return
@@ -37,42 +46,67 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
         }
     }
 
-    private val binding by viewBinding(DialogFormEditBinding::bind)
-    private val adapter by lazy { FormAdapter() }
-    private val editEntities: ArrayList<EditEntity> = ArrayList()
+    private var editEntities by mutableStateOf<List<EditEntity>>(emptyList())
     private val viewModel by viewModels<ViewModel>()
     private val callback get() = (parentFragment as? Callback) ?: activity as? Callback
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initMenu()
-        binding.recyclerView.adapter = adapter
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         viewModel.initData(arguments?.getLong("id")) {
             upRuleView(it)
         }
     }
 
-    private fun initMenu() {
-        setupTitleBar(
-            menuRes = R.menu.rule_edit,
-            onMenuClick = ::onMenuItemClick
-        )
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_save -> {
-                val tocRule = getRuleFromView()
-                if (checkValid(tocRule)) {
-                    callback?.saveTxtTocRule(getRuleFromView())
-                    dismissAllowingStateLoss()
-                }
-            }
-            R.id.menu_copy_rule -> context?.sendToClip(GSON.toJson(getRuleFromView()))
-            R.id.menu_paste_rule -> viewModel.pasteRule {
-                upRuleView(it)
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = "",
+                onBack = { dismissAllowingStateLoss() },
+                actions = {
+                    IconButton(onClick = { save() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = stringResource(R.string.action_save),
+                            tint = colors.primaryText,
+                        )
+                    }
+                    OverflowMenu { dismissMenu ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_rule), color = colors.primaryText) },
+                            onClick = {
+                                dismissMenu()
+                                context?.sendToClip(GSON.toJson(getRuleFromView()))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.paste_rule), color = colors.primaryText) },
+                            onClick = {
+                                dismissMenu()
+                                viewModel.pasteRule { upRuleView(it) }
+                            },
+                        )
+                    }
+                },
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                FormEditFields(editEntities)
             }
         }
-        return true
+    }
+
+    private fun save() {
+        val tocRule = getRuleFromView()
+        if (checkValid(tocRule)) {
+            callback?.saveTxtTocRule(tocRule)
+            dismissAllowingStateLoss()
+        }
     }
 
     private fun checkValid(tocRule: TxtTocRule): Boolean {
@@ -92,13 +126,11 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
     }
 
     private fun upRuleView(tocRule: TxtTocRule?) {
-        editEntities.clear()
-        editEntities.apply {
-            add(EditEntity("name", tocRule?.name, R.string.name))
-            add(EditEntity("rule", tocRule?.rule, R.string.regex))
-            add(EditEntity("example", tocRule?.example, R.string.example))
-        }
-        adapter.editEntities = editEntities
+        editEntities = listOf(
+            EditEntity("name", tocRule?.name, R.string.name),
+            EditEntity("rule", tocRule?.rule, R.string.regex),
+            EditEntity("example", tocRule?.example, R.string.example),
+        )
     }
 
     private fun getRuleFromView(): TxtTocRule {
@@ -117,32 +149,23 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
 
     class ViewModel(application: Application) : BaseViewModel(application) {
 
-        var tocRule: TxtTocRule? = null
+        // 委托给 commonMain 的 TxtTocRuleEditViewModelShared, 业务逻辑下沉供多端复用
+        // (Android=viewModelScope + getClipText / desktop=应用 scope + AWT Clipboard)
+        private val shared: TxtTocRuleEditViewModelShared =
+            TxtTocRuleEditViewModelShared(viewModelScope) { getClipText() }
+
+        var tocRule: TxtTocRule?
+            get() = shared.tocRule
+            set(value) {
+                shared.tocRule = value
+            }
 
         fun initData(id: Long?, finally: (tocRule: TxtTocRule?) -> Unit) {
-            if (tocRule != null) return
-            execute {
-                if (id == null) return@execute
-                tocRule = appDb.txtTocRuleDao.get(id)
-            }.onFinally {
-                finally.invoke(tocRule)
-            }
+            shared.initData(id, finally)
         }
 
         fun pasteRule(success: (TxtTocRule) -> Unit) {
-            execute(context = Dispatchers.Main) {
-                val text = getClipText()
-                if (text.isNullOrBlank()) {
-                    throw NoStackTraceException("剪贴板为空")
-                }
-                GSON.fromJsonObject<TxtTocRule>(text).getOrNull()
-                    ?: throw NoStackTraceException("格式不对")
-            }.onSuccess {
-                success.invoke(it)
-            }.onError {
-                context.toastOnUi(it.localizedMessage ?: "Error")
-                it.printOnDebug()
-            }
+            shared.pasteRule(success)
         }
 
     }

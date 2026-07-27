@@ -1,30 +1,44 @@
 package io.legado.app.ui.book.read.config
 
 import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.viewModels
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.databinding.DialogFormEditBinding
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.widget.form.FormAdapter
+import io.legado.app.ui.login.showLoginDialog
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FormEditFields
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.ui.widget.text.EditEntity.CodePattern
 import io.legado.app.ui.widget.text.EditEntity.ViewType
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
-    Toolbar.OnMenuItemClickListener {
+class HttpTtsEditDialog() : BaseComposeDialogFragment() {
 
     constructor(id: Long) : this() {
         arguments = Bundle().apply {
@@ -32,123 +46,114 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_form_edit),
         }
     }
 
-    private val binding by viewBinding(DialogFormEditBinding::bind)
     private val viewModel by viewModels<HttpTtsEditViewModel>()
-    private val adapter by lazy { FormAdapter() }
-    private val editEntities: ArrayList<EditEntity> = ArrayList()
+    private var editEntities by mutableStateOf<List<EditEntity>>(emptyList())
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.recyclerView.adapter = adapter
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         viewModel.initData(arguments) {
             initView(httpTTS = it)
         }
-        initMenu()
     }
 
-    fun initMenu() {
-        setupTitleBar(
-            menuRes = R.menu.speak_engine_edit,
-            onMenuClick = ::onMenuItemClick
-        )
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = "",
+                onBack = { dismissAllowingStateLoss() },
+                actions = {
+                    IconButton(onClick = {
+                        viewModel.save(dataFromView()) {
+                            toastOnUi("保存成功")
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = stringResource(R.string.action_save),
+                            tint = colors.primaryText,
+                        )
+                    }
+                    OverflowMenu { dismissMenu ->
+                        @Composable
+                        fun item(textRes: Int, onClick: () -> Unit) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(textRes), color = colors.primaryText) },
+                                onClick = { dismissMenu(); onClick() },
+                            )
+                        }
+                        item(R.string.login) { login() }
+                        item(R.string.show_login_header) { showLoginHeader() }
+                        item(R.string.del_login_header) { dataFromView().removeLoginHeader() }
+                        item(R.string.copy_source) {
+                            context?.sendToClip(GSON.toJson(dataFromView()))
+                        }
+                        item(R.string.paste_source) {
+                            viewModel.importFromClip { initView(it) }
+                        }
+                        item(R.string.log) { showDialogFragment<AppLogDialog>() }
+                        item(R.string.help) { showHelp("httpTTSHelp") }
+                    }
+                },
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                FormEditFields(editEntities)
+            }
+        }
+    }
+
+    private fun login() = dataFromView().let { httpTts ->
+        if (httpTts.hasLogin()) {
+            viewModel.save(httpTts) {
+                httpTts.showLoginDialog(activity as AppCompatActivity)
+            }
+        } else toastOnUi("没有登陆界面")
+    }
+
+    private fun showLoginHeader() = alert {
+        setTitle(R.string.login_header)
+        dataFromView().getLoginHeader()?.let { loginHeader ->
+            setMessage(loginHeader)
+        }
     }
 
     fun initView(httpTTS: HttpTTS) {
-        editEntities.clear()
-        editEntities.apply {
+        editEntities = listOf(
             // name: 简单文本字段
-            add(EditEntity("name", httpTTS.name, R.string.name))
+            EditEntity("name", httpTTS.name, R.string.name),
             // url: CodeView + 全部 pattern (legado + json + js)
-            add(
-                EditEntity(
-                    "url",
-                    httpTTS.url,
-                    "url",
-                    ViewType.code,
-                    codePatterns = CodePattern.all
-                )
-            )
+            EditEntity("url", httpTTS.url, "url", ViewType.code, codePatterns = CodePattern.all),
             // contentType: 短文本字段（MIME 类型），无需语法高亮
-            add(EditEntity("contentType", httpTTS.contentType, "Content-Type"))
+            EditEntity("contentType", httpTTS.contentType, "Content-Type"),
             // concurrentRate: 短文本字段（限速值），无需语法高亮
-            add(EditEntity("concurrentRate", httpTTS.concurrentRate, R.string.concurrent_rate))
+            EditEntity("concurrentRate", httpTTS.concurrentRate, R.string.concurrent_rate),
             // loginUrl: CodeView + 全部 pattern
-            add(
-                EditEntity(
-                    "loginUrl",
-                    httpTTS.loginUrl,
-                    R.string.login_url,
-                    ViewType.code,
-                    codePatterns = CodePattern.all
-                )
-            )
+            EditEntity(
+                "loginUrl", httpTTS.loginUrl, R.string.login_url,
+                ViewType.code, codePatterns = CodePattern.all
+            ),
             // loginUi: CodeView + json pattern
-            add(
-                EditEntity(
-                    "loginUi",
-                    httpTTS.loginUi,
-                    R.string.login_ui,
-                    ViewType.code,
-                    codePatterns = CodePattern.json
-                )
-            )
+            EditEntity(
+                "loginUi", httpTTS.loginUi, R.string.login_ui,
+                ViewType.code, codePatterns = CodePattern.json
+            ),
             // loginCheckJs: CodeView + js pattern
-            add(
-                EditEntity(
-                    "loginCheckJs",
-                    httpTTS.loginCheckJs,
-                    R.string.login_check_js,
-                    ViewType.code,
-                    codePatterns = CodePattern.js
-                )
-            )
+            EditEntity(
+                "loginCheckJs", httpTTS.loginCheckJs, R.string.login_check_js,
+                ViewType.code, codePatterns = CodePattern.js
+            ),
             // header: CodeView + 全部 pattern
-            add(
-                EditEntity(
-                    "header",
-                    httpTTS.header,
-                    R.string.source_http_header,
-                    ViewType.code,
-                    codePatterns = CodePattern.all
-                )
-            )
-        }
-        adapter.editEntities = editEntities
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_save -> viewModel.save(dataFromView()) {
-                toastOnUi("保存成功")
-            }
-
-            R.id.menu_login -> dataFromView().let { httpTts ->
-                if (httpTts.hasLogin()) {
-                    viewModel.save(httpTts) {
-                        httpTts.showLoginDialog(activity as AppCompatActivity)
-                    }
-                } else toastOnUi("没有登陆界面")
-            }
-
-            R.id.menu_show_login_header -> alert {
-                setTitle(R.string.login_header)
-                dataFromView().getLoginHeader()?.let { loginHeader ->
-                    setMessage(loginHeader)
-                }
-            }
-
-            R.id.menu_del_login_header -> dataFromView().removeLoginHeader()
-            R.id.menu_copy_source -> dataFromView().let {
-                context?.sendToClip(GSON.toJson(it))
-            }
-
-            R.id.menu_paste_source -> viewModel.importFromClip {
-                initView(it)
-            }
-
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
-            R.id.menu_help -> showHelp("httpTTSHelp")
-        }
-        return true
+            EditEntity(
+                "header", httpTTS.header, R.string.source_http_header,
+                ViewType.code, codePatterns = CodePattern.all
+            ),
+        )
     }
 
     private fun dataFromView(): HttpTTS {

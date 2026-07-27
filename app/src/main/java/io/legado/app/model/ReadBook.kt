@@ -1,7 +1,6 @@
 package io.legado.app.model
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PageAnim.scrollPageAnim
 import io.legado.app.data.appDb
@@ -12,11 +11,14 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.getDisplayTitle
+import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
+import io.legado.app.help.book.saveRead
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
@@ -27,10 +29,11 @@ import io.legado.app.model.fileBook.TextFile
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.CacheBookService
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
@@ -50,6 +53,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -107,10 +111,10 @@ object ReadBook : CoroutineScope by MainScope() {
         if (isDiffBook){
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.READ_BOOK, book.name)
         }
-        if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+        if (chapterList?.getOrNull(0)?.bookUrl != book.bookUrl){
             chapterList = null
         }
-        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        chapterSize = chapterList?.size ?: runBlocking { appDb.bookChapterDao.getChapterCount(book.bookUrl) }
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         contentProcessor = ContentProcessor.get(book)
@@ -132,13 +136,13 @@ object ReadBook : CoroutineScope by MainScope() {
             }
         }else{
             callBack?.upContent()
-            callBack?.upPageAnim()
+            ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
             lastBookProgress = null
             webBookProgress = null
             TextFile.clear()
         }
 
-        callBack?.upMenuView()
+        ReadBookEvents.postMenuRefresh()
         upWebBook(book)
         synchronized(this) {
             loadingChapters.clear()
@@ -154,7 +158,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 book.config.imageStyle = Book.imgStyleFull
             }
         } else {
-            appDb.bookSourceDao.getBookSource(book.origin)?.let {
+            runBlocking { appDb.bookSourceDao.getBookSource(book.origin) }?.let {
                 bookSource = it
                 if (book.config.imageStyle.isNullOrBlank()) {
                     var imageStyle = it.contentRule.imageStyle
@@ -173,8 +177,10 @@ object ReadBook : CoroutineScope by MainScope() {
         val oldIndex = ReadBookConfig.styleSelect
         ReadBookConfig.isComic = book.isImage
         if (oldIndex != ReadBookConfig.styleSelect) {
-            postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
-            postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
+            ReadBookEvents.postConfig(
+                ReadConfigChange.BG, ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT
+            )
+            ReadBookEvents.postActionBarChange()
         }
     }
 
@@ -283,7 +289,7 @@ object ReadBook : CoroutineScope by MainScope() {
             }
             loadContent(durChapterIndex.plus(1), upContent, false)
             saveRead()
-            callBack?.upMenuView()
+            ReadBookEvents.postMenuRefresh()
             AppLog.putDebug("moveToNextChapter-curPageChanged()")
             curPageChanged()
             return true
@@ -314,7 +320,7 @@ object ReadBook : CoroutineScope by MainScope() {
             }
             loadContent(durChapterIndex.plus(1), upContent, false)
             saveRead()
-            callBack?.upMenuView()
+            ReadBookEvents.postMenuRefresh()
             AppLog.putDebug("moveToNextChapter-curPageChanged()")
             curPageChanged()
             return true
@@ -344,7 +350,7 @@ object ReadBook : CoroutineScope by MainScope() {
             }
             loadContent(durChapterIndex.minus(1), upContent, false)
             saveRead()
-            callBack?.upMenuView()
+            ReadBookEvents.postMenuRefresh()
             curPageChanged()
             return true
         } else {
@@ -651,7 +657,7 @@ object ReadBook : CoroutineScope by MainScope() {
                         ensureActive()
                         curTextChapter = textChapter
                     }
-                    callBack?.upMenuView()
+                    ReadBookEvents.postMenuRefresh()
                     var available = false
                     for (page in textChapter.layoutChannel) {
                         val index = page.index
@@ -731,7 +737,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     withContext(Main) {
                         curTextChapter = textChapter
                     }
-                    callBack?.upMenuView()
+                    ReadBookEvents.postMenuRefresh()
                     var available = false
                     for (page in textChapter.layoutChannel) {
                         val index = page.index
@@ -892,7 +898,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun setCharset(charset: String) {
         book?.let {
             it.charset = charset
-            callBack?.loadChapterList(it)
+            ReadBookEvents.postLoadChapterList(it)
         }
     }
 
@@ -902,7 +908,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 val book = book ?: return@execute
                 book.durChapterIndex = durChapterIndex
                 book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
-                appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
+                runBlocking { appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex) }?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
                         book.getUseReplaceRule()
@@ -964,7 +970,7 @@ object ReadBook : CoroutineScope by MainScope() {
             if (simulatedChapterSize > 0 && durChapterIndex > simulatedChapterSize - 1) {
                 durChapterIndex = simulatedChapterSize - 1
             }
-            callBack?.upMenuView()
+            ReadBookEvents.postMenuRefresh()
             if (callBack == null) {
                 clearTextChapter()
             } else if (loadContent) {
@@ -1025,11 +1031,9 @@ object ReadBook : CoroutineScope by MainScope() {
         }
     }
 
+    // 异步 UI 刷新类回调已移入 ReadBookEvents(菜单刷新/目录重载/翻页动画/进度确认),
+    // 仅保留翻页渲染等同步性能敏感回调
     interface CallBack : LayoutProgressListener {
-        fun upMenuView()
-
-        fun loadChapterList(book: Book)
-
         fun upContent(
             relativePosition: Int = 0,
             resetPageOffset: Boolean = true,
@@ -1046,11 +1050,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
         fun contentLoadFinish()
 
-        fun upPageAnim(upRecorder: Boolean = false)
-
         fun notifyBookChanged()
-
-        fun sureNewProgress(progress: BookProgress)
 
         fun cancelSelect()
     }

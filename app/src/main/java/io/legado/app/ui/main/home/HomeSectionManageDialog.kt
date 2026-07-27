@@ -1,101 +1,156 @@
 package io.legado.app.ui.main.home
 
 import android.os.Bundle
-import android.view.View
-import androidx.core.view.isVisible
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
-import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.HomeTabHelp
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
- * 管理某个分组（tabTitle）下的展示项。列表、拖序、增删全部限定在该 tab 内。
+ * 管理某个分组(tabTitle)下的展示项(Compose)。列表、长按拖序、增删全部限定在该 tab 内。
  */
-class HomeSectionManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
+class HomeSectionManageDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-
     private val tabTitle: String get() = arguments?.getString(ARG_TAB_TITLE).orEmpty()
 
-    private val adapter by lazy {
-        HomeSectionManageAdapter(requireContext(), object : HomeSectionManageAdapter.Callback {
-            override fun onEdit(section: HomeSection) {
-                showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle, section))
-            }
+    private var sectionList by mutableStateOf<List<HomeSection>>(emptyList())
 
-            override fun onDelete(section: HomeSection) {
-                HomeTabHelp.removeSection(tabTitle, section.id)
-                postEvent(
-                    EventBus.HOME_SECTION,
-                    HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, section)
-                )
-                upData()
+    @Composable
+    override fun Content() {
+        LaunchedEffect(Unit) {
+            upData()
+            observeEvent<HomeSectionEvent>(EventBus.HOME_SECTION) { event ->
+                if (event.tabTitle == tabTitle && event.action != HomeSectionEvent.REORDER) {
+                    upData()
+                }
             }
-        })
+        }
+        RuleManageScaffold(
+            items = sectionList,
+            itemKey = { it.id },
+            onMove = { from, to ->
+                sectionList = sectionList.toMutableList().apply { add(to, removeAt(from)) }
+            },
+            emptyText = getString(R.string.home_manage_empty),
+            titleBar = {
+                DialogTitleBar(
+                    title = getString(R.string.home_manage_for_tab, tabTitle),
+                    onBack = { dismissAllowingStateLoss() },
+                    actions = {
+                        IconButton(onClick = {
+                            showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
+                        }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = getString(R.string.home_add_section),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+        ) { item ->
+            SectionItem(item)
+        }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.home_manage_for_tab, tabTitle),
-            menuRes = R.menu.dialog_add
+    @Composable
+    private fun ReorderableCollectionItemScope.SectionItem(item: HomeSection) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .longPressDraggableHandle(onDragStopped = { persistOrder() })
+                .clickable {
+                    showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle, item))
+                }
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            when (it?.itemId) {
-                R.id.menu_add ->
-                    showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
+            Icon(
+                painter = painterResource(R.drawable.ic_baseline_sort_24),
+                contentDescription = stringResource(R.string.sort),
+                tint = colors.secondaryText,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(
+                    text = item.title,
+                    color = colors.primaryText,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${styleName(item.style)} · ${item.sourceName}",
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
-            true
-        }
-        titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_add_section)
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        binding.tvEmpty.text = getString(R.string.home_manage_empty)
-        initDragSort()
-        upData()
-        observeEvent<HomeSectionEvent>(EventBus.HOME_SECTION) { event ->
-            if (event.tabTitle == tabTitle && event.action != HomeSectionEvent.REORDER) {
-                upData()
-            }
+            Spacer(Modifier.width(8.dp))
+            AppTextButton(text = stringResource(R.string.delete)) { deleteSection(item) }
         }
     }
 
-    private fun initDragSort() {
-        val touchCallback = ItemTouchCallback(object : ItemTouchCallback.Callback {
-            override fun swap(srcPosition: Int, targetPosition: Int): Boolean {
-                adapter.swap(srcPosition, targetPosition)
-                return true
-            }
+    private fun styleName(style: Int): String = getString(
+        when (style) {
+            HomeSection.STYLE_RANK_LIST -> R.string.home_style_rank_list
+            HomeSection.STYLE_FOUR_ROW -> R.string.home_style_four_row
+            HomeSection.STYLE_INFINITE_GRID -> R.string.home_style_infinite_grid
+            else -> R.string.home_style_cover_row
+        }
+    )
 
-            override fun onClearView(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ) {
-                HomeTabHelp.saveSectionsOrder(tabTitle, adapter.getItems())
-                postEvent(
-                    EventBus.HOME_SECTION,
-                    HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
-                )
-            }
-        })
-        touchCallback.isCanDrag = true
-        ItemTouchHelper(touchCallback).attachToRecyclerView(binding.recyclerView)
+    private fun deleteSection(section: HomeSection) {
+        HomeTabHelp.removeSection(tabTitle, section.id)
+        postEvent(EventBus.HOME_SECTION, HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, section))
+        upData()
     }
 
     private fun upData() {
-        val sections = HomeTabHelp.getSections(tabTitle)
-        adapter.setItems(sections)
-        binding.tvEmpty.isVisible = sections.isEmpty()
+        sectionList = HomeTabHelp.getSections(tabTitle)
+    }
+
+    private fun persistOrder() {
+        HomeTabHelp.saveSectionsOrder(tabTitle, sectionList)
+        postEvent(EventBus.HOME_SECTION, HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle))
     }
 
     companion object {

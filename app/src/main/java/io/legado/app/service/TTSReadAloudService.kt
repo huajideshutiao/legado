@@ -82,20 +82,16 @@ class TTSReadAloudService : BaseReadAloudService() {
         speakJob = execute {
             LogUtils.d(TAG, "朗读列表大小 ${contentList.size}")
             LogUtils.d(TAG, "朗读页数 ${textChapter?.pageSize}")
-            val list = contentList
+            // 段落过滤与起始偏移计算走 commonMain
+            val plan = TtsReadAloudShared.buildSpeakPlan(aloudQueue)
             var firstSpoken = false
-            for (i in nowSpeak until list.size) {
+            for (item in plan) {
                 ensureActive()
-                var text = list[i]
-                if (paragraphStartPos > 0 && i == nowSpeak) {
-                    text = text.substring(paragraphStartPos)
-                }
-                if (text.matches(AppPattern.notReadAloudRegex)) continue
-                val utteranceId = AppConst.APP_TAG + i
+                val utteranceId = AppConst.APP_TAG + item.index
                 val result = if (!firstSpoken) {
-                    engine.speak(text, utteranceId)
+                    engine.speak(item.text, utteranceId)
                 } else {
-                    engine.enqueue(text, utteranceId)
+                    engine.enqueue(item.text, utteranceId)
                 }
                 if (result == TextToSpeech.ERROR) {
                     if (!firstSpoken) {
@@ -103,7 +99,7 @@ class TTSReadAloudService : BaseReadAloudService() {
                         initEngine()
                         return@execute
                     } else {
-                        AppLog.put("tts朗读出错:$text")
+                        AppLog.put("tts朗读出错:${item.text}")
                     }
                 }
                 firstSpoken = true
@@ -206,15 +202,9 @@ class TTSReadAloudService : BaseReadAloudService() {
          * 跳过全标点段落,推进到下一段;若已到末尾则切下一章。
          */
         private fun nextParagraph() {
-            do {
-                readAloudNumber += contentList[nowSpeak].length + 1 - paragraphStartPos
-                paragraphStartPos = 0
-                nowSpeak++
-                if (nowSpeak >= contentList.size) {
-                    nextChapter()
-                    return
-                }
-            } while (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
+            if (!aloudQueue.advanceToNextSpeakable()) {
+                nextChapter()
+            }
         }
     }
 

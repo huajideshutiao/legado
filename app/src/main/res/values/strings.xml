@@ -498,7 +498,6 @@
     <string name="wrong_format">Wrong format</string>
     <string name="error">Error</string>
     <string name="language">Language</string>
-    <string name="js_engine_title">JS engine</string>
     <string name="read_record">Read record</string>
     <string name="thread_count">Thread count</string>
     <string name="all_read_time">Total read time</string>
@@ -1000,6 +999,95 @@
     <string name="home_manage_for_tab">Manage "%1$s" sections</string>
     <string name="home_manage_empty">No sections in this group, tap + in upper right to add</string>
     <string name="bottom_nav_items_order">Bottom bar items order</string>
+
+    <!--sharedUiMain Compose Screen 下沉补充 key (对齐 jvm ResourceProvider.jvm.kt fallback 字面量)-->
+    <!--BookSourceDebugScreen 帮助面板 label (对应 jvmStringTable 中 debug_*_hint / system)-->
+    <string name="debug_search_hint">Debug search>>input keyword, e.g.:</string>
+    <string name="debug_explore_hint">Debug explore>>input explore URL, e.g.:</string>
+    <string name="debug_book_info_hint">Debug detail>>input detail page URL, e.g.:</string>
+    <string name="debug_toc_hint">Debug TOC>>input TOC page URL, e.g.:</string>
+    <string name="debug_content_hint">Debug content>>input content page URL, e.g.:</string>
+    <string name="system">System</string>
+    <!--TextDialog (P0 Dialog 下沉)-->
+    <string name="text_too_large">Data too large to display fully…</string>
+    <!--AppLogDialog (P0 Dialog 下沉)-->
+    <string name="log_stack_trace">Stack trace</string>
+    <string name="log_level_all">All</string>
+    <string name="log_level_error">Error</string>
+    <string name="log_level_warn">Warn</string>
+    <string name="log_level_info">Info</string>
+    <string name="log_level_debug">Debug</string>
+    <!--VariableDialog (P0 Dialog 下沉)-->
+    <string name="variable_edit_title">Edit variable</string>
+    <string name="source_variable_tab">Source variable</string>
+    <string name="book_variable_tab">Book variable</string>
+    <string name="variable_key">Variable name</string>
+    <string name="variable_value">Variable value</string>
+    <string name="variable_empty">No variables</string>
+    <!--ReadRecordScreen 时间格式化 (对应 jvmStringTable 中 time_format_*)-->
+    <string name="time_format_minutes">0 minutes</string>
+    <string name="time_format_hours_minutes">%1$d hours %2$d minutes</string>
+    <string name="time_format_hours">%d hours</string>
+    <string name="time_format_minutes_only">%d minutes</string>
+    <string name="time_format_seconds">%d seconds</string>
+
+    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 对齐 jvmStringTable 中文值)-->
+    <!--GroupEditDialog 书籍排序-->
+    <string name="book_sort_default">Default</string>
+    <string name="book_sort_reading_time">By reading time</string>
+    <string name="book_sort_update_time">By update time</string>
+    <string name="book_sort_name">By name</string>
+    <string name="book_sort_manual">Manual</string>
+    <string name="book_sort_comprehensive">Comprehensive</string>
+    <string name="book_sort_author">By author</string>
+    <!--BookmarkDialog-->
+    <string name="bookmark_content">Content</string>
+    <string name="bookmark_note">Note</string>
+    <!--ContentEditDialog-->
+    <string name="content_edit_reset">Reset</string>
+    <string name="content_edit_copy_all">Copy all</string>
+    <string name="content_edit_copy_success">Copied</string>
+    <!--ComposeTextToolbar (原 android.R.string.copy/cut/paste)-->
+    <string name="copy">Copy</string>
+    <string name="cut">Cut</string>
+    <string name="paste">Paste</string>
+    <!--SourceLoginDialog-->
+    <string name="cookie_input">Cookie</string>
+    <!--DictRuleEditDialog-->
+    <string name="dict_rule_edit_name">Name</string>
+    <string name="dict_rule_edit_url_rule">URL rule</string>
+    <string name="dict_rule_edit_show_rule">Show rule</string>
+    <string name="dict_rule_edit_copy_success">Copied</string>
+    <!--TxtTocRuleEditDialog-->
+    <string name="txt_toc_rule_edit_name">Name</string>
+    <string name="txt_toc_rule_edit_rule">Rule</string>
+    <string name="txt_toc_rule_edit_example">Example</string>
+    <string name="txt_toc_rule_edit_name_required">Name cannot be empty</string>
+    <string name="txt_toc_rule_edit_regex_error">Regex syntax error or unsupported (txt)</string>
+    <string name="txt_toc_rule_edit_copy_success">Copied</string>
+    <!--SourceFilterEditDialog-->
+    <string name="source_filter_rule_edit_name">Rule name</string>
+    <string name="source_filter_rule_edit_pattern">Pattern</string>
+    <string name="source_filter_rule_edit_invalid_pattern">Regex invalid or empty</string>
+    <string name="source_filter_rule_edit_title_add">Add filter rule</string>
+    <string name="source_filter_rule_edit_title_edit">Filter rule</string>
+    <!--ReadMenu/ReadConfigPanel-->
+    <string name="background">Background</string>
+    <string name="page_turn">Page turn</string>
+    <!--BookSourceEditScreen/DebugScreen 教程入口-->
+    <string name="book_source_tutorial">Book source tutorial</string>
+    <string name="js_tutorial">JS tutorial</string>
+    <string name="regex_tutorial">Regex tutorial</string>
+    <!--SearchScreen 空结果提示-->
+    <string name="search_result_empty">Search result is empty</string>
+    <string name="search_result_empty_close_precision">%s group search result is empty, close precision search?</string>
+    <string name="search_result_empty_switch_all">%s group search result is empty, switch to all groups?</string>
+    <!--SourcePickerDialog-->
+    <string name="select_book_source">Select book source</string>
+    <!--SpeakEngineDialog-->
+    <string name="system_default">System default</string>
+    <!--MyConfigScreen RSS 入口 (桌面端独有, app 端 showRssEntry=false 不调用, 补充以防万一)-->
+    <string name="rss_sources">RSS</string>
 
     <!--Non-translatable strings-->
     <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>

@@ -37,7 +37,6 @@ import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager.widget.ViewPager
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.TintHelper
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
 import splitties.views.bottomPadding
@@ -68,24 +67,6 @@ fun EditText.showSoftInput() {
 
 fun View.disableAutoFill() {
     importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-}
-
-fun View.applyTint(
-    @ColorInt color: Int,
-    isDark: Boolean = AppConfig.isNightTheme
-) {
-    TintHelper.setTintAuto(this, color, false, isDark)
-}
-
-fun View.applyBackgroundTint(
-    @ColorInt color: Int,
-    isDark: Boolean = AppConfig.isNightTheme
-) {
-    if (background == null) {
-        setBackgroundColor(color)
-    } else {
-        TintHelper.setTintAuto(this, color, true, isDark)
-    }
 }
 
 fun RecyclerView.setEdgeEffectColor(@ColorInt color: Int) {

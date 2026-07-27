@@ -1,22 +1,30 @@
 package io.legado.app.ui.widget.dialog
 
-import android.content.Context
 import android.os.Bundle
-import android.text.util.Linkify
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.viewbinding.ViewBinding
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.dp
+import io.legado.app.base.BaseComposeDialogFragment
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.theme.AppTheme
 
 @Suppress("unused")
-class TextListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
+class TextListDialog() : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
@@ -27,64 +35,55 @@ class TextListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         }
     }
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy { TextAdapter(requireContext()) }
-    private var values: ArrayList<String>? = null
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
-        arguments?.let {
-            setupTitleBar(title = it.getString("title"))
-            values = it.getStringArrayList("values")
-        }
-        recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        recyclerView.adapter = adapter
-        adapter.setItems(values)
-    }
-
-    class TextAdapter(context: Context) :
-        RecyclerAdapter<String, TextAdapter.LogBinding>(context) {
-
-        class LogBinding(val root: TextView) : ViewBinding {
-            override fun getRoot(): View = root
-        }
-
-        override fun getViewBinding(parent: ViewGroup): LogBinding {
-            val tv = TextView(parent.context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setTextIsSelectable(true)
-                autoLinkMask = Linkify.WEB_URLS
-            }
-            return LogBinding(tv)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: LogBinding,
-            item: String,
-            payloads: MutableList<Any>
-        ) {
-            val tv = binding.root
-            if (tv.getTag(R.id.tag1) == null) {
-                val listener = object : View.OnAttachStateChangeListener {
-                    override fun onViewAttachedToWindow(v: View) {
-                        tv.isCursorVisible = false
-                        tv.isCursorVisible = true
+    @Composable
+    override fun Content() {
+        val values = arguments?.getStringArrayList("values") ?: arrayListOf()
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxSize()) {
+            DialogTitleBar(
+                title = arguments?.getString("title") ?: "",
+                onBack = { dismissAllowingStateLoss() }
+            )
+            // 复刻原 TextAdapter：可选中文本 + WEB_URLS 自动链接
+            SelectionContainer(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(values) { item ->
+                        Text(
+                            text = autoLinkText(item, colors.accent),
+                            color = colors.primaryText,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
                     }
-
-                    override fun onViewDetachedFromWindow(v: View) {}
                 }
-                tv.addOnAttachStateChangeListener(listener)
-                tv.setTag(R.id.tag1, listener)
             }
-            tv.text = item
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: LogBinding) {
-            //nothing
         }
     }
-
 }
+
+/** 复刻 Linkify.WEB_URLS：把纯文本中的网址片段标注为可点击链接。 */
+internal fun autoLinkText(text: String, linkColor: androidx.compose.ui.graphics.Color): AnnotatedString =
+    buildAnnotatedString {
+        val matcher = android.util.Patterns.WEB_URL.matcher(text)
+        var last = 0
+        while (matcher.find()) {
+            append(text.substring(last, matcher.start()))
+            val url = matcher.group()
+            val href = if (url.contains("://")) url else "http://$url"
+            withLink(
+                LinkAnnotation.Url(
+                    href,
+                    TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
+                )
+            ) {
+                append(url)
+            }
+            last = matcher.end()
+        }
+        append(text.substring(last))
+    }

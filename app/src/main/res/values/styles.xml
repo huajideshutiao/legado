@@ -3,14 +3,10 @@
     //**************************************************************Theme******************************************************************************//
 
     <!-- 亮色主题 -->
-    <style name="AppTheme.Light" parent="Base.AppTheme">
-        <item name="actionBarStyle">@style/AppTheme.AppBarOverlay.Light</item>
-    </style>
+    <style name="AppTheme.Light" parent="Base.AppTheme" />
 
     <!-- 暗色主题 -->
-    <style name="AppTheme.Dark" parent="Base.AppTheme">
-        <item name="actionBarStyle">@style/AppTheme.AppBarOverlay.Dark</item>
-    </style>
+    <style name="AppTheme.Dark" parent="Base.AppTheme" />
 
     <!-- 透明主题 -->
     <style name="AppTheme.Transparent" parent="Base.AppTheme">
@@ -36,27 +32,7 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
-    <style name="AppTheme.AppBarOverlay.Light" parent="ThemeOverlay.AppCompat.Light">
-        <item name="colorAccent">@color/md_grey_900</item>
-    </style>
-
-    <style name="AppTheme.AppBarOverlay.Dark" parent="ThemeOverlay.AppCompat.Dark">
-        <item name="colorAccent">@color/md_grey_50</item>
-    </style>
-
-    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light">
-        <item name="overlapAnchor">false</item>
-        <item name="colorAccent">@color/md_grey_900</item>
-    </style>
-
     //**********System Style******************//
-
-    <style name="Style.DialogToolbar" parent="Widget.AppCompat.Toolbar">
-        <item name="android:elevation">0dp</item>
-        <item name="android:theme">?attr/actionBarStyle</item>
-        <item name="popupTheme">@style/AppTheme.PopupOverlay</item>
-        <item name="titleTextAppearance">@style/ToolbarTitle</item>
-    </style>
 
     <style name="Animation.Dialog" parent="android:Animation">
         <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
@@ -81,49 +57,7 @@
         <item name="android:windowAnimationStyle">@null</item>
     </style>
 
-    <style name="ToolbarTitle" parent="@style/TextAppearance.Widget.AppCompat.Toolbar.Title">
-        <item name="android:textSize">20sp</item>
-    </style>
-
     //*******************Widget Style**********************************//
-
-    <style name="Style.Text.Primary.Normal" parent="android:Widget">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">@dimen/font_size_normal</item>
-        <!-- Arco: 走资源引用以支持 DayNight 切换（原 #000 在 dark 模式不可读） -->
-        <item name="android:textColor">@color/primaryText</item>
-        <item name="android:includeFontPadding">false</item>
-    </style>
-
-    <style name="Style.Text.Second.Normal" parent="android:Widget">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">@dimen/font_size_normal</item>
-        <!-- Arco: 走资源引用以支持 DayNight 切换（原 #676767 在 dark 模式不可读） -->
-        <item name="android:textColor">@color/secondaryText</item>
-        <item name="android:includeFontPadding">false</item>
-    </style>
-
-    <style name="Style.Text.Second.Normal.Wrap">
-        <item name="android:layout_width">wrap_content</item>
-    </style>
-
-    <style name="BookInfoActionStyle">
-        <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">match_parent</item>
-        <item name="android:layout_weight">1</item>
-        <item name="android:gravity">center</item>
-        <item name="android:includeFontPadding">false</item>
-        <item name="android:lines">2</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:textColor">@color/tv_text_summary</item>
-        <item name="android:drawablePadding">2dp</item>
-        <item name="android:drawableTint">@color/tv_text_summary</item>
-        <item name="android:background">?attr/selectableItemBackground</item>
-        <item name="android:paddingTop">4dp</item>
-        <item name="android:paddingBottom">4dp</item>
-    </style>
 
     <!-- 圆形 ShapeAppearance，供 ShapeableImageView 使用（替代 CircleImageView） -->
     <style name="ShapeAppearance.Circle" parent="">

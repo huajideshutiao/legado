@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.book.BookContent
+import io.legado.app.ui.book.read.page.entities.TextChapterRef
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextChapterLayout
 import io.legado.app.utils.fastBinarySearchBy
@@ -28,7 +29,7 @@ data class TextChapter(
     val isPay: Boolean,
     //起效的替换规则
     val effectiveReplaceRules: List<ReplaceRule>?
-) : LayoutProgressListener {
+) : LayoutProgressListener, TextChapterRef {
 
     private val textPages = arrayListOf<TextPage>()
     val pages: List<TextPage> get() = textPages
@@ -51,7 +52,7 @@ data class TextChapter(
 
     val lastReadLength: Int get() = getReadLength(lastIndex)
 
-    val pageSize: Int get() = pages.size
+    override val pageSize: Int get() = pages.size
 
     var listener: LayoutProgressListener? = null
 

@@ -14,7 +14,6 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.withStyledAttributes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
@@ -22,10 +21,11 @@ import com.bumptech.glide.request.target.Target
 import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.radius
 import io.legado.app.model.BookCover
-import io.legado.app.utils.lifecycle
+import io.legado.app.model.CoverRatio
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
 
@@ -38,7 +38,7 @@ class CoverImageView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : AppCompatImageView(context, attrs) {
 
-    var coverRatio: BookCover.CoverRatio = BookCover.CoverRatio.NOVEL
+    var coverRatio: CoverRatio = CoverRatio.NOVEL
         set(value) {
             if (field != value) {
                 field = value
@@ -58,8 +58,8 @@ class CoverImageView @JvmOverloads constructor(
         attrs?.let {
             context.withStyledAttributes(it, R.styleable.CoverImageView) {
                 coverRatio = when (getInt(R.styleable.CoverImageView_coverRatio, 1)) {
-                    2 -> BookCover.CoverRatio.VIDEO
-                    else -> BookCover.CoverRatio.NOVEL
+                    2 -> CoverRatio.VIDEO
+                    else -> CoverRatio.NOVEL
                 }
             }
         }
@@ -319,9 +319,9 @@ class CoverImageView @JvmOverloads constructor(
             onLoadFinish?.invoke()
             return
         }
-        val requestManager = fragment?.let {
-            lifecycle?.let { Glide.with(fragment).lifecycle(it) }
-        } ?: Glide.with(context)
+        val requestManager = fragment?.let { f ->
+            lifecycle?.let { ImageLoader.with(f, it) }
+        } ?: ImageLoader.with(context)
         val doLoad = {
             // placeholder 走 setImageDrawable,不进 Bitmap pipeline,9-patch chunk 不会被光栅化;
             // 配合 init/showDefaultCover 设的 FIT_XY,加载期间默认图能正确拉伸。

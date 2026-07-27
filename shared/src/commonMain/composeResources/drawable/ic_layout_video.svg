@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <!-- 来源: app/src/main/res/drawable/ic_layout_video.xml (视频布局: 6 个方块; 原 @color/primaryText, 由 Compose tint 着色, 这里用黑色) -->
+    <path fill="#000000" d="M4,4h7v4h-7z M13,4h7v4h-7z M4,10h7v4h-7z M13,10h7v4h-7z M4,16h7v4h-7z M13,16h7v4h-7z"/>
+</svg>

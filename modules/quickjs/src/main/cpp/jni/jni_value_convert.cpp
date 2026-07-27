@@ -1,13 +1,19 @@
 #include "jni_value_convert.h"
 #include "jni_handle.h"
 #include "jni_object_class.h"
-#include <android/log.h>
 #include <cstring>
 #include <cstdlib>
 #include <pthread.h>
 
+// KP1.1 跨平台日志: Android 走 __android_log_print, 桌面 JVM 走 fprintf(stderr)
 #define TAG "legado_qjs"
+#ifdef __ANDROID__
+#include <android/log.h>
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#else
+#include <cstdio>
+#define LOGE(...) fprintf(stderr, "[ERROR][%s] ", TAG); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#endif
 
 // 缓存 Java 类引用,避免每次 FindClass
 // Long 类缓存导出给 jni_bridge.cpp 等模块复用

@@ -3,29 +3,67 @@ package io.legado.app.ui.replace.edit
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.widget.EditText
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.databinding.ActivityReplaceEditBinding
-import io.legado.app.ui.widget.code.CodeView
-import io.legado.app.ui.widget.keyboard.KeyboardToolPop
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfig
+import io.legado.app.ui.widget.keyboard.KeyboardToolbar
+import io.legado.app.ui.widget.keyboard.KeyboardToolbarState
+import io.legado.app.ui.widget.keyboard.insertAtCursor
 import io.legado.app.utils.GSON
-import io.legado.app.utils.imeHeight
+import io.legado.app.utils.toJson
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
- * 编辑替换规则
+ * 编辑替换规则（纯 Compose，迁 activity_replace_edit）。
+ * 表单值由 [FieldState] 承载（TextFieldValue 支持光标处插入辅助键文本）；
+ * 无 CodeView，键盘辅助条 activeCodeView 恒 null（与原 KeyboardToolPop.CallBack 返回 null 一致），
+ * undo/redo 原依赖 EditText 内建撤销，Compose 侧以每字段轻量历史栈等价。
  */
-class ReplaceEditActivity :
-    VMBaseActivity<ActivityReplaceEditBinding, ReplaceEditViewModel>(),
-    KeyboardToolPop.CallBack {
+class ReplaceEditActivity : BaseComposeActivity() {
 
     companion object {
 
@@ -46,114 +84,284 @@ class ReplaceEditActivity :
 
     }
 
-    override val binding by viewBinding(ActivityReplaceEditBinding::inflate)
-    override val viewModel by viewModels<ReplaceEditViewModel>()
+    val viewModel by viewModels<ReplaceEditViewModel>()
+
+    /** 单个输入框状态：值 + 撤销/重做历史（上限 100 步） */
+    class FieldState {
+        var value by mutableStateOf(TextFieldValue(""))
+            private set
+        private val undoStack = ArrayDeque<TextFieldValue>()
+        private val redoStack = ArrayDeque<TextFieldValue>()
+
+        val text: String get() = value.text
+
+        fun onChange(new: TextFieldValue) {
+            if (new.text != value.text) {
+                undoStack.addLast(value)
+                if (undoStack.size > 100) undoStack.removeFirst()
+                redoStack.clear()
+            }
+            value = new
+        }
+
+        fun reset(text: String) {
+            value = TextFieldValue(text)
+            undoStack.clear()
+            redoStack.clear()
+        }
+
+        fun insert(text: String) = onChange(value.insertAtCursor(text))
+
+        fun undo() {
+            val prev = undoStack.removeLastOrNull() ?: return
+            redoStack.addLast(value)
+            value = prev
+        }
+
+        fun redo() {
+            val next = redoStack.removeLastOrNull() ?: return
+            undoStack.addLast(value)
+            value = next
+        }
+    }
+
+    private val name = FieldState()
+    private val group = FieldState()
+    private val pattern = FieldState()
+    private val replacement = FieldState()
+    private val scope = FieldState()
+    private val excludeScope = FieldState()
+    private val timeout = FieldState()
+    private var useRegex by mutableStateOf(false)
+    private var scopeTitle by mutableStateOf(false)
+    private var scopeContent by mutableStateOf(true)
+
+    /** 当前聚焦的输入框，辅助键 sendText/undo/redo 的目标 */
+    private var focusedField: FieldState? = null
+
+    private val toolbarState = KeyboardToolbarState()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.keyboardTool.setInterface(binding.root, this)
-        initView()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!toolbarState.tryConsumeBack {}) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
         viewModel.initData(intent) {
             upReplaceView(it)
         }
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.rule_edit, menu)
-        return super.onCompatCreateOptionsMenu(menu)
+    @Composable
+    override fun Content() {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+        ) {
+            AppTitleBar(
+                title = stringResource(R.string.replace_rule_edit),
+                onBack = { finish() },
+                actions = { TitleActions() },
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
+            ) {
+                FormField(name, stringResource(R.string.replace_rule_summary))
+                FormField(group, stringResource(R.string.group))
+                FormField(pattern, stringResource(R.string.replace_rule))
+                UseRegexRow()
+                FormField(replacement, stringResource(R.string.replace_to))
+                ScopeCheckRow()
+                FormField(scope, stringResource(R.string.replace_scope))
+                FormField(excludeScope, stringResource(R.string.replace_exclude_scope))
+                FormField(timeout, stringResource(R.string.timeout_millisecond), number = true)
+            }
+            KeyboardToolbar(
+                state = toolbarState,
+                activeCodeView = { null },
+                onSendText = { text ->
+                    if (text.isNotBlank()) {
+                        when (toolbarState.panelFocus) {
+                            1 -> toolbarState.findText =
+                                toolbarState.findText.insertAtCursor(text)
+
+                            2 -> toolbarState.replaceText =
+                                toolbarState.replaceText.insertAtCursor(text)
+
+                            else -> focusedField?.insert(text)
+                        }
+                    }
+                },
+                onUndo = { focusedField?.undo() },
+                onRedo = { focusedField?.redo() },
+                onShowConfig = { showDialogFragment<KeyboardAssistsConfig>() },
+            )
+        }
     }
 
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_save -> viewModel.save(getReplaceRule()) {
+    @Composable
+    private fun TitleActions() {
+        val colors = AppTheme.colors
+        IconButton(onClick = {
+            viewModel.save(getReplaceRule()) {
                 setResult(RESULT_OK)
                 finish()
             }
-
-            R.id.menu_copy_rule -> sendToClip(GSON.toJson(getReplaceRule()))
-            R.id.menu_paste_rule -> viewModel.pasteRule {
-                upReplaceView(it)
-            }
+        }) {
+            Icon(
+                painter = painterResource(R.drawable.ic_save),
+                contentDescription = stringResource(R.string.action_save),
+                tint = colors.primaryText,
+            )
         }
-        return true
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-    }
-
-    private fun initView() {
-        binding.ivHelp.setOnClickListener {
-            showHelp("regexHelp")
-        }
-        binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
-            binding.keyboardTool.initialPadding = windowInsets.imeHeight
-            windowInsets
-        }
-    }
-
-    private fun upReplaceView(replaceRule: ReplaceRule) = binding.run {
-        etName.setText(replaceRule.name)
-        etGroup.setText(replaceRule.group)
-        etReplaceRule.setText(replaceRule.pattern)
-        cbUseRegex.isChecked = replaceRule.isRegex
-        etReplaceTo.setText(replaceRule.replacement)
-        cbScopeTitle.isChecked = replaceRule.scopeTitle
-        cbScopeContent.isChecked = replaceRule.scopeContent
-        etScope.setText(replaceRule.scope)
-        etExcludeScope.setText(replaceRule.excludeScope)
-        etTimeout.setText(replaceRule.timeoutMillisecond.toString())
-    }
-
-    private fun getReplaceRule(): ReplaceRule = binding.run {
-        val replaceRule: ReplaceRule = viewModel.replaceRule ?: ReplaceRule()
-        replaceRule.name = etName.text.toString()
-        replaceRule.group = etGroup.text.toString()
-        replaceRule.pattern = etReplaceRule.text.toString()
-        replaceRule.isRegex = cbUseRegex.isChecked
-        replaceRule.replacement = etReplaceTo.text.toString()
-        replaceRule.scopeTitle = cbScopeTitle.isChecked
-        replaceRule.scopeContent = cbScopeContent.isChecked
-        replaceRule.scope = etScope.text.toString()
-        replaceRule.excludeScope = etExcludeScope.text.toString()
-        replaceRule.timeoutMillisecond = etTimeout.text.toString().ifEmpty { "3000" }.toLong()
-        return replaceRule
-    }
-
-    override fun getActiveCodeView(): CodeView? = null
-
-    override fun undo() {
-        val view = window?.decorView?.findFocus()
-        if (view is EditText) {
-            view.onTextContextMenuItem(android.R.id.undo)
+        OverflowMenu { dismiss ->
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.copy_rule), color = colors.primaryText) },
+                onClick = {
+                    dismiss()
+                    sendToClip(GSON.toJson(getReplaceRule()))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.paste_rule), color = colors.primaryText) },
+                onClick = {
+                    dismiss()
+                    viewModel.pasteRule { upReplaceView(it) }
+                },
+            )
         }
     }
 
-    override fun redo() {
-        val view = window?.decorView?.findFocus()
-        if (view is EditText) {
-            view.onTextContextMenuItem(android.R.id.redo)
-        }
-    }
-
-    override fun sendText(text: String) {
-        if (text.isBlank()) return
-        var view = window?.decorView?.findFocus()
-        if (view == null) {
-            view = io.legado.app.help.LifecycleHelp.currentActivity?.window?.decorView?.findFocus()
-        }
-        if (view is EditText) {
-            val start = view.selectionStart
-            val end = view.selectionEnd
-            //获取EditText的文字
-            val edit = view.editableText
-            if (start < 0 || start >= edit.length) {
-                edit.append(text)
-            } else if (start > end) {
-                edit.replace(end, start, text)
+    /** 对照 TextInputLayout+EditText：label 浮动提示，聚焦时登记为辅助键目标 */
+    @Composable
+    private fun FormField(field: FieldState, label: String, number: Boolean = false) {
+        val colors = AppTheme.colors
+        OutlinedTextField(
+            value = field.value,
+            onValueChange = { new ->
+                if (number) {
+                    field.onChange(new.copy(text = new.text.filter { it.isDigit() }))
+                } else {
+                    field.onChange(new)
+                }
+            },
+            label = { Text(label) },
+            keyboardOptions = if (number) {
+                KeyboardOptions(keyboardType = KeyboardType.Number)
             } else {
-                edit.replace(start, end, text)
+                KeyboardOptions.Default
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = colors.primaryText,
+                unfocusedTextColor = colors.primaryText,
+                cursorColor = colors.accent,
+                focusedBorderColor = colors.accent,
+                unfocusedBorderColor = colors.secondaryText,
+                focusedLabelColor = colors.accent,
+                unfocusedLabelColor = colors.secondaryText,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .onFocusChanged { if (it.isFocused) focusedField = field },
+        )
+    }
+
+    @Composable
+    private fun UseRegexRow() {
+        val colors = AppTheme.colors
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clickable { useRegex = !useRegex },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppCheckbox(checked = useRegex, onCheckedChange = null)
+                Text(
+                    stringResource(R.string.use_regex),
+                    color = colors.primaryText,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            IconButton(onClick = { showHelp("regexHelp") }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_help),
+                    contentDescription = stringResource(R.string.help),
+                    tint = colors.primaryText,
+                    modifier = Modifier.size(24.dp),
+                )
             }
         }
+    }
+
+    @Composable
+    private fun ScopeCheckRow() {
+        val colors = AppTheme.colors
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.clickable { scopeTitle = !scopeTitle },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppCheckbox(checked = scopeTitle, onCheckedChange = null)
+                Text(
+                    stringResource(R.string.scope_title),
+                    color = colors.primaryText,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Row(
+                Modifier.clickable { scopeContent = !scopeContent },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppCheckbox(checked = scopeContent, onCheckedChange = null)
+                Text(
+                    stringResource(R.string.scope_content),
+                    color = colors.primaryText,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+        }
+    }
+
+    private fun upReplaceView(replaceRule: ReplaceRule) {
+        name.reset(replaceRule.name)
+        group.reset(replaceRule.group.orEmpty())
+        pattern.reset(replaceRule.pattern)
+        useRegex = replaceRule.isRegex
+        replacement.reset(replaceRule.replacement)
+        scopeTitle = replaceRule.scopeTitle
+        scopeContent = replaceRule.scopeContent
+        scope.reset(replaceRule.scope.orEmpty())
+        excludeScope.reset(replaceRule.excludeScope.orEmpty())
+        timeout.reset(replaceRule.timeoutMillisecond.toString())
+    }
+
+    private fun getReplaceRule(): ReplaceRule {
+        val replaceRule: ReplaceRule = viewModel.replaceRule ?: ReplaceRule()
+        replaceRule.name = name.text
+        replaceRule.group = group.text
+        replaceRule.pattern = pattern.text
+        replaceRule.isRegex = useRegex
+        replaceRule.replacement = replacement.text
+        replaceRule.scopeTitle = scopeTitle
+        replaceRule.scopeContent = scopeContent
+        replaceRule.scope = scope.text
+        replaceRule.excludeScope = excludeScope.text
+        replaceRule.timeoutMillisecond = timeout.text.ifEmpty { "3000" }.toLong()
+        return replaceRule
     }
 
 }

@@ -1,152 +1,146 @@
 package io.legado.app.ui.book.manage
 
-import android.content.Context
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
-import androidx.appcompat.widget.SearchView
-import androidx.appcompat.widget.Toolbar
-import androidx.core.view.setPadding
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.viewbinding.ViewBinding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.databinding.DialogSourcePickerBinding
+import io.legado.app.data.entities.getBookSource
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.number.showNumberPicker
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
-import splitties.views.onClick
 
 /**
  * 书源选择
  */
-class SourcePickerDialog : BaseDialogFragment(R.layout.dialog_source_picker),
-    Toolbar.OnMenuItemClickListener {
+class SourcePickerDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogSourcePickerBinding::bind)
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
-    private val adapter by lazy {
-        SourceAdapter(requireContext())
-    }
-    private var sourceFlowJob: Job? = null
+    private var searchKey by mutableStateOf("")
+    private var sources by mutableStateOf<List<BookSourcePart>>(emptyList())
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initView()
-        initData()
-        initMenu()
-    }
-
-    private fun initView() {
-        titleBar!!.title = "选择书源"
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        searchView.applyTint(primaryTextColor)
-        searchView.queryHint = getString(R.string.search_book_source)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                initData(newText)
-                return false
-            }
-        })
-    }
-
-    private fun initData(searchKey: String? = null) {
-        sourceFlowJob?.cancel()
-        sourceFlowJob = lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        LaunchedEffect(searchKey) {
             when {
-                searchKey.isNullOrEmpty() -> appDb.bookSourceDao.flowEnabled()
-                else -> appDb.bookSourceDao.flowSearch(searchKey,true)
+                searchKey.isEmpty() -> appDb.bookSourceDao.flowEnabled()
+                else -> appDb.bookSourceDao.flowSearch(searchKey, true)
             }.catch {
                 AppLog.put("书源选择界面获取书源数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
-                adapter.setItems(it)
+                sources = it
             }
         }
-    }
-
-    private fun initMenu() {
-        setupTitleBar(
-            menuRes = R.menu.source_picker,
-            onMenuClick = ::onMenuItemClick
-        )
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_change_source_delay -> showNumberPicker(
-                requireContext(),
-                titleResId = R.string.change_source_delay,
-                max = 9999, min = 0, value = AppConfig.batchChangeSourceDelay
+        Column(Modifier.fillMaxWidth()) {
+            // 复刻 TitleBar + contentLayout=view_search：返回箭头 + 标题 + 行内搜索框 + 溢出菜单
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.bottomBackground)
+                    .height(48.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppConfig.batchChangeSourceDelay = it
-            }
-        }
-        return true
-    }
-
-    class TextItemBinding(val root: TextView) : ViewBinding {
-        override fun getRoot(): View = root
-    }
-
-    inner class SourceAdapter(context: Context) :
-        RecyclerAdapter<BookSourcePart, TextItemBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): TextItemBinding {
-            val tv = TextView(parent.context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                IconButton(onClick = { dismissAllowingStateLoss() }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_back),
+                        contentDescription = null,
+                        tint = colors.primaryText,
+                    )
+                }
+                Text(
+                    text = "选择书源",
+                    color = colors.primaryText,
+                    fontSize = 18.sp,
+                    maxLines = 1,
                 )
-                setPadding(context.space.lg)
+                AppSearchField(
+                    value = searchKey,
+                    onValueChange = { searchKey = it },
+                    hint = stringResource(R.string.search_book_source),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp),
+                )
+                OverflowMenu { dismissMenu ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(R.string.change_source_delay),
+                                color = colors.primaryText,
+                            )
+                        },
+                        onClick = {
+                            dismissMenu()
+                            showNumberPicker(
+                                requireContext(),
+                                titleResId = R.string.change_source_delay,
+                                max = 9999, min = 0, value = AppConfig.batchChangeSourceDelay
+                            ) {
+                                AppConfig.batchChangeSourceDelay = it
+                            }
+                        },
+                    )
+                }
             }
-            return TextItemBinding(tv)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: TextItemBinding,
-            item: BookSourcePart,
-            payloads: MutableList<Any>
-        ) {
-            binding.root.text = item.getDisPlayNameGroup()
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: TextItemBinding) {
-            binding.root.onClick {
-                getItemByLayoutPosition(holder.layoutPosition)?.let {
-                    it.getBookSource()?.let { source ->
-                        callback?.sourceOnClick(source)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                LazyColumn {
+                    items(sources, key = { it.bookSourceUrl }) { item ->
+                        Text(
+                            text = item.getDisPlayNameGroup(),
+                            color = colors.primaryText,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSourceClick(item) }
+                                .padding(16.dp),
+                        )
                     }
-                    dismissAllowingStateLoss()
                 }
             }
         }
+    }
 
+    private fun onSourceClick(item: BookSourcePart) {
+        item.getBookSource()?.let { source ->
+            callback?.sourceOnClick(source)
+        }
+        dismissAllowingStateLoss()
     }
 
     private val callback: Callback?

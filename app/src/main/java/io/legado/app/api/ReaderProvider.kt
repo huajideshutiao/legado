@@ -9,13 +9,15 @@ import android.content.UriMatcher
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
-import com.google.gson.Gson
-import io.legado.app.api.controller.BookController
-import io.legado.app.api.controller.BookSourceController
+import io.legado.app.web.api.WebApi
+import io.legado.app.web.api.WebApiRequest
 import kotlinx.coroutines.runBlocking
 
 /**
  * Export book data to other app.
+ *
+ * 与 web 服务共用同一 [WebApi] 路由层: 每个 RequestCode 映射为等价的 web path，
+ * 经 [WebApi.handle] 分派后把 ReturnData 序列化进游标 (路径/参数/JSON 结构零改动)。
  */
 class ReaderProvider : ContentProvider() {
     private enum class RequestCode {
@@ -62,12 +64,15 @@ class ReaderProvider : ContentProvider() {
         selectionArgs: Array<String>?
     ): Int {
         if (sMatcher.match(uri) < 0) return -1
-        when (RequestCode.entries[sMatcher.match(uri)]) {
-            RequestCode.DeleteBookSources -> BookSourceController.deleteSources(selection)
-            RequestCode.DeleteRssSources -> BookSourceController.deleteSources(selection)
+        val path = when (RequestCode.entries[sMatcher.match(uri)]) {
+            RequestCode.DeleteBookSources -> "/deleteBookSources"
+            RequestCode.DeleteRssSources -> "/deleteBookSources"
             else -> throw IllegalStateException(
                 "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
             )
+        }
+        runBlocking {
+            WebApi.handle(WebApiRequest(method = "POST", path = path, postData = selection))
         }
         return 0
     }
@@ -76,26 +81,23 @@ class ReaderProvider : ContentProvider() {
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         if (sMatcher.match(uri) < 0) return null
+        val path = when (RequestCode.entries[sMatcher.match(uri)]) {
+            RequestCode.SaveBookSource -> "/saveBookSource"
+            RequestCode.SaveBookSources -> "/saveBookSources"
+            RequestCode.SaveBook -> "/saveBook"
+            RequestCode.SaveBookProgress -> "/saveBookProgress"
+            else -> throw IllegalStateException(
+                "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
+            )
+        }
         runBlocking {
-            when (RequestCode.entries[sMatcher.match(uri)]) {
-                RequestCode.SaveBookSource -> values?.let {
-                    BookSourceController.saveSource(values.getAsString(postBodyKey))
-                }
-
-                RequestCode.SaveBookSources -> values?.let {
-                    BookSourceController.saveSources(values.getAsString(postBodyKey))
-                }
-
-                RequestCode.SaveBook -> values?.let {
-                    BookController.saveBook(values.getAsString(postBodyKey))
-                }
-
-                RequestCode.SaveBookProgress -> values?.let {
-                    BookController.saveBookProgress(values.getAsString(postBodyKey))
-                }
-
-                else -> throw IllegalStateException(
-                    "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
+            values?.let {
+                WebApi.handle(
+                    WebApiRequest(
+                        method = "POST",
+                        path = path,
+                        postData = it.getAsString(postBodyKey)
+                    )
                 )
             }
         }
@@ -116,18 +118,23 @@ class ReaderProvider : ContentProvider() {
         uri.getQueryParameter("path")?.let {
             map["path"] = arrayListOf(it)
         }
-        return if (sMatcher.match(uri) < 0) null else when (RequestCode.entries[sMatcher.match(uri)]) {
-            RequestCode.GetBookSource -> SimpleCursor(BookSourceController.getSource(map))
-            RequestCode.GetBookSources -> SimpleCursor(BookSourceController.sources)
-            RequestCode.GetBookshelf -> SimpleCursor(BookController.getBooks(mapOf()))
-            RequestCode.GetBookContent -> SimpleCursor(BookController.getBookContent(map))
-            RequestCode.RefreshToc -> SimpleCursor(BookController.refreshToc(map))
-            RequestCode.GetChapterList -> SimpleCursor(BookController.getChapterList(map))
-            RequestCode.GetBookCover -> SimpleCursor(BookController.getCover(map))
+        if (sMatcher.match(uri) < 0) return null
+        val (path, query) = when (RequestCode.entries[sMatcher.match(uri)]) {
+            RequestCode.GetBookSource -> "/getBookSource" to map
+            RequestCode.GetBookSources -> "/getBookSources" to map
+            RequestCode.GetBookshelf -> "/getBookshelf" to emptyMap<String, List<String>>()
+            RequestCode.GetBookContent -> "/getBookContent" to map
+            RequestCode.RefreshToc -> "/refreshToc" to map
+            RequestCode.GetChapterList -> "/getChapterList" to map
+            RequestCode.GetBookCover -> "/cover" to map
             else -> throw IllegalStateException(
                 "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
             )
         }
+        val returnData = runBlocking {
+            WebApi.handle(WebApiRequest(method = "GET", path = path, query = query)).returnData
+        }
+        return SimpleCursor(returnData)
     }
 
     override fun update(
@@ -143,7 +150,8 @@ class ReaderProvider : ContentProvider() {
      */
     private class SimpleCursor(data: ReturnData?) : MatrixCursor(arrayOf("result"), 1) {
 
-        private val mData: String = Gson().toJson(data)
+        // Phase D: Gson().toJson(data) → ReturnData.toJsonString()
+        private val mData: String = data?.toJsonString() ?: ""
 
         init {
             addRow(arrayOf(mData))

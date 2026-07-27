@@ -13,13 +13,11 @@ import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.saveRead
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook.getContentAwait
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -103,28 +101,10 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     }
 
     private fun parseVideoContent(content: String) {
-        val source = if (content.isJsonObject()) {
-            try {
-                GSON.fromJsonObject<VideoSource>(content).getOrNull()
-                    ?.takeIf { it.resolutions.any { r -> r.url.isNotEmpty() } }
-            } catch (e: Exception) {
-                AppLog.put("解析视频源JSON出错\n$e", e)
-                null
-            }
-        } else if (content.contains("::") && content.contains("\n")) {
-            val resolutions = content.lines().filter { it.contains("::") }.mapNotNull { line ->
-                val parts = line.split("::", limit = 2)
-                if (parts.size == 2) {
-                    VideoResolution(
-                        name = parts[0].trim(), url = parts[1].trim()
-                    )
-                } else null
-            }.filter { it.url.isNotEmpty() }
-
-            if (resolutions.isNotEmpty()) {
-                VideoSource(resolutions = resolutions)
-            } else null
-        } else null
+        // 解析算法已下沉至 commonMain (VideoViewModelShared.kt):
+        // parseVideoSource 处理 JSON / `::` 格式, extractVideoUrlAndReferer 处理 #BASE: 格式。
+        // 此处仅保留平台专属的 LiveData 推送与 AnalyzeUrl 构造, 逻辑未变。
+        val source = parseVideoSource(content)
 
         if (source != null && source.resolutions.isNotEmpty()) {
             videoSource.postValue(source)
@@ -144,13 +124,8 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
             val analyzeUrl = if (content.startsWith("http")) {
                 AnalyzeUrl(content)
             } else {
+                val (videoUrl, fakeUrl) = extractVideoUrlAndReferer(content)
                 AnalyzeUrl("").apply {
-                    var videoUrl = content
-                    val fakeUrl = if (content.startsWith("#BASE:")) {
-                        val index = content.indexOf("\n") + 1
-                        videoUrl = content.substring(index)
-                        content.substring(6, index - 1)
-                    } else "https://example.com/memory.m3u8"
                     url = videoUrl
                     headerMap["Referer"] = fakeUrl
                 }

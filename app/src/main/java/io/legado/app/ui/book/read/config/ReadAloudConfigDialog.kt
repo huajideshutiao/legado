@@ -5,8 +5,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.preference.ListPreference
-import androidx.preference.Preference
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import kotlinx.coroutines.runBlocking
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
@@ -15,116 +21,111 @@ import io.legado.app.data.appDb
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.prefs.SwitchPreference
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
+import io.legado.app.ui.compose.platform.AndroidEventBusProvider
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
 
-class ReadAloudConfigDialog : BasePrefDialogFragment() {
-    private val readAloudPreferTag = "readAloudPreferTag"
+/**
+ * 朗读设置（迁 pref_config_aloud.xml → Compose）。
+ * SpeakEngineDialog 经 parentFragment 找 CallBack，故本 Dialog 实现 CallBack 并用自身
+ * childFragmentManager 弹出；prefs 变更监听承接事件广播，与原 ReadAloudPreferenceFragment 一致。
+ */
+class ReadAloudConfigDialog : BasePrefDialogFragment(),
+    SpeakEngineDialog.CallBack,
+    SharedPreferences.OnSharedPreferenceChangeListener {
+
+    private var pausePhoneCallsEnabled by mutableStateOf(AppConfig.ignoreAudioFocus)
+    private var speakEngineSummaryState by mutableStateOf("")
+
+    private val speakEngineSummary: String
+        get() {
+            val ttsEngine = ReadAloud.ttsEngine
+                ?: return getString(R.string.system_tts)
+            if (StringUtils.isNumeric(ttsEngine)) {
+                return runBlocking { appDb.httpTTSDao.getName(ttsEngine.toLong()) }
+                    ?: getString(R.string.system_tts)
+            }
+            return GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.title
+                ?: getString(R.string.system_tts)
+        }
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        return createPrefContainer(container, requireContext().backgroundColor)
+        pausePhoneCallsEnabled = AppConfig.ignoreAudioFocus
+        speakEngineSummaryState = speakEngineSummary
+        return ComposeView(requireContext()).apply {
+            setBackgroundColor(requireContext().backgroundColor)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                // 注入 Android actual Provider，供 Screen 内部 AppTheme 通过 LocalXxx 取依赖
+                val themeStoreProvider = remember { AndroidThemeStoreProvider() }
+                val appConfigProvider = remember { AndroidAppConfigProvider() }
+                val eventBusProvider = remember { AndroidEventBusProvider() }
+                val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
+                CompositionLocalProvider(
+                    LocalThemeStoreProvider provides themeStoreProvider,
+                    LocalAppConfigProvider provides appConfigProvider,
+                    LocalEventBusProvider provides eventBusProvider,
+                    LocalPreferenceStoreProvider provides preferenceStoreProvider,
+                ) {
+                    ReadAloudConfigScreen(
+                        pausePhoneCallsEnabled = pausePhoneCallsEnabled,
+                        speakEngineSummary = speakEngineSummaryState,
+                        onTtsEngine = { showDialogFragment(SpeakEngineDialog()) },
+                        onSysTtsConfig = { IntentHelp.openTTSSetting() },
+                    )
+                }
+            }
+        }
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        replacePreferenceFragment(view, readAloudPreferTag) { ReadAloudPreferenceFragment() }
+    override fun onResume() {
+        super.onResume()
+        requireContext().defaultSharedPreferences
+            .registerOnSharedPreferenceChangeListener(this)
     }
 
-    class ReadAloudPreferenceFragment : PreferenceFragment(),
-        SpeakEngineDialog.CallBack,
-        SharedPreferences.OnSharedPreferenceChangeListener {
+    override fun onPause() {
+        requireContext().defaultSharedPreferences
+            .unregisterOnSharedPreferenceChangeListener(this)
+        super.onPause()
+    }
 
-        private val speakEngineSummary: String
-            get() {
-                val ttsEngine = ReadAloud.ttsEngine
-                    ?: return getString(R.string.system_tts)
-                if (StringUtils.isNumeric(ttsEngine)) {
-                    return appDb.httpTTSDao.getName(ttsEngine.toLong())
-                        ?: getString(R.string.system_tts)
-                }
-                return GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.title
-                    ?: getString(R.string.system_tts)
-            }
-
-        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-            addPreferencesFromResource(R.xml.pref_config_aloud)
-            upSpeakEngineSummary()
-            findPreference<SwitchPreference>(PreferKey.pauseReadAloudWhilePhoneCalls)?.let {
-                it.isEnabled = AppConfig.ignoreAudioFocus
-            }
-        }
-
-        override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-            super.onViewCreated(view, savedInstanceState)
-        }
-
-        override fun onResume() {
-            super.onResume()
-            preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-        }
-
-        override fun onPause() {
-            preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
-            super.onPause()
-        }
-
-        override fun onPreferenceTreeClick(preference: Preference): Boolean {
-            when (preference.key) {
-                PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
-                "sysTtsConfig" -> IntentHelp.openTTSSetting()
-            }
-            return super.onPreferenceTreeClick(preference)
-        }
-
-        override fun onSharedPreferenceChanged(
-            sharedPreferences: SharedPreferences?,
-            key: String?
-        ) {
-            when (key) {
-                PreferKey.readAloudByPage, PreferKey.streamReadAloudAudio -> {
-                    if (BaseReadAloudService.isRun) {
-                        postEvent(EventBus.MEDIA_BUTTON, false)
-                    }
-                }
-
-                PreferKey.ignoreAudioFocus -> {
-                    findPreference<SwitchPreference>(PreferKey.pauseReadAloudWhilePhoneCalls)?.let {
-                        it.isEnabled = AppConfig.ignoreAudioFocus
-                    }
+    override fun onSharedPreferenceChanged(
+        sharedPreferences: SharedPreferences?,
+        key: String?
+    ) {
+        when (key) {
+            PreferKey.readAloudByPage, PreferKey.streamReadAloudAudio -> {
+                if (BaseReadAloudService.isRun) {
+                    postEvent(EventBus.MEDIA_BUTTON, false)
                 }
             }
-        }
 
-        private fun upPreferenceSummary(preference: Preference?, value: String) {
-            when (preference) {
-                is ListPreference -> {
-                    val index = preference.findIndexOfValue(value)
-                    preference.summary = if (index >= 0) preference.entries[index] else null
-                }
-
-                else -> {
-                    preference?.summary = value
-                }
+            PreferKey.ignoreAudioFocus -> {
+                pausePhoneCallsEnabled = AppConfig.ignoreAudioFocus
             }
         }
+    }
 
-        override fun upSpeakEngineSummary() {
-            upPreferenceSummary(
-                findPreference(PreferKey.ttsEngine),
-                speakEngineSummary
-            )
-        }
+    override fun upSpeakEngineSummary() {
+        speakEngineSummaryState = speakEngineSummary
     }
 }

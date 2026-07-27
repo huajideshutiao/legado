@@ -100,7 +100,7 @@ class ChangeCoverViewModel(application: Application) : BaseViewModel(application
             searchBooks.clear()
             upAdapter?.invoke()
             bookSources.clear()
-            bookSources.addAll(appDb.bookSourceDao.allEnabled.filter { !it.searchRule.coverUrl.isNullOrBlank() })
+            bookSources.addAll(appDb.bookSourceDao.allEnabled().filter { !it.searchRule.coverUrl.isNullOrBlank() })
             initSearchPool()
             search()
         }

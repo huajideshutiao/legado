@@ -11,20 +11,27 @@ import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import android.webkit.CookieManager as WebkitCookieManager
+import kotlinx.coroutines.runBlocking
 
 @Suppress("ConstPropertyName")
-object CookieManager {
+object CookieManager : CookieJarBridge {
     /**
      * <domain>_session_cookie 会话期 cookie，应用重启后失效
      * <domain>_cookie cookies 缓存
      */
 
-    const val cookieJarHeader = "CookieJar"
+    /**
+     * cookieJarHeader / mergeCookies / mergeCookiesToMap 三个纯函数已下沉 shared
+     * (见 modules/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/help/http/CookieUtils.kt),
+     * 跨模块同包名合并, 消费方 import 零改动。本 object 仅保留安卓绑定方法。
+     *
+     * P0-0c: 为 AnalyzeUrl 主体下沉 shared 做前置。
+     */
 
     /**
      * 从响应中保存Cookies
      */
-    fun saveResponse(response: Response) {
+    override fun saveResponse(response: Response) {
         val url = response.request.url
         saveCookiesFromHeaders(url, response.headers)
     }
@@ -48,7 +55,7 @@ object CookieManager {
     /**
      * 加载Cookies到请求中
      */
-    fun loadRequest(request: Request): Request {
+    override fun loadRequest(request: Request): Request {
         val urlString = request.url.toString()
         val domain = NetworkUtils.getSubDomain(urlString)
 
@@ -87,20 +94,11 @@ object CookieManager {
         }
     }
 
-    fun mergeCookies(vararg cookies: String?): String? {
-        val cookieMap = mergeCookiesToMap(*cookies)
-        return CookieStore.mapToCookie(cookieMap)
-    }
+    fun mergeCookies(vararg cookies: String?): String? =
+        io.legado.app.help.http.mergeCookies(*cookies)
 
-    fun mergeCookiesToMap(vararg cookies: String?): MutableMap<String, String> {
-        val combinedMap = mutableMapOf<String, String>()
-        cookies.forEach { cookieStr ->
-            if (!cookieStr.isNullOrBlank()) {
-                combinedMap.putAll(CookieStore.cookieToMap(cookieStr))
-            }
-        }
-        return combinedMap
-    }
+    fun mergeCookiesToMap(vararg cookies: String?): MutableMap<String, String> =
+        io.legado.app.help.http.mergeCookiesToMap(*cookies)
 
     /**
      * 删除单个Cookie
@@ -129,7 +127,7 @@ object CookieManager {
         val domain = NetworkUtils.getSubDomain(url)
         val cacheCookie = CacheManager.getFromMemory("${domain}_cookie") as? String
 
-        return cacheCookie ?: appDb.cookieDao.get(domain)?.cookie ?: ""
+        return cacheCookie ?: runBlocking { appDb.cookieDao.get(domain) }?.cookie ?: ""
     }
 
     fun applyToWebView(url: String) {

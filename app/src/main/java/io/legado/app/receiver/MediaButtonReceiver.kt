@@ -16,8 +16,8 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.runBlocking
 
 
 /**
@@ -51,7 +51,7 @@ class MediaButtonReceiver : BroadcastReceiver() {
                             when {
                                 AudioPlayService.isRun -> AudioPlay.prev()
                                 BaseReadAloudService.isRun -> {
-                                    if (context.getPrefBoolean("mediaButtonPerNext", false)) {
+                                    if (AppConfig.mediaButtonPerNext) {
                                         ReadAloud.prevChapter(context)
                                     } else {
                                         ReadAloud.prevParagraph(context)
@@ -65,7 +65,7 @@ class MediaButtonReceiver : BroadcastReceiver() {
                             when {
                                 AudioPlayService.isRun -> AudioPlay.next()
                                 BaseReadAloudService.isRun -> {
-                                    if (context.getPrefBoolean("mediaButtonPerNext", false)) {
+                                    if (AppConfig.mediaButtonPerNext) {
                                         ReadAloud.nextChapter(context)
                                     } else {
                                         ReadAloud.nextParagraph(context)
@@ -124,7 +124,8 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     if (ReadBook.book != null) {
                         ReadBook.readAloud()
                     } else {
-                        appDb.bookDao.lastReadBook?.let {
+                        // Room KMP: lastReadBook 已改为 suspend 方法，readAloud 不能 suspend (BroadcastReceiver 调用)，用 runBlocking 适配
+                        runBlocking { appDb.bookDao.lastReadBook() }?.let {
                             ReadBook.initData(it)
                             ReadBook.clearTextChapter()
                             ReadBook.loadContent(false) {

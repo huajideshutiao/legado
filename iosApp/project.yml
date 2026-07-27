@@ -1,0 +1,89 @@
+# XcodeGen 配置文件 - 生成 iosApp.xcodeproj
+#
+# 用法 (macOS):
+#   brew install xcodegen
+#   cd iosApp
+#   xcodegen generate
+#
+# XcodeGen 优势:
+# - project.yml 是纯文本, 可 git 跟踪, 避免二进制 .xcodeproj 冲突
+# - 团队协作时每人本地生成 .xcodeproj, 无需 merge 冲突
+# - 配置变更后重新 generate 即可, 无需手动 Xcode 操作
+#
+# 工程配置:
+# - iOS 14.0+ (SwiftUI App 生命周期 @main 要求)
+# - Swift 5.9
+# - 依赖 shared framework (Kotlin Multiplatform 产出)
+
+name: iosApp
+options:
+  bundleIdPrefix: io.legado.app
+  deploymentTarget:
+    iOS: "14.0"
+  developmentLanguage: zh-Hans
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""  # 团队 ID (Apple Developer 账号, 留空用 Personal Team)
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_BITCODE: NO
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: .
+        excludes:
+          - "project.yml"
+          - "README.md"
+          - "*.xcodeproj"
+          - "build"
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: legado
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.legado.app.ios
+        PRODUCT_NAME: legado
+        # 引用 shared framework (Kotlin Multiplatform 产出)
+        # framework 路径在 build phase 中配置 (见下面 script)
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../shared/build/bin/iosArm64/debugFramework"
+          - "$(SRCROOT)/../shared/build/bin/iosArm64/releaseFramework"
+          - "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework"
+          - "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/releaseFramework"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        # 链接 shared framework
+        OTHER_LDFLAGS:
+          - "-framework"
+          - "shared"
+    dependencies:
+      - framework: ../shared/build/bin/iosArm64/debugFramework/shared.framework
+        embed: true
+        codeSign: true
+    preBuildScripts:
+      - script: |
+          #!/bin/bash
+          # 编译 shared framework (Kotlin Multiplatform)
+          # 仅在 framework 不存在时编译, 避免每次 build 都跑 gradle
+          set -e
+          cd "$SRCROOT/.."
+          if [ ! -d "shared/build/bin/iosArm64/debugFramework/shared.framework" ]; then
+            echo "Building shared.framework (iosArm64 debug)..."
+            ./gradlew :shared:linkDebugFrameworkIosArm64 --stacktrace
+          fi
+          if [ ! -d "shared/build/bin/iosSimulatorArm64/debugFramework/shared.framework" ]; then
+            echo "Building shared.framework (iosSimulatorArm64 debug)..."
+            ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+          fi
+        name: Build shared framework
+    scheme:
+      testTargets: []
+      gatherCoverageData: false

@@ -11,20 +11,19 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.RuleBigDataHelp
+import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.getBookInputStream
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
-import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.SvgUtils
-import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.exists
 import io.legado.app.utils.externalFiles
@@ -41,6 +40,7 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -50,10 +50,7 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.regex.Pattern
 import java.util.zip.ZipFile
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.min
 
 @Suppress("unused", "ConstPropertyName")
@@ -99,7 +96,7 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
-            val allBookFolderNames = appDb.bookDao.allBookUrlsWithName
+            val allBookFolderNames = appDb.bookDao.allBookUrlsWithName()
             val bookFolderNames = allBookFolderNames.mapTo(HashSet(allBookFolderNames.size)) {
                 it.name.replace(AppPattern.fileNameRegex, "").let { name ->
                     name.substring(0, min(9, name.length)) + MD5Utils.md5Encode16(it.bookUrl)
@@ -117,15 +114,20 @@ object BookHelp {
                     }
                 }
                 // 2. 删除不在书架的规则大数据
-                RuleBigDataHelp.bookData.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
-                    launch {
-                        val bookUrlFile = dir.getFile("bookUrl.txt")
-                        val bookUrl = if (bookUrlFile.exists()) bookUrlFile.readText() else null
-                        if (bookUrl.isNullOrBlank() || !bookUrls.contains(bookUrl)) {
-                            FileUtils.delete(dir, true)
+                // 通过 provider 接口访问 book 数据根目录, 避免直接依赖 app 端 RuleBigDataHelp.bookData
+                // K5-c Phase 4: listBookDataDirs 返回 List<String> (路径), 转 File 后行为不变
+                RuleBigDataProviders.impl?.listBookDataDirs()
+                    ?.map { File(it) }
+                    ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
+                    ?.filter { it.isDirectory }?.forEach { dir ->
+                        launch {
+                            val bookUrlFile = dir.getFile("bookUrl.txt")
+                            val bookUrl = if (bookUrlFile.exists()) bookUrlFile.readText() else null
+                            if (bookUrl.isNullOrBlank() || !bookUrls.contains(bookUrl)) {
+                                FileUtils.delete(dir, true)
+                            }
                         }
                     }
-                }
             }
 
             // 3. 漫画图片缓存管理 (512MB)
@@ -196,7 +198,9 @@ object BookHelp {
         if (book.isOnLineTxt && AppConfig.tocCountWords) {
             val wordCount = StringUtils.wordCountFormat(content.length)
             bookChapter.wordCount = wordCount
-            appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, wordCount)
+            runBlocking {
+                appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, wordCount)
+            }
         }
     }
 
@@ -286,9 +290,8 @@ object BookHelp {
         return getImage(book, src).exists()
     }
 
-    fun getImageSuffix(src: String): String {
-        return UrlUtil.getSuffix(src, "jpg")
-    }
+    fun getImageSuffix(src: String): String =
+        BookHelpLogic.getImageSuffix(src)
 
     @Throws(IOException::class, FileNotFoundException::class)
     fun getEpubFile(book: Book): ZipFile {
@@ -501,11 +504,8 @@ object BookHelp {
     /**
      * 格式化作者
      */
-    fun formatBookAuthor(author: String): String {
-        return author
-            .replace(AppPattern.authorRegex, "")
-            .trim()
-    }
+    fun formatBookAuthor(author: String): String =
+        BookHelpLogic.formatBookAuthor(author)
 
     /**
      * 根据目录名获取当前章节
@@ -515,111 +515,16 @@ object BookHelp {
         oldDurChapterName: String?,
         newChapterList: List<BookChapter>,
         oldChapterListSize: Int = 0
-    ): Int {
-        if (oldDurChapterIndex <= 0) return 0
-        if (newChapterList.isEmpty()) return oldDurChapterIndex
-        val oldChapterNum = getChapterNum(oldDurChapterName)
-        val oldName = getPureChapterName(oldDurChapterName)
-        val newChapterSize = newChapterList.size
-        val durIndex =
-            if (oldChapterListSize == 0) oldDurChapterIndex
-            else oldDurChapterIndex * oldChapterListSize / newChapterSize
-        val min = max(0, min(oldDurChapterIndex, durIndex) - 10)
-        val max = min(newChapterSize - 1, max(oldDurChapterIndex, durIndex) + 10)
-        var nameSim = 0.0
-        var newIndex = 0
-        var newNum = 0
-        if (oldName.isNotEmpty()) {
-            for (i in min..max) {
-                val newName = getPureChapterName(newChapterList[i].title)
-                val temp = EscapeUtils.jaccardSimilarity(oldName, newName)
-                if (temp > nameSim) {
-                    nameSim = temp
-                    newIndex = i
-                }
-            }
-        }
-        if (nameSim < 0.96 && oldChapterNum > 0) {
-            for (i in min..max) {
-                val temp = getChapterNum(newChapterList[i].title)
-                if (temp == oldChapterNum) {
-                    newNum = temp
-                    newIndex = i
-                    break
-                } else if (abs(temp - oldChapterNum) < abs(newNum - oldChapterNum)) {
-                    newNum = temp
-                    newIndex = i
-                }
-            }
-        }
-        return if (nameSim > 0.96 || abs(newNum - oldChapterNum) < 1) {
-            newIndex
-        } else {
-            min(max(0, newChapterList.size - 1), oldDurChapterIndex)
-        }
-    }
+    ): Int = BookHelpLogic.getDurChapter(
+        oldDurChapterIndex,
+        oldDurChapterName,
+        newChapterList,
+        oldChapterListSize
+    )
 
     fun getDurChapter(
         oldBook: Book,
         newChapterList: List<BookChapter>
-    ): Int {
-        return oldBook.run {
-            getDurChapter(durChapterIndex, durChapterTitle, newChapterList, totalChapterNum)
-        }
-    }
-
-    private val chapterNamePattern1 by lazy {
-        Pattern.compile(
-            ".*?第([\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)[章节篇回集话]"
-        )
-    }
-
-    @Suppress("RegExpSimplifiable")
-    private val chapterNamePattern2 by lazy {
-        Pattern.compile(
-            "^(?:[\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[,:、])*([\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)(?:[,:、]|\\.[^\\d])"
-        )
-    }
-
-    private val regexA by lazy {
-        return@lazy "\\s".toRegex()
-    }
-
-    private fun getChapterNum(chapterName: String?): Int {
-        chapterName ?: return -1
-        val chapterName1 = StringUtils.fullToHalf(chapterName).replace(regexA, "")
-        return StringUtils.stringToInt(
-            (
-                chapterNamePattern1.matcher(chapterName1).takeIf { it.find() }
-                    ?: chapterNamePattern2.matcher(chapterName1).takeIf { it.find() }
-                )?.group(1)
-                ?: "-1"
-        )
-    }
-
-    private val regexOther by lazy {
-        // 所有非字母数字中日韩文字 CJK区+扩展A-F区
-        @Suppress("RegExpDuplicateCharacterInClass")
-        return@lazy "[^\\w\\u4E00-\\u9FEF〇\\u3400-\\u4DBF\\u20000-\\u2A6DF\\u2A700-\\u2EBEF]".toRegex()
-    }
-
-    @Suppress("RegExpUnnecessaryNonCapturingGroup", "RegExpSimplifiable")
-    private val regexB by lazy {
-        //章节序号，排除处于结尾的状况，避免将章节名替换为空字串
-        return@lazy "^.*?第(?:[\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)[章节篇回集话](?!$)|^(?:[\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[,:、])*(?:[\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)(?:[,:、](?!$)|\\.(?=[^\\d]))".toRegex()
-    }
-
-    private val regexC by lazy {
-        //前后附加内容，整个章节名都在括号中时只剔除首尾括号，避免将章节名替换为空字串
-        return@lazy "(?!^)(?:[〖【《〔\\[{(][^〖【《〔\\[{()〕》】〗\\]}]+)?[)〕》】〗\\]}]$|^[〖【《〔\\[{(](?:[^〖【《〔\\[{()〕》】〗\\]}]+[〕》】〗\\]})])?(?!$)".toRegex()
-    }
-
-    private fun getPureChapterName(chapterName: String?): String {
-        return if (chapterName == null) "" else StringUtils.fullToHalf(chapterName)
-            .replace(regexA, "")
-            .replace(regexB, "")
-            .replace(regexC, "")
-            .replace(regexOther, "")
-    }
+    ): Int = BookHelpLogic.getDurChapter(oldBook, newChapterList)
 
 }

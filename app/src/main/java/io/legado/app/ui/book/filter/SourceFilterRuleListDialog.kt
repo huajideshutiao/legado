@@ -1,38 +1,50 @@
 package io.legado.app.ui.book.filter
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup
-import androidx.core.view.isVisible
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.SourceFilterRule
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemManageRuleBinding
 import io.legado.app.help.source.SearchBookFilter
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.utils.setOnUserCheckedChangeListener
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.showRuleItemMenu
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * 展示当前 scope 下命中（已启用且范围覆盖）的屏蔽规则。
- * 点击条目 → 弹出 [SourceFilterEditDialog] 编辑；底部"管理全部" → 跳 [SourceFilterRuleActivity]。
+ * 点击编辑 → 弹出 [SourceFilterEditDialog] 编辑；底部"管理全部" → 跳 [SourceFilterRuleActivity]。
  */
-class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
+class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
     SourceFilterEditDialog.Callback {
 
     companion object {
@@ -43,45 +55,126 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_recycler
         arguments = Bundle().apply { putString(ARG_SCOPE, scope) }
     }
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy { RuleAdapter(requireContext()) }
-
     override val isFullHeight: Boolean = true
+
+    private var rules by mutableStateOf<List<SourceFilterRule>>(emptyList())
 
     private val scope: String?
         get() = arguments?.getString(ARG_SCOPE)
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.source_filter_rule),
-            menuRes = R.menu.dialog_add
-        ) {
-            if (it?.itemId == R.id.menu_add) {
-                showDialogFragment(SourceFilterEditDialog(existing = null, defaultScope = scope))
-            }
-            true
-        }
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        binding.bottomLayout.visible()
-        binding.tvCancel.visible()
-        binding.tvCancel.text = getString(R.string.close)
-        binding.tvCancel.setOnClickListener { dismiss() }
-        binding.tvOk.visible()
-        binding.tvOk.text = getString(R.string.source_filter_rule_manage)
-        binding.tvOk.setOnClickListener {
-            startActivity(Intent(requireContext(), SourceFilterRuleActivity::class.java))
-            dismiss()
-        }
-        binding.tvEmpty.text = getString(R.string.source_filter_rule_no_match)
+    override fun onResume() {
+        super.onResume()
         loadRules()
+    }
+
+    @Composable
+    override fun Content() {
+        RuleManageScaffold(
+            items = rules,
+            itemKey = { it.id },
+            onMove = { _, _ -> },
+            emptyText = stringResource(R.string.source_filter_rule_no_match),
+            titleBar = {
+                DialogTitleBar(
+                    title = getString(R.string.source_filter_rule),
+                    onBack = { dismissAllowingStateLoss() },
+                    actions = {
+                        IconButton(onClick = {
+                            showDialogFragment(
+                                SourceFilterEditDialog(existing = null, defaultScope = scope)
+                            )
+                        }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = getString(R.string.add),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+            actionBar = {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppTextButton(text = stringResource(R.string.close)) {
+                        dismissAllowingStateLoss()
+                    }
+                    AppTextButton(text = stringResource(R.string.source_filter_rule_manage)) {
+                        startActivity(Intent(requireContext(), SourceFilterRuleActivity::class.java))
+                        dismissAllowingStateLoss()
+                    }
+                }
+            },
+        ) { item ->
+            RuleItem(item)
+        }
+    }
+
+    @Composable
+    private fun RuleItem(item: SourceFilterRule) {
+        val colors = AppTheme.colors
+        var showMenu by remember { mutableStateOf(false) }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = item.name.ifEmpty { item.pattern },
+                color = colors.primaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            AppSwitch(
+                checked = item.enabled,
+                onCheckedChange = { checked ->
+                    item.enabled = checked
+                    lifecycleScope.launch(IO) { SearchBookFilter.save(item, isNew = false) }
+                },
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = { showDialogFragment(SourceFilterEditDialog(item)) }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_edit),
+                    contentDescription = stringResource(R.string.edit),
+                    tint = colors.primaryText,
+                )
+            }
+            IconButton(onClick = { showMenu = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = stringResource(R.string.more_menu),
+                    tint = colors.primaryText,
+                )
+            }
+            AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete), color = colors.primaryText) },
+                    onClick = { showMenu = false; confirmDelete(item) },
+                )
+            }
+        }
+    }
+
+    private fun confirmDelete(item: SourceFilterRule) {
+        alert(R.string.draw) {
+            setMessage(getString(R.string.sure_del) + "\n" + item.name.ifEmpty { item.pattern })
+            noButton()
+            yesButton {
+                lifecycleScope.launch {
+                    withContext(IO) { SearchBookFilter.delete(item) }
+                    loadRules()
+                }
+            }
+        }
     }
 
     private fun loadRules() {
         lifecycleScope.launch {
-            val rules = withContext(IO) { SearchBookFilter.rulesInScope(scope) }
-            adapter.setItems(rules)
-            binding.tvEmpty.isVisible = rules.isEmpty()
+            rules = withContext(IO) { SearchBookFilter.rulesInScope(scope) }
         }
     }
 
@@ -89,67 +182,6 @@ class SourceFilterRuleListDialog() : BaseDialogFragment(R.layout.dialog_recycler
         lifecycleScope.launch {
             withContext(IO) { SearchBookFilter.save(rule, isNew) }
             loadRules()
-        }
-    }
-
-    private inner class RuleAdapter(context: Context) :
-        RecyclerAdapter<SourceFilterRule, ItemManageRuleBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemManageRuleBinding {
-            return ItemManageRuleBinding.inflate(inflater, parent, false).apply {
-                // 对话框场景 cb_name 只用来展示名称，去掉勾选框视觉（一次性配置, 不在 convert 中重复设置）
-                cbName.buttonDrawable = null
-                cbName.isClickable = false
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemManageRuleBinding,
-            item: SourceFilterRule,
-            payloads: MutableList<Any>
-        ) {
-            binding.run {
-                cbName.text = item.name.ifEmpty { item.pattern }
-                swtEnabled.isChecked = item.enabled
-                tvExtra.visibility = View.GONE
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemManageRuleBinding) {
-            binding.apply {
-                swtEnabled.setOnUserCheckedChangeListener { isChecked ->
-                    getItem(holder.layoutPosition)?.let {
-                        it.enabled = isChecked
-                        lifecycleScope.launch(IO) { SearchBookFilter.save(it, isNew = false) }
-                    }
-                }
-                // 只允许点击编辑按钮进入编辑界面
-                ivEdit.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let {
-                        showDialogFragment(SourceFilterEditDialog(it))
-                    }
-                }
-                ivMenuMore.setOnClickListener {
-                    showMenu(ivMenuMore, holder.layoutPosition)
-                }
-            }
-        }
-
-        private fun showMenu(view: View, position: Int) {
-            val item = getItem(position) ?: return
-            view.showRuleItemMenu {
-                alert(R.string.draw) {
-                    setMessage(getString(R.string.sure_del) + "\n" + item.name.ifEmpty { item.pattern })
-                    noButton()
-                    yesButton {
-                        lifecycleScope.launch {
-                            withContext(IO) { SearchBookFilter.delete(item) }
-                            loadRules()
-                        }
-                    }
-                }
-            }
         }
     }
 }

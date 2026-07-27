@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Build
 import androidx.annotation.Keep
 import io.legado.app.help.http.CookieManager
-import io.legado.app.help.http.CookieManager.cookieJarHeader
+import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.utils.printOnDebug
 import okhttp3.Call
 import okhttp3.CookieJar

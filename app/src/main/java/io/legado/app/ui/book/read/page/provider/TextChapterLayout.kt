@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.read.page.provider
 
-import android.graphics.Paint
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -17,12 +16,14 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.entities.column.refreshLayout
+import io.legado.app.ui.book.read.page.render.upTopBottom
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
-import io.legado.app.utils.getTextWidthsCompat
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +38,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.LinkedList
-import kotlin.math.roundToInt
+
+/**
+ * 原 TextChapterLayout 内部 `data class Img(src, style, onclick)` 改为引用 commonMain 的 [ImgData]，
+ * 供 [TextLayoutEngine] / [ColumnFactory] 接口跨端引用。本 typealias 仅文件内可见，
+ * 内部代码沿用 `Img(...)` 构造与 `LinkedList<Img>` 类型声明不变。
+ */
+private typealias Img = ImgData
 
 class TextChapterLayout(
     scope: CoroutineScope,
@@ -46,7 +53,7 @@ class TextChapterLayout(
     private val book: Book,
     private val bookContent: BookContent,
     private val reviewCountDeferred: Deferred<Map<Int, Int>?>? = null,
-) {
+) : TextLayoutCallback, ColumnFactory {
 
     // 排版开始时非阻塞 peek 段评数 map：已就绪→用上；未就绪→留 null，等排版结束再决定要不要重排。
     // 暴露 internal 是为了让 ReadBook 在排版完成后判断「段评数是不是后到的」。
@@ -62,11 +69,15 @@ class TextChapterLayout(
 
     private val titlePaint = ChapterProvider.titlePaint
     private val titlePaintTextHeight = ChapterProvider.titlePaintTextHeight
-    private val titlePaintFontMetrics = ChapterProvider.titlePaintFontMetrics
+    private val titlePaintDescent = ChapterProvider.titlePaintDescent
 
     private val contentPaint = ChapterProvider.contentPaint
     private val contentPaintTextHeight = ChapterProvider.contentPaintTextHeight
-    private val contentPaintFontMetrics = ChapterProvider.contentPaintFontMetrics
+    private val contentPaintDescent = ChapterProvider.contentPaintDescent
+
+    // 平台测量收口：Paint 在本次排版生命周期内稳定，测量器一次性建好，热路径按 paint 身份取用，不新分配。
+    private val titleMeasurer = AndroidTextMeasurer(titlePaint)
+    private val contentMeasurer = AndroidTextMeasurer(contentPaint)
 
     private val titleTopSpacing = ChapterProvider.titleTopSpacing
     private val titleBottomSpacing = ChapterProvider.titleBottomSpacing
@@ -79,7 +90,6 @@ class TextChapterLayout(
     private val viewWidth = ChapterProvider.viewWidth
     private val doublePage = ChapterProvider.doublePage
     private val indentCharWidth = ChapterProvider.indentCharWidth
-    private val stringBuilder = StringBuilder()
 
     private val paragraphIndent = ReadBookConfig.paragraphIndent
     private val titleMode = ReadBookConfig.titleMode
@@ -87,14 +97,28 @@ class TextChapterLayout(
     private val isMiddleTitle = ReadBookConfig.isMiddleTitle
     private val textFullJustify = ReadBookConfig.textFullJustify
 
-    private var pendingTextPage = TextPage()
+    /**
+     * 排版引擎（纯算术面下沉 shared commonMain）。
+     * 持有原 TextChapterLayout 的 engine.durY/absStartX/engine.pendingTextPage/engine.stringBuilder 状态，
+     * 8 个排版方法（addCharsToLineMiddle/justify 族/exceed/engine.prepareNextPageIfNeed 等）下沉 engine。
+     * 列构造（createColumn）与平台回调（onPageCompleted/ensureActive）通过本类实现
+     * ColumnFactory/TextLayoutCallback 接口注入。
+     */
+    private val engine = TextLayoutEngine(
+        visibleWidth = visibleWidth,
+        visibleHeight = visibleHeight,
+        viewWidth = viewWidth,
+        paddingLeft = paddingLeft,
+        doublePage = doublePage,
+        textFullJustify = textFullJustify,
+        columnFactory = this,
+        callback = this,
+    )
 
     private val bookChapter inline get() = textChapter.chapter
     private val displayTitle inline get() = textChapter.title
     private val chaptersSize inline get() = textChapter.chaptersSize
 
-    private var durY = 0f
-    private var absStartX = paddingLeft
     private var floatArray = FloatArray(128)
 
     // 当前 setTypeText 处理段落号；createColumn 把 reviewChar 转 ReviewColumn 时回填。
@@ -113,8 +137,6 @@ class TextChapterLayout(
     fun notifyPageChanged() {
         pageChangeChannel.trySend(Unit)
     }
-
-    data class Img(val src: String,val style: String,val onclick: String)
 
     init {
         job = Coroutine.async(
@@ -250,8 +272,8 @@ class TextChapterLayout(
         listener = null
     }
 
-    private fun onPageCompleted() {
-        val textPage = pendingTextPage
+    override fun onPageCompleted() {
+        val textPage = engine.pendingTextPage
         val pIdx = textPages.size
         textPage.index = pIdx
 
@@ -272,6 +294,12 @@ class TextChapterLayout(
         textPage.title = displayTitle
         textPage.doublePage = doublePage
         textPage.paddingTop = paddingTop
+        // 注入 upLinesPosition / isVisible 所需几何参数（数据化前由 ChapterProvider/ReadBookConfig 静态提供）
+        textPage.textBottomJustify = ReadBookConfig.textBottomJustify
+        textPage.visibleHeight = visibleHeight
+        textPage.visibleBottom = ChapterProvider.visibleBottom
+        textPage.contentPaintTextHeight = contentPaintTextHeight
+        textPage.lineSpacingExtra = lineSpacingExtra
         textPage.isCompleted = true
         textPage.textChapter = textChapter
         textPage.upLinesPosition()
@@ -284,6 +312,14 @@ class TextChapterLayout(
             e.printStackTrace()
             AppLog.put("调用布局进度监听回调出错\n${e.localizedMessage}", e)
         }
+    }
+
+    /**
+     * TextLayoutCallback.ensureActive 实现：engine.prepareNextPageIfNeed 中调用，
+     * 桥接到 kotlinx.coroutines 的 currentCoroutineContext().ensureActive()。
+     */
+    override suspend fun ensureActive() {
+        currentCoroutineContext().ensureActive()
     }
 
     private fun onCompleted() {
@@ -337,17 +373,17 @@ class TextChapterLayout(
                     if (enableReview) text + ChapterProvider.reviewChar else text,
                     titlePaint,
                     titlePaintTextHeight,
-                    titlePaintFontMetrics,
+                    titlePaintDescent,
                     imageStyle,
                     isTitle = true,
                     emptyContent = contents.isEmpty()
                 )
-                pendingTextPage.lines.last().isParagraphEnd = true
-                stringBuilder.append("\n")
+                engine.pendingTextPage.lines.last().isParagraphEnd = true
+                engine.stringBuilder.append("\n")
             }
-            durY += titleBottomSpacing
-            if (isSingleStyle && pendingTextPage.lines.isNotEmpty() && contents.isNotEmpty()) {
-                prepareNextPageIfNeed()
+            engine.durY += titleBottomSpacing
+            if (isSingleStyle && engine.pendingTextPage.lines.isNotEmpty() && contents.isNotEmpty()) {
+                engine.prepareNextPageIfNeed()
             }
         }
 
@@ -400,7 +436,7 @@ class TextChapterLayout(
                         lineWithReview,
                         contentPaint,
                         contentPaintTextHeight,
-                        contentPaintFontMetrics,
+                        contentPaintDescent,
                         imageStyle,
                         imgList = imgList,
                         paragraphIndex = reviewIndex
@@ -408,7 +444,7 @@ class TextChapterLayout(
                 } else {
                     if (isSingleStyle && isSetTypedImage) {
                         isSetTypedImage = false
-                        prepareNextPageIfNeed()
+                        engine.prepareNextPageIfNeed()
                     }
                     val embeddedImages = LinkedList<Img>()
                     val hasNonEmbeddedImage = line.contains(ChapterProvider.srcReplaceChar)
@@ -428,7 +464,7 @@ class TextChapterLayout(
                                         tmp.toString(),
                                         contentPaint,
                                         contentPaintTextHeight,
-                                        contentPaintFontMetrics,
+                                        contentPaintDescent,
                                         "TEXT",
                                         isFirstLine = isFirstSegment,
                                         imgList = embeddedImages,
@@ -447,7 +483,7 @@ class TextChapterLayout(
                             tmp.toString(),
                             contentPaint,
                             contentPaintTextHeight,
-                            contentPaintFontMetrics,
+                            contentPaintDescent,
                             "TEXT",
                             isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
                             imgList = embeddedImages,
@@ -455,18 +491,18 @@ class TextChapterLayout(
                         )
                     }
                 }
-                if (pendingTextPage.lines.isNotEmpty()) pendingTextPage.lines.last().isParagraphEnd =
+                if (engine.pendingTextPage.lines.isNotEmpty()) engine.pendingTextPage.lines.last().isParagraphEnd =
                     true
-                stringBuilder.append("\n")
+                engine.stringBuilder.append("\n")
                 lineStartIndex = lineEndIndex + 1
             }
         }
 
-        val textPage = pendingTextPage
+        val textPage = engine.pendingTextPage
         val endPadding = 20.dpToPx()
-        if (textPage.height < durY + endPadding) textPage.height =
-            durY + endPadding else textPage.height += endPadding
-        textPage.text = stringBuilder.toString()
+        if (textPage.height < engine.durY + endPadding) textPage.height =
+            engine.durY + endPadding else textPage.height += endPadding
+        textPage.text = engine.stringBuilder.toString()
         onPageCompleted()
         onCompleted()
     }
@@ -491,63 +527,51 @@ class TextChapterLayout(
             Book.imgStyleFull -> {
                 width = visibleWidth.toFloat()
                 height = rawSize.height.toFloat() * visibleWidth / rawSize.width
-                if (height > visibleHeight - durY) {
+                if (height > visibleHeight - engine.durY) {
                     val fit =
                         getFitSize(width, height, visibleWidth.toFloat(), visibleHeight.toFloat())
                     width = fit.first; height = fit.second
-                    prepareNextPageIfNeed(durY + height)
+                    engine.prepareNextPageIfNeed(engine.durY + height)
                 }
             }
 
             Book.imgStyleSingle -> {
-                if (durY > 0f || pendingTextPage.lines.isNotEmpty()) prepareNextPageIfNeed()
+                if (engine.durY > 0f || engine.pendingTextPage.lines.isNotEmpty()) engine.prepareNextPageIfNeed()
                 // 占位图也居中显示
-                durY = (visibleHeight - height) / 2f
+                engine.durY = (visibleHeight - height) / 2f
             }
 
-            else -> prepareNextPageIfNeed(durY + height)
+            else -> engine.prepareNextPageIfNeed(engine.durY + height)
         }
 
         addImageLine(img, width, height)
         if (isSingle) {
             // 单图模式占满本页剩余空间，确保下一内容从新页开始
-            durY = visibleHeight.toFloat()
+            engine.durY = visibleHeight.toFloat()
         } else {
-            durY += textHeight * paragraphSpacing / 10f
+            engine.durY += textHeight * paragraphSpacing / 10f
         }
-    }
-
-    private fun getFitSize(rawW: Float, rawH: Float, maxW: Float, maxH: Float): Pair<Float, Float> {
-        var w = rawW;
-        var h = rawH
-        if (w > maxW) {
-            h = h * maxW / w; w = maxW
-        }
-        if (h > maxH) {
-            w = w * maxH / h; h = maxH
-        }
-        return w to h
     }
 
     private fun addImageLine(img: Img, width: Float, height: Float) {
         val textLine = TextLine(isImage = true)
         textLine.text = " "
-        textLine.lineTop = durY + paddingTop
-        val lineBottom = durY + height + paddingTop
+        textLine.lineTop = engine.durY + paddingTop
+        val lineBottom = engine.durY + height + paddingTop
         textLine.lineBottom = lineBottom
         val startX = if (visibleWidth > width) (visibleWidth - width) / 2f else 0f
         textLine.addColumn(
             ImageColumn(
-                absStartX + startX,
-                absStartX + startX + width,
+                engine.absStartX + startX,
+                engine.absStartX + startX + width,
                 img.src,
                 img.onclick
             )
         )
-        calcTextLinePosition(textPages, textLine, stringBuilder.length)
-        stringBuilder.append(" ")
-        pendingTextPage.addLine(textLine)
-        durY += height
+        calcTextLinePosition(textPages, textLine, engine.stringBuilder.length)
+        engine.stringBuilder.append(" ")
+        engine.pendingTextPage.addLine(textLine)
+        engine.durY += height
     }
 
     private suspend fun setTypeText(
@@ -555,7 +579,7 @@ class TextChapterLayout(
         text: String,
         textPaint: TextPaint,
         textHeight: Float,
-        fontMetrics: Paint.FontMetrics,
+        descent: Float,
         imageStyle: String?,
         isTitle: Boolean = false,
         isFirstLine: Boolean = true,
@@ -564,8 +588,9 @@ class TextChapterLayout(
         paragraphIndex: Int = 0
     ) {
         currentParagraphIndex = paragraphIndex
+        val measurer = if (textPaint === titlePaint) titleMeasurer else contentMeasurer
         val widthsArray = allocateFloatArray(text.length)
-        textPaint.getTextWidthsCompat(text, widthsArray)
+        measurer.measureGlyphWidths(text, widthsArray)
         val splitResult = measureTextSplit(text, widthsArray)
         val layout = if (useZhLayout) ZhLayout(
             text,
@@ -573,7 +598,8 @@ class TextChapterLayout(
             visibleWidth,
             splitResult.words,
             splitResult.widths,
-            if (isFirstLine) paragraphIndent.length else 0
+            if (isFirstLine) paragraphIndent.length else 0,
+            measurer
         )
         else StaticLayout(
             text,
@@ -585,13 +611,13 @@ class TextChapterLayout(
             true
         )
 
-        durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
+        engine.durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
         val shouldCenterTitle =
             isTitle && (isMiddleTitle || emptyContent || imageStyle?.uppercase() == Book.imgStyleSingle)
 
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)
-            prepareNextPageIfNeed(durY + textHeight)
+            engine.prepareNextPageIfNeed(engine.durY + textHeight)
             val lineStart = layout.getLineStart(lineIndex);
             val lineEnd = layout.getLineEnd(lineIndex)
             val lineText = text.substring(lineStart, lineEnd); textLine.text = lineText
@@ -611,7 +637,7 @@ class TextChapterLayout(
             val needsIndent = isFirstLine && lineIndex == 0 && !isTitle
             val (adjustedWords, adjustedWidths, startX) = if (needsIndent) {
                 val indentLength = paragraphIndent.length.coerceAtMost(lineWords.size)
-                val indentX = addIndentChars(absStartX, textLine, indentLength)
+                val indentX = addIndentChars(engine.absStartX, textLine, indentLength)
                 Triple(
                     lineWords.subList(indentLength, lineWords.size),
                     lineWidths.subList(indentLength, lineWidths.size),
@@ -623,9 +649,7 @@ class TextChapterLayout(
             val isLastLine = lineIndex == layout.lineCount - 1
 
             when {
-                shouldCenterTitle -> addCharsToLineNatural(
-                    book,
-                    absStartX,
+                shouldCenterTitle -> engine.addCharsToLineNatural(
                     textLine,
                     adjustedWords,
                     (visibleWidth - desiredWidth) / 2,
@@ -633,9 +657,7 @@ class TextChapterLayout(
                     imgList
                 )
 
-                isLastLine -> addCharsToLineNatural(
-                    book,
-                    absStartX,
+                isLastLine -> engine.addCharsToLineNatural(
                     textLine,
                     adjustedWords,
                     startX,
@@ -643,21 +665,19 @@ class TextChapterLayout(
                     imgList
                 )
 
-                else -> addCharsToLineMiddle(
-                    book,
-                    absStartX,
+                else -> engine.addCharsToLineMiddle(
                     textLine,
                     adjustedWords,
-                    textPaint,
+                    measurer,
                     desiredWidth,
                     startX,
                     adjustedWidths,
                     imgList
                 )
             }
-            updateTextLineInfo(textLine, lineText, textHeight, fontMetrics)
+            updateTextLineInfo(textLine, lineText, textHeight, descent)
         }
-        durY += textHeight * paragraphSpacing / 10f
+        engine.durY += textHeight * paragraphSpacing / 10f
     }
 
     private fun calculateInitialYPosition(
@@ -668,7 +688,7 @@ class TextChapterLayout(
         imageStyle: String?
     ): Float {
         if (emptyContent && textPages.isEmpty()) {
-            val textPage = pendingTextPage
+            val textPage = engine.pendingTextPage
             if (textPage.lineSize == 0) {
                 val ty = (visibleHeight - layout.lineCount * textHeight) / 2
                 return if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
@@ -678,34 +698,34 @@ class TextChapterLayout(
                 if (firstLine.lineTop < textLayoutHeight + titleTopSpacing) textLayoutHeight =
                     firstLine.lineTop - titleTopSpacing
                 textPage.lines.forEach { it.lineTop -= textLayoutHeight; it.lineBase -= textLayoutHeight; it.lineBottom -= textLayoutHeight }
-                return durY - textLayoutHeight
+                return engine.durY - textLayoutHeight
             }
         }
-        if (isTitle && textPages.isEmpty() && pendingTextPage.lines.isEmpty()) {
+        if (isTitle && textPages.isEmpty() && engine.pendingTextPage.lines.isEmpty()) {
             return when (imageStyle?.uppercase()) {
                 Book.imgStyleSingle -> {
                     val ty = (visibleHeight - layout.lineCount * textHeight) / 2
                     if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
                 }
-                else -> durY + titleTopSpacing
+                else -> engine.durY + titleTopSpacing
             }
         }
-        return durY
+        return engine.durY
     }
 
     private fun updateTextLineInfo(
         textLine: TextLine,
         lineText: String,
         textHeight: Float,
-        fontMetrics: Paint.FontMetrics
+        descent: Float
     ) {
-        if (doublePage) textLine.isLeftLine = absStartX < viewWidth / 2
-        calcTextLinePosition(textPages, textLine, stringBuilder.length)
-        stringBuilder.append(lineText)
-        textLine.upTopBottom(durY, textHeight, fontMetrics)
-        pendingTextPage.addLine(textLine)
-        durY += textHeight * lineSpacingExtra
-        if (pendingTextPage.height < durY) pendingTextPage.height = durY
+        if (doublePage) textLine.isLeftLine = engine.absStartX < viewWidth / 2
+        calcTextLinePosition(textPages, textLine, engine.stringBuilder.length)
+        engine.stringBuilder.append(lineText)
+        textLine.upTopBottom(engine.durY, textHeight, descent)
+        engine.pendingTextPage.addLine(textLine)
+        engine.durY += textHeight * lineSpacingExtra
+        if (engine.pendingTextPage.height < engine.durY) engine.pendingTextPage.height = engine.durY
     }
 
     private fun calcTextLinePosition(
@@ -715,7 +735,7 @@ class TextChapterLayout(
     ) {
         // 视觉段序号：按排版后的视觉行计算，同一逻辑段内多个 TextLine（折行）共享同号，
         // 遇上一行 isParagraphEnd 才递增。与上层 paragraphSeq（逻辑段号）不同
-        val lastLine = pendingTextPage.lines.lastOrNull { it.paragraphNum > 0 }
+        val lastLine = engine.pendingTextPage.lines.lastOrNull { it.paragraphNum > 0 }
             ?: textPages.lastOrNull()?.lines?.lastOrNull { it.paragraphNum > 0 }
         textLine.paragraphNum = when {
             lastLine == null -> 1; lastLine.isParagraphEnd -> lastLine.paragraphNum + 1; else -> lastLine.paragraphNum
@@ -741,146 +761,19 @@ class TextChapterLayout(
         textLine.indentSize = indentLength; return x
     }
 
-    private suspend fun addCharsToLineMiddle(
-        book: Book,
-        absStartX: Int,
-        textLine: TextLine,
-        words: List<String>,
-        textPaint: TextPaint,
-        desiredWidth: Float,
-        startX: Float,
-        textWidths: List<Float>,
-        imgList: LinkedList<Img>?
-    ) {
-        if (!textFullJustify) {
-            addCharsToLineNatural(
-                book,
-                absStartX,
-                textLine,
-                words,
-                startX,
-                textWidths,
-                imgList
-            ); return
-        }
-        textLine.startX = absStartX + startX
-        val residualWidth = visibleWidth - startX - desiredWidth
-        val spaceSize = words.count { it == " " }
-        if (spaceSize > 0) justifyBySpaces(
-            book,
-            absStartX,
-            textLine,
-            words,
-            startX,
-            textWidths,
-            residualWidth,
-            spaceSize,
-            imgList
-        )
-        else justifyByLetterSpacing(
-            book,
-            absStartX,
-            textLine,
-            words,
-            startX,
-            textWidths,
-            residualWidth,
-            textPaint,
-            imgList
-        )
-        exceed(absStartX, textLine, words)
-    }
-
-    private suspend fun justifyBySpaces(
-        book: Book,
-        absStartX: Int,
-        textLine: TextLine,
-        words: List<String>,
-        startX: Float,
-        textWidths: List<Float>,
-        residualWidth: Float,
-        spaceSize: Int,
-        imgList: LinkedList<Img>?
-    ) {
-        val d = residualWidth / spaceSize; textLine.wordSpacing = d;
-        var x = startX
-        for (index in words.indices) {
-            val char = words[index];
-            val cw = textWidths[index]
-            val x1 = if (char == " " && index != words.lastIndex) x + cw + d else x + cw
-            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
-            x = x1
-        }
-    }
-
-    private suspend fun justifyByLetterSpacing(
-        book: Book,
-        absStartX: Int,
-        textLine: TextLine,
-        words: List<String>,
-        startX: Float,
-        textWidths: List<Float>,
-        residualWidth: Float,
-        textPaint: TextPaint,
-        imgList: LinkedList<Img>?
-    ) {
-        val gapCount = words.lastIndex;
-        val d = if (gapCount > 0) residualWidth / gapCount else 0f
-        textLine.extraLetterSpacingOffsetX = -d / 2; textLine.extraLetterSpacing =
-            d / textPaint.textSize
-        var x = startX
-        for (index in words.indices) {
-            val char = words[index];
-            val cw = textWidths[index]
-            val x1 = if (index != words.lastIndex) x + cw + d else x + cw
-            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
-            x = x1
-        }
-    }
-
-    private suspend fun addCharsToLineNatural(
-        book: Book,
-        absStartX: Int,
-        textLine: TextLine,
-        words: List<String>,
-        startX: Float,
-        textWidths: List<Float>,
-        imgList: LinkedList<Img>?
-    ) {
-        textLine.startX = absStartX + startX;
-        var x = startX
-        for (index in words.indices) {
-            val char = words[index];
-            val cw = textWidths[index];
-            val x1 = x + cw
-            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, imgList)
-            x = x1
-        }
-        exceed(absStartX, textLine, words)
-    }
-
-    private suspend fun addCharToLine(
-        book: Book,
-        absStartX: Int,
-        textLine: TextLine,
-        char: String,
-        xStart: Float,
-        xEnd: Float,
-        isLineEnd: Boolean,
-        imgList: LinkedList<Img>?
-    ) {
-        val column = createColumn(book, absStartX, char, xStart, xEnd, imgList)
-        textLine.addColumn(column)
-    }
-
-    private suspend fun createColumn(
-        book: Book,
+    /**
+     * ColumnFactory.createColumn 实现：列构造留 app 端（依赖 ChapterProvider 常量 + reviewCountMap +
+     * currentParagraphIndex + imgList 副作用 removeFirst）。原 TextChapterLayout.createColumn 逻辑原样下沉。
+     *
+     * engine.addCharToLine 通过 columnFactory 接口调用本方法，实现「纯算术面下沉 + 平台构造留 app」。
+     */
+    override fun createColumn(
         absStartX: Int,
         char: String,
         xStart: Float,
         xEnd: Float,
-        imgList: LinkedList<Img>?
-    ) = when {
+        imgList: MutableList<ImgData>?
+    ): BaseColumn = when {
         char == ChapterProvider.reviewChar -> {
             val cnt = reviewCountMap?.get(currentParagraphIndex) ?: 0
             ReviewColumn(absStartX + xStart, absStartX + xEnd, currentParagraphIndex, cnt)
@@ -893,65 +786,8 @@ class TextChapterLayout(
         else -> TextColumn(absStartX + xStart, absStartX + xEnd, char)
     }
 
-    private fun exceed(absStartX: Int, textLine: TextLine, words: List<String>) {
-        var size = words.size; if (size < 2) return
-        val visibleEnd = absStartX + visibleWidth;
-        val columns = textLine.columns;
-        var offset = 0
-        val endColumn = if (words.last() == " ") {
-            size--; offset++; columns[columns.lastIndex - 1]
-        } else columns.last()
-        val endX = endColumn.end.roundToInt()
-        if (endX > visibleEnd) {
-            textLine.exceed = true;
-            val cc = (endX - visibleEnd) / size
-            for (i in 0..<size) {
-                textLine.getColumnReverseAt(i, offset)
-                    .let { val py = cc * (size - i); it.start -= py; it.end -= py }
-            }
-        }
-    }
-
-    private suspend fun prepareNextPageIfNeed(requestHeight: Float = -1f) {
-        if (requestHeight > visibleHeight || requestHeight == -1f) {
-            if (pendingTextPage.height < durY) pendingTextPage.height = durY
-            if (doublePage && absStartX < viewWidth / 2) {
-                pendingTextPage.leftLineSize = pendingTextPage.lineSize
-                absStartX = viewWidth / 2 + paddingLeft
-            } else {
-                if (pendingTextPage.leftLineSize == 0) pendingTextPage.leftLineSize =
-                    pendingTextPage.lineSize
-                pendingTextPage.text = stringBuilder.toString()
-                currentCoroutineContext().ensureActive(); onPageCompleted()
-                pendingTextPage = TextPage(); stringBuilder.clear(); absStartX = paddingLeft
-            }
-            durY = 0f
-        }
-    }
-
     private fun allocateFloatArray(size: Int): FloatArray {
         if (size > floatArray.size) floatArray = FloatArray(size); return floatArray
-    }
-
-    private class TextSplit(val words: ArrayList<String>, val widths: ArrayList<Float>)
-
-    private fun measureTextSplit(text: String, widthsArray: FloatArray, start: Int = 0): TextSplit {
-        val length = text.length;
-        var clusterCount = 0
-        for (i in start..<start + length) if (widthsArray[i] > 0) clusterCount++
-        val widths = ArrayList<Float>(clusterCount);
-        val stringList = ArrayList<String>(clusterCount)
-        var i = 0
-        while (i < length) {
-            val clusterBaseIndex = i++; widths.add(widthsArray[start + clusterBaseIndex])
-            while (i < length && widthsArray[start + i] == 0f && !isZeroWidthChar(text[i])) i++
-            stringList.add(text.substring(clusterBaseIndex, i))
-        }
-        return TextSplit(stringList, widths)
-    }
-
-    private fun isZeroWidthChar(char: Char): Boolean {
-        val code = char.code; return code == 8203 || code == 8204 || code == 8205 || code == 8288
     }
 
 }

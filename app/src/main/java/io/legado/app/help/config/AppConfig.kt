@@ -6,6 +6,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.ui.book.getRealBookSort
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
@@ -14,8 +15,10 @@ import io.legado.app.utils.isNightMode
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
@@ -40,7 +43,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var themeMode by cachedStringPref(PreferKey.themeMode, "0")
     var useDefaultCover by cachedBoolPref(PreferKey.useDefaultCover, false)
     var recordLog by cachedBoolPref(PreferKey.recordLog)
-    var jsEngine by cachedStringPref(PreferKey.jsEngine, "quickjs")
     var clickActionTL by cachedIntPref(PreferKey.clickActionTL, 2)
     var clickActionTC by cachedIntPref(PreferKey.clickActionTC, 2)
     var clickActionTR by cachedIntPref(PreferKey.clickActionTR, 1)
@@ -172,10 +174,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var ttsSpeechRate by intPref(PreferKey.ttsSpeechRate, defaultSpeechRate)
     var ttsTimer by intPref(PreferKey.ttsTimer, 0)
 
+    val readAloudWakeLock by boolPref(PreferKey.readAloudWakeLock, false)
+    val readAloudByPage by boolPref(PreferKey.readAloudByPage)
+    val mediaButtonPerNext by boolPref("mediaButtonPerNext", false)
+    val systemMediaControlCompatibilityChange by boolPref("systemMediaControlCompatibilityChange")
+
     val speechRatePlay: Int get() = if (ttsFlowSys) defaultSpeechRate else ttsSpeechRate
 
     var chineseConverterType by intPref(PreferKey.chineseConverterType)
     var systemTypefaces by intPref(PreferKey.systemTypefaces)
+    var fontFolder by stringPref(PreferKey.fontFolder)
+    var processText by boolPref(PreferKey.processText, true)
+    var checkSource by stringPref(PreferKey.checkSource)
 
     var readUrlInBrowser by boolPref(PreferKey.readUrlOpenInBrowser)
 
@@ -199,6 +209,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var changeSourceCheckAuthor by boolPref(PreferKey.changeSourceCheckAuthor)
     var ttsEngine by stringPref(PreferKey.ttsEngine)
     var webPort by intPref(PreferKey.webPort, 1122)
+    val webServiceWakeLock by boolPref(PreferKey.webServiceWakeLock, false)
+    var webService by boolPref(PreferKey.webService)
     var tocUiUseReplace by boolPref(PreferKey.tocUiUseReplace)
     var tocCountWords by boolPref(PreferKey.tocCountWords, true)
     var enableReadRecord by boolPref(PreferKey.enableReadRecord, true)
@@ -211,9 +223,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var contentSelectSpeakMod by intPref(PreferKey.contentSelectSpeakMod)
     var batchChangeSourceDelay by intPref(PreferKey.batchChangeSourceDelay)
 
-    val importKeepName by boolPref(PreferKey.importKeepName)
-    val importKeepGroup by boolPref(PreferKey.importKeepGroup)
+    var importKeepName by boolPref(PreferKey.importKeepName)
+    var importKeepGroup by boolPref(PreferKey.importKeepGroup)
     var importKeepEnable by boolPref(PreferKey.importKeepEnable, false)
+    var localBookImportSort by intPref(PreferKey.localBookImportSort)
 
     var previewImageByClick by boolPref(PreferKey.previewImageByClick, false)
     var preDownloadNum by intPref(PreferKey.preDownloadNum, 10)
@@ -223,11 +236,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val mediaButtonOnExit by boolPref("mediaButtonOnExit", true)
     val readAloudByMediaButton by boolPref(PreferKey.readAloudByMediaButton, false)
     val replaceEnableDefault by boolPref(PreferKey.replaceEnableDefault, true)
+    val webDavUrl by stringPref(PreferKey.webDavUrl)
+    val webDavAccount by stringPref(PreferKey.webDavAccount)
+    var webDavPassword by stringPref(PreferKey.webDavPassword)
     val webDavDir by stringPref(PreferKey.webDavDir, "legado")
     val webDavDeviceName by stringPref(PreferKey.webDavDeviceName, Build.MODEL)
     val recordHeapDump by boolPref(PreferKey.recordHeapDump, false)
     val loadCoverOnlyWifi by boolPref(PreferKey.loadCoverOnlyWifi, false)
     val showAddToShelfAlert by boolPref(PreferKey.showAddToShelfAlert, true)
+    val coverShowName by boolPref(PreferKey.coverShowName, true)
+    val coverShowNameN by boolPref(PreferKey.coverShowNameN, true)
+    val coverShowAuthor by boolPref(PreferKey.coverShowAuthor, true)
+    val coverShowAuthorN by boolPref(PreferKey.coverShowAuthorN, true)
 
     var bookInfoDeleteAlert by boolPref(PreferKey.bookInfoDeleteAlert, true)
 
@@ -246,6 +266,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val volumeKeyPage by boolPref(PreferKey.volumeKeyPage, true)
     val volumeKeyPageOnPlay by boolPref(PreferKey.volumeKeyPageOnPlay, true)
     val mouseWheelPage by boolPref(PreferKey.mouseWheelPage, true)
+    var prevKeys by stringPref(PreferKey.prevKeys)
+    var nextKeys by stringPref(PreferKey.nextKeys)
+    val keepLight by stringPref(PreferKey.keepLight)
+
+    var precisionSearch by boolPref(PreferKey.precisionSearch)
 
     var searchScope by nonNullStringPref("searchScope", "")
     var searchGroup by nonNullStringPref("searchGroup", "")
@@ -254,7 +279,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var bookshelfSort by intPref(PreferKey.bookshelfSort, 0)
 
     fun getBookSortByGroupId(groupId: Long): Int {
-        return appDb.bookGroupDao.getByID(groupId)?.getRealBookSort()
+        return runBlocking { appDb.bookGroupDao.getByID(groupId) }?.getRealBookSort()
             ?: bookshelfSort
     }
 
@@ -325,5 +350,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var welcomeShowIcon by boolPref(PreferKey.welcomeShowIcon, true)
     var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600, 0..3000)
     var welcomeImageDark by stringPref(PreferKey.welcomeImageDark)
+    val enableWelcome by boolPref(PreferKey.enableWelcome, true)
+
+    /** 恢复默认 UA:清 pref 并立即重载缓存,不等监听器 */
+    fun resetUserAgent() {
+        appCtx.removePref(PreferKey.userAgent)
+        reloadCachedPref(PreferKey.userAgent)
+    }
 
 }

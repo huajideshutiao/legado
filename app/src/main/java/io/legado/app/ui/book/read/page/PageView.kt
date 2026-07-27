@@ -11,7 +11,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import io.legado.app.R
-import io.legado.app.constant.AppConst.timeFormat
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.timeFormat
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ViewBookPageBinding
 import io.legado.app.help.config.ReadBookConfig
@@ -21,6 +22,7 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
+import io.legado.app.ui.book.read.page.entities.getTextChapter
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.BatteryView
 import io.legado.app.utils.activity
@@ -31,7 +33,6 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setTextIfNotEqual
 import splitties.views.backgroundColor
-import java.util.Date
 
 /**
  * 页面视图
@@ -279,7 +280,7 @@ class PageView(context: Context) : FrameLayout(context) {
      * 更新时间信息
      */
     fun upTime() {
-        tvTime?.text = timeFormat.format(Date(System.currentTimeMillis()))
+        tvTime?.text = AppConst.timeFormat.format(System.currentTimeMillis())
         upTimeBattery()
     }
 
@@ -299,7 +300,7 @@ class PageView(context: Context) : FrameLayout(context) {
      */
     @SuppressLint("SetTextI18n")
     private fun upTimeBattery() {
-        val time = timeFormat.format(Date(System.currentTimeMillis()))
+        val time = AppConst.timeFormat.format(System.currentTimeMillis())
         tvTimeBattery?.setBattery(battery, time)
         tvTimeBatteryP?.text = "$time $battery%"
     }
@@ -349,7 +350,7 @@ class PageView(context: Context) : FrameLayout(context) {
         val readProgress = readProgress
         tvTotalProgress?.setTextIfNotEqual(readProgress)
         tvTotalProgress1?.setTextIfNotEqual("${chapterIndex.plus(1)}/${chapterSize}")
-        if (textChapter.isCompleted) {
+        if (getTextChapter().isCompleted) {
             tvPageAndTotal?.setTextIfNotEqual("${index.plus(1)}/$pageSize  $readProgress")
             tvPage?.setTextIfNotEqual("${index.plus(1)}/$pageSize")
         } else {

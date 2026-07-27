@@ -1,67 +1,21 @@
+@file:JvmName("IntentDataAndroid")
+
 package io.legado.app.help
 
-import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.ui.book.searchContent.SearchResult
 
-object IntentData {
-    var book: BaseBook?
-        get() = get("nowBook")
-        set(value) {
-            put("nowBook", value)
-        }
-
-    var source: Any?
-        get() = get("nowSource")
-        set(value) {
-            put("nowSource", value)
-        }
-
-    @Suppress("UNCHECKED_CAST")
-    var chapterList: List<BookChapter>?
-        get() = get("nowChapterList")
-        set(value) {
-            put("nowChapterList", value)
-        }
-
-    var chapter: BookChapter?
-        get() = get("nowChapter")
-        set(value) {
-            put("nowChapter", value)
-        }
-
-    @Suppress("UNCHECKED_CAST")
-    var searchResultList: List<SearchResult>?
-        get() = get("searchResultList")
-        set(value) {
-            put("searchResultList", value)
-        }
-
-    private val bigData: MutableMap<String, Any> = mutableMapOf()
-
-    @Synchronized
-    fun put(key: String, data: Any?): String {
-        data?.let {
-            bigData[key] = data
-        }
-        return key
+/**
+ * IntentData Android 部分: 依赖 app 端 `SearchResult` (UI 类) 的属性.
+ *
+ * 核心部分 (book/source/chapterList/chapter/bigData/put/get) 已下沉至
+ * modules/shared/src/commonMain/kotlin/io/legado/app/help/IntentData.kt.
+ *
+ * 本文件仅保留 `searchResultList` 属性, 作为 [IntentData] 扩展属性,
+ * 调用方式 (`IntentData.searchResultList = ...` 等) 与原一致, 兼容现有调用方。
+ */
+@Suppress("UNCHECKED_CAST")
+var IntentData.searchResultList: List<SearchResult>?
+    get() = get("searchResultList")
+    set(value) {
+        put("searchResultList", value)
     }
-
-    @Synchronized
-    fun put(data: Any?): String {
-        val key = System.nanoTime().toString()
-        data?.let {
-            bigData[key] = data
-        }
-        return key
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    @Synchronized
-    fun <T> get(key: String?): T? {
-        if (key == null) return null
-        val data = bigData[key]
-        bigData.remove(key)
-        return data as? T
-    }
-}

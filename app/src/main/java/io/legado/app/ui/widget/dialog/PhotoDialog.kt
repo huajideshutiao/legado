@@ -3,19 +3,27 @@ package io.legado.app.ui.widget.dialog
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Bundle
 import android.util.Base64
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.net.toUri
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.signature.ObjectKey
-import com.ortiz.touchview.TouchImageView
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppConst
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isEpub
@@ -24,6 +32,7 @@ import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.compose.component.zoomable
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.BitmapUtils
@@ -34,35 +43,38 @@ import io.legado.app.utils.toastOnUi
 /**
  * 显示图片
  */
-class PhotoDialog() : BaseDialogFragment(0) {
+class PhotoDialog() : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
     constructor(src: String, sourceOrigin: String? = null) : this() {
-        arguments = Bundle().apply {
+        arguments = android.os.Bundle().apply {
             putString("src", src)
             putString("sourceOrigin", sourceOrigin)
         }
     }
 
-    private lateinit var photoView: TouchImageView
     private lateinit var src: String
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        val ctx = inflater.context
-        photoView = TouchImageView(ctx).apply {
-            layoutParams = ConstraintLayout.LayoutParams(
-                ConstraintLayout.LayoutParams.MATCH_PARENT,
-                ConstraintLayout.LayoutParams.MATCH_PARENT
-            )
-            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-        }
-        return ConstraintLayout(ctx).apply {
-            addView(photoView)
+    @Composable
+    override fun Content() {
+        src = arguments?.getString("src") ?: return
+        var image by remember { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(Unit) { loadPhoto { image = it } }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            image?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zoomable(
+                            contentAspectRatio = bitmap.width.toFloat() / bitmap.height,
+                            onLongPress = { onLongPressSave() },
+                        ),
+                )
+            }
         }
     }
 
@@ -75,48 +87,33 @@ class PhotoDialog() : BaseDialogFragment(0) {
     private val saveImageLauncher by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            ACache.get().put(AppConst.imagePathKey, uri.toString())
-            doSaveImage(uri)
-        }
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        src = arguments?.getString("src") ?: return
-        initEvent()
-        loadPhoto()
-    }
-
-    private fun initEvent() {
-        photoView.setOnLongClickListener {
-            val path = ACache.get().getAsString(AppConst.imagePathKey)
-            if (path.isNullOrEmpty()) {
-                saveImageLauncher.launch { }
-            } else {
-                doSaveImage(path.toUri())
+                ACache.get().put(AppConst.imagePathKey, uri.toString())
+                doSaveImage(uri)
             }
-            true
         }
     }
 
-    private fun loadPhoto() {
+    private fun onLongPressSave() {
+        val path = ACache.get().getAsString(AppConst.imagePathKey)
+        if (path.isNullOrEmpty()) {
+            saveImageLauncher.launch { }
+        } else {
+            doSaveImage(path.toUri())
+        }
+    }
+
+    private fun loadPhoto(onLoaded: (ImageBitmap?) -> Unit) {
         val book = ReadBook.book
-        // 异步走本地路径：data URI / 章节缓存文件 / 本地 EPUB ZIP
-        // 解码尺寸取屏幕的 2 倍，给 PhotoView 放大留余量
+        // 异步走本地路径：data URI / 章节缓存文件 / 本地 EPUB ZIP，解码尺寸取屏幕 2 倍留放大余量
         val dm = resources.displayMetrics
         val w = dm.widthPixels * 2
         val h = dm.heightPixels * 2
         val targetDensity = dm.densityDpi
 
         execute {
-            when {
-                src.startsWith("data:image/svg+xml;base64,") -> decodeBytes(
-                    Base64.decode(
-                        src.substring(
-                            26
-                        ), Base64.DEFAULT
-                    ), w, h
-                )
+            val bitmap = when {
+                src.startsWith("data:image/svg+xml;base64,") ->
+                    decodeBytes(Base64.decode(src.substring(26), Base64.DEFAULT), w, h)
 
                 book != null -> {
                     val file = BookHelp.getImage(book, src)
@@ -132,11 +129,11 @@ class PhotoDialog() : BaseDialogFragment(0) {
 
                 else -> null
             }?.apply { density = targetDensity }
+            bitmap ?: loadBitmapByGlide()
         }.onSuccess { bitmap ->
-            if (bitmap != null) photoView.setImageBitmap(bitmap)
-            else loadByGlide()
+            onLoaded(bitmap?.asImageBitmap())
         }.onError {
-            loadByGlide()
+            onLoaded(null)
         }
     }
 
@@ -148,25 +145,20 @@ class PhotoDialog() : BaseDialogFragment(0) {
         BitmapUtils.decodeBitmap(path, w, h) ?: SvgUtils.renderInto(path, w, h)
 
     /**
-     * 本地路径都不命中时的兜底
-     * 先查 covers 磁盘缓存（封面场景命中），否则走正常请求
+     * 本地路径都不命中时的兜底：先查 covers 磁盘缓存（封面场景命中），否则正常请求，仍失败取默认封面。
      */
-    private fun loadByGlide() {
-        val ctx = context ?: return
-        val normalRequest = ImageLoader.load(ctx, src)
+    private fun loadBitmapByGlide(): Bitmap? {
+        val ctx = context ?: return null
+        val base = ImageLoader.with(ctx).asBitmap()
             .apply(requestOptions)
-            .error(BookCover.newDefaultDrawable())
             .dontTransform()
             .downsample(DownsampleStrategy.NONE)
-
-        ImageLoader.load(ctx, src)
-            .apply(requestOptions)
-            .signature(ObjectKey("covers"))
-            .onlyRetrieveFromCache(true)
-            .error(normalRequest)
-            .dontTransform()
-            .downsample(DownsampleStrategy.NONE)
-            .into(photoView)
+        return runCatching {
+            base.clone().signature(ObjectKey("covers")).onlyRetrieveFromCache(true)
+                .load(src).submit().get()
+        }.getOrNull() ?: runCatching {
+            base.clone().load(src).submit().get()
+        }.getOrNull() ?: BookCover.newDefaultDrawable().toBitmap()
     }
 
     @SuppressLint("CheckResult")
@@ -176,7 +168,7 @@ class PhotoDialog() : BaseDialogFragment(0) {
                 BookHelp.getImage(book, src).takeIf { it.exists() }
             }
             val file = localFile ?: run {
-                val glide = Glide.with(requireContext())
+                val glide = ImageLoader.with(requireContext())
                 runCatching {
                     glide.downloadOnly()
                         .apply(requestOptions)

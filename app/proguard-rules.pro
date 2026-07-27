@@ -78,6 +78,9 @@
     cn.hutool.core.util.** { *; }
 -keep class cn.hutool.crypto.** { *; }
 -dontwarn cn.hutool.**
+# rhino compileOnly 不进产物,适配层残留引用仅警告豁免
+-dontwarn org.mozilla.javascript.**
+-dontwarn com.script.*
 
 ############################
 # OkHttp（保留给 js 调用）

@@ -1,163 +1,276 @@
 package io.legado.app.ui.book.read
 
-import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.animation.AccelerateInterpolator
-import android.view.inputmethod.EditorInfo
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.animation.doOnEnd
-import androidx.core.view.ViewCompat
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeAnimationTarget
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsAnimationCompat
-import androidx.core.view.WindowInsetsCompat
 import io.legado.app.R
-import io.legado.app.databinding.ActivityReviewPostBinding
+import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
+import io.legado.app.ui.compose.platform.AndroidEventBusProvider
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.hideSoftInput
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
+import kotlinx.coroutines.launch
 
 /** 段评输入面板。独立 Activity 模拟 BottomSheet,避免叠在 ReviewListDialog 上时
  *  双层 BottomSheetDialogFragment 在 IME inset/动画时序上互相干扰。
  *
  *  sheet 的 translationY = exitY + imeY:imeY = -ime.bottom 让 sheet 跟随 IME 顶,
- *  入场即天然 slide-in;exitY 由退场 animator 驱动滑到屏外。
+ *  入场即天然 slide-in;exitY 由退场动画驱动滑到屏外(dismissed 后冻结 imeY)。
  */
 class ReviewPostActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityReviewPostBinding
-    private var imeWasVisible = false
-    private var dismissed = false
-    private var exitY = 0f
-    private var imeY = 0f
-    private var imeAnimating = false
+    // Compose state：finish() 置位触发退场动画，动画毕才真正 finish
+    private var dismissed by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
-        binding = ActivityReviewPostBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
         val replyPreview = intent.getStringExtra(EXTRA_REPLY_PREVIEW)
-        if (!replyPreview.isNullOrBlank()) {
+        val hint = if (!replyPreview.isNullOrBlank()) {
             val trimmed = replyPreview.take(15).let {
                 if (replyPreview.length > 15) "$it…" else it
             }
-            binding.etInput.hint = getString(R.string.reply_review_to, trimmed)
+            getString(R.string.reply_review_to, trimmed)
+        } else {
+            getString(R.string.review_post_hint)
         }
-
-        binding.etInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                binding.btnPost.isEnabled = !s.isNullOrBlank()
-            }
-        })
-        binding.etInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND) {
-                submit(); true
-            } else false
-        }
-        binding.btnPost.setOnClickListener { submit() }
-        binding.root.setOnClickListener { finish() }
-        binding.etInput.requestFocus()
-
-        binding.root.alpha = 0f
-        binding.root.animate()
-            .alpha(1f)
-            .setDuration(ANIM_DURATION)
-            .start()
-
-        ViewCompat.setWindowInsetsAnimationCallback(
-            binding.root,
-            object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
-                override fun onPrepare(animation: WindowInsetsAnimationCompat) {
-                    if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
-                        imeAnimating = true
-                    }
-                }
-
-                override fun onProgress(
-                    insets: WindowInsetsCompat,
-                    runningAnimations: MutableList<WindowInsetsAnimationCompat>
-                ): WindowInsetsCompat {
-                    if (!dismissed) {
-                        imeY = -insets.getInsets(WindowInsetsCompat.Type.ime()).bottom.toFloat()
-                        applySheetTranslation()
-                    }
-                    return insets
-                }
-
-                override fun onEnd(animation: WindowInsetsAnimationCompat) {
-                    if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
-                        imeAnimating = false
-                    }
+        setContent {
+            // 注入 Android actual Provider，供 commonMain AppTheme 通过 LocalXxx 取依赖
+            val themeStoreProvider = remember { AndroidThemeStoreProvider() }
+            val appConfigProvider = remember { AndroidAppConfigProvider() }
+            val eventBusProvider = remember { AndroidEventBusProvider() }
+            val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
+            CompositionLocalProvider(
+                LocalThemeStoreProvider provides themeStoreProvider,
+                LocalAppConfigProvider provides appConfigProvider,
+                LocalEventBusProvider provides eventBusProvider,
+                LocalPreferenceStoreProvider provides preferenceStoreProvider,
+            ) {
+                AppTheme {
+                    ReviewPostScreen(hint)
                 }
             }
-        )
-        binding.root.setOnApplyWindowInsetsListenerCompat { _, insets ->
-            // IME 动画期间 onApplyWindowInsets 会先收到终值,
-            // 让 onProgress 独占 imeY,避免 sheet 闪现到完全上升位置后再回滚重播动画。
-            if (!dismissed && !imeAnimating) {
-                imeY = -insets.getInsets(WindowInsetsCompat.Type.ime()).bottom.toFloat()
-                applySheetTranslation()
-            }
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            if (imeVisible) {
-                imeWasVisible = true
-            } else if (imeWasVisible && !dismissed) {
-                // 返回键路径:系统先收起 IME 再触发 finish;dismissed 时跳过,避免 exit 动画里
-                // 主动 hideSoftInput 再触发一次。
-                finish()
-            }
-            insets
         }
     }
 
-    private fun applySheetTranslation() {
-        binding.sheet.translationY = exitY + imeY
-    }
-
-    private fun submit() {
-        val text = binding.etInput.text?.toString()?.trim().orEmpty()
-        if (text.isBlank()) return
-        setResult(RESULT_OK, Intent().putExtra(RESULT_CONTENT, text))
+    private fun submit(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+        setResult(RESULT_OK, Intent().putExtra(RESULT_CONTENT, trimmed))
         finish()
     }
 
-    /** 所有关闭路径都收敛到这里走退场动画。dismissed 后冻结 imeY,改由 exit animator
-     *  单独驱动 sheet 到屏外 (targetExitY 补偿 imeY 让终值 = sheet.height)。 */
+    /** 所有关闭路径都收敛到这里走退场动画。 */
     override fun finish() {
         if (dismissed) return
         dismissed = true
-        binding.etInput.hideSoftInput()
-        binding.scrim.animate()
-            .alpha(0f)
-            .setDuration(ANIM_DURATION)
-            .start()
-        val targetExitY = binding.sheet.height.toFloat() - imeY
-        ValueAnimator.ofFloat(exitY, targetExitY).apply {
-            duration = ANIM_DURATION
-            interpolator = AccelerateInterpolator()
-            addUpdateListener {
-                exitY = it.animatedValue as Float
-                applySheetTranslation()
+        currentFocus?.hideSoftInput()
+    }
+
+    private fun finishAfterExit() {
+        super.finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
+    }
+
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    @Composable
+    private fun ReviewPostScreen(hint: String) {
+        val density = LocalDensity.current
+        var text by remember { mutableStateOf("") }
+        val focusRequester = remember { FocusRequester() }
+        val rootAlpha = remember { Animatable(0f) }
+        val scrimAlpha = remember { Animatable(1f) }
+        val exitY = remember { Animatable(0f) }
+        var sheetHeight by remember { mutableIntStateOf(0) }
+
+        // IME 跟随；dismissed 后冻结，由 exitY 单独驱动 sheet 到屏外
+        val imeBottom = WindowInsets.ime.getBottom(density)
+        var frozenImeY by remember { mutableFloatStateOf(0f) }
+        SideEffect {
+            if (!dismissed) frozenImeY = -imeBottom.toFloat()
+        }
+        val imeY = if (dismissed) frozenImeY else -imeBottom.toFloat()
+
+        // 返回键路径:系统先收起 IME 再触发 finish。用动画目标值判定,
+        // 与原 onApplyWindowInsets 一样在收起动画起始帧就响应
+        val imeVisibleTarget = WindowInsets.imeAnimationTarget.getBottom(density) > 0
+        var imeWasVisible by remember { mutableStateOf(false) }
+        LaunchedEffect(imeVisibleTarget) {
+            if (imeVisibleTarget) {
+                imeWasVisible = true
+            } else if (imeWasVisible && !dismissed) {
+                finish()
             }
-            doOnEnd {
-                super@ReviewPostActivity.finish()
-                @Suppress("DEPRECATION")
-                overridePendingTransition(0, 0)
+        }
+
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            rootAlpha.animateTo(1f, tween(ANIM_DURATION))
+        }
+        // 退场：scrim 淡出 + sheet 滑出(补偿冻结 imeY 让终值 = sheet 高度即完全离屏)
+        LaunchedEffect(dismissed) {
+            if (!dismissed) return@LaunchedEffect
+            launch { scrimAlpha.animateTo(0f, tween(ANIM_DURATION)) }
+            exitY.animateTo(
+                targetValue = sheetHeight.toFloat() - frozenImeY,
+                animationSpec = tween(ANIM_DURATION, easing = AccelerateEasing),
+            )
+            finishAfterExit()
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = rootAlpha.value }
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = scrimAlpha.value }
+                    .background(Color(0x80000000))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { finish() }
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { sheetHeight = it.height }
+                    .graphicsLayer { translationY = exitY.value + imeY }
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(colorResource(R.color.background))
+                    // 消费点击，防止穿透到 scrim 关闭
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {}
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
+                        textStyle = TextStyle(
+                            color = colorResource(R.color.primaryText),
+                            fontSize = 13.sp,
+                        ),
+                        cursorBrush = SolidColor(colorResource(R.color.accent)),
+                        maxLines = 6,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Send,
+                        ),
+                        keyboardActions = KeyboardActions(onSend = { submit(text) }),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(colorResource(R.color.background_card))
+                                    .heightIn(min = 40.dp)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (text.isEmpty()) {
+                                    Text(
+                                        text = hint,
+                                        color = colorResource(R.color.secondaryText),
+                                        fontSize = 13.sp,
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
+                    Text(
+                        text = stringResource(R.string.post_review),
+                        color = colorResource(R.color.secondaryText),
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .clickable(enabled = text.isNotBlank()) { submit(text) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
-            start()
         }
     }
 
     companion object {
         const val EXTRA_REPLY_PREVIEW = "replyPreview"
         const val RESULT_CONTENT = "content"
-        private const val ANIM_DURATION = 200L
+        private const val ANIM_DURATION = 200
+
+        // 对齐原 AccelerateInterpolator(factor=1)
+        private val AccelerateEasing = Easing { it * it }
     }
 }

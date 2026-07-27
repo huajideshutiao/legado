@@ -1,0 +1,44 @@
+package io.legado.app.napi.quickjs
+
+---
+
+#include "quickjs.h"
+
+// ============ C wrapper functions for static inline / macros ============
+// cinterop 默认不绑定 static inline 函数 (其函数体依赖宏) 和带参数的宏,
+// 此处提供 extern wrapper 函数让 Kotlin 端可调用。
+// 仅包装 Kotlin 端 (IosJsEngine / OhosJsEngine) 需要使用的 API, 不改变 quickjs 行为。
+// 命名前缀 qjs_ 避免与 quickjs.h 原生符号冲突。
+// 单一数据源: iOS (iosArm64/iosSimulatorArm64) 与鸿蒙 (linuxArm64) 共用本文件 + quickjs-ng/ C 源码,
+// cinterop 各自编译为对应 ABI 的库, 升级 quickjs-ng 时只需更新本目录一处。
+
+// ---- JSValue 构造 (quickjs.h 中为 static inline, 依赖 JS_MKVAL 宏) ----
+JSValue qjs_NewBool(JSContext *ctx, int val) { return JS_NewBool(ctx, val != 0); }
+JSValue qjs_NewInt32(JSContext *ctx, int32_t val) { return JS_NewInt32(ctx, val); }
+JSValue qjs_NewFloat64(JSContext *ctx, double val) { return JS_NewFloat64(ctx, val); }
+JSValue qjs_NewString(JSContext *ctx, const char *str) { return JS_NewString(ctx, str); }
+JSValue qjs_NewCFunction(JSContext *ctx, JSCFunction *func, const char *name, int length) {
+    return JS_NewCFunction(ctx, func, name, length);
+}
+
+// ---- JSValue 类型判断 (quickjs.h 中为 static inline) ----
+// 返回 int (0/1) 而非 bool, 简化 cinterop 类型映射
+int qjs_IsException(JSValueConst v) { return (int)JS_IsException(v); }
+int qjs_IsNumber(JSValueConst v) { return (int)JS_IsNumber(v); }
+int qjs_IsBool(JSValueConst v) { return (int)JS_IsBool(v); }
+int qjs_IsNull(JSValueConst v) { return (int)JS_IsNull(v); }
+int qjs_IsUndefined(JSValueConst v) { return (int)JS_IsUndefined(v); }
+int qjs_IsString(JSValueConst v) { return (int)JS_IsString(v); }
+int qjs_IsObject(JSValueConst v) { return (int)JS_IsObject(v); }
+
+// ---- JSValue 值提取 (quickjs.h 中为宏, cinterop 不绑定带参数宏) ----
+int qjs_ValueGetTag(JSValueConst v) { return (int)JS_VALUE_GET_TAG(v); }
+int32_t qjs_ValueGetInt(JSValueConst v) { return (int32_t)JS_VALUE_GET_INT(v); }
+int32_t qjs_ValueGetBool(JSValueConst v) { return (int32_t)JS_VALUE_GET_BOOL(v); }
+double qjs_ValueGetFloat64(JSValueConst v) { return (double)JS_VALUE_GET_FLOAT64(v); }
+
+// ---- JSValue 字符串转换 (quickjs.h 中为 static inline, 调用 JS_ToCStringLen2) ----
+const char *qjs_ToCString(JSContext *ctx, JSValueConst val) { return JS_ToCString(ctx, val); }
+
+// ---- JSAtom 转字符串 (quickjs.h 中为 static inline, 调用 JS_AtomToCStringLen) ----
+const char *qjs_AtomToCString(JSContext *ctx, JSAtom atom) { return JS_AtomToCString(ctx, atom); }

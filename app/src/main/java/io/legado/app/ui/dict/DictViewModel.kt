@@ -1,21 +1,19 @@
 package io.legado.app.ui.dict
 
 import android.app.Application
+import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
-import io.legado.app.help.coroutine.Coroutine
 
 class DictViewModel(application: Application) : BaseViewModel(application) {
 
-    private var dictJob: Coroutine<String>? = null
+    // 委托给 commonMain 的 DictViewModelShared, 业务逻辑下沉供多端复用
+    // (Android=viewModelScope / desktop=应用 scope), 见 DictViewModelShared.kt
+    private val shared: DictViewModelShared =
+        DictViewModelShared(viewModelScope)
 
     fun initData(onSuccess: (List<DictRule>) -> Unit) {
-        execute {
-            appDb.dictRuleDao.enabled
-        }.onSuccess {
-            onSuccess.invoke(it)
-        }
+        shared.initData(onSuccess)
     }
 
     fun dict(
@@ -23,14 +21,7 @@ class DictViewModel(application: Application) : BaseViewModel(application) {
         word: String,
         onFinally: (String) -> Unit
     ) {
-        dictJob?.cancel()
-        dictJob = execute {
-            dictRule.search(word)
-        }.onSuccess {
-            onFinally.invoke(it)
-        }.onError {
-            onFinally.invoke(it.localizedMessage ?: "ERROR")
-        }
+        shared.dict(dictRule, word, onFinally)
     }
 
 

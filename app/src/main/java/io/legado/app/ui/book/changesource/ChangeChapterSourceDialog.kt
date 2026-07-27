@@ -1,20 +1,34 @@
 package io.legado.app.ui.book.changesource
 
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
+import androidx.activity.ComponentDialog
 import androidx.activity.addCallback
-import androidx.appcompat.widget.SearchView
-import androidx.appcompat.widget.Toolbar
-import androidx.core.view.isVisible
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle.State.STARTED
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -22,26 +36,16 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.DialogChangeSourceBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.StartActivityContract
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.transaction
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -49,10 +53,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 
-class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_source),
-    Toolbar.OnMenuItemClickListener,
-    ChangeChapterSourceAdapter.CallBack,
-    ChangeChapterTocAdapter.Callback {
+class ChangeChapterSourceDialog() : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
@@ -65,37 +66,40 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
         }
     }
 
-    private val binding by viewBinding(DialogChangeSourceBinding::bind)
-    private val groups = linkedSetOf<String>()
     private val callBack: CallBack? get() = activity as? CallBack
     private val viewModel: ChangeChapterSourceViewModel by viewModels()
     private val editSourceResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
             viewModel.startSearch()
         }
-    private val searchBookAdapter by lazy {
-        ChangeChapterSourceAdapter(requireContext(), viewModel, this)
-    }
-    private val tocAdapter by lazy {
-        ChangeChapterTocAdapter(requireContext(), this)
-    }
+
+    private var searching by mutableStateOf(false)
+    private var curBookUrl by mutableStateOf<String?>(null)
+    private var searchGroup by mutableStateOf(AppConfig.searchGroup)
+    private var searchBook: SearchBook? = null
+
+    // toc 预览覆盖层状态
+    private var tocVisible by mutableStateOf(false)
+    private var tocLoading by mutableStateOf(false)
+    private var tocList by mutableStateOf<List<BookChapter>?>(null)
+    private var durChapterIndex by mutableIntStateOf(0)
+
     private val contentSuccess: (content: String) -> Unit = {
-        binding.loadingToc.gone()
+        tocLoading = false
         callBack?.replaceContent(it)
         dismissAllowingStateLoss()
     }
-    private var searchBook: SearchBook? = null
     private val searchFinishCallback: (isEmpty: Boolean) -> Unit = {
         if (it) {
-            val searchGroup = AppConfig.searchGroup
-            if (searchGroup.isNotEmpty()) {
+            val group = AppConfig.searchGroup
+            if (group.isNotEmpty()) {
                 lifecycleScope.launch {
                     context?.alert("搜索结果为空") {
-                        setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
+                        setMessage("${group}分组搜索结果为空,是否切换到全部分组")
                         noButton()
                         yesButton {
                             AppConfig.searchGroup = ""
-                            upGroupMenu()
+                            searchGroup = ""
                             viewModel.startSearch()
                         }
                     }
@@ -104,19 +108,19 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         viewModel.initData(arguments, callBack?.oldBook, activity is ReadBookActivity)
-        showTitle()
-        initMenu()
-        initView()
-        initRecyclerView()
-        initSearchView()
-        initBottomBar()
-        initLiveData()
+        curBookUrl = callBack?.oldBook?.bookUrl
         viewModel.searchFinishCallback = searchFinishCallback
-        activity?.onBackPressedDispatcher?.addCallback(this) {
-            if (binding.clToc.isVisible) {
-                binding.clToc.gone()
+        viewModel.searchStateData.observe(viewLifecycleOwner) { searching = it }
+        observeEvent<String>(EventBus.SOURCE_CHANGED) {
+            curBookUrl = callBack?.oldBook?.bookUrl
+        }
+        // 返回键先收起 toc 再关闭对话框
+        (dialog as? ComponentDialog)?.onBackPressedDispatcher?.addCallback(this) {
+            if (tocVisible) {
+                tocVisible = false
                 return@addCallback
             }
             dismissAllowingStateLoss()
@@ -128,276 +132,191 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_change_so
         viewModel.searchFinishCallback = null
     }
 
-    private fun showTitle() {
-        titleBar!!.title = viewModel.chapterTitle
-    }
+    @Composable
+    override fun Content() {
+        var items by remember { mutableStateOf(emptyList<SearchBook>()) }
+        var groups by remember { mutableStateOf(emptyList<String>()) }
+        var searchMode by rememberSaveable { mutableStateOf(false) }
+        var screenKey by rememberSaveable { mutableStateOf("") }
+        var checkAuthor by remember { mutableStateOf(AppConfig.changeSourceCheckAuthor) }
+        var loadInfo by remember { mutableStateOf(AppConfig.changeSourceLoadInfo) }
+        var loadToc by remember { mutableStateOf(AppConfig.changeSourceLoadToc) }
+        var loadWordCount by remember { mutableStateOf(AppConfig.changeSourceLoadWordCount) }
+        val listState = rememberLazyListState()
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current
 
-    private fun initMenu() {
-        val tb = titleBar!!.toolbar
-        tb.inflateMenu(R.menu.change_source)
-        tb.menu.applyTint(requireContext())
-        tb.setOnMenuItemClickListener(this)
-        titleBar!!.menu.findItem(R.id.menu_check_author)
-            ?.isChecked = AppConfig.changeSourceCheckAuthor
-        titleBar!!.menu.findItem(R.id.menu_load_info)
-            ?.isChecked = AppConfig.changeSourceLoadInfo
-        titleBar!!.menu.findItem(R.id.menu_load_toc)
-            ?.isChecked = AppConfig.changeSourceLoadToc
-        titleBar!!.menu.findItem(R.id.menu_load_word_count)
-            ?.isChecked = AppConfig.changeSourceLoadWordCount
-    }
-
-    private fun initView() {
-        binding.clToc.setBackgroundColor(requireContext().backgroundColor)
-        binding.ivHideToc.setOnClickListener {
-            binding.clToc.gone()
-        }
-        // Arco 风格：移除 flHideToc elevation 阴影
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.adapter = searchBookAdapter
-        searchBookAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                if (positionStart == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-
-            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                if (toPosition == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-        })
-        binding.recyclerViewToc.adapter = tocAdapter
-    }
-
-    private fun initSearchView() {
-        val searchView = titleBar!!.menu.findItem(R.id.menu_screen).actionView as SearchView
-        searchView.setOnCloseListener {
-            showTitle()
-            false
-        }
-        searchView.setOnSearchClickListener {
-            titleBar!!.title = ""
-            titleBar!!.subtitle = ""
-        }
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                viewModel.screen(newText)
-                return false
-            }
-
-        })
-    }
-
-    private fun initBottomBar() {
-        binding.tvDur.text = callBack?.oldBook?.originName
-        binding.tvDur.setOnClickListener {
-            scrollToDurSource()
-        }
-        binding.ivTop.setOnClickListener {
-            binding.recyclerView.scrollToPosition(0)
-        }
-        binding.ivBottom.setOnClickListener {
-            binding.recyclerView.scrollToPosition(searchBookAdapter.itemCount - 1)
-        }
-    }
-
-    private fun initLiveData() {
-        viewModel.searchStateData.observe(viewLifecycleOwner) {
-            binding.refreshProgressBar.isAutoLoading = it
-            if (it) {
-                startStopMenuItem?.let { item ->
-                    item.setIcon(R.drawable.ic_stop_black_24dp)
-                    item.setTitle(R.string.stop)
-                }
-            } else {
-                startStopMenuItem?.let { item ->
-                    item.setIcon(R.drawable.ic_refresh_black_24dp)
-                    item.setTitle(R.string.refresh)
-                }
-            }
-            titleBar!!.toolbar.menu.applyTint(requireContext())
-        }
-        lifecycleScope.launch {
+        LaunchedEffect(Unit) {
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
             viewModel.searchDataFlow.conflate().collect {
-                searchBookAdapter.setItems(it)
+                items = it
                 delay(1000)
             }
         }
-        lifecycleScope.launch {
+        LaunchedEffect(Unit) {
             appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
-                groups.clear()
-                groups.addAll(it)
-                upGroupMenu()
+                groups = it
             }
         }
-    }
+        // 对照 AdapterDataObserver：首条变化(插入/移动到 0)回滚到顶
+        LaunchedEffect(items.firstOrNull()?.bookUrl) {
+            if (items.isNotEmpty()) listState.scrollToItem(0)
+        }
 
-    private val startStopMenuItem: MenuItem?
-        get() = titleBar!!.menu.findItem(R.id.menu_start_stop)
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_check_author -> {
-                AppConfig.changeSourceCheckAuthor = !item.isChecked
-                item.isChecked = !item.isChecked
-                viewModel.refresh()
-            }
-
-            R.id.menu_load_info -> {
-                AppConfig.changeSourceLoadInfo = !item.isChecked
-                item.isChecked = !item.isChecked
-            }
-
-            R.id.menu_load_toc -> {
-                AppConfig.changeSourceLoadToc = !item.isChecked
-                item.isChecked = !item.isChecked
-            }
-
-            R.id.menu_load_word_count -> {
-                AppConfig.changeSourceLoadWordCount = !item.isChecked
-                item.isChecked = !item.isChecked
-                viewModel.onLoadWordCountChecked(item.isChecked)
-            }
-
-            R.id.menu_start_stop -> viewModel.startOrStopSearch()
-            R.id.menu_source_manage -> startActivity<BookSourceActivity>()
-            else -> if (item?.groupId == R.id.source_group && !item.isChecked) {
-                item.isChecked = true
-                if (item.title.toString() == getString(R.string.all_source)) {
-                    AppConfig.searchGroup = ""
-                } else {
-                    AppConfig.searchGroup = item.title.toString()
+        Column(Modifier.fillMaxSize()) {
+            ChangeSourceTitleBar(
+                title = viewModel.chapterTitle,
+                subtitle = null,
+                searchMode = searchMode,
+                screenKey = screenKey,
+                searching = searching,
+                onBack = { dismissAllowingStateLoss() },
+                onSearchModeChange = { searchMode = it },
+                onScreen = {
+                    screenKey = it
+                    viewModel.screen(it)
+                },
+                onStartStop = { viewModel.startOrStopSearch() },
+            ) { dismiss ->
+                TextMenuItem(stringResource(R.string.book_source_manage)) {
+                    dismiss(); startActivity<BookSourceActivity>()
                 }
-                lifecycleScope.launch(IO) {
-                    viewModel.stopSearch()
-                    if (viewModel.refresh()) {
-                        viewModel.startSearch()
+                CheckMenuItem(stringResource(R.string.checkAuthor), checkAuthor) {
+                    dismiss()
+                    checkAuthor = !checkAuthor
+                    AppConfig.changeSourceCheckAuthor = checkAuthor
+                    viewModel.refresh()
+                }
+                CheckMenuItem(stringResource(R.string.load_word_count), loadWordCount) {
+                    dismiss()
+                    loadWordCount = !loadWordCount
+                    AppConfig.changeSourceLoadWordCount = loadWordCount
+                    viewModel.onLoadWordCountChecked(loadWordCount)
+                }
+                CheckMenuItem(stringResource(R.string.load_info), loadInfo) {
+                    dismiss()
+                    loadInfo = !loadInfo
+                    AppConfig.changeSourceLoadInfo = loadInfo
+                }
+                CheckMenuItem(stringResource(R.string.load_toc), loadToc) {
+                    dismiss()
+                    loadToc = !loadToc
+                    AppConfig.changeSourceLoadToc = loadToc
+                }
+                GroupMenuItem(
+                    title = stringResource(R.string.group),
+                    groups = groups,
+                    selectedGroup = searchGroup,
+                    dismissParent = dismiss,
+                    onSelect = ::onGroupSelected,
+                )
+            }
+            Box(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxSize()) {
+                    ChangeSourceRefreshBar(searching)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        items(items, key = { it.bookUrl }) { book ->
+                            SearchBookItem(
+                                book = book,
+                                isCurSource = book.bookUrl == curBookUrl,
+                                loadWordCount = loadWordCount,
+                                getScore = { viewModel.getBookScore(book) },
+                                setScore = { viewModel.setBookScore(book, it) },
+                                onClick = { openToc(book) },
+                                onTop = { viewModel.topSource(book) },
+                                onBottom = { viewModel.bottomSource(book) },
+                                onEdit = { editSource(book) },
+                                onDisable = { viewModel.disableSource(book) },
+                                onDelete = { deleteSource(book) },
+                            )
+                        }
                     }
+                    ChangeSourceBottomBar(
+                        durText = callBack?.oldBook?.originName ?: "",
+                        onDurClick = {
+                            val index = items.indexOfFirst { it.bookUrl == curBookUrl }
+                            if (index >= 0) scope.launch {
+                                listState.scrollToItem(index, with(density) { -60.dp.roundToPx() })
+                            }
+                        },
+                        onTop = { scope.launch { listState.scrollToItem(0) } },
+                        onBottom = {
+                            scope.launch {
+                                if (items.isNotEmpty()) listState.scrollToItem(items.lastIndex)
+                            }
+                        },
+                    )
+                }
+                if (tocVisible) {
+                    ChapterTocPanel(
+                        toc = tocList,
+                        durChapterIndex = durChapterIndex,
+                        loading = tocLoading,
+                        onHide = { tocVisible = false },
+                        onClickChapter = ::clickChapter,
+                    )
                 }
             }
         }
-        return false
     }
 
-    private fun scrollToDurSource() {
-        searchBookAdapter.getItems().forEachIndexed { index, searchBook ->
-            if (searchBook.bookUrl == oldBookUrl) {
-                (binding.recyclerView.layoutManager as LinearLayoutManager)
-                    .scrollToPositionWithOffset(index, 60.dpToPx())
-                return
+    private fun onGroupSelected(group: String) {
+        if (group == AppConfig.searchGroup) return
+        AppConfig.searchGroup = group
+        searchGroup = group
+        lifecycleScope.launch(IO) {
+            viewModel.stopSearch()
+            if (viewModel.refresh()) {
+                viewModel.startSearch()
             }
         }
     }
 
-    override fun openToc(searchBook: SearchBook) {
+    private fun openToc(searchBook: SearchBook) {
         this.searchBook = searchBook
-        tocAdapter.setItems(null)
-        binding.clToc.visible()
-        binding.loadingToc.visible()
+        tocList = null
+        tocVisible = true
+        tocLoading = true
         val book = searchBook.toBook()
         viewModel.getToc(book, { toc: List<BookChapter>, _: BookSource ->
-            tocAdapter.durChapterIndex =
+            durChapterIndex =
                 BookHelp.getDurChapter(viewModel.chapterIndex, viewModel.chapterTitle, toc)
-            binding.loadingToc.gone()
-            tocAdapter.setItems(toc)
-            binding.recyclerViewToc.scrollToPosition(tocAdapter.durChapterIndex - 5)
+            tocLoading = false
+            tocList = toc
         }, {
-            binding.clToc.gone()
+            tocVisible = false
             AppLog.put("单章换源获取目录出错\n$it", it, true)
         })
     }
 
-    override val oldBookUrl: String?
-        get() = callBack?.oldBook?.bookUrl
-
-    override fun topSource(searchBook: SearchBook) {
-        viewModel.topSource(searchBook)
-    }
-
-    override fun bottomSource(searchBook: SearchBook) {
-        viewModel.bottomSource(searchBook)
-    }
-
-    override fun editSource(searchBook: SearchBook) {
-        editSourceResult.launch {
-            putExtra("sourceUrl", searchBook.origin)
-        }
-    }
-
-    override fun disableSource(searchBook: SearchBook) {
-        viewModel.disableSource(searchBook)
-    }
-
-    override fun deleteSource(searchBook: SearchBook) {
-        viewModel.del(searchBook)
-        if (oldBookUrl == searchBook.bookUrl) {
-            viewModel.autoChangeSource(callBack?.oldBook?.type) { book, toc, source ->
-                callBack?.changeTo(source, book, toc)
-            }
-        }
-    }
-
-    override fun setBookScore(searchBook: SearchBook, score: Int) {
-        viewModel.setBookScore(searchBook, score)
-    }
-
-    override fun getBookScore(searchBook: SearchBook): Int {
-        return viewModel.getBookScore(searchBook)
-    }
-
-    override fun clickChapter(bookChapter: BookChapter, nextChapterUrl: String?) {
+    private fun clickChapter(bookChapter: BookChapter, nextChapterUrl: String?) {
         searchBook?.let {
-            binding.loadingToc.visible()
+            tocLoading = true
             viewModel.getContent(it.toBook(), bookChapter, nextChapterUrl, contentSuccess) { msg ->
-                binding.loadingToc.gone()
-                binding.clToc.gone()
+                tocLoading = false
+                tocVisible = false
                 toastOnUi(msg)
             }
         }
     }
 
-    /**
-     * 更新分组菜单
-     */
-    private fun upGroupMenu() {
-        titleBar!!.menu.findItem(R.id.menu_group)?.subMenu?.transaction { menu ->
-            val selectedGroup = AppConfig.searchGroup
-            menu.removeGroup(R.id.source_group)
-            val allItem = menu.add(R.id.source_group, Menu.NONE, Menu.NONE, R.string.all_source)
-            var hasSelectedGroup = false
-            groups.forEach { group ->
-                menu.add(R.id.source_group, Menu.NONE, Menu.NONE, group)?.let {
-                    if (group == selectedGroup) {
-                        it.isChecked = true
-                        hasSelectedGroup = true
-                    }
-                }
-            }
-            menu.setGroupCheckable(R.id.source_group, true, true)
-            if (!hasSelectedGroup) {
-                allItem.isChecked = true
-            }
+    private fun editSource(searchBook: SearchBook) {
+        editSourceResult.launch {
+            putExtra("sourceUrl", searchBook.origin)
         }
     }
 
-    override fun observeLiveBus() {
-        observeEvent<String>(EventBus.SOURCE_CHANGED) {
-            searchBookAdapter.notifyItemRangeChanged(
-                0,
-                searchBookAdapter.itemCount,
-                    Bundle().apply {
-                    putString("upCurSource", oldBookUrl)
-                }
-            )
+    private fun deleteSource(searchBook: SearchBook) {
+        viewModel.del(searchBook)
+        if (curBookUrl == searchBook.bookUrl) {
+            viewModel.autoChangeSource(callBack?.oldBook?.type) { book, toc, source ->
+                callBack?.changeTo(source, book, toc)
+            }
         }
     }
 

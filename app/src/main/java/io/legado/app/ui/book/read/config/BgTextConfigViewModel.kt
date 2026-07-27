@@ -2,15 +2,16 @@ package io.legado.app.ui.book.read.config
 
 import android.app.Application
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
@@ -21,12 +22,9 @@ import io.legado.app.utils.externalCache
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
-import io.legado.app.utils.inputStream
-import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.outputStream
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.readBytes
 import java.io.File
 import java.io.FileOutputStream
@@ -110,7 +108,9 @@ class BgTextConfigViewModel(app: Application) : BaseViewModel(app) {
             ReadBookConfig.import(bytes)
         }.onSuccess {
             ReadBookConfig.durConfig = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+            ReadBookEvents.postConfig(
+                ReadConfigChange.BG, ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT
+            )
             onSuccess()
         }.onError {
             onError(it)
@@ -124,7 +124,9 @@ class BgTextConfigViewModel(app: Application) : BaseViewModel(app) {
             ReadBookConfig.import(byteArray)
         }.onSuccess {
             ReadBookConfig.durConfig = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+            ReadBookEvents.postConfig(
+                ReadConfigChange.BG, ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT
+            )
             onSuccess()
         }.onError {
             onError(it)
@@ -134,24 +136,20 @@ class BgTextConfigViewModel(app: Application) : BaseViewModel(app) {
     // 从URI设置背景图片
     fun setBgFromUri(uri: Uri, onSuccess: () -> Unit, onError: (String?) -> Unit) {
         execute {
-            val docName = if (uri.isContentScheme()) {
-                DocumentFile.fromSingleUri(context, uri)?.name
-            } else {
-                File(uri.path!!).name
-            }
-            val suffix = (docName ?: "unknown").substringAfterLast(".")
-            val fileName = uri.inputStream(context).getOrThrow().use {
+            val bgDoc = FileDoc.fromUri(uri, false)
+            val suffix = bgDoc.name.ifEmpty { "unknown" }.substringAfterLast(".")
+            val fileName = bgDoc.openInputStream().getOrThrow().use {
                 MD5Utils.md5Encode(it) + ".$suffix"
             }
             var file = context.externalFiles
             file = FileUtils.createFileIfNotExist(file, "bg", fileName)
-            uri.inputStream(context).getOrThrow().use { inputStream ->
+            bgDoc.openInputStream().getOrThrow().use { inputStream ->
                 FileOutputStream(file).use { outputStream ->
                     inputStream.copyTo(outputStream)
                 }
             }
             ReadBookConfig.durConfig.setCurBg(2, fileName)
-            postEvent(EventBus.UP_CONFIG, arrayListOf(1))
+            ReadBookEvents.postConfig(ReadConfigChange.BG)
         }.onSuccess {
             onSuccess()
         }.onError {

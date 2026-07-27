@@ -2,9 +2,9 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -17,9 +17,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.getDisplayTitle
 import io.legado.app.help.book.getExportFileName
+import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
@@ -36,6 +39,7 @@ import io.legado.app.lib.epublib.domain.TOCReference
 import io.legado.app.lib.epublib.epub.EpubWriter
 import io.legado.app.lib.epublib.epub.EpubWriterProcessor
 import io.legado.app.lib.epublib.util.ResourceUtil
+import io.legado.app.model.ExportBookUtils
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.manage.BookshelfManageActivity
@@ -68,7 +72,6 @@ import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.io.InputStream
-import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 import java.util.zip.Deflater
@@ -97,6 +100,9 @@ class ExportBookService : BaseService() {
     private val waitExportBooks = linkedMapOf<String, ExportConfig>()
     private var exportJob: Job? = null
     private var notificationContentText = appCtx.getString(R.string.service_starting)
+
+    // 下沉业务逻辑桥接 (setEpubMetadata / exportTxt 等纯逻辑委托给 shared)
+    private val shared = ExportBookShared(ExportBookDepsImpl())
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -211,7 +217,7 @@ class ExportBookService : BaseService() {
                         }
 
                         "cbz" -> exportCbz(exportConfig.path, book, chapters)
-                        else -> exportTxt(exportConfig.path, book)
+                        else -> shared.exportTxt(exportConfig.path, book)
                     }
                     exportMsg[book.bookUrl] = getString(R.string.export_success)
                 } catch (e: Throwable) {
@@ -226,7 +232,8 @@ class ExportBookService : BaseService() {
         }
     }
 
-    private fun ensureChapterList(book: Book): List<BookChapter> {
+    // Room KMP: 内部调用 suspend DAO 方法，改为 suspend fun；唯一调用方在 launch(IO) 协程内
+    private suspend fun ensureChapterList(book: Book): List<BookChapter> {
         if (book.isLocalModified()) {
             runCatching { FileBook.getChapterList(book) }.onSuccess {
                 appDb.bookChapterDao.delByBook(book.bookUrl)
@@ -247,84 +254,6 @@ class ExportBookService : BaseService() {
             }
         }
         return list
-    }
-
-    private suspend fun exportTxt(path: String, book: Book) {
-        exportMsg.remove(book.bookUrl)
-        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
-        val fileDoc = FileDoc.fromDir(path)
-        exportTxt(fileDoc, book)
-    }
-
-    private suspend fun exportTxt(fileDoc: FileDoc, book: Book) {
-        val filename = book.getExportFileName("txt")
-        fileDoc.find(filename)?.delete()
-
-        val bookDoc = fileDoc.createFileIfNotExist(filename)
-        try {
-            val charset = Charset.forName(AppConfig.exportCharset)
-            bookDoc.openOutputStream().getOrThrow().bufferedWriter(charset).use { bw ->
-                getAllContents(book) { text ->
-                    bw.write(text)
-                }
-            }
-            if (AppConfig.exportToWebDav) {
-                AppWebDav.exportWebDav(bookDoc.uri, filename)
-            }
-        } catch (e: Throwable) {
-            runCatching { bookDoc.delete() }
-            throw e
-        }
-    }
-
-    private suspend fun getAllContents(
-        book: Book,
-        append: (text: String) -> Unit
-    ) = coroutineScope {
-        val useReplace = AppConfig.exportUseReplace && book.getUseReplaceRule()
-        val contentProcessor = ContentProcessor.get(book.name, book.origin)
-        val qy = "${book.name}\n${
-            getString(R.string.author_show, book.getRealAuthor())
-        }\n${
-            getString(
-                R.string.intro_show,
-                "\n" + HtmlFormatter.format(book.getDisplayIntro())
-            )
-        }"
-        append(qy)
-        flow {
-            appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
-                emit(chapter)
-            }
-        }.mapAsync(AppConst.MAX_THREAD) { chapter ->
-            getExportData(book, chapter, contentProcessor, useReplace)
-        }.collectIndexed { index, result ->
-            postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
-            exportProgress[book.bookUrl] = index
-            append.invoke(result)
-        }
-
-    }
-
-    private fun getExportData(
-        book: Book,
-        chapter: BookChapter,
-        contentProcessor: ContentProcessor,
-        useReplace: Boolean
-    ): String {
-        val content = BookHelp.getContent(book, chapter)
-        val content1 = contentProcessor
-            .getContent(
-                book,
-                // 不导出vip标识
-                chapter.apply { isVip = false },
-                content ?: if (chapter.isVolume) "" else "null",
-                includeTitle = !AppConfig.exportNoChapterName,
-                useReplace = useReplace,
-                chineseConvert = false,
-                reSegment = false
-            ).toString()
-        return "\n\n$content1"
     }
 
     /**
@@ -370,7 +299,7 @@ class ExportBookService : BaseService() {
                         }
                     }
                     zos.putNextEntry(ZipEntry("ComicInfo.xml"))
-                    zos.write(buildComicInfo(book, totalWritten).toByteArray(Charsets.UTF_8))
+                    zos.write(ExportBookUtils.buildComicInfo(book, totalWritten).toByteArray(Charsets.UTF_8))
                     zos.closeEntry()
                 }
             }
@@ -411,32 +340,6 @@ class ExportBookService : BaseService() {
         return pages
     }
 
-    private fun buildComicInfo(book: Book, pageCount: Int): String {
-        fun esc(s: String?): String = (s ?: "")
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        return buildString {
-            append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-            append("<ComicInfo xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ")
-            append("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n")
-            append("  <Title>").append(esc(book.name)).append("</Title>\n")
-            book.getRealAuthor().takeIf { it.isNotBlank() }?.let {
-                append("  <Writer>").append(esc(it)).append("</Writer>\n")
-            }
-            book.getDisplayIntro().takeIf { !it.isNullOrBlank() }?.let {
-                append("  <Summary>").append(esc(it)).append("</Summary>\n")
-            }
-            book.kind?.takeIf { it.isNotBlank() }?.let {
-                append("  <Genre>").append(esc(it.replace(",", ", "))).append("</Genre>\n")
-            }
-            append("  <PageCount>").append(pageCount).append("</PageCount>\n")
-            append("  <LanguageISO>zh</LanguageISO>\n")
-            append("  <Manga>Yes</Manga>\n")
-            append("</ComicInfo>\n")
-        }
-    }
-
     /**
      * 导出Epub
      */
@@ -454,7 +357,7 @@ class ExportBookService : BaseService() {
         val epubBook = EpubBook()
         epubBook.version = "2.0"
         //set metadata
-        setEpubMetadata(book, epubBook)
+        shared.setEpubMetadata(book, epubBook)
         //set cover
         setCover(book, epubBook)
         //set css
@@ -603,7 +506,7 @@ class ExportBookService : BaseService() {
 
     private fun setCover(book: Book, epubBook: EpubBook) {
         kotlin.runCatching {
-            val file = Glide.with(this)
+            val file = ImageLoader.with(this)
                 .asFile()
                 .load(book.getDisplayCover())
                 .submit()
@@ -726,18 +629,6 @@ class ExportBookService : BaseService() {
         return data.toString() to resources
     }
 
-    private fun setEpubMetadata(book: Book, epubBook: EpubBook) {
-        val metadata = Metadata()
-        metadata.titles?.add(book.name)//书籍的名称
-        metadata.authors.add(Author(book.getRealAuthor()))//书籍的作者
-        metadata.language = "zh"//数据的语言
-        metadata.dates.add(Date())//数据的创建日期
-        metadata.publishers.add("Legado")//数据的创建者
-        metadata.descriptions.add(book.getDisplayIntro())//书籍的简介
-        //metadata.subjects.add("")//书籍的主题，在静读天下里面有使用这个分类书籍
-        epubBook.metadata = metadata
-    }
-
     //////end of EPUB
 
     //////start of custom exporter
@@ -748,7 +639,7 @@ class ExportBookService : BaseService() {
      */
     inner class CustomExporter(scopeStr: String, private val size: Int) {
 
-        private var scope = parseScope(scopeStr)
+        private var scope = ExportBookUtils.parseScope(scopeStr)
 
         /**
          * 导出Epub
@@ -886,7 +777,7 @@ class ExportBookService : BaseService() {
             book: Book,
             fileDoc: FileDoc
         ): Pair<String, List<Pair<String, EpubBook>>> {
-            val paresNumOfEpub = paresNumOfEpub(scope.size, size)
+            val paresNumOfEpub = ExportBookUtils.paresNumOfEpub(scope.size, size)
             val result: MutableList<Pair<String, EpubBook>> = ArrayList(paresNumOfEpub)
             var contentModel = ""
             for (i in 1..paresNumOfEpub) {
@@ -896,7 +787,7 @@ class ExportBookService : BaseService() {
                 val epubBook = EpubBook()
                 epubBook.version = "2.0"
                 //set metadata
-                setEpubMetadata(book, epubBook)
+                shared.setEpubMetadata(book, epubBook)
                 //set cover
                 setCover(book, epubBook)
                 //set css
@@ -933,51 +824,83 @@ class ExportBookService : BaseService() {
                 AppWebDav.exportWebDav(bookDoc.uri, filename)
             }
         }
+    }
 
-        /**
-         * 解析 分割epub后的数量
-         *
-         * @param total 章节总数
-         * @param size 每个epub文件包含多少章节
-         */
-        private fun paresNumOfEpub(total: Int, size: Int): Int {
-            val i = total % size
-            var result = total / size
-            if (i > 0) {
-                result++
-            }
-            return result
+    /**
+     * ExportBookDeps 平台实现, 桥接 AppConfig / ContentProcessor / FileDoc /
+     * AppWebDav / R.string / EventBus / exportProgress / exportMsg 等 app 端依赖。
+     *
+     * 详见 [ExportBookShared] 类注释 "平台依赖注入" 段。
+     */
+    private inner class ExportBookDepsImpl : ExportBookDeps {
+        override val exportCharset: String get() = AppConfig.exportCharset
+        override val exportUseReplace: Boolean get() = AppConfig.exportUseReplace
+        override val exportNoChapterName: Boolean get() = AppConfig.exportNoChapterName
+        override val exportToWebDav: Boolean get() = AppConfig.exportToWebDav
+
+        override fun strAuthorShow(author: String): String =
+            getString(R.string.author_show, author)
+
+        override fun strIntroShow(intro: String): String =
+            getString(R.string.intro_show, intro)
+
+        override fun getExportFileName(book: Book, suffix: String): String =
+            book.getExportFileName(suffix)
+
+        override fun processContent(
+            book: Book,
+            chapter: BookChapter,
+            content: String,
+            includeTitle: Boolean,
+            useReplace: Boolean,
+            chineseConvert: Boolean,
+            reSegment: Boolean
+        ): CharSequence =
+            ContentProcessor.get(book.name, book.origin)
+                .getContent(
+                    book,
+                    chapter,
+                    content,
+                    includeTitle = includeTitle,
+                    useReplace = useReplace,
+                    chineseConvert = chineseConvert,
+                    reSegment = reSegment
+                ).toString()
+
+        override fun prepareExportFile(dirPath: String, filename: String): ExportFileHandle {
+            val fileDoc = FileDoc.fromDir(dirPath)
+            fileDoc.find(filename)?.delete()
+            val bookDoc = fileDoc.createFileIfNotExist(filename)
+            val os = bookDoc.openOutputStream().getOrThrow()
+            return ExportFileHandle(os, bookDoc.uri.toString())
         }
 
-        /**
-         * 解析范围字符串
-         *
-         * @param scope 范围字符串
-         * @return 范围
-         *
-         * @since 2023/5/22
-         * @author Discut
-         */
-        private fun parseScope(scope: String): Set<Int> {
-            val split = scope.split(",")
+        override fun deleteExportUri(uri: String) {
+            FileDoc.fromUri(Uri.parse(uri), false).delete()
+        }
 
-            val result = linkedSetOf<Int>()
-            for (s in split) {
-                val v = s.split("-")
-                if (v.size != 2) {
-                    result.add(s.toInt() - 1)
-                    continue
-                }
-                val left = v[0].toInt()
-                val right = v[1].toInt()
-                if (left > right) {
-                    AppLog.put("Error expression : $s; left > right")
-                    continue
-                }
-                for (i in left..right)
-                    result.add(i - 1)
-            }
-            return result
+        override fun postExportEvent(bookUrl: String) {
+            postEvent(EventBus.EXPORT_BOOK, bookUrl)
+        }
+
+        override fun setExportProgress(bookUrl: String, progress: Int) {
+            exportProgress[bookUrl] = progress
+        }
+
+        override fun removeExportProgress(bookUrl: String) {
+            exportProgress.remove(bookUrl)
+        }
+
+        override fun setExportMsg(bookUrl: String, msg: String) {
+            exportMsg[bookUrl] = msg
+        }
+
+        override fun removeExportMsg(bookUrl: String) {
+            exportMsg.remove(bookUrl)
+        }
+
+        override suspend fun exportToWebDav(uri: String, filename: String) {
+            AppWebDav.exportWebDav(Uri.parse(uri), filename)
         }
     }
 }

@@ -3,12 +3,8 @@ package io.legado.app.ui.widget.number
 import android.content.Context
 import android.widget.NumberPicker
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AlertDialog
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.neutralButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.showWithTint
+import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.hideSoftInput
 
 fun showNumberPicker(
@@ -21,17 +17,21 @@ fun showNumberPicker(
     neutralButton: Pair<Int, (() -> Unit)?>? = null,
     onConfirm: ((value: Int) -> Unit)? = null
 ) {
-    val numberPicker = NumberPicker(context).apply {
-        isVerticalScrollBarEnabled = false
-        min?.let { minValue = it }
-        max?.let { maxValue = it }
-        value?.let { this.value = it }
-    }
-
-    AlertDialog.Builder(context).apply {
+    lateinit var numberPicker: NumberPicker
+    context.alert {
         title?.let { setTitle(it) }
         titleResId?.let { setTitle(it) }
-        customView { numberPicker }
+        customView {
+            AndroidView(factory = { ctx ->
+                NumberPicker(ctx).apply {
+                    isVerticalScrollBarEnabled = false
+                    min?.let { minValue = it }
+                    max?.let { maxValue = it }
+                    value?.let { this.value = it }
+                    numberPicker = this
+                }
+            })
+        }
         okButton {
             numberPicker.clearFocus()
             numberPicker.hideSoftInput()
@@ -45,5 +45,5 @@ fun showNumberPicker(
                 listener?.invoke()
             }
         }
-    }.showWithTint()
+    }
 }

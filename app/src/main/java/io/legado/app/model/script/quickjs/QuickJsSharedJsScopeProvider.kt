@@ -1,12 +1,12 @@
 package io.legado.app.model.script.quickjs
 
 import androidx.collection.LruCache
-import com.google.gson.reflect.TypeToken
 import com.script.quickjs.QuickJsContext
 import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.newCallStrResponse
+import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.SharedJsScopeProvider
@@ -15,11 +15,12 @@ import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider.getScope
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider.remove
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider.threadCache
 import io.legado.app.utils.ACache
-import io.legado.app.utils.GSON
+import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.decodeFromString
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -83,6 +84,9 @@ object QuickJsSharedJsScopeProvider : SharedJsScopeProvider {
         val scope = QuickJsEngine.getRuntimeScope(
             ScriptBindings().apply {
                 this.dangerousApi = enableDangerousApi
+                // KJ1: jsLib 顶层代码也能读 platform/image（与 JsBindings 注入一致）
+                this["platform"] = JsBindingInjector.platform
+                this["image"] = JsBindingInjector.image
             }
         )
         for (bc in bytecodeEntry.bytecodes) {
@@ -131,14 +135,7 @@ object QuickJsSharedJsScopeProvider : SharedJsScopeProvider {
      */
     private fun compileJsLib(jsLib: String): List<ByteArray> {
         if (jsLib.isJsonObject()) {
-            val jsMap: Map<String, String> = GSON.fromJson(
-                jsLib,
-                TypeToken.getParameterized(
-                    Map::class.java,
-                    String::class.java,
-                    String::class.java
-                ).type
-            )
+            val jsMap: Map<String, String> = KS_JSON.decodeFromString(jsLib)
             val out = ArrayList<ByteArray>(jsMap.size)
             jsMap.values.forEach { value ->
                 if (value.isAbsUrl()) {

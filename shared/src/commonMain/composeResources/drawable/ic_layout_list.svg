@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <!-- 来源: app/src/main/res/drawable/ic_layout_list.xml (列表布局: 方块+横线; 原 @color/primaryText, 由 Compose tint 着色, 这里用黑色) -->
+    <path fill="#000000" d="M2,4h6v6h-6z M10,5h12v2h-12z M10,8h8v2h-8z"/>
+    <path fill="#000000" d="M2,14h6v6h-6z M10,15h12v2h-12z M10,18h8v2h-8z"/>
+</svg>

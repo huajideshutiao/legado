@@ -10,6 +10,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.migrateTo
+import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.decompressed
@@ -50,7 +52,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                             )
                                 .getOrThrow()
                         if (dbBook != null) dbBook.migrateTo(it, toc)
-                        else it.order = appDb.bookDao.minOrder - 1
+                        else it.order = appDb.bookDao.minOrder() - 1
                         appDb.bookDao.insert(it)
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                         successCount++
@@ -108,12 +110,12 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
         onBookAdded: () -> Unit,
     ) = coroutineScope {
         val semaphore = Semaphore(AppConfig.threadCount)
-        GSON.fromJsonArray<Map<String, Any>>(json).getOrThrow().forEach { bookInfo ->
+        for (bookInfo in GSON.fromJsonArray<Map<String, Any>>(json).getOrThrow()) {
             val name = bookInfo["name"] as String
             val author = bookInfo["author"] as String
             val origin = bookInfo["origin"] as String?
             val bookUrl = bookInfo["bookUrl"] as String?
-            if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
+            if (name.isEmpty() || appDb.bookDao.has(name, author)) continue
             semaphore.withPermit {
                 (if (origin != null && bookUrl != null) {
                     val book = Book(bookUrl)
@@ -140,7 +142,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         }
                     }
                     val bookSource = appDb.bookSourceDao.getBookSource(origin)
-                    if (bookSource == null) return@forEach
+                    if (bookSource == null) return@withPermit
                     else Coroutine.async(this) {
                         getBookInfoAwait(bookSource, book)
                     }.onSuccess {

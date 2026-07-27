@@ -11,8 +11,11 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
@@ -196,7 +199,7 @@ object ImageProvider {
         //src为空白时 可能被净化替换掉了 或者规则失效
         if (book.getUseReplaceRule() && src.isBlank()) {
             book.config.useReplaceRule = false
-            appCtx.toastOnUi(R.string.error_image_url_empty)
+            appCtx.toastOnUi(appString(AppStringKey.error_image_url_empty))
         }
 
         val isLocalEpub = book.isEpub && !book.origin.startsWith(BookType.webDavTag)
@@ -211,7 +214,7 @@ object ImageProvider {
                 FileBook.getImage(book, src)?.use { input ->
                     val bytes = input.readBytes()
                     val bitmap = BitmapUtils.decodeBitmap(bytes, width, height ?: width)
-                        ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                        ?: throw NoStackTraceException(appString(AppStringKey.error_decode_bitmap))
                     put(cacheKey, bitmap)
                     bitmap
                 } ?: errorBitmap
@@ -230,7 +233,7 @@ object ImageProvider {
         return kotlin.runCatching {
             val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
                 ?: SvgUtils.createBitmap(vFile.absolutePath, width, height)
-                ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                ?: throw NoStackTraceException(appString(AppStringKey.error_decode_bitmap))
             put(vFile.absolutePath, bitmap)
             bitmap
         }.onFailure {

@@ -1,0 +1,231 @@
+package io.legado.app.help.tts
+
+import io.legado.app.napi.OhosNativeBridge
+import io.legado.app.utils.KS_JSON
+import kotlinx.serialization.Serializable
+
+/**
+ * 鸿蒙端 [SystemTtsEngine] 真实实现: 通过 napi 桥接 @ohos.textToSpeech。
+ *
+ * # 实现方式: tsfn 命令 + @CName 事件回调 (与 [OhosHttpTtsPlayer] media 桥模式一致)
+ *
+ * ## 命令链 (Kotlin → ArkTS, fire-and-forget via tsfn)
+ * - init: 发 "createEngine" 命令, ArkTS 创建 textToSpeech 引擎
+ * - speak: 发 "speak" 命令 (含 text/utteranceId/rate), ArkTS 调 engine.speak()
+ * - pause/resume/stop/shutdown: 发同名命令, ArkTS 转发 engine 对应方法
+ *
+ * ## 事件链 (ArkTS → Kotlin, via @CName legado_tts_event)
+ * - onStart(utteranceId) → [TtsProgressListener.onStart]
+ * - onComplete(utteranceId) → speaking=false; [TtsProgressListener.onDone]
+ * - onStop(utteranceId) → speaking=false; [TtsProgressListener.onDone]
+ * - onError(utteranceId) → speaking=false; [TtsProgressListener.onError]
+ *
+ * # 降级策略 (桥接未就绪时, 与原占位行为一致)
+ * [OhosNativeBridge.isTtsBridgeReady] 返回 false (tsfn 未注入) 时, 保留占位行为
+ * (println + 立即 onDone), 让 [ReadAloudControllerShared] 状态机能正常推进。
+ *
+ * # 参考
+ * - napi 桥接模式参考 [OhosHttpTtsPlayer] (media tsfn + MediaEventListener)
+ * - 桌面端 [io.legado.desktop.tts.DesktopSystemTtsEngine]
+ */
+class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
+
+    /** 引擎是否就绪 (占位引擎始终 true; 真实引擎 createEngine 异步, 但不影响 isReady 语义)。 */
+    @Volatile private var ready: Boolean = true
+
+    /** 是否正在朗读 (speak 后置 true, onComplete/onStop/onError 后置 false)。 */
+    @Volatile private var speaking: Boolean = false
+
+    /** 是否暂停中。 */
+    @Volatile private var paused: Boolean = false
+
+    /** 语速倍率 (1.0 = 正常), 随 speak 命令发送给 ArkTS。 */
+    @Volatile private var rateMultiplier: Float = 1.0f
+
+    /** 朗读进度回调 (由 [ReadAloudControllerShared] 注入)。 */
+    @Volatile private var listenerField: TtsProgressListener? = null
+
+    /** 是否已 shutdown, shutdown 后所有操作 no-op。 */
+    @Volatile private var shutdown: Boolean = false
+
+    /** napi 桥接是否就绪 (init 时检查, 决定走真实实现还是降级占位)。 */
+    @Volatile private var bridgeReady: Boolean = false
+
+    init {
+        bridgeReady = OhosNativeBridge.isTtsBridgeReady()
+        if (bridgeReady) {
+            OhosNativeBridge.setTtsEventListener(this)
+            OhosNativeBridge.sendTtsCommand(action = "createEngine", lang = "zh-CN", rate = rateMultiplier)
+            println("[ohos-stts] init: bridge ready, createEngine sent")
+        } else {
+            println("[ohos-stts] init: bridge not ready, fallback to placeholder")
+        }
+    }
+
+    // ===== SystemTtsEngine contract =====
+
+    override val isReady: Boolean
+        get() = ready
+
+    override val isSpeaking: Boolean
+        get() = speaking
+
+    override val isPaused: Boolean
+        get() = paused
+
+    override var speechRate: Float
+        get() = rateMultiplier
+        set(value) {
+            // 与 DesktopSystemTtsEngine 一致: 限制在 0.5x ~ 2.0x
+            rateMultiplier = value.coerceIn(0.5f, 2.0f)
+        }
+
+    override var progressListener: TtsProgressListener?
+        get() = listenerField
+        set(value) {
+            listenerField = value
+        }
+
+    // ===== speak / enqueue =====
+
+    /**
+     * 立即播放 (清空已有队列)。
+     *
+     * 桥接就绪: 发 "speak" 命令, 设 speaking=true, 等 ArkTS onComplete/onStop 回调再触发 onDone。
+     * 降级: 占位朗读 (println + 立即 onDone, 让状态机推进)。
+     */
+    override fun speak(text: String, utteranceId: String) {
+        if (shutdown) return
+        if (bridgeReady) {
+            speaking = true
+            paused = false
+            OhosNativeBridge.sendTtsCommand(
+                action = "speak",
+                text = text,
+                utteranceId = utteranceId,
+                rate = rateMultiplier,
+            )
+            // onDone 由 ArkTS onComplete/onStop 回调触发, 不在此处立即触发
+        } else {
+            // 降级: 占位朗读
+            speaking = true
+            paused = false
+            println("[ohos-stts] speak (placeholder): utteranceId=$utteranceId text.len=${text.length}")
+            listenerField?.onStart(utteranceId)
+            speaking = false
+            listenerField?.onDone(utteranceId)
+        }
+    }
+
+    /**
+     * 追加到队列尾部。
+     *
+     * 与 [OhosHttpTtsPlayer] / DesktopSystemTtsEngine 一致: ReadAloudControllerShared
+     * 通过 onDone 串行驱动段级推进, 不会并发 enqueue, 简化为 speak。
+     */
+    override fun enqueue(text: String, utteranceId: String) {
+        speak(text, utteranceId)
+    }
+
+    // ===== pause / resume / stop / shutdown =====
+
+    /** 暂停朗读。桥接就绪时发 "pause" 命令。 */
+    override fun pause() {
+        if (shutdown) return
+        paused = true
+        if (bridgeReady) {
+            OhosNativeBridge.sendTtsCommand(action = "pause")
+        } else {
+            println("[ohos-stts] pause (placeholder)")
+        }
+    }
+
+    /** 恢复朗读。桥接就绪时发 "resume" 命令。 */
+    override fun resume() {
+        if (shutdown) return
+        paused = false
+        if (bridgeReady) {
+            OhosNativeBridge.sendTtsCommand(action = "resume")
+        } else {
+            println("[ohos-stts] resume (placeholder)")
+        }
+    }
+
+    /** 停止当前朗读并清空状态 (保留引擎实例, 后续可再 speak)。 */
+    override fun stop() {
+        if (shutdown) return
+        if (bridgeReady) {
+            OhosNativeBridge.sendTtsCommand(action = "stop")
+        } else {
+            println("[ohos-stts] stop (placeholder)")
+        }
+        speaking = false
+        paused = false
+    }
+
+    /** 释放引擎资源。桥接就绪时发 "shutdown" 命令并注销事件监听。 */
+    override fun shutdown() {
+        if (shutdown) return
+        if (bridgeReady) {
+            OhosNativeBridge.sendTtsCommand(action = "shutdown")
+            OhosNativeBridge.setTtsEventListener(null)
+        } else {
+            println("[ohos-stts] shutdown (placeholder)")
+        }
+        shutdown = true
+        speaking = false
+        paused = false
+    }
+
+    // ===== OhosNativeBridge.TtsEventListener =====
+
+    /**
+     * 接收 ArkTS TTS 事件 (通过 @CName legado_tts_event → OhosNativeBridge.onTtsEvent 推送)。
+     * 解析事件 JSON, 更新 speaking 状态 + 转发给 [TtsProgressListener]。
+     */
+    override fun onTtsEvent(eventJson: String) {
+        val event = runCatching {
+            KS_JSON.decodeFromString(TtsEvent.serializer(), eventJson)
+        }.getOrNull() ?: return
+
+        when (event.event) {
+            "onStart" -> {
+                event.utteranceId?.let { listenerField?.onStart(it) }
+            }
+            "onComplete" -> {
+                speaking = false
+                event.utteranceId?.let { listenerField?.onDone(it) }
+            }
+            "onStop" -> {
+                speaking = false
+                event.utteranceId?.let { listenerField?.onDone(it) }
+            }
+            "onError" -> {
+                speaking = false
+                event.utteranceId?.let { listenerField?.onError(it, event.errorCode ?: 0) }
+            }
+        }
+    }
+
+    // ===== 桥接 JSON 数据类 (与 ArkTS 侧协议对齐) =====
+
+    /** TTS 事件 (ArkTS → Kotlin, via @CName legado_tts_event)。 */
+    @Serializable
+    private data class TtsEvent(
+        val event: String,
+        val utteranceId: String? = null,
+        val message: String? = null,
+        val errorCode: Int? = null,
+    )
+}
+
+/**
+ * 鸿蒙宿主启动早期注册 [SystemTtsEngine] 的便捷函数。
+ *
+ * 在 `registerOhosJsEngines()` 之后调用 (顺序紧跟 JsEngines, 与桌面端 `Main.kt` 中
+ * `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致),
+ * 见 [io.legado.app.help.config.OhosProviderRegistry]。
+ */
+fun registerOhosSystemTtsEngine() {
+    TtsEngineProvider.register(OhosSystemTtsEngine())
+}

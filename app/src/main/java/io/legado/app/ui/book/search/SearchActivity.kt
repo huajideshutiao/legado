@@ -3,114 +3,75 @@ package io.legado.app.ui.book.search
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.widget.TextView
-import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
-import androidx.core.view.isVisible
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
-import io.legado.app.data.appDb
+import io.legado.app.base.BaseComposeActivity
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.SearchKeyword
-import io.legado.app.databinding.ActivityBookSearchBinding
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.BookFilter
-import io.legado.app.help.book.incrementalFilter
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.Selector
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.book.explore.BaseExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
-import io.legado.app.ui.book.explore.ExploreShowAdapter
-import io.legado.app.ui.book.explore.GridExploreShowAdapter
-import io.legado.app.ui.book.explore.VideoExploreShowAdapter
 import io.legado.app.ui.book.filter.SourceFilterRuleListDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
-import io.legado.app.ui.widget.setUpExploreOptions
-import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.applyNavigationBarMargin
-import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
-import io.legado.app.utils.putPrefBoolean
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.transaction
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
-import kotlin.math.abs
 
-@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    HistoryKeyAdapter.CallBack, SearchScopeDialog.Callback, BaseExploreShowAdapter.CallBack {
+/**
+ * 搜索界面宿主 (纯 Compose, UI 下沉 shared SearchScreen)。
+ *
+ * 重构说明 (统一 app/shared 单一来源, 消除同包同名遮蔽):
+ * - 原 app 端 SearchScreen.kt + SearchViewModel.kt 已删除, 复用 shared 端 KMP 版:
+ *   - UI: shared `SearchScreen(viewModel, navCallbacks)` (sharedUiMain)
+ *   - VM: shared `SearchViewModel(scope)` (commonMain, StateFlow 驱动)
+ * - 本 Activity 仅承担 Android 专属职责:
+ *   - 持有 sharedVm (注入 lifecycleScope, destroy 自动取消协程)
+ *   - 实现 SearchNavCallbacks 路由跳转 (startActivity<BookInfoActivity> 等)
+ *   - 实现 SearchScopeDialog.Callback 范围确认
+ *   - 处理 Intent 契约 (key/searchScope/submit)
+ *   - 弹 Android 专属对话框 (SearchScopeDialog/AppLogDialog/SourceFilterRuleListDialog/清空历史确认)
+ *
+ * intent 契约 (key/searchScope/submit) 不变。
+ *
+ * 新增 string key 需求: 无 (shared 端 rememberString 复用已有 R.string.* actual 映射;
+ * 清空历史确认复用 R.string.draw / R.string.sure_clear_search_history)
+ */
+class SearchActivity : BaseComposeActivity(), SearchScopeDialog.Callback, SearchNavCallbacks {
 
-    override val binding by viewBinding(ActivityBookSearchBinding::inflate)
-    override val viewModel by viewModels<SearchViewModel>()
+    /** shared 端 SearchViewModel (StateFlow 驱动), 注入 lifecycleScope 绑定生命周期。 */
+    private lateinit var sharedVm: SearchViewModel
 
-    private lateinit var adapter: BaseExploreShowAdapter<*>
-    private lateinit var bookAdapter: BaseExploreShowAdapter<*>
-    private val historyKeyAdapter by lazy {
-        HistoryKeyAdapter(this, this).apply {
-            setHasStableIds(true)
-        }
+    @Composable
+    override fun Content() {
+        SearchScreen(viewModel = sharedVm, navCallbacks = this)
     }
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
-    private var booksFlowJob: Job? = null
-    private val bookshelfSearchKeyFlow = MutableStateFlow("")
-    private val inputHelpVisibleFlow = MutableStateFlow(true)
-    private var precisionSearchMenuItem: MenuItem? = null
-    private var isManualStopSearch = false
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initRecyclerView()
-        initSearchView()
-        initOtherView()
-        initData()
+        sharedVm = SearchViewModel(lifecycleScope)
         receiptIntent(intent)
+        // 对齐原 initData 的 resume/pause 生命周期绑定 (repeatOnLifecycle RESUMED)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                sharedVm.resume()
+                try {
+                    awaitCancellation()
+                } finally {
+                    sharedVm.pause()
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -118,444 +79,71 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         receiptIntent(intent)
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_search, menu)
-        precisionSearchMenuItem = menu.findItem(R.id.menu_precision_search)
-        precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.transaction {
-            menu.removeGroup(R.id.menu_group_1)
-            menu.removeGroup(R.id.menu_group_2)
-            val searchScopeNames = viewModel.searchScope.displayNames
-            if (viewModel.searchScope.isSource()) {
-                menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, searchScopeNames.first()).apply {
-                    isChecked = true
-                }
-            } else {
-                searchScopeNames.forEach {
-                    menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, it).apply {
-                        isChecked = true
-                    }
-                }
-            }
-            menu.add(R.id.menu_group_2, R.id.menu_1, Menu.NONE, getString(R.string.all_source))
-                .apply {
-                    if (searchScopeNames.isEmpty()) {
-                        isChecked = true
-                    }
-                }
-            menu.setGroupCheckable(R.id.menu_group_1, true, false)
-            menu.setGroupCheckable(R.id.menu_group_2, true, true)
-        }
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_precision_search -> {
-                putPrefBoolean(
-                    PreferKey.precisionSearch, !getPrefBoolean(PreferKey.precisionSearch)
-                )
-                precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
-                checkSearch()
-            }
-
-            R.id.menu_search_scope -> alertSearchScope()
-            R.id.menu_source_manage -> startActivity<BookSourceActivity>()
-            R.id.menu_source_filter_rule -> showDialogFragment(
-                SourceFilterRuleListDialog(viewModel.searchScope.toString())
-            )
-
-            R.id.menu_log -> showDialogFragment(AppLogDialog())
-            R.id.menu_1 -> {
-                viewModel.searchScope.update("")
-                checkSearch()
-            }
-
-            else -> {
-                if (item.groupId == R.id.menu_group_1) {
-                    viewModel.searchScope.remove(item.title.toString())
-                    checkSearch()
-                }
-            }
-        }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.queryHint = getString(R.string.search_book_key)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String): Boolean {
-                searchView.clearFocus()
-                query.trim().let { searchKey ->
-                    isManualStopSearch = false
-                    viewModel.saveSearchKey(searchKey)
-                    viewModel.searchKey = ""
-                    viewModel.search(searchKey)
-                }
-                visibleInputHelp(false)
-                return true
-            }
-
-            override fun onQueryTextChange(newText: String): Boolean {
-                if (viewModel.isSearchLiveData.value == true) {
-                    viewModel.stop()
-                    binding.fbStartStop.invisible()
-                }
-                upHistory(newText.trim())
-                return false
-            }
-        })
-        searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
-            val isScrollingHelp =
-                binding.rvBookshelfSearch.scrollState != RecyclerView.SCROLL_STATE_IDLE
-                    || binding.rvHistoryKey.scrollState != RecyclerView.SCROLL_STATE_IDLE
-            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank() && !isScrollingHelp)) {
-                visibleInputHelp(false)
-            } else {
-                visibleInputHelp(true)
-            }
-        }
-        visibleInputHelp(true)
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.setFastScrollEnabled(true)
-        binding.rvBookshelfSearch.setHasFixedSize(true)
-        initBookshelfSearchAdapter()
-        binding.rvBookshelfSearch.applyNavigationBarMargin()
-        binding.rvBookshelfSearch.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                super.onScrollStateChanged(recyclerView, newState)
-                // 用户开始拖动列表时清 focus,顺便收起软键盘
-                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-                    searchView.clearFocus()
-                }
-            }
-        })
-        binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
-        binding.rvHistoryKey.adapter = historyKeyAdapter
-        binding.rvHistoryKey.applyNavigationBarMargin()
-        binding.rvHistoryKey.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                super.onScrollStateChanged(recyclerView, newState)
-                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-                    searchView.clearFocus()
-                }
-            }
-        })
-        initSearchAdapter()
-        binding.recyclerView.itemAnimator = null
-        binding.recyclerView.applyNavigationBarPadding()
-        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                super.onItemRangeInserted(positionStart, itemCount)
-                if (positionStart == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-
-            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                super.onItemRangeMoved(fromPosition, toPosition, itemCount)
-                if (toPosition == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-        })
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                if (!recyclerView.canScrollVertically(1)) {
-                    val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                    val lastPosition = layoutManager.findLastCompletelyVisibleItemPosition()
-                    if (lastPosition == RecyclerView.NO_POSITION) {
-                        return
-                    }
-                    val lastView = layoutManager.findViewByPosition(lastPosition)
-                    if (lastView == null) {
-                        scrollToBottom()
-                        return
-                    }
-                    val bottom =
-                        abs(lastView.bottom - recyclerView.height) - recyclerView.paddingBottom
-                    if (bottom <= 1) {
-                        scrollToBottom()
-                    }
-                }
-            }
-        })
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::sharedVm.isInitialized) sharedVm.close()
     }
 
     /**
-     * searchLayout 位运算魔数与发现界面共用:
-     * - 低 4 位: 列数 (0/1 单列; 2..6 N 列网格)
-     * - bit 4 (0x10): 视频布局标志
-     */
-    private fun initSearchAdapter() {
-        val style = AppConfig.searchLayout
-        val isVideo = BookSource.exploreStyleIsVideo(style)
-        val cols = BookSource.exploreStyleCols(style)
-        val spanCount = if (cols <= 1) 1 else cols
-        binding.recyclerView.layoutManager = GridLayoutManager(this, spanCount)
-        adapter = when {
-            cols == 0 -> ExploreShowAdapter(this, this, isVideoStyle = isVideo, showOrigins = true)
-            isVideo -> VideoExploreShowAdapter(this, this)
-            cols == 1 -> ExploreShowAdapter(this, this, showOrigins = true)
-            else -> GridExploreShowAdapter(this, this)
-        }
-        binding.recyclerView.adapter = adapter
-    }
-
-    /**
-     * 书架命中区与搜索结果共用 searchLayout, 保持视觉一致.
-     * 所有 item 都已在书架里, showBookshelfBadge=false 让绿点徽标恒隐避免噪音.
-     */
-    private fun initBookshelfSearchAdapter() {
-        val style = AppConfig.searchLayout
-        val isVideo = BookSource.exploreStyleIsVideo(style)
-        val cols = BookSource.exploreStyleCols(style)
-        val spanCount = if (cols <= 1) 1 else cols
-        binding.rvBookshelfSearch.layoutManager = GridLayoutManager(this, spanCount)
-        bookAdapter = when {
-            cols == 0 -> BookAdapter(this, this, isVideoStyle = isVideo)
-            isVideo -> VideoExploreShowAdapter(this, this, showBookshelfBadge = false)
-            cols == 1 -> BookAdapter(this, this)
-            else -> GridExploreShowAdapter(this, this, showBookshelfBadge = false)
-        }
-        binding.rvBookshelfSearch.adapter = bookAdapter
-    }
-
-    private fun initOtherView() {
-        binding.fbStartStop.backgroundTintList = Selector.colorBuild().setDefaultColor(accentColor)
-            .setPressedColor(ColorUtils.darkenColor(accentColor)).create()
-        binding.fbStartStop.setOnClickListener {
-            if (viewModel.isSearchLiveData.value == true) {
-                isManualStopSearch = true
-                viewModel.stop()
-                binding.refreshProgressBar.isAutoLoading = false
-            } else {
-                viewModel.search("")
-            }
-        }
-        binding.fbStartStop.applyNavigationBarMargin(true)
-        binding.tvClearHistory.setOnClickListener { alertClearHistory() }
-    }
-
-    private fun initData() {
-        viewModel.isSearchLiveData.observe(this) {
-            if (it) {
-                startSearch()
-            } else {
-                searchFinally()
-            }
-        }
-        viewModel.searchBookLiveData.observe(this) {
-            adapter.setItems(it, ExploreShowAdapter.itemCallback)
-        }
-        viewModel.clearAdapterLiveData.observe(this) {
-            adapter.clearItems()
-        }
-        viewModel.searchOptionsLiveData.observe(this) {
-            initFilterView()
-        }
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                viewModel.resume()
-                try {
-                    awaitCancellation()
-                } finally {
-                    viewModel.pause()
-                }
-            }
-        }
-        lifecycleScope.launch {
-            val keysFlow = combine(
-                inputHelpVisibleFlow,
-                bookshelfSearchKeyFlow.debounce(300)
-            ) { visible, key ->
-                if (visible) BookFilter.splitQuery(key)
-                else emptyList()
-            }.distinctUntilChanged()
-
-            val dbFlow = keysFlow
-                .map { it.firstOrNull() ?: "" }
-                .distinctUntilChanged()
-                .flatMapLatest { firstKey ->
-                    if (firstKey.isBlank()) flowOf(emptyList())
-                    else appDb.bookDao.searchShelfBooks(firstKey)
-                }
-
-            combine(dbFlow, keysFlow) { list, keys -> list to keys }
-                .incrementalFilter(skipFirst = true)
-                .flowOn(IO).conflate().collect { books ->
-                    val found = books.isNotEmpty()
-                    binding.tvBookShow.isVisible = found
-                    binding.flBookshelfSearch.isVisible = found
-                    // 书架结果与历史词互斥
-                    binding.llHistoryBar.isVisible = !found
-                    binding.rvHistoryKey.isVisible = !found
-                    if (found) bookAdapter.setItems(books, BookAdapter.itemCallback)
-                }
-        }
-    }
-
-
-    private fun initFilterView() {
-        binding.llFilter.setUpExploreOptions(viewModel.searchOptions) {
-            viewModel.search(viewModel.searchKey, resetOptions = false)
-        }
-    }
-
-    /**
-     * 处理传入数据
+     * 处理传入数据 (intent 契约: searchScope / key / submit)。
+     *
+     * 对齐原 receiptIntent:
+     * - searchScope 分支: updateSearchScope (不 checkSearch, key 可能尚未设置)
+     * - key 空分支: requestFocus (focusEpoch++)
+     * - key 非空分支: setQuery(key, submit) (setQuery 内部 onQuerySubmit 已含 showInputHelp(false))
      */
     private fun receiptIntent(intent: Intent? = null) {
         val searchScope = intent?.getStringExtra("searchScope")
-        searchScope?.let {
-            viewModel.searchScope.update(searchScope, false)
-        }
+        searchScope?.let { sharedVm.updateSearchScope(it) }
         val key = intent?.getStringExtra("key")
         if (key.isNullOrBlank()) {
-            searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
-                .requestFocus()
+            sharedVm.requestFocus()
         } else {
             val submit = intent.getBooleanExtra("submit", true)
-            searchView.setQuery(key, submit)
-            if (submit) {
-                searchView.post { visibleInputHelp(false) }
-            }
+            sharedVm.setQuery(key, submit)
         }
     }
 
-    private fun checkSearch() {
-        if (!binding.llInputHelp.isVisible) {
-            searchView.query?.toString()?.trim()?.let {
-                if (it.isNotEmpty()) {
-                    searchView.setQuery(it, true)
-                }
-            }
+    // ---- SearchNavCallbacks 实现 (Android 专属路由) ----
+
+    override fun onBack() = finish()
+
+    /** 点击书籍: 补 notShelf type (对齐原 registerListener) 后进详情。 */
+    override fun onBookClick(book: BaseBook, longClick: Boolean) {
+        if (!sharedVm.isInBookShelf(book)) {
+            book.addType(BookType.notShelf)
+        }
+        showBookInfo(book, longClick)
+    }
+
+    override fun onManageBookSources() = startActivity<BookSourceActivity>()
+
+    override fun onAlertSearchScope() = showDialogFragment<SearchScopeDialog>()
+
+    override fun onShowSourceFilterRule() =
+        showDialogFragment(SourceFilterRuleListDialog(sharedVm.searchScope.toString()))
+
+    override fun onShowAppLog() = showDialogFragment(AppLogDialog())
+
+    /** 清空搜索历史: 弹确认框 (保留原 alertClearHistory 交互)。 */
+    override fun onClearHistory() {
+        alert(R.string.draw) {
+            setMessage(R.string.sure_clear_search_history)
+            yesButton { sharedVm.clearHistory() }
+            noButton()
         }
     }
 
-    /**
-     * 滚动到底部事件
-     */
-    private fun scrollToBottom() {
-        if (isManualStopSearch) {
-            return
-        }
-        if (viewModel.isSearchLiveData.value == false && viewModel.searchKey.isNotEmpty() && viewModel.hasMore) {
-            viewModel.search("")
-        }
+    // ---- SearchScopeDialog.Callback ----
+
+    override fun onSearchScopeOk(searchScope: SearchScope) {
+        sharedVm.onSearchScopeOk(searchScope)
     }
 
-    /**
-     * 打开关闭输入帮助
-     */
-    private fun visibleInputHelp(visible: Boolean) {
-        inputHelpVisibleFlow.value = visible
-        if (visible) {
-            upHistory(searchView.query.toString().trim())
-            binding.llInputHelp.visible()
-            binding.recyclerView.gone()
-            binding.llFilter.gone()
-        } else {
-            binding.llInputHelp.gone()
-            binding.recyclerView.visible()
-            binding.llFilter.isVisible = viewModel.searchOptions.isNotEmpty()
-        }
-    }
+    // ---- 跳转 (Android 专属) ----
 
-    /**
-     * 更新搜索历史
-     */
-    private fun upHistory(key: String? = null) {
-        bookshelfSearchKeyFlow.value = key.orEmpty()
-        booksFlowJob?.cancel()
-        booksFlowJob = lifecycleScope.launch {
-            delay(300)
-            (if (key.isNullOrBlank()) appDb.searchKeywordDao.flowByTime()
-            else appDb.searchKeywordDao.flowSearch(key)).catch {
-                AppLog.put(
-                    "搜索界面获取本地数据失败\n${it.localizedMessage}", it
-                )
-            }.flowOn(IO).conflate().collect {
-                historyKeyAdapter.setItems(it)
-                binding.tvClearHistory.isVisible = it.isNotEmpty()
-            }
-        }
-    }
-
-    /**
-     * 开始搜索
-     */
-    private fun startSearch() {
-        binding.refreshProgressBar.visible()
-        binding.refreshProgressBar.isAutoLoading = true
-        binding.fbStartStop.setImageResource(R.drawable.ic_stop_black_24dp)
-        binding.fbStartStop.visible()
-    }
-
-    /**
-     * 搜索结束
-     */
-    private fun searchFinally() {
-        binding.refreshProgressBar.isAutoLoading = false
-        binding.refreshProgressBar.gone()
-        if (!isManualStopSearch && viewModel.hasMore) {
-            binding.fbStartStop.setImageResource(R.drawable.ic_play_24dp)
-        } else {
-            binding.fbStartStop.invisible()
-        }
-    }
-
-    override fun observeLiveBus() {
-        viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, Bundle().apply {
-                putString(it, null)
-            })
-        }
-        viewModel.searchFinishLiveData.observe(this) { isEmpty ->
-            if (!isEmpty || viewModel.searchScope.isAll()) return@observe
-            alert("搜索结果为空") {
-                val precisionSearch = appCtx.getPrefBoolean(PreferKey.precisionSearch)
-                val displayScope = viewModel.searchScope.display
-                if (precisionSearch) {
-                    setMessage("${displayScope}分组搜索结果为空，是否关闭精准搜索？")
-                    yesButton {
-                        appCtx.putPrefBoolean(PreferKey.precisionSearch, false)
-                        precisionSearchMenuItem?.isChecked = false
-                        viewModel.searchKey = ""
-                        viewModel.search(searchView.query.toString())
-                    }
-                } else {
-                    setMessage("${displayScope}分组搜索结果为空，是否切换到全部分组？")
-                    yesButton {
-                        viewModel.searchScope.update("")
-                        checkSearch()
-                    }
-                }
-                noButton()
-            }
-        }
-    }
-
-    /**
-     * 是否已经加入书架
-     */
-    override fun isInBookshelf(book: BaseBook): Boolean {
-        return viewModel.isInBookShelf(book)
-    }
-
-    /**
-     * 显示书籍详情
-     */
-    override fun showBookInfo(book: BaseBook, longClick: Boolean) {
-        searchView.clearFocus()
+    /** 显示书籍详情 (对齐原 showBookInfo 跳转分派)。 */
+    private fun showBookInfo(book: BaseBook, longClick: Boolean) {
         val urlParts = book.bookUrl.split("::", limit = 2)
         if (urlParts.size == 2) {
             IntentData.source = null
@@ -577,48 +165,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             book.isRss -> startActivity<ReadRssActivity>()
             else -> startActivity<BookInfoActivity>()
         }
-    }
-
-    /**
-     * 点击历史关键字
-     */
-    override fun searchHistory(key: String) {
-        searchView.setQuery(key, true)
-    }
-
-    /**
-     * 删除搜索记录
-     */
-    override fun deleteHistory(searchKeyword: SearchKeyword) {
-        viewModel.deleteHistory(searchKeyword)
-    }
-
-
-    override fun onSearchScopeOk(searchScope: SearchScope) {
-        viewModel.searchScope.update(searchScope.toString())
-        checkSearch()
-    }
-
-    private fun alertSearchScope() {
-        showDialogFragment<SearchScopeDialog>()
-    }
-
-    private fun alertClearHistory() {
-        alert(R.string.draw) {
-            setMessage(R.string.sure_clear_search_history)
-            yesButton {
-                viewModel.clearHistory()
-            }
-            noButton()
-        }
-    }
-
-    override fun finish() {
-        if (searchView.hasFocus()) {
-            searchView.clearFocus()
-            return
-        }
-        super.finish()
     }
 
     companion object {

@@ -3,7 +3,7 @@ package io.legado.app.lib.cronet
 import androidx.annotation.Keep
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.CookieManager
-import io.legado.app.help.http.CookieManager.cookieJarHeader
+import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.asIOException

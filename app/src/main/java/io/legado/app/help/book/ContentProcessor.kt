@@ -1,33 +1,75 @@
 package io.legado.app.help.book
 
 import android.os.Build
-import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern.spaceRegex
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.exception.RegexTimeoutException
-import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.escapeRegex
-import io.legado.app.utils.replace
-import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.lang.ref.WeakReference
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.regex.Pattern
 
+/**
+ * ContentProcessor 安卓端入口 (WeakReference 缓存层)。
+ *
+ * 核心正文处理逻辑 (替换规则 / 简繁 / 段落重排 / 去重复标题) 已下沉到
+ * [ContentProcessorShared] (shared commonMain), 本类仅保留:
+ *
+ * - WeakReference 缓存 (WeakReference 是 JVM 专属, commonMain 不可用):
+ *   避免长时间持有 ContentProcessor 实例 + 内部规则缓存
+ * - companion [upReplaceRules] 静态刷新所有缓存实例 (后台替换规则变更后)
+ * - [AndroidContentProcessorDeps] 注入 Android 专属依赖 (Build.VERSION / appCtx / BookHelp)
+ *
+ * API 签名完全不变, app 端调用方 (ReadBookActivity / BookHelp.setRemoveSameTitle /
+ * ExportBookService / ChangeBookSourceViewModel 等) 零改动。
+ *
+ * # ContentProcessorShared 行为对齐
+ *
+ * 内部 `titleReplaceRules` / `contentReplaceRules` 改用 `@Volatile var` + 不可变 List
+ * (commonMain 无 CopyOnWriteArrayList), 行为等价: 每次 [upReplaceRules] 整体替换 List,
+ * [getContent] 遍历时拿到 snapshot, 不会被并发 [upReplaceRules] 干扰 (与原 COW 迭代语义一致)。
+ *
+ * `removeSameTitleCache` 改为 `MutableSet` 视图 (代理 [ContentProcessorShared.removeSameTitleCache]),
+ * BookHelp.setRemoveSameTitle 调用 add/remove 仍生效。
+ */
 class ContentProcessor private constructor(
     private val bookName: String,
     private val bookOrigin: String
 ) {
 
+    private val shared = ContentProcessorShared(
+        bookName, bookOrigin, AndroidContentProcessorDeps
+    )
+
+    /** 去重标题缓存 (代理 ContentProcessorShared.removeSameTitleCache)。 */
+    val removeSameTitleCache: MutableSet<String> get() = shared.removeSameTitleCache
+
+    init {
+        runBlocking { shared.upReplaceRules() }
+        runBlocking { shared.upRemoveSameTitle() }
+    }
+
+    /** 刷新替换规则缓存 (实例方法, 委托 [ContentProcessorShared.upReplaceRules])。 */
+    fun upReplaceRules() = runBlocking { shared.upReplaceRules() }
+
+    fun getTitleReplaceRules() = shared.getTitleReplaceRules()
+
+    @Suppress("MemberVisibilityCanBePrivate")
+    fun getContentReplaceRules() = shared.getContentReplaceRules()
+
+    fun getContent(
+        book: Book,
+        chapter: BookChapter,
+        content: String,
+        includeTitle: Boolean = true,
+        useReplace: Boolean = true,
+        chineseConvert: Boolean = true,
+        reSegment: Boolean = true
+    ) = shared.getContent(
+        book, chapter, content, includeTitle, useReplace, chineseConvert, reSegment
+    )
+
     companion object {
         private val processors = hashMapOf<String, WeakReference<ContentProcessor>>()
-        private val isAndroid8 = Build.VERSION.SDK_INT in 26..27
 
         fun get(book: Book) = get(book.name, book.origin)
 
@@ -49,145 +91,23 @@ class ContentProcessor private constructor(
 
     }
 
-    private val titleReplaceRules = CopyOnWriteArrayList<ReplaceRule>()
-    private val contentReplaceRules = CopyOnWriteArrayList<ReplaceRule>()
-    val removeSameTitleCache = hashSetOf<String>()
+}
 
-    init {
-        upReplaceRules()
-        upRemoveSameTitle()
-    }
+/**
+ * Android 端 [ContentProcessorDeps] 实现: 桥接 Build / appCtx / BookHelp 三处 Android API。
+ *
+ * - [isAndroid8]: `Build.VERSION.SDK_INT in 26..27`, 影响getContent末尾 \u00A0 → 空格替换
+ * - [toastOnUi]: `appCtx.toastOnUi(msg)`, UI Toast 提示 (替换规则出错时调用)
+ * - [getChapterFiles]: `BookHelp.getChapterFiles(book)`, 列出已缓存章节文件名
+ *
+ * Desktop / iOS / 鸿蒙 端使用 commonMain 的 [DefaultContentProcessorDeps]
+ * (isAndroid8=false / toastOnUi=no-op / getChapterFiles=BookStorageProviders)。
+ */
+private object AndroidContentProcessorDeps : ContentProcessorDeps {
+    override val isAndroid8: Boolean = Build.VERSION.SDK_INT in 26..27
 
-    fun upReplaceRules() {
-        titleReplaceRules.run {
-            clear()
-            addAll(appDb.replaceRuleDao.findEnabledByTitleScope(bookName, bookOrigin))
-        }
-        contentReplaceRules.run {
-            clear()
-            addAll(appDb.replaceRuleDao.findEnabledByContentScope(bookName, bookOrigin))
-        }
-    }
+    override fun toastOnUi(msg: String) = appCtx.toastOnUi(msg)
 
-    private fun upRemoveSameTitle() {
-        val book = appDb.bookDao.getBookByOrigin(bookName, bookOrigin) ?: return
-        removeSameTitleCache.clear()
-        val files = BookHelp.getChapterFiles(book).filter {
-            it.endsWith("nr")
-        }
-        removeSameTitleCache.addAll(files)
-    }
-
-    fun getTitleReplaceRules(): List<ReplaceRule> {
-        return titleReplaceRules
-    }
-
-    @Suppress("MemberVisibilityCanBePrivate")
-    fun getContentReplaceRules(): List<ReplaceRule> {
-        return contentReplaceRules
-    }
-
-    fun getContent(
-        book: Book,
-        chapter: BookChapter,
-        content: String,
-        includeTitle: Boolean = true,
-        useReplace: Boolean = true,
-        chineseConvert: Boolean = true,
-        reSegment: Boolean = true
-    ): BookContent {
-        var mContent = content
-        var sameTitleRemoved = false
-        var effectiveReplaceRules: ArrayList<ReplaceRule>? = null
-        if (content != "null") {
-            //去除重复标题
-            val fileName = chapter.getFileName("nr")
-            if (!removeSameTitleCache.contains(fileName)) try {
-                val name = Pattern.quote(book.name)
-                var title = chapter.title.escapeRegex().replace(spaceRegex, "\\\\s*")
-                var matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title} *\\n?")
-                    .matcher(mContent)
-                if (matcher.find()) {
-                    mContent = mContent.substring(matcher.end())
-                    sameTitleRemoved = true
-                } else if (useReplace && book.getUseReplaceRule()) {
-                    title = Pattern.quote(
-                        chapter.getDisplayTitle(
-                            titleReplaceRules,
-                            chineseConvert = false
-                        )
-                    )
-                    matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title} *\\n?")
-                        .matcher(mContent)
-                    if (matcher.find()) {
-                        mContent = mContent.substring(matcher.end())
-                        sameTitleRemoved = true
-                    }
-                }
-            } catch (e: Exception) {
-                AppLog.put("去除重复标题出错\n${e.localizedMessage}", e)
-            }
-            if (reSegment && book.config.reSegment) {
-                //重新分段
-                mContent = ContentHelp.reSegment(mContent, chapter.title)
-            }
-            if (chineseConvert) {
-                //简繁转换
-                try {
-                    when (AppConfig.chineseConverterType) {
-                        1 -> mContent = ChineseUtils.t2s(mContent)
-                        2 -> mContent = ChineseUtils.s2t(mContent)
-                    }
-                } catch (_: Exception) {
-                    appCtx.toastOnUi("简繁转换出错")
-                }
-            }
-            if (useReplace && book.getUseReplaceRule()) {
-                //替换
-                effectiveReplaceRules = arrayListOf()
-                getContentReplaceRules().forEach { item ->
-                    if (item.pattern.isEmpty()) {
-                        return@forEach
-                    }
-                    try {
-                        val tmp = if (item.isRegex) {
-                            mContent.replace(
-                                item.regex,
-                                item.replacement,
-                                item.getValidTimeoutMillisecond()
-                            )
-                        } else {
-                            mContent.replace(item.pattern, item.replacement)
-                        }
-                        if (mContent != tmp) {
-                            effectiveReplaceRules.add(item)
-                            mContent = tmp
-                        }
-                    } catch (e: RegexTimeoutException) {
-                        item.isEnabled = false
-                        appDb.replaceRuleDao.update(item)
-                        mContent = item.name + e.stackTraceStr
-                    } catch (_: CancellationException) {
-                    } catch (e: Exception) {
-                        AppLog.put("替换净化: 规则 ${item.name}替换出错.\n${mContent}", e)
-                        appCtx.toastOnUi("替换净化: 规则 ${item.name}替换出错")
-                    }
-                }
-            }
-        }
-        val content = mutableListOf<String>()
-        if (includeTitle) {
-            //重新添加标题
-            content.add(chapter.getDisplayTitle(
-                getTitleReplaceRules(),
-                useReplace = useReplace && book.getUseReplaceRule()
-            ))
-        }
-        if (isAndroid8) {
-            mContent = mContent.replace('\u00A0', ' ')
-        }
-        content.add(mContent)
-        return BookContent(sameTitleRemoved, content, effectiveReplaceRules)
-    }
-
+    override fun getChapterFiles(book: Book): Set<String> =
+        BookHelp.getChapterFiles(book)
 }

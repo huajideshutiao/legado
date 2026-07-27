@@ -1,131 +1,159 @@
 package io.legado.app.ui.config
 
-import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.ItemThemeConfigBinding
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.getClipText
-import io.legado.app.utils.gone
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 
-class ThemeListDialog : BaseDialogFragment(0), Toolbar.OnMenuItemClickListener {
+/**
+ * 主题列表（迁 View 版 item_theme_config 手拼列表 → Compose）。
+ * 点击应用/长按编辑/分享/删除、新建、剪贴板导入行为逐项等价；
+ * ThemeCustomizeDialog 保存后经 FragmentResult 通知刷新。
+ */
+class ThemeListDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private lateinit var container: LinearLayout
+    // 数据版本号：增删改后自增触发重组重取列表
+    private var dataVersion by mutableIntStateOf(0)
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        val ctx = requireContext()
-        val h = space.lg
-        this@ThemeListDialog.container = LinearLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-            orientation = LinearLayout.VERTICAL
-            setPadding(h, 0, h, 0)
-        }
-        val scroll = ScrollView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
-            isVerticalScrollBarEnabled = false
-        }
-        scroll.addView(this@ThemeListDialog.container)
-        return LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
-            addView(scroll)
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.theme_list),
-            menuRes = R.menu.theme_list,
-            onMenuClick = ::onMenuItemClick
-        )
-        initData()
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
         parentFragmentManager.setFragmentResultListener(
             ThemeCustomizeDialog.RESULT_CONFIG_CHANGED, this
-        ) { _, _ -> initData() }
+        ) { _, _ -> dataVersion++ }
     }
 
-    fun initData() {
-        container.removeAllViews()
-        val inflater = LayoutInflater.from(requireContext())
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        // 读 dataVersion 让增删改能触发重组重取
+        dataVersion
         val builtins = ThemeConfig.getBuiltinConfigs(requireContext())
+        val items = builtins + ThemeConfig.configList
         val builtinCount = builtins.size
-        (builtins + ThemeConfig.configList).forEachIndexed { position, item ->
-            val itemBinding = ItemThemeConfigBinding.inflate(inflater, container, false)
-            bindItem(itemBinding, item, position - builtinCount)
-            container.addView(itemBinding.root)
-        }
-    }
-
-    private fun bindItem(
-        binding: ItemThemeConfigBinding,
-        item: ThemeConfig.Config,
-        configIndex: Int
-    ) = binding.apply {
-        tvName.text = item.themeName
-        if (item.isBuiltin) {
-            ivShare.gone()
-            ivDelete.gone()
-        } else {
-            ivShare.visible()
-            ivDelete.visible()
-        }
-        root.setOnClickListener {
-            val ctx = requireContext()
-            dismiss()
-            if (item.isBuiltin) {
-                ThemeConfig.applyBuiltin(ctx, item.isNightTheme)
-            } else {
-                ThemeConfig.applyConfig(ctx, item)
-            }
-        }
-        root.setOnLongClickListener {
-            if (item.isBuiltin) return@setOnLongClickListener false
-            if (configIndex !in ThemeConfig.configList.indices) return@setOnLongClickListener false
-            ThemeCustomizeDialog.editConfig(configIndex)
-                .show(parentFragmentManager, "themeCustomize")
-            true
-        }
-        ivShare.setOnClickListener { share(configIndex) }
-        ivDelete.setOnClickListener { delete(configIndex) }
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_add -> alertNewTheme()
-            R.id.menu_import -> {
-                getClipText()?.let {
-                    if (ThemeConfig.addConfig(it)) {
-                        initData()
-                    } else {
-                        toastOnUi("格式不对,添加失败")
+        Column(Modifier.fillMaxSize()) {
+            DialogTitleBar(
+                title = stringResource(R.string.theme_list),
+                onBack = { dismissAllowingStateLoss() },
+                actions = {
+                    IconButton(onClick = { alertNewTheme() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_add),
+                            contentDescription = stringResource(R.string.add),
+                            tint = colors.primaryText,
+                        )
                     }
+                    IconButton(onClick = { importFromClip() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_copy),
+                            contentDescription = "剪贴板导入",
+                            tint = colors.primaryText,
+                        )
+                    }
+                },
+            )
+            LazyColumn(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+            ) {
+                itemsIndexed(items) { position, item ->
+                    ThemeItem(item, configIndex = position - builtinCount)
                 }
             }
         }
-        return true
+    }
+
+    @Composable
+    private fun ThemeItem(item: ThemeConfig.Config, configIndex: Int) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 40.dp) // arco_view_height_large
+                .combinedClickable(
+                    onClick = {
+                        val ctx = requireContext()
+                        dismiss()
+                        if (item.isBuiltin) {
+                            ThemeConfig.applyBuiltin(ctx, item.isNightTheme)
+                        } else {
+                            ThemeConfig.applyConfig(ctx, item)
+                        }
+                    },
+                    onLongClick = {
+                        if (!item.isBuiltin && configIndex in ThemeConfig.configList.indices) {
+                            ThemeCustomizeDialog.editConfig(configIndex)
+                                .show(parentFragmentManager, "themeCustomize")
+                        }
+                    },
+                )
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = item.themeName,
+                color = colors.primaryText,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            if (!item.isBuiltin) {
+                IconButton(onClick = { share(configIndex) }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_share),
+                        contentDescription = stringResource(R.string.share),
+                        tint = colors.primaryText,
+                    )
+                }
+                IconButton(onClick = { delete(configIndex) }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_clear_all),
+                        contentDescription = stringResource(R.string.delete),
+                        tint = colors.primaryText,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun importFromClip() {
+        getClipText()?.let {
+            if (ThemeConfig.addConfig(it)) {
+                dataVersion++
+            } else {
+                toastOnUi("格式不对,添加失败")
+            }
+        }
     }
 
     private fun alertNewTheme() {
@@ -137,7 +165,7 @@ class ThemeListDialog : BaseDialogFragment(0), Toolbar.OnMenuItemClickListener {
         alert(R.string.delete, R.string.sure_del) {
             yesButton {
                 ThemeConfig.delConfig(index)
-                initData()
+                dataVersion++
             }
             noButton()
         }

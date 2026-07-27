@@ -1,6 +1,5 @@
 package io.legado.app.model.remote
 
-import android.net.Uri
 import androidx.core.net.toUri
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
@@ -12,10 +11,12 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
+import io.legado.app.lib.webdav.upload
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.utils.NetworkUtils
+import io.legado.app.model.fileBook.saveBookFile
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.isNetworkAvailable
 import kotlinx.coroutines.runBlocking
 
 class RemoteBookWebDav(
@@ -32,7 +33,7 @@ class RemoteBookWebDav(
 
 
     private suspend fun <T> withNetworkCheck(block: suspend () -> T): T {
-        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+        if (!isNetworkAvailable()) throw NoStackTraceException("网络不可用")
         return block()
     }
 
@@ -50,7 +51,7 @@ class RemoteBookWebDav(
                     || archiveFileRegex.matches(webDavFile.displayName)
                 ) {
                     //扩展名符合阅读的格式则认为是书籍
-                    remoteBooks.add(RemoteBook(webDavFile))
+                    remoteBooks.add(RemoteBook.create(webDavFile))
                 }
             }
             remoteBooks
@@ -59,16 +60,16 @@ class RemoteBookWebDav(
     override suspend fun getRemoteBook(path: String): RemoteBook? = withNetworkCheck {
         val webDavFile = WebDav(path, authorization).getWebDavFile()
             ?: return@withNetworkCheck null
-        RemoteBook(webDavFile)
+        RemoteBook.create(webDavFile)
     }
 
-    override suspend fun downloadRemoteBook(remoteBook: RemoteBook): Uri {
+    override suspend fun downloadRemoteBook(remoteBook: RemoteBook): String {
         AppConfig.defaultBookTreeUri
             ?: throw NoStackTraceException("没有设置书籍保存位置!")
         return withNetworkCheck {
             val webdav = WebDav(remoteBook.path, authorization)
             webdav.downloadInputStream().let { inputStream ->
-                FileBook.saveBookFile(inputStream, remoteBook.filename)
+                FileBook.saveBookFile(inputStream, remoteBook.filename).toString()
             }
         }
     }

@@ -5,34 +5,44 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.widget.Toolbar
-import androidx.core.view.isGone
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.DialogFileChooserBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
+import io.legado.app.base.BaseComposeDialogFragment
+import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.book.import.local.ImportBook
-import io.legado.app.ui.book.import.local.ImportBookAdapter
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.SelectActionBar
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
-import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.io.File
 
-class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
-    Toolbar.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    ImportBookAdapter.CallBack {
+class FilePickerDialog : BaseComposeDialogFragment() {
 
     companion object {
         const val tag = "FileChooserDialog"
@@ -57,68 +67,154 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
         }
     }
 
-    private val binding by viewBinding(DialogFileChooserBinding::bind)
     private val viewModel by viewModels<FilePickerViewModel>()
-    private val adapter by lazy {
-        ImportBookAdapter(
-            requireContext(),
-            this
-        ).apply { isFileManageMode = true }
-    }
+    private var items by mutableStateOf<List<ImportBook>>(emptyList())
+    private var selected by mutableStateOf<Set<ImportBook>>(emptySet())
+    private var path by mutableStateOf("")
+    private var emptyVisible by mutableStateOf(false)
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initView()
-        viewModel.filesLiveData.observe(viewLifecycleOwner) {
-            binding.refreshProgressBar.isAutoLoading = false
-            binding.tvEmptyMsg.isGone = it.isNotEmpty()
-            val items = it.map { file ->
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewModel.filesLiveData.observe(viewLifecycleOwner) { files ->
+            emptyVisible = files.isEmpty()
+            items = files.map { file ->
                 val isUpDir = file == viewModel.lastDir && file != viewModel.rootDoc
                 ImportBook(FileDoc.fromFile(file), isUpDir = isUpDir, isFileManageMode = true)
             }
-            adapter.setItems(items)
             upPath()
         }
         viewModel.initData(arguments)
-        setupTitleBar(
-            title = arguments?.getString("title") ?: let {
-                if (viewModel.isSelectDir) {
-                    getString(R.string.folder_chooser)
-                } else {
-                    getString(R.string.file_chooser)
-                }
-            },
-            menuRes = R.menu.file_chooser,
-            onMenuClick = ::onMenuItemClick
-        )
     }
 
-    private fun initView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(activity)
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.applyNavigationBarPadding()
-        binding.selectActionBar.setMainActionText(R.string.confirm)
-        binding.selectActionBar.setCallBack(this)
-    }
-
-    override fun onMenuItemClick(item: android.view.MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_create -> alert(R.string.create_folder) {
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = "文件夹名"
-                }
-                customView { alertBinding.root }
-                okButton {
-                    val text = alertBinding.editView.text?.toString()
-                    if (text.isNullOrBlank()) {
-                        toastOnUi("文件夹名不能为空")
-                    } else {
-                        viewModel.createFolder(text.trim())
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        Column {
+            DialogTitleBar(
+                title = arguments?.getString("title") ?: stringResource(
+                    if (viewModel.isSelectDir) R.string.folder_chooser else R.string.file_chooser
+                ),
+                actions = {
+                    IconButton(onClick = { showCreateFolderAlert() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_create_folder_outline),
+                            contentDescription = stringResource(R.string.create_folder),
+                            tint = colors.primaryText,
+                        )
+                    }
+                },
+            )
+            Text(
+                text = path,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+            )
+            Spacer(Modifier.height(2.dp)) // 对照静态 RefreshProgressBar 占位
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
+            ) {
+                LazyColumn {
+                    items(items, key = { it.file.toString() }) { item ->
+                        ImportFileRow(
+                            name = item.name,
+                            isDir = item.isDir,
+                            isUpDir = item.isUpDir,
+                            checkable = isCheckable(item),
+                            checked = selected.contains(item),
+                            onBookShelf = false,
+                            tag = item.name.substringAfterLast("."),
+                            size = item.size,
+                            lastModified = item.lastModified,
+                            onClick = { onItemClick(item) },
+                        )
                     }
                 }
-                cancelButton()
+                if (emptyVisible) {
+                    Text(
+                        text = stringResource(R.string.empty),
+                        color = colors.secondaryText,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(16.dp),
+                    )
+                }
+            }
+            SelectActionBar(
+                selectCount = selected.size,
+                allCount = items.count { isCheckable(it) },
+                onSelectAll = { all ->
+                    selected = if (all) items.filter { isCheckable(it) }.toSet() else emptySet()
+                },
+                onRevertSelection = {
+                    selected = items.filter { isCheckable(it) }.toSet() - selected
+                },
+                mainActionText = stringResource(R.string.confirm),
+                onMainAction = { onConfirm() },
+            )
+        }
+    }
+
+    private fun isCheckable(item: ImportBook): Boolean = !item.isUpDir && !item.isDir
+
+    private fun onItemClick(item: ImportBook) {
+        when {
+            item.isUpDir -> goBack()
+            item.isDir -> nextDoc(item.file)
+            else -> selected = if (item in selected) selected - item else selected + item
+        }
+    }
+
+    private fun goBack() {
+        if (viewModel.subDocs.isNotEmpty()) {
+            viewModel.subDocs.removeAt(viewModel.subDocs.lastIndex)
+            viewModel.upFiles(viewModel.lastDir)
+        }
+    }
+
+    private fun nextDoc(fileDoc: FileDoc) {
+        fileDoc.asFile()?.let {
+            viewModel.subDocs.add(it)
+            viewModel.upFiles(it)
+        }
+    }
+
+    private fun onConfirm() {
+        if (viewModel.isSelectDir) {
+            viewModel.lastDir?.let {
+                setResultData(it.path)
+                dismissAllowingStateLoss()
+            }
+        } else {
+            val file = selected.firstOrNull()?.file
+            if (file == null) {
+                toastOnUi("请选择文件")
+            } else {
+                setResultData(file.toString())
+                dismissAllowingStateLoss()
             }
         }
-        return true
+    }
+
+    private fun showCreateFolderAlert() {
+        alert(R.string.create_folder) {
+            val getText = editTextView(hint = "文件夹名", autoFocus = true)
+            okButton {
+                val text = getText()
+                if (text.isBlank()) {
+                    toastOnUi("文件夹名不能为空")
+                } else {
+                    viewModel.createFolder(text.trim())
+                }
+            }
+            cancelButton()
+        }
     }
 
     private fun upPath() {
@@ -127,7 +223,7 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
             for (doc in viewModel.subDocs) {
                 path = path + doc.name + File.separator
             }
-            binding.tvPath.text = path
+            this.path = path
         }
     }
 
@@ -140,63 +236,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         activity?.finish()
-    }
-
-    override fun goBack() {
-        if (viewModel.subDocs.isNotEmpty()) {
-            viewModel.subDocs.removeAt(viewModel.subDocs.lastIndex)
-            viewModel.upFiles(viewModel.lastDir)
-        }
-    }
-
-    override fun nextDoc(fileDoc: FileDoc) {
-        fileDoc.asFile()?.let {
-            viewModel.subDocs.add(it)
-            viewModel.upFiles(it)
-        }
-    }
-
-    override fun openFile(fileDoc: FileDoc) {
-    }
-
-    override fun upCountView() {
-        binding.selectActionBar.upCountView(adapter.selected.size, adapter.checkableCount)
-    }
-
-    override fun startRead(fileDoc: FileDoc) {
-        if (viewModel.isSelectFile) {
-            viewModel.allowExtensions.let {
-                if (it.isNullOrEmpty() || it.contains(FileUtils.getExtension(fileDoc.name))) {
-                    setResultData(fileDoc.toString())
-                    dismissAllowingStateLoss()
-                }
-            }
-        }
-    }
-
-    override fun selectAll(selectAll: Boolean) {
-        adapter.selectAll(selectAll)
-    }
-
-    override fun revertSelection() {
-        adapter.revertSelection()
-    }
-
-    override fun onClickSelectBarMainAction() {
-        if (viewModel.isSelectDir) {
-            viewModel.lastDir?.let {
-                setResultData(it.path)
-                dismissAllowingStateLoss()
-            }
-        } else {
-            val file = adapter.selected.firstOrNull()?.file
-            if (file == null) {
-                toastOnUi("请选择文件")
-            } else {
-                setResultData(file.toString())
-                dismissAllowingStateLoss()
-            }
-        }
     }
 
     interface CallBack {

@@ -1,123 +1,113 @@
-@file:Suppress("DEPRECATION")
-
 package io.legado.app.ui.main
 
-
-import android.graphics.Color
 import android.os.Bundle
 import android.text.format.DateUtils
-import android.view.Menu
-import android.view.MenuItem
-import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.core.graphics.drawable.toDrawable
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.FragmentStatePagerAdapter
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import androidx.viewpager.widget.ViewPager
-import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.AppConst.appInfo
+import io.legado.app.base.BaseComposeActivity
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.ActivityMainBinding
-import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.constant.appInfo
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.negativeButton
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.onDismiss
-import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.Selector
-import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getSecondaryTextColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
-import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
-import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
-import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
-import io.legado.app.ui.main.explore.ExploreFragment
-import io.legado.app.ui.main.home.HomeFragment
-import io.legado.app.ui.main.my.MyFragment
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.bookshelf.BookshelfTabController
+import io.legado.app.ui.main.bookshelf.BookshelfTab
+import io.legado.app.ui.main.explore.ExploreTab
+import io.legado.app.ui.main.explore.ExploreTabController
+import io.legado.app.ui.main.home.HomeTab
+import io.legado.app.ui.main.my.MyTab
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getPrefString
-import io.legado.app.utils.isCreated
-import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import splitties.views.bottomPadding
 import kotlin.coroutines.resume
 
 /**
- * 主界面
+ * 主界面：纯 Compose 壳（附录 H）。四 tab 经 MainScreen 的 Pager 装配，
+ * 底栏可配置顺序/显隐、书架双风格、返回键三段语义、reselect 双击均与旧实现等价。
  */
-@Suppress("PrivatePropertyName")
-class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
-    BottomNavigationView.OnNavigationItemSelectedListener,
-    BottomNavigationView.OnNavigationItemReselectedListener {
+class MainActivity : BaseComposeActivity() {
 
-    override val binding by viewBinding(ActivityMainBinding::inflate)
-    override val viewModel by viewModels<MainViewModel>()
-    private val idHome = 4
-    private val idBookshelf = 0
-    private val idBookshelf1 = 11
-    private val idBookshelf2 = 12
-    private val idExplore = 1
-    private val idMy = 3
+    val viewModel by viewModels<MainViewModel>()
+
     private var exitTime: Long = 0
     private var bookshelfReselected: Long = 0
     private var exploreReselected: Long = 0
-    private var pagePosition = 0
-    private val fragmentMap = hashMapOf<Int, Fragment>()
-    private var bottomMenuCount = 4
     private val EXIT_INTERVAL = 2000L
-    private val realPositions = mutableListOf<Int>()
-    private val adapter by lazy {
-        TabFragmentPageAdapter(supportFragmentManager)
+
+    /** 可见 tab（顺序含配置校验，等价旧 upBottomMenu） */
+    var visibleTags by mutableStateOf(computeVisibleTags())
+        private set
+
+    /** 书架风格，NOTIFY_MAIN 时刷新（等价旧 getFragmentId 的动态判定） */
+    var bookshelfStyle by mutableIntStateOf(AppConfig.bookGroupStyle)
+        private set
+
+    /** Pager 当前页（MainScreen 回写），供返回键/重选判定 */
+    var currentPage = 0
+
+    /** 首页落点（等价旧 upHomePage），仅初始组合时消费 */
+    val initialPage: Int get() = homePageIndex()
+
+    /** 页面跳转指令流：index to smooth */
+    val pageSelections = MutableSharedFlow<Pair<Int, Boolean>>(extraBufferCapacity = 4)
+
+    /** tab controller（MainScreen 组合时回传） */
+    var bookshelfController: BookshelfTabController? = null
+    var exploreController: ExploreTabController? = null
+
+    @Composable
+    override fun Content() {
+        // 薄壳: 注入 app 端 4 个 Tab Composable + AppConfig 底栏三项配置,
+        // shared 版 MainScreen 负责 Pager 装配 + MainBottomBar 渲染
+        MainScreen(
+            visibleTags = visibleTags,
+            initialPage = initialPage,
+            pageSelections = pageSelections,
+            currentPageSink = { currentPage = it },
+            onSelectPage = ::selectPage,
+            onReselect = ::onTabReselect,
+            homeTab = { HomeTab() },
+            // style 切换由 BookshelfTab 内部 key(style) 重建, controller 回传 bookshelfController
+            bookshelfTab = { BookshelfTab(style = bookshelfStyle) { bookshelfController = it } },
+            exploreTab = { ExploreTab { exploreController = it } },
+            myTab = { MyTab() },
+            bottomBarIconSize = AppConfig.bottomBarIconSize,
+            bottomBarHeight = AppConfig.bottomBarHeight,
+            bottomBarLabelMode = AppConfig.bottomBarLabelMode,
+        )
     }
 
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        upBottomMenu()
-        initView()
-        upHomePage()
         onBackPressedDispatcher.addCallback(this) {
-            val bookshelfPos = realPositions.indexOf(idBookshelf)
-            if (pagePosition != bookshelfPos) {
-                binding.viewPagerMain.currentItem = bookshelfPos
+            val bookshelfPos = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
+            if (currentPage != bookshelfPos && bookshelfPos >= 0) {
+                selectPage(bookshelfPos, smooth = true)
                 return@addCallback
             }
-            (fragmentMap[getFragmentId(bookshelfPos)] as? BookshelfFragment2)?.let {
-                if (it.back()) {
-                    return@addCallback
-                }
+            if (bookshelfController?.back() == true) {
+                return@addCallback
             }
             if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
                 toastOnUi(R.string.double_click_exit)
@@ -169,103 +159,27 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         viewModel.postLoad()
     }
 
-    override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {
-        when (item.itemId) {
-            R.id.menu_home ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idHome), true)
-
-            R.id.menu_bookshelf ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idBookshelf), true)
-
-            R.id.menu_discovery ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idExplore), true)
-
-            R.id.menu_my_config ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), true)
-        }
-        return false
+    fun selectPage(index: Int, smooth: Boolean) {
+        pageSelections.tryEmit(index to smooth)
     }
 
-    override fun onNavigationItemReselected(item: MenuItem) {
-        when (item.itemId) {
-            R.id.menu_bookshelf -> {
-                val bookshelfFragId = getFragmentId(realPositions.indexOf(idBookshelf))
+    /** 底栏重选当前 tab：300ms 内双击触发（等价旧 onNavigationItemReselected） */
+    fun onTabReselect(tag: String) {
+        when (tag) {
+            BottomNavTag.BOOKSHELF -> {
                 if (System.currentTimeMillis() - bookshelfReselected > 300) {
                     bookshelfReselected = System.currentTimeMillis()
                 } else {
-                    (fragmentMap[bookshelfFragId] as? BaseBookshelfFragment)?.gotoTop()
+                    bookshelfController?.gotoTop()
                 }
             }
 
-            R.id.menu_discovery -> {
+            BottomNavTag.DISCOVERY -> {
                 if (System.currentTimeMillis() - exploreReselected > 300) {
                     exploreReselected = System.currentTimeMillis()
                 } else {
-                    (fragmentMap[idExplore] as? ExploreFragment)?.compressExplore()
+                    exploreController?.compressExplore()
                 }
-            }
-        }
-    }
-
-    private fun initView() = binding.run {
-        viewPagerMain.setEdgeEffectColor(primaryColor)
-        viewPagerMain.offscreenPageLimit = 3
-        viewPagerMain.adapter = adapter
-        viewPagerMain.addOnPageChangeListener(PageChangeCallback())
-        initBottomNavigation()
-        bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
-        bottomNavigationView.setOnNavigationItemReselectedListener(this@MainActivity)
-        bottomNavigationView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            val height = windowInsets.navigationBarHeight
-            view.bottomPadding = height
-            windowInsets.inset(0, 0, 0, height)
-        }
-    }
-
-    private fun initBottomNavigation() {
-        applyBottomNavigationStyle()
-        applyBottomNavigationSize()
-    }
-
-    private fun applyBottomNavigationStyle() = binding.bottomNavigationView.run {
-        val bg =
-            context.getPrefString(if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage)
-        val bgColor = if (bg.isNullOrBlank()) context.bottomBackground else Color.TRANSPARENT
-        setBackgroundColor(bgColor)
-        val textIsDark =
-            ColorUtils.isColorLight(if (bg.isNullOrBlank()) bgColor else context.backgroundColor)
-        val textColor = context.getSecondaryTextColor(textIsDark)
-        val accentColor = ThemeStore.accentColor
-        val colorStateList = Selector.colorBuild()
-            .setDefaultColor(textColor)
-            .setPressedColor(accentColor)
-            .setSelectedColor(accentColor)
-            .setFocusedColor(accentColor)
-            .setCheckedColor(accentColor)
-            .create()
-        itemIconTintList = colorStateList
-        itemTextColor = colorStateList
-        elevation = 0f
-        if (AppConfig.isEInkMode) {
-            isItemHorizontalTranslationEnabled = false
-            itemBackground = Color.TRANSPARENT.toDrawable()
-            setBackgroundResource(R.drawable.bg_eink_border_top)
-        }
-    }
-
-    private fun applyBottomNavigationSize() = binding.bottomNavigationView.run {
-        itemIconSize = AppConfig.bottomBarIconSize.dpToPx()
-        labelVisibilityMode = when (AppConfig.bottomBarLabelMode) {
-            1 -> NavigationBarView.LABEL_VISIBILITY_LABELED
-            2 -> NavigationBarView.LABEL_VISIBILITY_SELECTED
-            3 -> NavigationBarView.LABEL_VISIBILITY_AUTO
-            else -> NavigationBarView.LABEL_VISIBILITY_UNLABELED
-        }
-        layoutParams?.let {
-            val targetHeight = AppConfig.bottomBarHeight.dpToPx()
-            if (it.height != targetHeight) {
-                it.height = targetHeight
-                layoutParams = it
             }
         }
     }
@@ -295,11 +209,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
      * 版本更新日志
      */
     private suspend fun upVersion() = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.versionCode == appInfo.versionCode) {
+        if (LocalConfig.versionCode == AppConst.appInfo.versionCode) {
             block.resume(null)
             return@sc
         }
-        LocalConfig.versionCode = appInfo.versionCode
+        LocalConfig.versionCode = AppConst.appInfo.versionCode
         if (LocalConfig.isFirstOpenApp) {
             val help = String(assets.open("web/help/md/appHelp.md").readBytes())
             val dialog = TextDialog(getString(R.string.help), help, TextDialog.Mode.MD)
@@ -319,17 +233,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             return@sc
         }
         alert(R.string.set_local_password, R.string.set_local_password_summary) {
-            val editTextBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "password"
-            }
-            customView {
-                editTextBinding.root
-            }
+            val getText = editTextView(hint = "password")
             onDismiss {
                 block.resume(null)
             }
             okButton {
-                LocalConfig.password = editTextBinding.editView.text.toString()
+                LocalConfig.password = getText()
             }
             cancelButton {
                 LocalConfig.password = ""
@@ -383,10 +292,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
      * 如果重启太快fragment不会重建,这里更新一下书架的排序
      */
     override fun recreate() {
-        val bookshelfPos = realPositions.indexOf(idBookshelf)
-        (fragmentMap[getFragmentId(bookshelfPos)] as? BaseBookshelfFragment)?.run {
-            upSort()
-        }
+        bookshelfController?.upSort()
         super.recreate()
     }
 
@@ -394,15 +300,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         super.observeLiveBus()
 
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
-            binding.apply {
-                if (it) {
-                    bottomNavigationView.menu.clear()
-                    bottomNavigationView.inflateMenu(R.menu.main_bnv)
-                }
-                upBottomMenu()
-                if (it) {
-                    viewPagerMain.setCurrentItem(bottomMenuCount - 1, false)
-                }
+            visibleTags = computeVisibleTags()
+            bookshelfStyle = AppConfig.bookGroupStyle
+            if (it) {
+                selectPage(visibleTags.lastIndex, smooth = false)
             }
         }
         observeEvent<String>(PreferKey.threadCount) {
@@ -410,9 +311,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun upBottomMenu() {
-        val showHome = AppConfig.showHome
-        val showDiscovery = AppConfig.showDiscovery
+    /** 等价旧 upBottomMenu：顺序配置校验（非法回落默认并清 pref）+ showHome/showDiscovery 过滤 */
+    private fun computeVisibleTags(): List<String> {
         val defaultTagOrder = listOf(
             BottomNavTag.HOME,
             BottomNavTag.BOOKSHELF,
@@ -425,142 +325,27 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             ?: defaultTagOrder.also {
                 if (AppConfig.bottomNavItemOrder != null) AppConfig.bottomNavItemOrder = null
             }
-
-        val menu = binding.bottomNavigationView.menu
-        menu.clear()
-        for (tag in orderedTags) {
+        val tags = orderedTags.filter { tag ->
             when (tag) {
-                BottomNavTag.HOME -> menu.add(
-                    Menu.NONE, R.id.menu_home, Menu.NONE, R.string.home
-                ).setIcon(R.drawable.ic_bottom_home).isVisible = showHome
-
-                BottomNavTag.BOOKSHELF -> menu.add(
-                    Menu.NONE, R.id.menu_bookshelf, Menu.NONE, R.string.bookshelf
-                ).setIcon(R.drawable.ic_bottom_books)
-
-                BottomNavTag.DISCOVERY -> menu.add(
-                    Menu.NONE, R.id.menu_discovery, Menu.NONE, R.string.discovery
-                ).setIcon(R.drawable.ic_bottom_explore).isVisible = showDiscovery
-
-                BottomNavTag.MY -> menu.add(
-                    Menu.NONE, R.id.menu_my_config, Menu.NONE, R.string.my
-                ).setIcon(R.drawable.ic_bottom_person)
+                BottomNavTag.HOME -> AppConfig.showHome
+                BottomNavTag.DISCOVERY -> AppConfig.showDiscovery
+                else -> true
             }
         }
-
-        realPositions.clear()
-        for (tag in orderedTags) {
-            when (tag) {
-                BottomNavTag.HOME -> if (showHome) realPositions.add(idHome)
-                BottomNavTag.BOOKSHELF -> realPositions.add(idBookshelf)
-                BottomNavTag.DISCOVERY -> if (showDiscovery) realPositions.add(idExplore)
-                BottomNavTag.MY -> realPositions.add(idMy)
-            }
-        }
-        if (realPositions.isEmpty()) realPositions.add(idBookshelf)
-
-        bottomMenuCount = realPositions.size
-        adapter.notifyDataSetChanged()
-        applyBottomNavigationSize()
+        return tags.ifEmpty { listOf(BottomNavTag.BOOKSHELF) }
     }
 
-    private fun upHomePage() {
-        val bookshelfPos = realPositions.indexOf(idBookshelf)
-        when (AppConfig.defaultHomePage) {
-            "home" -> if (AppConfig.showHome) {
-                binding.viewPagerMain.setCurrentItem(realPositions.indexOf(idHome), false)
-            } else {
-                binding.viewPagerMain.setCurrentItem(bookshelfPos, false)
-            }
-
-            "bookshelf" -> binding.viewPagerMain.setCurrentItem(bookshelfPos, false)
-            "explore" -> if (AppConfig.showDiscovery) {
-                binding.viewPagerMain.setCurrentItem(realPositions.indexOf(idExplore), false)
-            } else {
-                binding.viewPagerMain.setCurrentItem(bookshelfPos, false)
-            }
-            "my" -> binding.viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), false)
-            else -> binding.viewPagerMain.setCurrentItem(bookshelfPos, false)
+    /** 等价旧 upHomePage：defaultHomePage 落点，目标 tab 隐藏时回落书架 */
+    private fun homePageIndex(): Int {
+        val bookshelfPos = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
+        val pos = when (AppConfig.defaultHomePage) {
+            "home" -> visibleTags.indexOf(BottomNavTag.HOME)
+            "bookshelf" -> bookshelfPos
+            "explore" -> visibleTags.indexOf(BottomNavTag.DISCOVERY)
+            "my" -> visibleTags.indexOf(BottomNavTag.MY)
+            else -> bookshelfPos
         }
-        // setCurrentItem(pos, false) 在 pos 未变化时不触发 onPageSelected，需手动同步一次初始选中项
-        selectBottomMenu(binding.viewPagerMain.currentItem)
-    }
-
-    private fun selectBottomMenu(position: Int) {
-        pagePosition = position
-        val menuId = when (realPositions[position]) {
-            idHome -> R.id.menu_home
-            idExplore -> R.id.menu_discovery
-            idMy -> R.id.menu_my_config
-            else -> R.id.menu_bookshelf
-        }
-        binding.bottomNavigationView.menu.findItem(menuId).isChecked = true
-    }
-
-    private fun getFragmentId(position: Int): Int {
-        val id = realPositions[position]
-        if (id == idBookshelf) {
-            return if (AppConfig.bookGroupStyle == 1) idBookshelf2 else idBookshelf1
-        }
-        return id
-    }
-
-    private inner class PageChangeCallback : ViewPager.SimpleOnPageChangeListener() {
-
-        override fun onPageSelected(position: Int) {
-            selectBottomMenu(position)
-        }
-
-    }
-
-    @Suppress("DEPRECATION")
-    private inner class TabFragmentPageAdapter(fm: FragmentManager) :
-        FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
-
-        private fun getId(position: Int): Int {
-            return getFragmentId(position)
-        }
-
-        override fun getItemPosition(any: Any): Int {
-            val position = (any as MainFragmentInterface).position
-                ?: return POSITION_NONE
-            if (position !in realPositions.indices) return POSITION_NONE
-            val fragmentId = getId(position)
-            if ((fragmentId == idHome && any is HomeFragment)
-                || (fragmentId == idBookshelf1 && any is BookshelfFragment1)
-                || (fragmentId == idBookshelf2 && any is BookshelfFragment2)
-                || (fragmentId == idExplore && any is ExploreFragment)
-                || (fragmentId == idMy && any is MyFragment)
-            ) {
-                return POSITION_UNCHANGED
-            }
-            return POSITION_NONE
-        }
-
-        override fun getItem(position: Int): Fragment {
-            return when (getId(position)) {
-                idHome -> HomeFragment(position)
-                idBookshelf1 -> BookshelfFragment1(position)
-                idBookshelf2 -> BookshelfFragment2(position)
-                idExplore -> ExploreFragment(position)
-                else -> MyFragment(position)
-            }
-        }
-
-        override fun getCount(): Int {
-            return bottomMenuCount
-        }
-
-        override fun instantiateItem(container: ViewGroup, position: Int): Any {
-            var fragment = super.instantiateItem(container, position) as Fragment
-            if (fragment.isCreated && getItemPosition(fragment) == POSITION_NONE) {
-                destroyItem(container, position, fragment)
-                fragment = super.instantiateItem(container, position) as Fragment
-            }
-            fragmentMap[getId(position)] = fragment
-            return fragment
-        }
-
+        return if (pos >= 0) pos else bookshelfPos.coerceAtLeast(0)
     }
 
 }

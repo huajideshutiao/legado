@@ -1,81 +1,113 @@
 package io.legado.app.ui.replace
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.activityViewModels
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemGroupManageBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.requestInputMethod
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
-
-class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener {
+/**
+ * 替换规则分组管理:纯分组列表(无排序/多选),支持新增/改名/删除。
+ */
+class GroupManageDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
     private val viewModel: ReplaceRuleViewModel by activityViewModels()
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy { GroupAdapter(requireContext()) }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initView()
-        initData()
-    }
+    private var groups by mutableStateOf<List<String>>(emptyList())
 
-    private fun initView() = binding.run {
-        setupTitleBar(
-            title = getString(R.string.group_manage),
-            menuRes = R.menu.group_manage,
-            onMenuClick = ::onMenuItemClick
-        )
-        recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        recyclerView.adapter = adapter
-    }
-
-    private fun initData() {
-        lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        LaunchedEffect(Unit) {
             appDb.replaceRuleDao.flowGroups().conflate().collect {
-                adapter.setItems(it)
+                groups = it
             }
         }
+        RuleManageScaffold(
+            items = groups,
+            itemKey = { it },
+            onMove = { _, _ -> },
+            titleBar = {
+                DialogTitleBar(
+                    title = getString(R.string.group_manage),
+                    onBack = { dismissAllowingStateLoss() },
+                    actions = {
+                        IconButton(onClick = { addGroup() }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = getString(R.string.add_group),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+        ) { item ->
+            GroupItem(item)
+        }
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_add -> addGroup()
+    @Composable
+    private fun ReorderableCollectionItemScope.GroupItem(item: String) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = item,
+                color = colors.primaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            AppTextButton(text = stringResource(R.string.edit)) { editGroup(item) }
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = { viewModel.delGroup(item) }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_clear_all),
+                    contentDescription = stringResource(R.string.delete),
+                    tint = colors.primaryText,
+                )
+            }
         }
-        return true
     }
 
     @SuppressLint("InflateParams")
     private fun addGroup() {
         alert(title = getString(R.string.add_group)) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-            }
-            customView { alertBinding.root }
+            val getText = editTextView(hint = getString(R.string.group_name), autoFocus = true)
             okButton {
-                alertBinding.editView.text?.toString()?.let {
+                getText().let {
                     if (it.isNotBlank()) {
                         viewModel.addGroup(it)
                     }
@@ -88,49 +120,15 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     @SuppressLint("InflateParams")
     private fun editGroup(group: String) {
         alert(title = getString(R.string.group_edit)) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-                editView.setText(group)
-            }
-            customView { alertBinding.root }
+            val getText = editTextView(
+                hint = getString(R.string.group_name),
+                text = group,
+                autoFocus = true,
+            )
             okButton {
-                viewModel.upGroup(group, alertBinding.editView.text?.toString())
+                viewModel.upGroup(group, getText())
             }
             cancelButton()
         }.requestInputMethod()
     }
-
-    private inner class GroupAdapter(context: Context) :
-        RecyclerAdapter<String, ItemGroupManageBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemGroupManageBinding {
-            return ItemGroupManageBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemGroupManageBinding,
-            item: String,
-            payloads: MutableList<Any>
-        ) {
-            binding.run {
-                tvGroup.text = item
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemGroupManageBinding) {
-            binding.apply {
-                tvEdit.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let {
-                        editGroup(it)
-                    }
-                }
-
-                ivDelete.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let { viewModel.delGroup(it) }
-                }
-            }
-        }
-    }
-
 }

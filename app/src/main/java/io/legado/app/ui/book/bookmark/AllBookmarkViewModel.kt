@@ -27,7 +27,7 @@ class AllBookmarkViewModel(application: Application) : BaseViewModel(application
             val fileName = "bookmark-${dateFormat.format(Date())}.json"
             val dirDoc = FileDoc.fromUri(treeUri, true)
             dirDoc.createFileIfNotExist(fileName).openOutputStream().getOrThrow().use {
-                GSON.writeToOutputStream(it, appDb.bookmarkDao.all)
+                GSON.writeToOutputStream(it, appDb.bookmarkDao.all())
             }
         }.onError {
             AppLog.put("导出失败\n${it.localizedMessage}", it, true)
@@ -46,7 +46,7 @@ class AllBookmarkViewModel(application: Application) : BaseViewModel(application
             fileDoc.use { outputStream ->
                 var name = ""
                 var author = ""
-                appDb.bookmarkDao.all.forEach {
+                appDb.bookmarkDao.all().forEach {
                     if (it.bookName != name && it.bookAuthor != author) {
                         name = it.bookName
                         author = it.bookAuthor

@@ -1,23 +1,38 @@
 package io.legado.app.ui.book.manage
 
-import android.annotation.SuppressLint
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import android.view.MotionEvent
-import android.view.View
-import android.widget.CheckBox
-import android.widget.LinearLayout
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.PopupMenu
-import androidx.appcompat.widget.SearchView
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.textfield.TextInputLayout
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst.charsets
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
@@ -27,9 +42,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
-import io.legado.app.databinding.DialogExportConfigBinding
-import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.getExportFileName
@@ -41,36 +53,29 @@ import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.AppAutoCompleteField
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.compose.component.SelectAction
+import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ACache
-import io.legado.app.utils.applyOpenTint
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.hideSoftInput
-import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
@@ -78,7 +83,6 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
@@ -86,72 +90,151 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import kotlin.math.max
 
 /**
- * 书架管理
+ * 书架管理界面(纯 Compose)
+ * intent 契约(groupId extra)不变。
  */
-class BookshelfManageActivity :
-    VMBaseActivity<ActivityRecyclerWithActionBarBinding, BookshelfManageViewModel>(),
-    PopupMenu.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    BookAdapter.CallBack,
+class BookshelfManageActivity : BaseComposeActivity(),
     SourcePickerDialog.Callback,
     GroupSelectDialog.CallBack {
 
-    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
-    override val viewModel by viewModels<BookshelfManageViewModel>()
-    override val groupList: ArrayList<BookGroup> = arrayListOf()
+    val viewModel by viewModels<BookshelfManageViewModel>()
+    val groupList: ArrayList<BookGroup> = arrayListOf()
     private val groupRequestCode = 22
     private val addToGroupRequestCode = 34
-    private val adapter by lazy { BookAdapter(this, this) }
-    private val itemTouchCallback by lazy { ItemTouchCallback(adapter) }
+    // 单项改分组的请求码(对齐原 BookAdapter.groupRequestCode)
+    private val itemGroupRequestCode = 12
     private val incrementalFilter = BookFilter.IncrementalFilter<Book>()
-    private var bookshelfTypeFilter = 0
-    private var booksFlowJob: Job? = null
-    private var menu: Menu? = null
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
-    private var books: List<Book>? = null
-    private val waitDialog by lazy { WaitDialog.from(this) }
-    private val exportDir by lazy {
-        registerHandleFile { result ->
-            var uri = result.uri ?: return@registerHandleFile
-            if (result.value == "cache") {
-                var dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
-                    ?: return@registerHandleFile
-            ACache.get().put(exportBookPathKey, dirPath)
-                if (enableCustomExport()) {
-                configExportSection(dirPath)
-            } else {
-                startExport(dirPath)
-            }
-        }else{
-            showExportSuccess(uri)
-        }
-        }
-    }
-
     private val exportBookPathKey = "exportBookPath"
 
+    var books by mutableStateOf<List<Book>>(emptyList())
+        private set
+    val selected = mutableStateOf<Set<String>>(emptySet())
+    var searchKey by mutableStateOf("")
+        private set
+    var searchHint by mutableStateOf("")
+        private set
+    var bookshelfTypeFilter by mutableStateOf(0)
+        private set
+    var canDrag by mutableStateOf(false)
+        private set
+    var groups by mutableStateOf<List<BookGroup>>(emptyList())
+        private set
+    var downloadRunning by mutableStateOf(false)
+        private set
+    // 下载/缓存/封面刷新事件桥接为重组滴答
+    var refreshTick by mutableStateOf(0)
+        private set
+
+    private var allBooks: List<Book>? = null
+    private var booksFlowJob: Job? = null
+    private var actionBook: Book? = null
+    private val waitDialog by lazy { WaitDialog.from(this) }
+
+    private val exportDir by lazy {
+        registerHandleFile { result ->
+            val uri = result.uri ?: return@registerHandleFile
+            if (result.value == "cache") {
+                val dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
+                    ?: return@registerHandleFile
+                ACache.get().put(exportBookPathKey, dirPath)
+                if (enableCustomExport()) {
+                    configExportSection(dirPath)
+                } else {
+                    startExport(dirPath)
+                }
+            } else {
+                showExportSuccess(uri)
+            }
+        }
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.title = getString(R.string.bookshelf_management)
         viewModel.groupId = intent.getLongExtra("groupId", -1)
         lifecycleScope.launch {
             viewModel.groupName = withContext(IO) {
                 appDb.bookGroupDao.getByID(viewModel.groupId)?.groupName
                     ?: getString(R.string.no_group)
             }
-            upTitle()
+            upSearchHint()
         }
-        initSearchView()
-        initRecyclerView()
-        initOtherView()
+        downloadRunning = CacheBook.isRun
+        waitDialog.onCancelListener = {
+            viewModel.batchChangeSourceCoroutine?.cancel()
+        }
         initGroupData()
         upBookDataByGroupId()
+    }
+
+    @Composable
+    override fun Content() {
+        val listState = rememberLazyListState()
+        val scope = rememberCoroutineScope()
+        // 把 Activity 持有的 mutableState 字段快照到 immutable state, 供 shared Screen 消费
+        val state = BookshelfManageState(
+            books = books,
+            selected = selected.value,
+            searchKey = searchKey,
+            searchHint = searchHint,
+            bookshelfTypeFilter = bookshelfTypeFilter,
+            canDrag = canDrag,
+            groups = groups,
+            downloadRunning = downloadRunning,
+            refreshTick = refreshTick,
+            exportUseReplace = exportUseReplace,
+            enableCustomExportChecked = enableCustomExportChecked,
+            exportToWebDav = exportToWebDav,
+        )
+        // callbacks 用 remember 持有稳定实例, 避免 lambda 重组 (Activity 方法引用恒等)
+        val callbacks = remember {
+            BookshelfManageCallbacks(
+                onBack = { finish() },
+                onQueryChange = ::setQuery,
+                onMove = ::onMove,
+                onPersistOrder = ::persistOrder,
+                onSelectAll = ::selectAll,
+                onRevertSelection = ::revertSelection,
+                onMainAction = ::mainAction,
+                onSelectActions = ::selectActions,
+                onToggle = ::toggle,
+                onOpenBook = ::openBook,
+                onToggleDownload = ::toggleDownload,
+                isItemDownloading = ::isItemDownloading,
+                onOriginText = ::originText,
+                onGroupName = ::groupName,
+                onCacheInfo = ::cacheInfo,
+                onDeleteBook = ::deleteBook,
+                onEditGroup = ::editGroup,
+                onDownloadAfter = ::downloadAfter,
+                onDownloadAll = ::downloadAll,
+                onShowGroupManage = ::showGroupManage,
+                onSelectGroupFromMenu = ::selectGroupFromMenu,
+                onExportAllUseBookSource = ::exportAllUseBookSource,
+                onToggleEnableReplace = ::toggleEnableReplace,
+                onToggleCustomExport = ::toggleCustomExport,
+                onToggleExportWebDav = ::toggleExportWebDav,
+                onSelectExportFolderMenu = ::selectExportFolderMenu,
+                onShowExportConfig = ::showExportConfig,
+                onShowLog = ::showLog,
+                onSetBookTypeFilter = ::setBookTypeFilter,
+            )
+        }
+        BookshelfManageScreen(
+            state = state,
+            callbacks = callbacks,
+            listState = listState,
+            listModifier = Modifier.dragSelectable(
+                listState = listState,
+                autoScrollScope = scope,
+                isSelected = { index -> selected.value.contains(books[index].bookUrl) },
+                onSelectedChanged = { index, sel -> toggle(books[index], sel) },
+            ),
+            coverSlot = { book -> BookCover(book) },
+        )
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -168,17 +251,113 @@ class BookshelfManageActivity :
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun notifyItemChanged(bookUrl: String) {
-        kotlin.runCatching {
-            adapter.getItems().forEachIndexed { index, book ->
-                if (bookUrl == book.bookUrl) {
-                    adapter.notifyItemChanged(index, true)
-                    return
-                }
+    private fun upSearchHint() {
+        searchHint = getString(R.string.screen) + " • " + viewModel.groupName
+    }
+
+    // ---- 搜索/筛选 ----
+
+    fun setQuery(query: String) {
+        searchKey = query
+        upBookData()
+    }
+
+    fun setBookTypeFilter(filter: Int) {
+        if (bookshelfTypeFilter == filter) return
+        bookshelfTypeFilter = filter
+        upBookData()
+    }
+
+    // ---- 多选 ----
+
+    fun toggle(book: Book, checked: Boolean) {
+        selected.value =
+            if (checked) selected.value + book.bookUrl else selected.value - book.bookUrl
+    }
+
+    fun selectAll(all: Boolean) {
+        selected.value = if (all) books.map { it.bookUrl }.toSet() else emptySet()
+    }
+
+    fun revertSelection() {
+        selected.value = books.map { it.bookUrl }.toSet() - selected.value
+    }
+
+    fun checkSelectedInterval() {
+        val positions = books.mapIndexedNotNull { index, book ->
+            index.takeIf { selected.value.contains(book.bookUrl) }
+        }
+        if (positions.isEmpty()) return
+        val range = positions.min()..positions.max()
+        selected.value = selected.value + range.map { books[it].bookUrl }
+    }
+
+    fun selection(): List<Book> = books.filter { selected.value.contains(it.bookUrl) }
+
+    // ---- 拖拽排序 ----
+
+    fun onMove(from: Int, to: Int) {
+        books = books.toMutableList().apply { add(to, removeAt(from)) }
+    }
+
+    /** 松手落库:按当前顺序重排 order 后整行 update(拖排是显式全量重排)。 */
+    fun persistOrder() {
+        books.forEachIndexed { index, book -> book.order = index + 1 }
+        viewModel.updateBook(*books.toTypedArray())
+    }
+
+    private fun initGroupData() {
+        lifecycleScope.launch {
+            appDb.bookGroupDao.flowAll().catch {
+                AppLog.put("书架管理界面获取分组数据失败\n${it.localizedMessage}", it)
+            }.flowOn(IO).conflate().collect {
+                groupList.clear()
+                groupList.addAll(it)
+                groups = it
+                refreshTick++
             }
         }
     }
+
+    private fun upBookDataByGroupId() {
+        booksFlowJob?.cancel()
+        booksFlowJob = lifecycleScope.launch {
+            val bookSort = AppConfig.getBookSortByGroupId(viewModel.groupId)
+            appDb.bookDao.flowByGroup(viewModel.groupId).map { list ->
+                when (bookSort) {
+                    1 -> list.sortedByDescending { it.latestChapterTime }
+                    2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+                    3 -> list.sortedBy { it.order }
+                    4 -> list.sortedByDescending { max(it.latestChapterTime, it.durChapterTime) }
+                    else -> list.sortedByDescending { it.durChapterTime }
+                }
+            }.catch {
+                AppLog.put("书架管理界面获取书籍列表失败\n${it.localizedMessage}", it)
+            }.flowOn(IO).conflate().collect {
+                allBooks = it
+                upBookData()
+                viewModel.loadCacheFiles(it)
+                canDrag = bookSort == 3
+            }
+        }
+    }
+
+    private fun upBookData() {
+        allBooks?.let { all ->
+            val typeFiltered = when (bookshelfTypeFilter) {
+                1 -> all.filter { !it.isImage && !it.isAudio && !it.isVideo }
+                2 -> all.filter { it.isImage }
+                3 -> all.filter { it.isAudio }
+                4 -> all.filter { it.isVideo }
+                else -> all
+            }
+            books = incrementalFilter.filter(typeFiltered, searchKey)
+            selected.value = selected.value.intersect(books.map { it.bookUrl }.toSet())
+        }
+    }
+
     override fun observeLiveBus() {
+        super.observeLiveBus()
         viewModel.batchChangeSourceState.observe(this) {
             if (it) {
                 waitDialog.setText(R.string.change_source_batch)
@@ -191,346 +370,231 @@ class BookshelfManageActivity :
             waitDialog.setText(it)
         }
         viewModel.upAdapterLiveData.observe(this) {
-            notifyItemChanged(it)
+            refreshTick++
         }
         observeEvent<String>(EventBus.EXPORT_BOOK) {
-            notifyItemChanged(it)
+            refreshTick++
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD) {
-            if (!CacheBook.isRun) {
-                menu?.findItem(R.id.menu_download)?.let { item ->
-                    item.setIconCompat(R.drawable.ic_play_24dp)
-                    item.setTitle(R.string.download_start)
-                }
-                menu?.applyTint(this)
-            } else {
-                menu?.findItem(R.id.menu_download)?.let { item ->
-                    item.setIconCompat(R.drawable.ic_stop_black_24dp)
-                    item.setTitle(R.string.stop)
-                }
-                menu?.applyTint(this)
-            }
-            notifyItemChanged(it)
+            downloadRunning = CacheBook.isRun
+            refreshTick++
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
-            notifyItemChanged(book.bookUrl)
+            refreshTick++
         }
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.bookshelf_manage, menu)
-        menu.iconItemOnLongClick(R.id.menu_download) {
-            PopupMenu(this, it).apply {
-                inflate(R.menu.book_cache_download)
-                this.menu.applyOpenTint(this@BookshelfManageActivity)
-                setOnMenuItemClickListener(this@BookshelfManageActivity)
-            }.show()
-        }
-        return super.onCompatCreateOptionsMenu(menu)
-    }
+    // ---- 单项操作(对照 BookAdapter.CallBack) ----
 
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        this.menu = menu
-        upMenu()
-        return super.onPrepareOptionsMenu(menu)
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_enable_replace)?.isChecked = AppConfig.exportUseReplace
-        // 菜单打开时读取状态[enableCustomExport]
-        menu.findItem(R.id.menu_enable_custom_export)?.isChecked = AppConfig.enableCustomExport
-        menu.findItem(R.id.menu_export_web_dav)?.isChecked = AppConfig.exportToWebDav
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun selectAll(selectAll: Boolean) {
-        adapter.selectAll(selectAll)
-    }
-
-    override fun revertSelection() {
-        adapter.revertSelection()
-    }
-
-    override fun onClickSelectBarMainAction() {
-        selectGroup(groupRequestCode, 0)
-    }
-
-    private fun upTitle() {
-        searchView.queryHint = getString(R.string.screen) + " • " + viewModel.groupName
-    }
-
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                upBookData()
-                return false
-            }
-
-        })
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        itemTouchCallback.isCanDrag = AppConfig.bookshelfSort == 3
-        val dragSelectTouchHelper: DragSelectTouchHelper =
-            DragSelectTouchHelper(adapter.dragSelectCallback).setSlideArea(16, 50)
-        dragSelectTouchHelper.attachToRecyclerView(binding.recyclerView)
-        // When this page is opened, it is in selection mode
-        dragSelectTouchHelper.activeSlideSelect()
-        // Note: need judge selection first, so add ItemTouchHelper after it.
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
-    }
-
-    private fun initOtherView() {
-        binding.selectActionBar.setMainActionText(R.string.move_to_group)
-        binding.selectActionBar.inflateMenu(R.menu.bookshelf_menage_sel)
-        binding.selectActionBar.setOnMenuItemClickListener(this)
-        binding.selectActionBar.setCallBack(this)
-        waitDialog.onCancelListener = {
-            viewModel.batchChangeSourceCoroutine?.cancel()
+    fun openBook(book: Book) {
+        startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+            IntentData.book = book
         }
     }
 
-    @SuppressLint("NotifyDataSetChanged")
-    private fun initGroupData() {
-        lifecycleScope.launch {
-            appDb.bookGroupDao.flowAll().catch {
-                AppLog.put("书架管理界面获取分组数据失败\n${it.localizedMessage}", it)
-            }.flowOn(IO).conflate().collect {
-                groupList.clear()
-                groupList.addAll(it)
-                adapter.notifyDataSetChanged()
-                upMenu()
-            }
-        }
-    }
-
-    private fun upBookDataByGroupId() {
-        booksFlowJob?.cancel()
-        booksFlowJob = lifecycleScope.launch {
-            val bookSort = AppConfig.getBookSortByGroupId(viewModel.groupId)
-            appDb.bookDao.flowByGroup(viewModel.groupId).map { list ->
-                when (bookSort) {
-                    1 -> list.sortedByDescending {
-                        it.latestChapterTime
-                    }
-
-                    2 -> list.sortedWith { o1, o2 ->
-                        o1.name.cnCompare(o2.name)
-                    }
-
-                    3 -> list.sortedBy {
-                        it.order
-                    }
-
-                    4 -> list.sortedByDescending {
-                        max(it.latestChapterTime, it.durChapterTime)
-                    }
-
-                    else -> list.sortedByDescending {
-                        it.durChapterTime
-                    }
-                }
-            }.catch {
-                AppLog.put("书架管理界面获取书籍列表失败\n${it.localizedMessage}", it)
-            }.flowOn(IO)
-                .conflate().collect {
-                    books = it
-                    upBookData()
-                    viewModel.loadCacheFiles(it)
-                    itemTouchCallback.isCanDrag = bookSort == 3
-                }
-        }
-    }
-
-    private fun upBookData() {
-        books?.let { books ->
-            val searchKey = searchView.query?.toString()
-            val typeFiltered = when (bookshelfTypeFilter) {
-                1 -> books.filter { !it.isImage && !it.isAudio && !it.isVideo }
-                2 -> books.filter { it.isImage }
-                3 -> books.filter { it.isAudio }
-                4 -> books.filter { it.isVideo }
-                else -> books
-            }
-            adapter.setItems(incrementalFilter.filter(typeFiltered, searchKey))
-        }
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
-            R.id.menu_filter_type_all -> setBookTypeFilter(0)
-            R.id.menu_filter_type_novel -> setBookTypeFilter(1)
-            R.id.menu_filter_type_comic -> setBookTypeFilter(2)
-            R.id.menu_filter_type_audio -> setBookTypeFilter(3)
-            R.id.menu_filter_type_video -> setBookTypeFilter(4)
-
-            R.id.menu_export_all_use_book_source -> viewModel.saveAllUseBookSourceToFile { file ->
-                exportDir.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData = HandleFileContract.FileData(
-                        "bookSource.json",
-                        file,
-                        "application/json"
-                    )
+    fun deleteBook(book: Book) {
+        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
+            val deleteFile = mutableStateOf(LocalConfig.deleteBookOriginal)
+            if (book.isLocal) {
+                customView {
+                    DeleteFileCheckbox(deleteFile)
                 }
             }
+            okButton {
+                if (book.isLocal) LocalConfig.deleteBookOriginal = deleteFile.value
+                viewModel.deleteBook(listOf(book), LocalConfig.deleteBookOriginal)
+            }
+        }
+    }
 
-            R.id.menu_download,
-            R.id.menu_download_after -> {
-                if (!CacheBook.isRun) {
-                    adapter.selection.forEach { book ->
-                        val cs = cacheChapters[book.bookUrl]?.size
-                        if (cs != book.totalChapterNum)CacheBook.start(
-                            this@BookshelfManageActivity,
-                            book,
-                            book.durChapterIndex,
-                            book.lastChapterIndex
-                        )
-                    }
+    fun editGroup(book: Book) {
+        actionBook = book
+        selectGroup(itemGroupRequestCode, book.group)
+    }
+
+    /** 单项下载图标点击:对照 BookAdapter.ivDownload.setOnClickListener */
+    fun toggleDownload(book: Book) {
+        val cs = viewModel.cacheChapters[book.bookUrl]?.size
+        if (cs != book.totalChapterNum) {
+            CacheBook.cacheBookMap[book.bookUrl]?.let {
+                if (!it.isStop()) {
+                    CacheBook.remove(this, book.bookUrl)
                 } else {
-                    CacheBook.stop(this@BookshelfManageActivity)
+                    CacheBook.start(this, book, 0, book.lastChapterIndex)
                 }
-            }
-
-            R.id.menu_download_all -> {
-                if (!CacheBook.isRun) {
-                    adapter.selection.forEach { book ->
-                        CacheBook.start(
-                            this@BookshelfManageActivity,
-                            book,
-                            0,
-                            book.lastChapterIndex
-                        )
-                    }
-                } else {
-                    CacheBook.stop(this@BookshelfManageActivity)
-                }
-            }
-
-            R.id.menu_export_all -> exportAll()
-            R.id.menu_enable_replace -> AppConfig.exportUseReplace = !item.isChecked
-            // 更改菜单状态[enableCustomExport]
-            R.id.menu_enable_custom_export -> AppConfig.enableCustomExport = !item.isChecked
-            R.id.menu_export_web_dav -> AppConfig.exportToWebDav = !item.isChecked
-            R.id.menu_export_folder -> selectExportFolder()
-            R.id.menu_export_config -> showExportConfig()
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
-
-            else -> if (item.groupId == R.id.menu_group) {
-                viewModel.groupName = item.title.toString()
-                upTitle()
-                viewModel.groupId =
-                    appDb.bookGroupDao.getByName(item.title.toString())?.groupId ?: 0
-                upBookDataByGroupId()
-            }
+            } ?: CacheBook.start(this, book, 0, book.lastChapterIndex)
         }
-        return super.onCompatOptionsItemSelected(item)
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_del_selection -> alertDelSelection()
-            R.id.menu_export_all -> exportAll()
-            R.id.menu_update_enable ->
-                viewModel.upCanUpdate(adapter.selection, true)
+    fun isItemDownloading(book: Book): Boolean {
+        return CacheBook.cacheBookMap[book.bookUrl]?.isStop() == false
+    }
 
-            R.id.menu_update_disable ->
-                viewModel.upCanUpdate(adapter.selection, false)
+    fun originText(book: Book): String =
+        if (book.isLocal) getString(R.string.local_book) else book.originName
 
-            R.id.menu_add_to_group -> selectGroup(addToGroupRequestCode, 0)
-            R.id.menu_change_source -> showDialogFragment<SourcePickerDialog>()
-            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(adapter.selection) { file ->
+    /** 缓存进度文案:本地书籍返回 null(隐藏) */
+    fun cacheInfo(book: Book): String? {
+        if (book.isLocal) return null
+        val cs = viewModel.cacheChapters[book.bookUrl]
+        return if (cs == null) getString(R.string.loading)
+        else getString(R.string.download_count, cs.size, book.totalChapterNum)
+    }
+
+    fun groupName(groupId: Long): String {
+        val names = groupList.filter { it.groupId > 0 && it.groupId and groupId > 0 }
+            .map { it.groupName }
+        return if (names.isEmpty()) "" else names.joinToString(",")
+    }
+
+    // ---- 批量栏(对照 bookshelf_menage_sel 菜单) ----
+
+    fun mainAction() = selectGroup(groupRequestCode, 0)
+
+    fun selectActions(): List<SelectAction> = listOf(
+        SelectAction(getString(R.string.delete)) { alertDelSelection() },
+        SelectAction(getString(R.string.export_all)) { exportAll() },
+        SelectAction(getString(R.string.allow_update)) { viewModel.upCanUpdate(selection(), true) },
+        SelectAction(getString(R.string.disable_update)) { viewModel.upCanUpdate(selection(), false) },
+        SelectAction(getString(R.string.add_to_group)) { selectGroup(addToGroupRequestCode, 0) },
+        SelectAction(getString(R.string.export_bookshelf)) {
+            viewModel.exportBookshelf(selection()) { file ->
                 exportDir.launch {
                     mode = HandleFileContract.EXPORT
                     fileData =
                         HandleFileContract.FileData("bookshelf.json", file, "application/json")
                 }
             }
-            R.id.menu_clear_cache -> viewModel.clearCache(adapter.selection)
-            R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()
-        }
-        return false
-    }
-
-    private fun upMenu() {
-        menu?.findItem(R.id.menu_book_group)?.subMenu?.let { subMenu ->
-            subMenu.removeGroup(R.id.menu_group)
-            groupList.forEach { bookGroup ->
-                subMenu.add(R.id.menu_group, bookGroup.order, Menu.NONE, bookGroup.groupName)
-            }
-        }
-        val checkedId = when (bookshelfTypeFilter) {
-            1 -> R.id.menu_filter_type_novel
-            2 -> R.id.menu_filter_type_comic
-            3 -> R.id.menu_filter_type_audio
-            4 -> R.id.menu_filter_type_video
-            else -> R.id.menu_filter_type_all
-        }
-        menu?.findItem(checkedId)?.isChecked = true
-    }
-
-    private fun setBookTypeFilter(filter: Int) {
-        if (bookshelfTypeFilter == filter) return
-        bookshelfTypeFilter = filter
-        upMenu()
-        upBookData()
-    }
+        },
+        SelectAction(getString(R.string.change_source_batch)) {
+            showDialogFragment<SourcePickerDialog>()
+        },
+        SelectAction(getString(R.string.clear_cache)) { viewModel.clearCache(selection()) },
+        SelectAction(getString(R.string.check_selected_interval)) { checkSelectedInterval() },
+    )
 
     private fun alertDelSelection() {
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            val checkBox = CheckBox(this@BookshelfManageActivity).apply {
-                setText(R.string.delete_book_file)
-                isChecked = LocalConfig.deleteBookOriginal
+            val deleteFile = mutableStateOf(LocalConfig.deleteBookOriginal)
+            customView {
+                DeleteFileCheckbox(deleteFile)
             }
-            val view = LinearLayout(this@BookshelfManageActivity).apply {
-                setPadding(
-                    space.lg,
-                    0,
-                    space.lg,
-                    0
-                )
-                addView(checkBox)
-            }
-            customView { view }
             okButton {
-                LocalConfig.deleteBookOriginal = checkBox.isChecked
-                viewModel.deleteBook(adapter.selection, checkBox.isChecked)
+                LocalConfig.deleteBookOriginal = deleteFile.value
+                viewModel.deleteBook(selection(), deleteFile.value)
             }
             noButton()
         }
     }
 
-    override fun selectGroup(requestCode: Int, groupId: Long) {
-        showDialogFragment(
-            GroupSelectDialog(groupId, requestCode)
-        )
+    /** 删除对话框的"同时删除源文件"复选框 */
+    @Composable
+    private fun DeleteFileCheckbox(state: androidx.compose.runtime.MutableState<Boolean>) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = state.value,
+                    role = Role.Checkbox,
+                    onValueChange = { state.value = it },
+                )
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AppCheckbox(checked = state.value, onCheckedChange = null)
+            Text(stringResource(R.string.delete_book_file), color = AppTheme.colors.primaryText)
+        }
+    }
+
+    // ---- 顶栏下载(对照 menu_download / book_cache_download) ----
+
+    /** 下载后续(menu_download / menu_download_after):从当前进度起,已全缓存的跳过;运行中则停止 */
+    fun downloadAfter() {
+        if (!CacheBook.isRun) {
+            selection().forEach { book ->
+                val cs = viewModel.cacheChapters[book.bookUrl]?.size
+                if (cs != book.totalChapterNum) {
+                    CacheBook.start(this, book, book.durChapterIndex, book.lastChapterIndex)
+                }
+            }
+        } else {
+            CacheBook.stop(this)
+        }
+    }
+
+    /** 全部下载(menu_download_all):从头缓存;运行中则停止 */
+    fun downloadAll() {
+        if (!CacheBook.isRun) {
+            selection().forEach { book ->
+                CacheBook.start(this, book, 0, book.lastChapterIndex)
+            }
+        } else {
+            CacheBook.stop(this)
+        }
+    }
+
+    // ---- 顶栏分组/溢出菜单 ----
+
+    fun showGroupManage() = showDialogFragment<GroupManageDialog>()
+
+    fun selectGroupFromMenu(group: BookGroup) {
+        viewModel.groupName = group.groupName
+        upSearchHint()
+        viewModel.groupId = runBlocking { appDb.bookGroupDao.getByName(group.groupName) }?.groupId ?: 0
+        upBookDataByGroupId()
+    }
+
+    fun exportAllUseBookSource() {
+        viewModel.saveAllUseBookSourceToFile { file ->
+            exportDir.launch {
+                mode = HandleFileContract.EXPORT
+                fileData = HandleFileContract.FileData("bookSource.json", file, "application/json")
+            }
+        }
+    }
+
+    val exportUseReplace: Boolean get() = AppConfig.exportUseReplace
+    val enableCustomExportChecked: Boolean get() = AppConfig.enableCustomExport
+    val exportToWebDav: Boolean get() = AppConfig.exportToWebDav
+
+    fun toggleEnableReplace() {
+        AppConfig.exportUseReplace = !AppConfig.exportUseReplace
+    }
+
+    fun toggleCustomExport() {
+        AppConfig.enableCustomExport = !AppConfig.enableCustomExport
+    }
+
+    fun toggleExportWebDav() {
+        AppConfig.exportToWebDav = !AppConfig.exportToWebDav
+    }
+
+    fun showLog() = showDialogFragment<AppLogDialog>()
+
+    fun selectExportFolderMenu() = selectExportFolder()
+
+    // ---- GroupSelect / SourcePicker 回调 ----
+
+    private fun selectGroup(requestCode: Int, groupId: Long) {
+        showDialogFragment(GroupSelectDialog(groupId, requestCode))
     }
 
     override fun upGroup(requestCode: Int, groupId: Long) {
         when (requestCode) {
-            groupRequestCode -> adapter.selection.let { books ->
-                val array = Array(books.size) {
-                    books[it].copy(group = groupId)
-                }
+            groupRequestCode -> selection().let { books ->
+                val array = Array(books.size) { books[it].copy(group = groupId) }
                 viewModel.updateBook(*array)
             }
 
-            adapter.groupRequestCode -> {
-                adapter.actionItem?.let {
-                    viewModel.updateBook(it.copy(group = groupId))
-                }
+            itemGroupRequestCode -> {
+                actionBook?.let { viewModel.updateBook(it.copy(group = groupId)) }
             }
 
-            addToGroupRequestCode -> adapter.selection.let { books ->
+            addToGroupRequestCode -> selection().let { books ->
                 val array = Array(books.size) { index ->
                     val book = books[index]
                     book.copy(group = book.group or groupId)
@@ -540,54 +604,12 @@ class BookshelfManageActivity :
         }
     }
 
-    override fun upSelectCount() {
-        binding.selectActionBar.upCountView(adapter.selection.size, adapter.getItems().size)
-    }
-
-    override fun updateBook(vararg book: Book) {
-        viewModel.updateBook(*book)
-    }
-
-    override fun deleteBook(book: Book) {
-        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            var checkBox: CheckBox? = null
-            if (book.isLocal) {
-                checkBox = CheckBox(this@BookshelfManageActivity).apply {
-                    setText(R.string.delete_book_file)
-                    isChecked = LocalConfig.deleteBookOriginal
-                }
-                val view = LinearLayout(this@BookshelfManageActivity).apply {
-                    setPadding(
-                        space.lg,
-                        0,
-                        space.lg,
-                        0
-                    )
-                    addView(checkBox)
-                }
-                customView { view }
-            }
-            okButton {
-                if (checkBox != null) {
-                    LocalConfig.deleteBookOriginal = checkBox.isChecked
-                }
-                viewModel.deleteBook(listOf(book), LocalConfig.deleteBookOriginal)
-            }
-        }
-    }
-
-    override fun openBook(book: Book) {
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            IntentData.book = book
-        }
-    }
-
     override fun sourceOnClick(source: BookSource) {
-        viewModel.changeSource(adapter.selection, source)
+        viewModel.changeSource(selection(), source)
         viewModel.batchChangeSourceState.value = true
     }
+
+    // ---- 导出 ----
 
     private fun exportAll() {
         val path = ACache.get().getAsString(exportBookPathKey)
@@ -600,121 +622,120 @@ class BookshelfManageActivity :
 
     /**
      * 配置自定义导出对话框
-     *
-     * @param path  导出路径
-     * @author Discut
-     * @since 1.0.0
      */
     private fun configExportSection(path: String) {
+        alert(titleResource = R.string.select_section_export) {
+            // allExport=true 全部导出；false 自定义导出。默认自定义
+            val allExport = mutableStateOf(false)
+            val epubFilename = mutableStateOf(AppConfig.episodeExportFileName ?: "")
+            val epubSize = mutableStateOf("1")
+            val inputScope = mutableStateOf("")
+            val scopeError = mutableStateOf(false)
+            val filenameHelper = mutableStateOf<String?>(null)
 
-        val alertBinding = DialogSelectSectionExportBinding.inflate(layoutInflater)
-            .apply {
-                fun verifyExportFileNameJsStr(js: String): Boolean {
-                    return tryParesExportFileName(js) && etEpubFilename.text.toString()
-                        .isNotEmpty()
-                }
+            fun verifyExportFileNameJsStr(js: String): Boolean =
+                tryParesExportFileName(js) && epubFilename.value.isNotEmpty()
 
-                fun enableLyEtEpubFilenameIcon() {
-                    lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_CUSTOM
-                    lyEtEpubFilename.setEndIconOnClickListener {
-                        adapter.selection.forEach { book ->
-                            lyEtEpubFilename.helperText =
-                                if (verifyExportFileNameJsStr(etEpubFilename.text.toString()))
-                                    "${resources.getString(R.string.result_analyzed)}: ${
-                                        book.getExportFileName(
-                                            "epub",
-                                            1,
-                                            etEpubFilename.text.toString()
-                                        )
-                                    }"
-                                else "Error"
+            customView {
+                Column(Modifier.padding(horizontal = 24.dp)) {
+                    // 全部导出 / 自定义导出 二选一
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = allExport.value, onValueChange = { allExport.value = true })
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        AppCheckbox(checked = allExport.value, onCheckedChange = null)
+                        Text(stringResource(R.string.export_all), color = AppTheme.colors.primaryText, fontSize = 18.sp)
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = !allExport.value, onValueChange = { allExport.value = false })
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        AppCheckbox(checked = !allExport.value, onCheckedChange = null)
+                        Text(stringResource(R.string.custom_export), color = AppTheme.colors.primaryText, fontSize = 18.sp)
+                    }
+                    if (!allExport.value) {
+                        AppOutlinedTextField(
+                            value = epubFilename.value,
+                            onValueChange = { epubFilename.value = it },
+                            label = stringResource(R.string.export_file_name),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    // 执行脚本按钮：复刻 endIcon，逐本书试算导出文件名
+                                    selection().forEach { book ->
+                                        filenameHelper.value =
+                                            if (verifyExportFileNameJsStr(epubFilename.value))
+                                                "${getString(R.string.result_analyzed)}: ${
+                                                    book.getExportFileName("epub", 1, epubFilename.value)
+                                                }"
+                                            else "Error"
+                                    }
+                                }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_play_24dp),
+                                        contentDescription = "Execute script",
+                                        tint = AppTheme.colors.primaryText,
+                                    )
+                                }
+                            },
+                        )
+                        filenameHelper.value?.let {
+                            Text(it, color = AppTheme.colors.secondaryText, fontSize = 12.sp)
                         }
+                        AppOutlinedTextField(
+                            value = epubSize.value,
+                            onValueChange = { epubSize.value = it.filter { c -> c.isDigit() }.take(6) },
+                            label = stringResource(R.string.file_contains_number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        AppOutlinedTextField(
+                            value = inputScope.value,
+                            onValueChange = { inputScope.value = it; scopeError.value = false },
+                            label = if (scopeError.value) getString(R.string.error_scope_input)
+                            else stringResource(R.string.export_chapter_index),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
-                etEpubSize.setText("1")
-                // lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_NONE
-                etEpubFilename.text?.append(AppConfig.episodeExportFileName)
-                // 存储解析文件名的jsStr
-                etEpubFilename.let {
-                    it.setOnFocusChangeListener { _, hasFocus ->
-                        if (hasFocus)
-                            return@setOnFocusChangeListener
-                        it.text?.run {
-                            if (verifyExportFileNameJsStr(toString())) {
-                                AppConfig.episodeExportFileName = toString()
-                            }
-                        }
-                    }
-                }
-                tvAllExport.setOnClickListener {
-                    cbAllExport.callOnClick()
-                }
-                tvSelectExport.setOnClickListener {
-                    cbSelectExport.callOnClick()
-                }
-                cbSelectExport.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        etEpubSize.isEnabled = true
-                        etInputScope.isEnabled = true
-                        etEpubFilename.isEnabled = true
-                        enableLyEtEpubFilenameIcon()
-                        cbAllExport.isChecked = false
-                    }
-                }
-                cbAllExport.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        etEpubSize.isEnabled = false
-                        etInputScope.isEnabled = false
-                        etEpubFilename.isEnabled = false
-                        lyEtEpubFilename.endIconMode = TextInputLayout.END_ICON_NONE
-                        cbSelectExport.isChecked = false
-                    }
-                }
-
-                etInputScope.onFocusChangeListener =
-                    View.OnFocusChangeListener { _, hasFocus ->
-                        if (hasFocus) {
-                            etInputScope.hint = "1-5,8,10-18"
-                        } else {
-                            etInputScope.hint = ""
-                        }
-                    }
-
-                // 默认选择自定义导出
-                cbSelectExport.callOnClick()
             }
-        val alertDialog = alert(titleResource = R.string.select_section_export) {
-            customView { alertBinding.root }
-            positiveButton(R.string.ok)
-            cancelButton()
-        }
-        alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            alertBinding.apply {
-                if (cbAllExport.isChecked) {
+            positiveButtonRetain {
+                if (allExport.value) {
                     startExport(path)
-                    alertDialog.hide()
-                    return@apply
+                    return@positiveButtonRetain true
                 }
-                val epubScope = etInputScope.text.toString()
+                if (epubFilename.value.isNotEmpty() && verifyExportFileNameJsStr(epubFilename.value)) {
+                    AppConfig.episodeExportFileName = epubFilename.value
+                }
+                val epubScope = inputScope.value
                 if (!verificationField(epubScope)) {
-                    etInputScope.error = appCtx.getString(R.string.error_scope_input)//"请输入正确的范围"
-                    return@apply
+                    scopeError.value = true
+                    return@positiveButtonRetain false
                 }
-                etInputScope.error = null
-                val epubSize = etEpubSize.text.toString().toIntOrNull() ?: 1
-                adapter.selection.forEach { book ->
+                val size = epubSize.value.toIntOrNull() ?: 1
+                selection().forEach { book ->
                     startService<ExportBookService> {
                         action = IntentAction.start
                         putExtra("bookUrl", book.bookUrl)
                         putExtra("exportType", "epub")
                         putExtra("exportPath", path)
-                        putExtra("epubSize", epubSize)
+                        putExtra("epubSize", size)
                         putExtra("epubScope", epubScope)
                     }
                 }
-                alertDialog.hide()
+                true
             }
-
+            cancelButton()
         }
     }
 
@@ -735,8 +756,8 @@ class BookshelfManageActivity :
             1 -> "epub"
             else -> "txt"
         }
-        if (adapter.selection.isNotEmpty()) {
-            adapter.selection.forEach { book ->
+        if (selection().isNotEmpty()) {
+            selection().forEach { book ->
                 val exportType = if (book.isImage) "cbz" else defaultType
                 startService<ExportBookService> {
                     action = IntentAction.start
@@ -750,31 +771,107 @@ class BookshelfManageActivity :
         }
     }
 
-    private fun showExportConfig() {
+    fun showExportConfig() {
         alert(R.string.export_config) {
-            val alertBinding = DialogExportConfigBinding.inflate(layoutInflater).apply {
-                etFileName.setText(AppConfig.bookExportFileName)
-                when (AppConfig.exportType) {
-                    1 -> rbTypeEpub.isChecked = true
-                    else -> rbTypeTxt.isChecked = true
+            val fileName = mutableStateOf(AppConfig.bookExportFileName ?: "")
+            val isEpub = mutableStateOf(AppConfig.exportType == 1)
+            val charset = mutableStateOf(AppConfig.exportCharset)
+            val noChapterName = mutableStateOf(AppConfig.exportNoChapterName)
+            customView {
+                Column(Modifier.padding(horizontal = 24.dp)) {
+                    AppOutlinedTextField(
+                        value = fileName.value,
+                        onValueChange = { fileName.value = it },
+                        label = stringResource(R.string.export_file_name),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        stringResource(R.string.export_type),
+                        color = AppTheme.colors.primaryText,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier
+                                .selectable(selected = !isEpub.value, onClick = { isEpub.value = false })
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = !isEpub.value,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(selectedColor = AppTheme.colors.accent),
+                            )
+                            Text("txt", color = AppTheme.colors.primaryText)
+                        }
+                        Row(
+                            Modifier
+                                .selectable(selected = isEpub.value, onClick = { isEpub.value = true })
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = isEpub.value,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(selectedColor = AppTheme.colors.accent),
+                            )
+                            Text("epub", color = AppTheme.colors.primaryText)
+                        }
+                    }
+                    AppAutoCompleteField(
+                        value = charset.value,
+                        onValueChange = { charset.value = it },
+                        label = stringResource(R.string.export_charset),
+                        values = charsets.toList(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = noChapterName.value,
+                                role = Role.Checkbox,
+                                onValueChange = { noChapterName.value = it },
+                            )
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AppCheckbox(checked = noChapterName.value, onCheckedChange = null)
+                        Text(stringResource(R.string.export_no_chapter_name), color = AppTheme.colors.primaryText)
+                    }
                 }
-                etCharset.setFilterValues(charsets)
-                etCharset.setText(AppConfig.exportCharset)
-                cbNoChapterName.isChecked = AppConfig.exportNoChapterName
             }
-            customView { alertBinding.root }
             okButton {
-                AppConfig.bookExportFileName = alertBinding.etFileName.text?.toString()
-                AppConfig.exportType = if (alertBinding.rbTypeEpub.isChecked) 1 else 0
-                AppConfig.exportCharset =
-                    alertBinding.etCharset.text?.toString()?.takeIf { it.isNotBlank() } ?: "UTF-8"
-                AppConfig.exportNoChapterName = alertBinding.cbNoChapterName.isChecked
+                AppConfig.bookExportFileName = fileName.value
+                AppConfig.exportType = if (isEpub.value) 1 else 0
+                AppConfig.exportCharset = charset.value.takeIf { it.isNotBlank() } ?: "UTF-8"
+                AppConfig.exportNoChapterName = noChapterName.value
             }
             cancelButton()
         }
     }
 
-    override val cacheChapters: HashMap<String, HashSet<String>>
-        get() = viewModel.cacheChapters
+    /**
+     * 封面渲染槽: 注入到 shared BookshelfManageScreen 的 coverSlot 参数。
+     * 沿用 View 版 CoverImageView(Glide + 默认封面自绘), 经 AndroidView 承载。
+     */
+    @Composable
+    private fun BookCover(book: Book) {
+        AndroidView(
+            factory = { CoverImageView(it) },
+            update = { iv ->
+                iv.load(
+                    book.getDisplayCover(),
+                    book.name,
+                    book.author,
+                    false,
+                    book.origin,
+                    inBookshelf = true,
+                )
+            },
+        )
+    }
 
 }

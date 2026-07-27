@@ -1,23 +1,18 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
-import android.os.Bundle
-import android.view.View
 import android.view.WindowManager
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.constant.EventBus
-import io.legado.app.databinding.DialogReadPaddingBinding
+import androidx.compose.runtime.Composable
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.utils.postEvent
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.ui.book.read.ReadBookEvents
 
-class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
-
-    private val binding by viewBinding(DialogReadPaddingBinding::bind)
+/** 页眉/正文/页脚边距与分隔线配置对话框，即时写 ReadBookConfig 并刷新渲染 */
+class PaddingConfigDialog : BaseComposeDialogFragment() {
 
     override fun onStart() {
         super.onStart()
+        // 复刻原实现：不压暗底层，边调边看
         dialog?.window?.let {
             it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             val attr = it.attributes
@@ -26,112 +21,72 @@ class PaddingConfigDialog : BaseDialogFragment(R.layout.dialog_read_padding) {
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initData()
-        initView()
-    }
-
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         ReadBookConfig.save()
     }
 
-    private fun initData() = binding.run {
-        //正文
-        dsbPaddingTop.progress = ReadBookConfig.paddingTop
-        dsbPaddingBottom.progress = ReadBookConfig.paddingBottom
-        dsbPaddingLeft.progress = ReadBookConfig.paddingLeft
-        dsbPaddingRight.progress = ReadBookConfig.paddingRight
-        //页眉
-        dsbHeaderPaddingTop.progress = ReadBookConfig.headerPaddingTop
-        dsbHeaderPaddingBottom.progress = ReadBookConfig.headerPaddingBottom
-        dsbHeaderPaddingLeft.progress = ReadBookConfig.headerPaddingLeft
-        dsbHeaderPaddingRight.progress = ReadBookConfig.headerPaddingRight
-        //页脚
-        dsbFooterPaddingTop.progress = ReadBookConfig.footerPaddingTop
-        dsbFooterPaddingBottom.progress = ReadBookConfig.footerPaddingBottom
-        dsbFooterPaddingLeft.progress = ReadBookConfig.footerPaddingLeft
-        dsbFooterPaddingRight.progress = ReadBookConfig.footerPaddingRight
-        cbShowTopLine.isChecked = ReadBookConfig.showHeaderLine
-        cbShowBottomLine.isChecked = ReadBookConfig.showFooterLine
-    }
+    @Composable
+    override fun Content() {
+        PaddingConfigScreen(
+            controller = object : PaddingConfigController {
+                override var showHeaderLine: Boolean
+                    get() = ReadBookConfig.showHeaderLine
+                    set(value) { ReadBookConfig.showHeaderLine = value }
 
-    private fun initView() = binding.run {
-        //正文
-        bindSeekBarConfigs(
-            listOf(
-                SeekBarConfigBinding(
-                    dsbPaddingTop,
-                    { ReadBookConfig.paddingTop = it },
-                    listOf(10, 5)
-                ),
-                SeekBarConfigBinding(
-                    dsbPaddingBottom,
-                    { ReadBookConfig.paddingBottom = it },
-                    listOf(10, 5)
-                ),
-                SeekBarConfigBinding(
-                    dsbPaddingLeft,
-                    { ReadBookConfig.paddingLeft = it },
-                    listOf(10, 5)
-                ),
-                SeekBarConfigBinding(
-                    dsbPaddingRight,
-                    { ReadBookConfig.paddingRight = it },
-                    listOf(10, 5)
-                ),
-                //页眉
-                SeekBarConfigBinding(
-                    dsbHeaderPaddingTop,
-                    { ReadBookConfig.headerPaddingTop = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbHeaderPaddingBottom,
-                    { ReadBookConfig.headerPaddingBottom = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbHeaderPaddingLeft,
-                    { ReadBookConfig.headerPaddingLeft = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbHeaderPaddingRight,
-                    { ReadBookConfig.headerPaddingRight = it },
-                    listOf(2)
-                ),
-                //页脚
-                SeekBarConfigBinding(
-                    dsbFooterPaddingTop,
-                    { ReadBookConfig.footerPaddingTop = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbFooterPaddingBottom,
-                    { ReadBookConfig.footerPaddingBottom = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbFooterPaddingLeft,
-                    { ReadBookConfig.footerPaddingLeft = it },
-                    listOf(2)
-                ),
-                SeekBarConfigBinding(
-                    dsbFooterPaddingRight,
-                    { ReadBookConfig.footerPaddingRight = it },
-                    listOf(2)
-                )
-            )
+                override var showFooterLine: Boolean
+                    get() = ReadBookConfig.showFooterLine
+                    set(value) { ReadBookConfig.showFooterLine = value }
+
+                override var headerPaddingTop: Int
+                    get() = ReadBookConfig.headerPaddingTop
+                    set(value) { ReadBookConfig.headerPaddingTop = value }
+
+                override var headerPaddingBottom: Int
+                    get() = ReadBookConfig.headerPaddingBottom
+                    set(value) { ReadBookConfig.headerPaddingBottom = value }
+
+                override var headerPaddingLeft: Int
+                    get() = ReadBookConfig.headerPaddingLeft
+                    set(value) { ReadBookConfig.headerPaddingLeft = value }
+
+                override var headerPaddingRight: Int
+                    get() = ReadBookConfig.headerPaddingRight
+                    set(value) { ReadBookConfig.headerPaddingRight = value }
+
+                override var paddingTop: Int
+                    get() = ReadBookConfig.paddingTop
+                    set(value) { ReadBookConfig.paddingTop = value }
+
+                override var paddingBottom: Int
+                    get() = ReadBookConfig.paddingBottom
+                    set(value) { ReadBookConfig.paddingBottom = value }
+
+                override var paddingLeft: Int
+                    get() = ReadBookConfig.paddingLeft
+                    set(value) { ReadBookConfig.paddingLeft = value }
+
+                override var paddingRight: Int
+                    get() = ReadBookConfig.paddingRight
+                    set(value) { ReadBookConfig.paddingRight = value }
+
+                override var footerPaddingTop: Int
+                    get() = ReadBookConfig.footerPaddingTop
+                    set(value) { ReadBookConfig.footerPaddingTop = value }
+
+                override var footerPaddingBottom: Int
+                    get() = ReadBookConfig.footerPaddingBottom
+                    set(value) { ReadBookConfig.footerPaddingBottom = value }
+
+                override var footerPaddingLeft: Int
+                    get() = ReadBookConfig.footerPaddingLeft
+                    set(value) { ReadBookConfig.footerPaddingLeft = value }
+
+                override var footerPaddingRight: Int
+                    get() = ReadBookConfig.footerPaddingRight
+                    set(value) { ReadBookConfig.footerPaddingRight = value }
+            },
+            onPostConfig = { changes -> ReadBookEvents.postConfig(changes) },
         )
-        cbShowTopLine.setOnCheckedChangeListener { _, isChecked ->
-            ReadBookConfig.showHeaderLine = isChecked
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
-        cbShowBottomLine.setOnCheckedChangeListener { _, isChecked ->
-            ReadBookConfig.showFooterLine = isChecked
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-        }
     }
-
 }

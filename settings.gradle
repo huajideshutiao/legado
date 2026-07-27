@@ -25,7 +25,8 @@ dependencyResolutionManagement {
 rootProject.name = 'legado'
 
 include ':app'
-include ':modules:rhino'
 include ':modules:quickjs'
-include ':modules:rjpath'
-include ':modules:jsoup-compat'
+include ':modules:quickjs-processor'
+include ':shared'
+// 桌面端入口: 验证 KMP shared jvm target 可被独立运行调用 (plan 附录J: desktop/jvm 作 common 代码廉价验证靶)
+include ':desktop'

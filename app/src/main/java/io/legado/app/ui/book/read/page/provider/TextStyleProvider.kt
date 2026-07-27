@@ -1,19 +1,18 @@
 package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.Paint
-import android.graphics.Paint.FontMetrics
 import android.graphics.Typeface
 import android.os.Build
 import android.text.StaticLayout
 import android.text.TextPaint
-import androidx.core.net.toUri
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.openReadPfd
 import io.legado.app.utils.spToPx
 import io.legado.app.utils.textHeight
-import splitties.init.appCtx
 
 /**
  * 文字样式管理，负责 Paint/字体/间距等样式属性的创建与更新
@@ -48,11 +47,12 @@ object TextStyleProvider {
     var contentPaintTextHeight = 0f
         private set
 
+    // 下沉 shared commonMain 的测量面只取 descent 1 字段；原 FontMetrics 全字段透传链路废弃。
     @JvmStatic
-    var titlePaintFontMetrics = FontMetrics()
+    var titlePaintDescent = 0f
 
     @JvmStatic
-    var contentPaintFontMetrics = FontMetrics()
+    var contentPaintDescent = 0f
 
     @JvmStatic
     var typeface: Typeface? = Typeface.DEFAULT
@@ -105,16 +105,15 @@ object TextStyleProvider {
         }
         titlePaintTextHeight = titlePaint.textHeight
         contentPaintTextHeight = contentPaint.textHeight
-        titlePaintFontMetrics = titlePaint.fontMetrics
-        contentPaintFontMetrics = contentPaint.fontMetrics
+        titlePaintDescent = titlePaint.fontMetrics.descent
+        contentPaintDescent = contentPaint.fontMetrics.descent
     }
 
     private fun getTypeface(fontPath: String): Typeface? {
         return kotlin.runCatching {
             when {
                 fontPath.isContentScheme() -> {
-                    appCtx.contentResolver
-                        .openFileDescriptor(fontPath.toUri(), "r")!!
+                    FileDoc.fromFile(fontPath).openReadPfd().getOrThrow()
                         .use {
                             Typeface.Builder(it.fileDescriptor).build()
                         }

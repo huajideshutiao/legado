@@ -32,6 +32,10 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * 后台webView
+ *
+ * P1-1a: 实现 [BackstageWebViewHandle] 接口, 让 AnalyzeUrl 经
+ * [BackstageWebViewProviders] 工厂注入, 不直接 new 本类。
+ * 实现层仍留 app(android.webkit.WebView 绑定)。
  */
 class BackstageWebView(
     private val url: String? = null,
@@ -43,13 +47,13 @@ class BackstageWebView(
     private val overrideUrlRegex: String? = null,
     private val javaScript: String? = null,
     private val delayTime: Long = 1000L,
-) {
+) : BackstageWebViewHandle {
 
     private val mHandler = Handler(Looper.getMainLooper())
     private var callback: Callback? = null
     private var mWebView: WebView? = null
 
-    suspend fun getStrResponse(): StrResponse = withTimeout(timeLimit) {
+    override suspend fun getStrResponse(): StrResponse = withTimeout(timeLimit) {
         suspendCancellableCoroutine { block ->
             block.invokeOnCancellation {
                 runOnUI {

@@ -5,62 +5,93 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
-import android.view.Menu
-import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.net.toUri
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieManager
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
+import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.browser.BaseWebViewClient
 import io.legado.app.ui.browser.CommonWebChromeClient
+import io.legado.app.ui.browser.VisibleWebView
 import io.legado.app.ui.browser.WebViewUtil
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.rss.read.RssJsExtensions
+import io.legado.app.ui.widget.anima.RefreshProgressBar
 import io.legado.app.utils.ACache
 import io.legado.app.utils.EscapeUtils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
-import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.share
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.launch
 import com.fleeksoft.ksoup.Ksoup
-import splitties.views.bottomPadding
 
 /**
- * rss阅读界面
+ * rss阅读界面：外围纯 Compose，WebView 本体走 AndroidView 白名单。
  */
-class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>() {
+class ReadRssActivity : BaseComposeActivity() {
 
-    override val binding by viewBinding(ActivityWebViewBinding::inflate)
-    override val viewModel by viewModels<ReadRssViewModel>()
+    val viewModel by viewModels<ReadRssViewModel>()
 
-    private var starMenuItem: MenuItem? = null
-    private var ttsMenuItem: MenuItem? = null
+    // 原 TitleBar 标题 + 菜单项状态
+    var pageTitle by mutableStateOf<String?>(null)
+        private set
+    var starVisible by mutableStateOf(false)
+        private set
+    var inShelf by mutableStateOf(false)
+        private set
+    var ttsPlaying by mutableStateOf(false)
+        private set
+    var hasLogin by mutableStateOf(false)
+        private set
+    private var videoFullScreen by mutableStateOf(false)
+
     private lateinit var chromeClient: CommonWebChromeClient
     private val selectImageDir = registerHandleFile {
         it.uri?.let { uri ->
@@ -70,26 +101,158 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
     }
     private val rssJsExtensions by lazy { RssJsExtensions(this) }
 
+    // 白名单互操作 View 群，代码构建无 XML；容器类型按 CommonWebChromeClient 契约
+    val webView by lazy { VisibleWebView(this) }
+    private val progressBar by lazy {
+        RefreshProgressBar(this).apply { fontColor = accentColor }
+    }
+    private val customViewContainer by lazy {
+        FrameLayout(this).apply {
+            setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
+                override fun onChildViewAdded(parent: View, child: View) {
+                    videoFullScreen = true
+                }
+
+                override fun onChildViewRemoved(parent: View, child: View) {
+                    videoFullScreen = size > 0
+                }
+            })
+        }
+    }
+    private val webContainer by lazy {
+        ConstraintLayout(this).apply {
+            addView(
+                webView, ConstraintLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                progressBar, ConstraintLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 1.dpToPx()
+                ).apply { topToTop = ConstraintLayout.LayoutParams.PARENT_ID }
+            )
+        }
+    }
+
     fun getSource(): BookSource? {
         return viewModel.curBookSource
+    }
+
+    @Composable
+    override fun Content() {
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        WindowInsets.systemBars.union(WindowInsets.ime)
+                            .only(WindowInsetsSides.Bottom)
+                    )
+            ) {
+                if (!videoFullScreen) {
+                    AppTitleBar(
+                        title = pageTitle ?: "",
+                        // 原 TitleBar 返回箭头直接结束页面，webView 回退只走系统返回
+                        onBack = { supportFinishAfterTransition() },
+                        actions = { RssActions() },
+                    )
+                }
+                AndroidView(
+                    factory = { webContainer },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+            }
+            // 全屏视频容器(原 custom_web_view 覆盖层)，chromeClient 塞入 View 时挂载
+            if (videoFullScreen) {
+                AndroidView(
+                    factory = { customViewContainer },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+    }
+
+    // 对齐 rss_read.xml：刷新/收藏/分享/朗读常驻，登录/浏览器打开走溢出
+    @Composable
+    private fun RssActions() {
+        val colors = AppTheme.colors
+        IconButton(onClick = { viewModel.refresh { webView.reload() } }) {
+            Icon(
+                painter = painterResource(R.drawable.ic_refresh_black_24dp),
+                contentDescription = stringResource(R.string.refresh),
+                tint = colors.primaryText,
+            )
+        }
+        if (starVisible) {
+            IconButton(onClick = { toggleStar() }) {
+                Icon(
+                    painter = painterResource(
+                        if (inShelf) R.drawable.ic_star else R.drawable.ic_star_border
+                    ),
+                    contentDescription = stringResource(
+                        if (inShelf) R.string.in_favorites else R.string.out_favorites
+                    ),
+                    tint = colors.primaryText,
+                )
+            }
+        }
+        IconButton(onClick = { shareUrl() }) {
+            Icon(
+                painter = painterResource(R.drawable.ic_share),
+                contentDescription = stringResource(R.string.share),
+                tint = colors.primaryText,
+            )
+        }
+        IconButton(onClick = { readAloud() }) {
+            Icon(
+                painter = painterResource(
+                    if (ttsPlaying) R.drawable.ic_stop_black_24dp else R.drawable.ic_volume_up
+                ),
+                contentDescription = stringResource(
+                    if (ttsPlaying) R.string.aloud_stop else R.string.read_aloud
+                ),
+                tint = colors.primaryText,
+            )
+        }
+        OverflowMenu { dismiss ->
+            if (hasLogin) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.login), color = colors.primaryText) },
+                    onClick = {
+                        dismiss()
+                        viewModel.curBookSource?.showLoginDialog(this@ReadRssActivity)
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = {
+                    Text(stringResource(R.string.open_in_browser), color = colors.primaryText)
+                },
+                onClick = {
+                    dismiss()
+                    webView.url?.let { openUrl(it) } ?: toastOnUi("url null")
+                },
+            )
+        }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData()
         viewModel.upStarMenuData.observe(this) { upStarMenu() }
-        viewModel.upTtsMenuData.observe(this) { upTtsMenu(it) }
-        binding.titleBar.title = viewModel.curBook?.name
-        initView()
+        viewModel.upTtsMenuData.observe(this) { ttsPlaying = it }
+        pageTitle = viewModel.curBook?.name
         initWebView()
         initLiveData()
         onBackPressedDispatcher.addCallback(this) {
-            if (binding.customWebView.size > 0) {
+            if (customViewContainer.size > 0) {
                 chromeClient.customViewCallback?.onCustomViewHidden()
                 return@addCallback
-            } else if (binding.webView.canGoBack()
-                && binding.webView.copyBackForwardList().size > 1
+            } else if (webView.canGoBack()
+                && webView.copyBackForwardList().size > 1
             ) {
-                binding.webView.goBack()
+                webView.goBack()
                 return@addCallback
             }
             finish()
@@ -113,75 +276,40 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
         }
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.rss_read, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        starMenuItem = menu.findItem(R.id.menu_rss_star)
-        ttsMenuItem = menu.findItem(R.id.menu_aloud)
-        upStarMenu()
-        return super.onPrepareOptionsMenu(menu)
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible =
-            viewModel.curBookSource?.hasLogin() == true
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_rss_refresh -> viewModel.refresh {
-                binding.webView.reload()
-            }
-
-            R.id.menu_rss_star -> {
-                if (viewModel.inBookshelf) {
-                    if (AppConfig.bookInfoDeleteAlert) {
-                        alert(
-                            titleResource = R.string.draw, messageResource = R.string.sure_del
-                        ) {
-                            yesButton {
-                                viewModel.delBook {
-                                    setResult(RESULT_DELETED)
-                                    finish()
-                                }
-                            }
-                            noButton()
-                        }
-                    } else {
+    private fun toggleStar() {
+        if (viewModel.inBookshelf) {
+            if (AppConfig.bookInfoDeleteAlert) {
+                alert(
+                    titleResource = R.string.draw, messageResource = R.string.sure_del
+                ) {
+                    yesButton {
                         viewModel.delBook {
                             setResult(RESULT_DELETED)
                             finish()
                         }
                     }
-                } else {
-                    viewModel.addToBookshelf {
-                        setResult(RESULT_OK)
-                        item.setIcon(R.drawable.ic_star)
-                        item.setTitle(R.string.in_favorites)
-                    }
+                    noButton()
+                }
+            } else {
+                viewModel.delBook {
+                    setResult(RESULT_DELETED)
+                    finish()
                 }
             }
-
-            R.id.menu_share_it -> {
-                binding.webView.url?.let {
-                    share(it)
-                } ?: viewModel.curBook?.let {
-                    share(it.tocUrl)
-                } ?: toastOnUi(R.string.null_url)
+        } else {
+            viewModel.addToBookshelf {
+                setResult(RESULT_OK)
+                inShelf = true
             }
-
-            R.id.menu_aloud -> readAloud()
-            R.id.menu_login -> viewModel.curBookSource?.showLoginDialog(this)
-
-            R.id.menu_browser_open -> binding.webView.url?.let {
-                openUrl(it)
-            } ?: toastOnUi("url null")
         }
-        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun shareUrl() {
+        webView.url?.let {
+            share(it)
+        } ?: viewModel.curBook?.let {
+            share(it.tocUrl)
+        } ?: toastOnUi(R.string.null_url)
     }
 
     @JavascriptInterface
@@ -189,32 +317,21 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
         return AppConfig.isNightTheme
     }
 
-    private fun initView() {
-        binding.root.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            val typeMask = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
-            val insets = windowInsets.getInsets(typeMask)
-            view.bottomPadding = insets.bottom
-            windowInsets
-        }
-    }
-
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun initWebView() {
         chromeClient = CommonWebChromeClient(
-            this, binding.progressBar, binding.llView, binding.customWebView
+            this, progressBar, webContainer, customViewContainer
         )
-        binding.progressBar.fontColor = accentColor
-        binding.webView.webChromeClient = chromeClient
-        binding.webView.webViewClient = CustomWebViewClient()
-        WebViewUtil.applyCommonSettings(binding.webView.settings)
-        binding.webView.addJavascriptInterface(this, "thisActivity")
+        webView.webChromeClient = chromeClient
+        webView.webViewClient = CustomWebViewClient()
+        WebViewUtil.applyCommonSettings(webView.settings)
+        webView.addJavascriptInterface(this, "thisActivity")
         WebViewUtil.setupImageLongClick(
-            binding.webView, this,
+            webView, this,
             onSave = { saveImage(it) },
             onSelectFolder = { selectSaveFolder(null) }
         )
-        WebViewUtil.setupDownloadListener(binding.webView, this)
-
+        WebViewUtil.setupDownloadListener(webView, this)
     }
 
     private fun saveImage(webPic: String) {
@@ -240,49 +357,29 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
 
     private fun initLiveData() {
         viewModel.contentLiveData.observe(this) { (url, html) ->
-            binding.webView.settings.userAgentString =
+            webView.settings.userAgentString =
                 viewModel.UA ?: AppConfig.userAgent
-            binding.webView
-                .loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
+            webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
         }
         viewModel.urlLiveData.observe(this) {
             CookieManager.applyToWebView(it.url)
-            binding.webView.settings.userAgentString = it.getUserAgent()
-            binding.webView.loadUrl(it.url, it.headerMap)
+            webView.settings.userAgentString = it.getUserAgent()
+            webView.loadUrl(it.url, it.headerMap)
         }
     }
 
     private fun upStarMenu() {
-        starMenuItem?.isVisible = viewModel.curBook != null
-        if (viewModel.inBookshelf) {
-            starMenuItem?.setIcon(R.drawable.ic_star)
-            starMenuItem?.setTitle(R.string.in_favorites)
-        } else {
-            starMenuItem?.setIcon(R.drawable.ic_star_border)
-            starMenuItem?.setTitle(R.string.out_favorites)
-        }
-        starMenuItem?.icon?.setTintMutate(primaryTextColor)
-    }
-
-    private fun upTtsMenu(isPlaying: Boolean) {
-        lifecycleScope.launch {
-            if (isPlaying) {
-                ttsMenuItem?.setIcon(R.drawable.ic_stop_black_24dp)
-                ttsMenuItem?.setTitle(R.string.aloud_stop)
-            } else {
-                ttsMenuItem?.setIcon(R.drawable.ic_volume_up)
-                ttsMenuItem?.setTitle(R.string.read_aloud)
-            }
-            ttsMenuItem?.icon?.setTintMutate(primaryTextColor)
-        }
+        starVisible = viewModel.curBook != null
+        inShelf = viewModel.inBookshelf
+        hasLogin = viewModel.curBookSource?.hasLogin() == true
     }
 
     private fun readAloud() {
         if (viewModel.tts?.isSpeaking == true) {
             viewModel.tts?.stop()
-            upTtsMenu(false)
+            ttsPlaying = false
         } else {
-            binding.webView.evaluateJavascript("document.documentElement.outerHTML") {
+            webView.evaluateJavascript("document.documentElement.outerHTML") {
                 val html = EscapeUtils.unescapeJson(it)
                     .replace("^\"|\"$".toRegex(), "")
                 viewModel.readAloud(
@@ -296,7 +393,7 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
 
     override fun onDestroy() {
         super.onDestroy()
-        binding.webView.destroy()
+        webView.destroy()
     }
 
     inner class CustomWebViewClient : BaseWebViewClient() {
@@ -336,9 +433,9 @@ class ReadRssActivity : VMBaseActivity<ActivityWebViewBinding, ReadRssViewModel>
                     && url != "about:blank"
                     && !url.contains(title)
                 ) {
-                    binding.titleBar.title = title
+                    pageTitle = title
                 } else {
-                    binding.titleBar.title = intent.getStringExtra("title")
+                    pageTitle = intent.getStringExtra("title")
                 }
             }
             viewModel.curBookSource?.contentRule?.webJs?.let {

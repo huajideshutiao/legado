@@ -1,33 +1,27 @@
 package io.legado.app.ui.file
 
-import android.app.Dialog
 import android.content.DialogInterface
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.view.WindowManager
 import android.webkit.MimeTypeMap
-import android.widget.AdapterView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
+import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
-import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
 import io.legado.app.R
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.ui.compose.component.AppAlertDialogContent
+import io.legado.app.ui.compose.component.AppSelectorList
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.SelectImageContract
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.isContentScheme
@@ -36,7 +30,10 @@ import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.io.File
 
-class HandleFileDialog : DialogFragment() {
+class HandleFileDialog : BaseComposeDialogFragment() {
+
+    // 正文用 AppAlertDialogContent 自带 Surface 圆角，宿主不再叠 filletBackground
+    override val applyFilletBackground: Boolean = false
 
     companion object {
         fun show(
@@ -104,7 +101,8 @@ class HandleFileDialog : DialogFragment() {
         } ?: onResult(null)
     }
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         mode = arguments?.getInt("mode") ?: 0
         requestCode = arguments?.getInt("requestCode") ?: 0
         allowExtensions = arguments?.getStringArray("allowExtensions")
@@ -120,41 +118,23 @@ class HandleFileDialog : DialogFragment() {
 
         selectList = buildSelectList()
         otherActions?.let { selectList.addAll(it) }
+    }
 
+    @Composable
+    override fun Content() {
         val title = arguments?.getString("title") ?: when (mode) {
             HandleFileContract.EXPORT -> getString(R.string.export)
             HandleFileContract.DIR -> getString(R.string.select_folder)
             HandleFileContract.IMAGE -> getString(R.string.select_image)
             else -> getString(R.string.select_file)
         }
-
-        val items = selectList.map { it.title }.toTypedArray<CharSequence>()
-
-        return AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setItems(items, null)
-            .create()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        val alertDialog = dialog as? AlertDialog ?: return
-        alertDialog.applyTint()
-        alertDialog.listView?.onItemClickListener =
-            AdapterView.OnItemClickListener { _, _, position, _ ->
-                handleAction(selectList[position])
-            }
-        dialog?.window?.let {
-            if (AppConfig.isEInkMode) {
-                it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                val attr = it.attributes
-                attr.dimAmount = 0f
-                attr.windowAnimations = 0
-                it.attributes = attr
-            } else {
-                val attr = it.attributes
-                attr.windowAnimations = R.style.Animation_Dialog
-                it.attributes = attr
+        // 对齐旧 AlertDialog setItems(items, null)：点击不自动关闭，等结果回传后 dismiss
+        AppAlertDialogContent(
+            onDismissRequest = { dismiss() },
+            title = title,
+        ) {
+            AppSelectorList(items = selectList.map { it.title }) { index ->
+                handleAction(selectList[index])
             }
         }
     }
@@ -162,15 +142,6 @@ class HandleFileDialog : DialogFragment() {
     override fun onCancel(dialog: DialogInterface) {
         if (!isLaunchingResult) {
             onResult(null)
-        }
-    }
-
-    override fun show(manager: FragmentManager, tag: String?) {
-        kotlin.runCatching {
-            manager.beginTransaction().remove(this).commit()
-            super.show(manager, tag)
-        }.onFailure {
-            AppLog.put("显示对话框失败 tag:$tag", it)
         }
     }
 
@@ -278,13 +249,10 @@ class HandleFileDialog : DialogFragment() {
     ).apply { addAll(getFileActions()) }
 
     private fun showInputDirectoryDialog() {
-        val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.enter_directory_path)
-        }
         alert(getString(R.string.manual_input)) {
-            customView { alertBinding.root }
+            val getText = editTextView(hint = getString(R.string.enter_directory_path))
             okButton {
-                val inputPath = alertBinding.editView.text.toString()
+                val inputPath = getText()
                 if (inputPath.isBlank()) {
                     toastOnUi(getString(R.string.empty_directory_input))
                     return@okButton

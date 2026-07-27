@@ -16,12 +16,14 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.delete
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.getBookInputStream
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -31,16 +33,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
-
-data class SearchPosition(
-    val pageIndex: Int,
-    val lineIndex: Int,
-    val charIndex: Int,
-    val addLine: Int,
-    val charIndex2: Int
-)
 
 /**
  * 阅读界面数据处理
@@ -109,14 +104,14 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
     }
 
     override fun onUpSource(book: Book) {
-        ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
+        ReadBook.bookSource = runBlocking { appDb.bookSourceDao.getBookSource(book.origin) }
     }
 
     /**
      * 初始化
      */
     fun initData(intent: Intent, success: (() -> Unit)? = null) {
-        val book = IntentData.book ?: appDb.bookDao.lastReadBook ?: ReadBook.book ?: return
+        val book = IntentData.book ?: runBlocking { appDb.bookDao.lastReadBook() } ?: ReadBook.book ?: return
         ReadBook.upReadBookConfig(if (book is SearchBook) book.toBook() else book as Book)
         Looper.myQueue().addIdleHandler {
             execute {
@@ -158,7 +153,9 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
             if (AppConfig.syncBookProgressPlus) {
                 syncProgress(
                     book,
-                    newProgressAction = { progress -> ReadBook.callBack?.sureNewProgress(progress) })
+                    newProgressAction = { progress ->
+                        ReadBookEvents.postConfirmNewProgress(progress)
+                    })
             } else {
                 syncBookProgress(book)
             }
@@ -304,65 +301,20 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
 
     /**
      * 内容搜索跳转
+     *
+     * 算法已下沉至 commonMain 顶层函数 [io.legado.app.ui.book.read.searchResultPositions]
+     * (ReadBookViewModelShared.kt), 此处仅做参数适配:
+     * textChapter → pages + content, searchContentQuery → query。逻辑未变。
      */
     fun searchResultPositions(
         textChapter: TextChapter,
         searchResult: SearchResult
-    ): SearchPosition {
-        // calculate search result's pageIndex
-        val pages = textChapter.pages
-        val content = textChapter.getContent()
-        val queryLength = searchContentQuery.length
-
-        var count = 0
-        var index = content.indexOf(searchContentQuery)
-        while (count != searchResult.resultCountWithinChapter) {
-            index = content.indexOf(searchContentQuery, index + queryLength)
-            count += 1
-        }
-        val contentPosition = index
-        var pageIndex = 0
-        var length = pages[pageIndex].text.length
-        while (length < contentPosition && pageIndex + 1 < pages.size) {
-            pageIndex += 1
-            length += pages[pageIndex].text.length
-        }
-
-        // calculate search result's lineIndex
-        val currentPage = pages[pageIndex]
-        val curTextLines = currentPage.lines
-        var lineIndex = 0
-        var curLine = curTextLines[lineIndex]
-        length = length - currentPage.text.length + curLine.text.length
-        if (curLine.isParagraphEnd) length++
-        while (length <= contentPosition && lineIndex + 1 < curTextLines.size) {
-            lineIndex += 1
-            curLine = curTextLines[lineIndex]
-            length += curLine.text.length
-            if (curLine.isParagraphEnd) length++
-        }
-
-        // charIndex
-        val currentLine = currentPage.lines[lineIndex]
-        var curLineLength = currentLine.text.length
-        if (currentLine.isParagraphEnd) curLineLength++
-        length -= curLineLength
-
-        val charIndex = contentPosition - length
-        var addLine = 0
-        var charIndex2 = 0
-        // change line
-        if ((charIndex + queryLength) > curLineLength) {
-            addLine = 1
-            charIndex2 = charIndex + queryLength - curLineLength - 1
-        }
-        // changePage
-        if ((lineIndex + addLine + 1) > currentPage.lines.size) {
-            addLine = -1
-            charIndex2 = charIndex + queryLength - curLineLength - 1
-        }
-        return SearchPosition(pageIndex, lineIndex, charIndex, addLine, charIndex2)
-    }
+    ): SearchPosition = io.legado.app.ui.book.read.searchResultPositions(
+        textChapter.pages,
+        textChapter.getContent(),
+        searchContentQuery,
+        searchResult
+    )
 
     /**
      * 翻转删除重复标题

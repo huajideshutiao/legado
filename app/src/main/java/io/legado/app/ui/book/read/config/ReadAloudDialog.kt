@@ -1,195 +1,235 @@
 package io.legado.app.ui.book.read.config
 
-import android.annotation.SuppressLint
-import android.os.Bundle
-import android.view.View
-import android.widget.SeekBar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseBottomDialogFragment
-import io.legado.app.constant.EventBus
-import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.observeEvent
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 
+/** 朗读控制：章节/段落切换、定时、语速、目录/菜单/后台/设置 */
+class ReadAloudDialog : BaseReadBottomComposeDialog() {
 
-class ReadAloudDialog : BaseBottomDialogFragment(R.layout.dialog_read_aloud) {
     override val dismissWhenOtherBottomDialogShowing = true
     private val callBack: CallBack? get() = activity as? CallBack
-    private val binding by viewBinding(DialogReadAloudBinding::bind)
 
-    override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) {
-        val theme = createReadMenuTheme(requireContext())
-        binding.run {
-            rootView.applyMenuTheme(theme)
-            tvPre.applyMenuThemeTextColor(theme)
-            tvNext.applyMenuThemeTextColor(theme)
-            ivPlayPrev.applyMenuThemeColorFilter(theme)
-            ivPlayPause.applyMenuThemeColorFilter(theme)
-            ivPlayNext.applyMenuThemeColorFilter(theme)
-            ivStop.applyMenuThemeColorFilter(theme)
-            ivTimer.applyMenuThemeColorFilter(theme)
-            tvTimer.applyMenuThemeTextColor(theme)
-            ivTtsSpeechReduce.applyMenuThemeColorFilter(theme)
-            tvTtsSpeed.applyMenuThemeTextColor(theme)
-            tvTtsSpeedValue.applyMenuThemeTextColor(theme)
-            ivTtsSpeechAdd.applyMenuThemeColorFilter(theme)
-            ivCatalog.applyMenuThemeColorFilter(theme)
-            tvCatalog.applyMenuThemeTextColor(theme)
-            ivMainMenu.applyMenuThemeColorFilter(theme)
-            tvMainMenu.applyMenuThemeTextColor(theme)
-            ivToBackstage.applyMenuThemeColorFilter(theme)
-            tvToBackstage.applyMenuThemeTextColor(theme)
-            ivSetting.applyMenuThemeColorFilter(theme)
-            tvSetting.applyMenuThemeTextColor(theme)
-            cbTtsFollowSys.applyMenuThemeTextColor(theme)
+    @Composable
+    override fun Content() {
+        val context = LocalContext.current
+        val colors = rememberReadMenuColors()
+        var paused by remember { mutableStateOf(BaseReadAloudService.pause) }
+        var timer by remember {
+            mutableIntStateOf(
+                if (BaseReadAloudService.timeMinute > 0) BaseReadAloudService.timeMinute
+                else AppConfig.ttsTimer
+            )
         }
-        initData()
-        initEvent()
-    }
+        var followSys by remember { mutableStateOf(AppConfig.ttsFlowSys) }
+        var speechRate by remember { mutableIntStateOf(AppConfig.ttsSpeechRate) }
 
-    private fun initData() = binding.run {
-        upPlayState()
-        upTimerText(BaseReadAloudService.timeMinute)
-        cbTtsFollowSys.isChecked = requireContext().getPrefBoolean("ttsFollowSys", true)
-        upTtsSpeechRateEnabled(!cbTtsFollowSys.isChecked)
-        upSeekTimer()
-    }
+        LaunchedEffect(Unit) {
+            ReadBookEvents.aloudState.collect { paused = BaseReadAloudService.pause }
+        }
+        LaunchedEffect(Unit) {
+            ReadBookEvents.readAloudDs.collect { timer = it }
+        }
 
-    private fun initEvent() = binding.run {
-        llMainMenu.setOnClickListener {
-            callBack?.showMenuBar()
-            dismissAllowingStateLoss()
-        }
-        llSetting.setOnClickListener {
-            ReadAloudConfigDialog().show(childFragmentManager, "readAloudConfigDialog")
-        }
-        tvPre.setOnClickListener { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
-        tvNext.setOnClickListener { ReadBook.moveToNextChapter(true) }
-        ivStop.setOnClickListener {
-            ReadAloud.stop(requireContext())
-            dismissAllowingStateLoss()
-        }
-        ivPlayPause.setOnClickListener { callBack?.onClickReadAloud() }
-        ivPlayPrev.setOnClickListener { ReadAloud.prevParagraph(requireContext()) }
-        ivPlayNext.setOnClickListener { ReadAloud.nextParagraph(requireContext()) }
-        llCatalog.setOnClickListener { callBack?.openChapterList() }
-        llToBackstage.setOnClickListener { callBack?.finish() }
-        cbTtsFollowSys.setOnCheckedChangeListener { _, isChecked ->
-            AppConfig.ttsFlowSys = isChecked
-            upTtsSpeechRateEnabled(!isChecked)
-            upTtsSpeechRate()
-        }
-        ivTtsSpeechReduce.setOnClickListener {
-            seekTtsSpeechRate.progress = AppConfig.ttsSpeechRate - 1
-            AppConfig.ttsSpeechRate -= 1
-            upTtsSpeechRate()
-        }
-        ivTtsSpeechAdd.setOnClickListener {
-            seekTtsSpeechRate.progress = AppConfig.ttsSpeechRate + 1
-            AppConfig.ttsSpeechRate += 1
-            upTtsSpeechRate()
-        }
-        ivTimer.setOnClickListener {
-            AppConfig.ttsTimer = seekTimer.progress
-            toastOnUi("保存设定时间成功！")
-        }
-        tvTimer.setOnClickListener {
-            val times = intArrayOf(0, 5, 10, 15, 30, 60, 90, 180)
-            val timeKeys = times.map { "$it 分钟" }
-            context?.selector("设定时间", timeKeys) { _, index ->
-                ReadAloud.setTimer(requireContext(), times[index])
+        fun upTtsSpeechRate() {
+            ReadAloud.upTtsSpeechRate(context)
+            if (!BaseReadAloudService.pause) {
+                ReadAloud.pause(context)
+                ReadAloud.resume(context)
             }
         }
-        //设置保存的默认值
-        seekTtsSpeechRate.progress = AppConfig.ttsSpeechRate
-        seekTtsSpeechRate.setOnSeekBarChangeListener(object : SeekBarChangeListener {
 
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                super.onProgressChanged(seekBar, progress, fromUser)
-                upTtsSpeechRateText(progress)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            // 章节/段落播放控制行
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.previous_chapter),
+                    color = colors.text, fontSize = 14.sp,
+                    modifier = Modifier
+                        .clickable { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                AloudIcon(R.drawable.ic_skip_previous, stringResource(R.string.prev_sentence), colors) {
+                    ReadAloud.prevParagraph(context)
+                }
+                AloudIcon(
+                    if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
+                    stringResource(if (paused) R.string.audio_play else R.string.pause),
+                    colors,
+                ) { callBack?.onClickReadAloud() }
+                AloudIcon(R.drawable.ic_stop_black_24dp, stringResource(R.string.stop), colors) {
+                    ReadAloud.stop(context)
+                    dismissAllowingStateLoss()
+                }
+                AloudIcon(R.drawable.ic_skip_next, stringResource(R.string.next_sentence), colors) {
+                    ReadAloud.nextParagraph(context)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.next_chapter),
+                    color = colors.text, fontSize = 14.sp,
+                    modifier = Modifier
+                        .clickable { ReadBook.moveToNextChapter(true) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                )
             }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                AppConfig.ttsSpeechRate = seekBar.progress
-                upTtsSpeechRate()
+            // 定时行：存默认 + 滑条 + 弹选时间
+            Row(
+                Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AloudIcon(R.drawable.ic_time_add_24dp, stringResource(R.string.set_timer), colors) {
+                    AppConfig.ttsTimer = timer
+                    toastOnUi("保存设定时间成功！")
+                }
+                AppSlider(
+                    value = timer,
+                    max = 180,
+                    onValueChange = { timer = it },
+                    onValueChangeFinished = { ReadAloud.setTimer(context, timer) },
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.timer_m, timer.coerceAtLeast(0)),
+                    color = colors.text,
+                    modifier = Modifier.clickable {
+                        val times = intArrayOf(0, 5, 10, 15, 30, 60, 90, 180)
+                        val timeKeys = times.map { "$it 分钟" }
+                        context.selector("设定时间", timeKeys) { _, index ->
+                            ReadAloud.setTimer(context, times[index])
+                        }
+                    },
+                )
             }
-        })
-        seekTimer.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                upTimerText(progress)
+            // 语速：标题/值 + 跟随系统开关；滑条 + 加减
+            Row(
+                Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.read_aloud_speed), color = colors.text, fontSize = 14.sp)
+                if (!followSys) {
+                    Text(
+                        ((speechRate + 5) / 10f).toString(),
+                        color = colors.text, fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(stringResource(R.string.flow_sys), color = colors.text, fontSize = 14.sp)
+                AppSwitch(
+                    checked = followSys,
+                    onCheckedChange = {
+                        followSys = it
+                        AppConfig.ttsFlowSys = it
+                        upTtsSpeechRate()
+                    },
+                )
             }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                ReadAloud.setTimer(requireContext(), seekTimer.progress)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AloudIcon(
+                    R.drawable.ic_reduce, stringResource(R.string.tts_speech_reduce), colors,
+                    enabled = !followSys,
+                ) {
+                    speechRate = (speechRate - 1).coerceIn(0, 45)
+                    AppConfig.ttsSpeechRate = speechRate
+                    upTtsSpeechRate()
+                }
+                AppSlider(
+                    value = speechRate,
+                    max = 45,
+                    enabled = !followSys,
+                    onValueChange = { speechRate = it },
+                    onValueChangeFinished = {
+                        AppConfig.ttsSpeechRate = speechRate
+                        upTtsSpeechRate()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                AloudIcon(
+                    R.drawable.ic_add, stringResource(R.string.tts_speech_add), colors,
+                    enabled = !followSys,
+                ) {
+                    speechRate = (speechRate + 1).coerceIn(0, 45)
+                    AppConfig.ttsSpeechRate = speechRate
+                    upTtsSpeechRate()
+                }
             }
-        })
-    }
-
-    private fun upTtsSpeechRateEnabled(enabled: Boolean) {
-        binding.run {
-            upTtsSpeechRateText(AppConfig.ttsSpeechRate)
-            tvTtsSpeedValue.visible(enabled)
-            seekTtsSpeechRate.isEnabled = enabled
-            ivTtsSpeechReduce.isEnabled = enabled
-            ivTtsSpeechAdd.isEnabled = enabled
+            // 底部功能按钮行
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                ReadMenuIconButton(R.drawable.ic_toc, stringResource(R.string.chapter_list), colors.text) {
+                    callBack?.openChapterList()
+                }
+                ReadMenuIconButton(R.drawable.ic_menu, stringResource(R.string.main_menu), colors.text) {
+                    callBack?.showMenuBar()
+                    dismissAllowingStateLoss()
+                }
+                ReadMenuIconButton(
+                    R.drawable.ic_visibility_off,
+                    stringResource(R.string.to_backstage),
+                    colors.text,
+                ) { callBack?.finish() }
+                ReadMenuIconButton(R.drawable.ic_settings, stringResource(R.string.setting), colors.text) {
+                    ReadAloudConfigDialog().show(childFragmentManager, "readAloudConfigDialog")
+                }
+            }
         }
     }
 
-    private fun upPlayState() {
-        if (!BaseReadAloudService.pause) {
-            binding.ivPlayPause.setImageResource(R.drawable.ic_pause_24dp)
-            binding.ivPlayPause.contentDescription = getString(R.string.pause)
-        } else {
-            binding.ivPlayPause.setImageResource(R.drawable.ic_play_24dp)
-            binding.ivPlayPause.contentDescription = getString(R.string.audio_play)
-        }
-        val theme = createReadMenuTheme(requireContext())
-        binding.ivPlayPause.applyMenuThemeColorFilter(theme)
-    }
-
-    private fun upSeekTimer() {
-        binding.seekTimer.post {
-            if (BaseReadAloudService.timeMinute > 0) {
-                binding.seekTimer.progress = BaseReadAloudService.timeMinute
-            } else {
-                binding.seekTimer.progress = AppConfig.ttsTimer
-            }
-        }
-    }
-
-    private fun upTimerText(timeMinute: Int) {
-        if (timeMinute < 0) {
-            binding.tvTimer.text = requireContext().getString(R.string.timer_m, 0)
-        } else {
-            binding.tvTimer.text = requireContext().getString(R.string.timer_m, timeMinute)
-        }
-    }
-
-    @SuppressLint("SetTextI18n")
-    private fun upTtsSpeechRateText(value: Int) {
-        binding.tvTtsSpeedValue.text = ((value + 5) / 10f).toString()
-    }
-
-    private fun upTtsSpeechRate() {
-        ReadAloud.upTtsSpeechRate(requireContext())
-        if (!BaseReadAloudService.pause) {
-            ReadAloud.pause(requireContext())
-            ReadAloud.resume(requireContext())
-        }
-    }
-
-    override fun observeLiveBus() {
-        observeEvent<Int>(EventBus.ALOUD_STATE) { upPlayState() }
-        observeEvent<Int>(EventBus.READ_ALOUD_DS) { binding.seekTimer.progress = it }
+    @Composable
+    private fun AloudIcon(
+        iconRes: Int,
+        description: String,
+        colors: ReadMenuColors,
+        enabled: Boolean = true,
+        onClick: () -> Unit,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = description,
+            tint = if (enabled) colors.text else colors.secondaryText,
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .size(30.dp)
+                .clickable(enabled = enabled, onClick = onClick),
+        )
     }
 
     interface CallBack {

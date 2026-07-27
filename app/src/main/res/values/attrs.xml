@@ -2,66 +2,6 @@
 <resources>
 
     <attr name="arcoRadius" format="dimension" />
-    <attr name="isBottomBackground" format="boolean" />
-    <attr name="themeMode" format="enum">
-        <enum name="dark" value="1" />
-        <enum name="light" value="2" />
-        <enum name="auto" value="0" />
-    </attr>
-
-    <declare-styleable name="TitleBar">
-        <attr name="title" />
-        <attr name="subtitle" />
-        <attr name="titleTextAppearance" />
-        <attr name="titleTextColor" />
-        <attr name="subtitleTextAppearance" />
-        <attr name="subtitleTextColor" />
-        <attr name="contentInsetEnd" />
-        <attr name="contentInsetEndWithActions" />
-        <attr name="contentInsetStart" />
-        <attr name="contentInsetStartWithNavigation" />
-        <attr name="contentInsetLeft" />
-        <attr name="contentInsetRight" />
-        <attr name="contentLayout" format="reference" />
-        <attr name="attachToActivity" format="boolean" />
-        <attr name="displayHomeAsUp" format="boolean" />
-        <attr name="navigationIcon" format="reference" />
-        <attr name="fitStatusBar" format="boolean" />
-        <attr name="fitNavigationBar" format="boolean" />
-        <attr name="navigationContentDescription" format="reference|string" />
-        <attr name="navigationIconTint" format="color|reference" />
-        <attr name="themeMode" />
-        <attr name="navigationIconTintMode" format="enum">
-            <enum name="clear" value="0" />
-            <enum name="src" value="1" />
-            <enum name="dst" value="2" />
-            <enum name="src_over" value="3" />
-            <enum name="dst_over" value="4" />
-            <enum name="src_in" value="5" />
-            <enum name="dst_in" value="6" />
-            <enum name="src_out" value="7" />
-            <enum name="dst_out" value="8" />
-            <enum name="src_atop" value="9" />
-            <enum name="dst_atop" value="10" />
-            <enum name="xor" value="11" />
-            <enum name="darken" value="16" />
-            <enum name="lighten" value="17" />
-            <enum name="multiply" value="13" />
-            <enum name="screen" value="14" />
-            <enum name="add" value="12" />
-            <enum name="overlay" value="15" />
-        </attr>
-    </declare-styleable>
-
-    <attr name="titleBarStyle" format="reference" />
-
-    <declare-styleable name="DynamicFrameLayout">
-        <attr name="errorSrc" format="reference" />
-        <attr name="emptySrc" format="reference" />
-        <attr name="errorActionDescription" format="string|reference" />
-        <attr name="emptyActionDescription" format="string|reference" />
-        <attr name="emptyDescription" format="string|reference" />
-    </declare-styleable>
 
     <declare-styleable name="RefreshProgressBar">
         <attr name="max_progress" format="integer" />
@@ -74,104 +14,8 @@
         <attr name="speed" format="dimension" />
     </declare-styleable>
 
-    <declare-styleable name="DetailSeekBar">
-        <attr name="title" format="string" />
-        <attr name="max" format="integer" />
-        <attr name="isBottomBackground" />
-    </declare-styleable>
-
-    <declare-styleable name="NumberPickerPreference">
-        <attr name="MinValue" format="integer" />
-        <attr name="MaxValue" format="integer" />
-        <attr name="android:summary" />
-    </declare-styleable>
-
-    <declare-styleable name="RefreshLayout">
-        <attr name="layout_refresh_empty" format="reference" />
-        <attr name="layout_refresh_error" format="reference" />
-        <attr name="layout_refresh_loading" format="reference" />
-    </declare-styleable>
-
-    <declare-styleable name="FastScroller">
-        <attr name="fadeScrollbar" format="boolean" />
-        <attr name="showBubble" format="boolean" />
-        <attr name="showTrack" format="boolean" />
-        <attr name="trackColor" format="color" />
-        <attr name="handleColor" format="color" />
-        <attr name="bubbleColor" format="color" />
-        <attr name="bubbleTextColor" format="color" />
-    </declare-styleable>
-
-    <declare-styleable name="FilletImageView">
-        <attr name="arcoRadius" />
-        <attr name="left_top_radius" format="dimension" />
-        <attr name="right_top_radius" format="dimension" />
-        <attr name="right_bottom_radius" format="dimension" />
-        <attr name="left_bottom_radius" format="dimension" />
-    </declare-styleable>
-
-    <declare-styleable name="IconListPreference">
-        <attr name="icons" format="reference" />
-    </declare-styleable>
-
-    <declare-styleable name="Battery">
-        <attr name="batteryOrientation">
-            <enum name="horizontal" value="0" />
-            <enum name="vertical" value="1" />
-        </attr>
-        <attr name="batteryColor" format="color" />
-        <attr name="batteryPower" format="integer" />
-    </declare-styleable>
-
     <declare-styleable name="AccentBgTextView">
         <attr name="arcoRadius" />
-    </declare-styleable>
-
-    <declare-styleable name="AccentStrokeTextView">
-        <attr name="arcoRadius" />
-        <attr name="isBottomBackground" />
-    </declare-styleable>
-
-    <declare-styleable name="StrokeTextView">
-        <attr name="arcoRadius" />
-        <attr name="isBottomBackground" />
-    </declare-styleable>
-
-    <declare-styleable name="BadgeView">
-        <attr name="arcoRadius" />
-        <attr name="up_flat_angle" format="boolean" />
-    </declare-styleable>
-
-    <declare-styleable name="ArcView">
-        <attr name="arcHeight" format="dimension" />
-        <attr name="bgColor" format="color" />
-        <attr name="arcDirectionTop" format="boolean" />
-    </declare-styleable>
-
-    <declare-styleable name="ShadowLayout">
-        <attr name="shadowColor" format="color" />
-        <attr name="shadowRadius" format="dimension" />
-        <attr name="shadowDx" format="dimension" />
-        <attr name="shadowDy" format="dimension" />
-        <attr name="shadowShape">
-            <flag name="rectangle" value="0x0001" />
-            <flag name="oval" value="0x0010" />
-        </attr>
-        <attr name="shadowSide">
-            <flag name="all" value="0x1111" />
-            <flag name="left" value="0x0001" />
-            <flag name="top" value="0x0010" />
-            <flag name="right" value="0x0100" />
-            <flag name="bottom" value="0x1000" />
-        </attr>
-    </declare-styleable>
-
-    <declare-styleable name="ThemeRadioNoButton">
-        <attr name="isBottomBackground" />
-    </declare-styleable>
-
-    <declare-styleable name="Preference">
-        <attr name="isBottomBackground" />
     </declare-styleable>
 
     <declare-styleable name="CoverImageView">
@@ -180,16 +24,5 @@
             <enum name="video" value="2" />
         </attr>
     </declare-styleable>
-
-    <!--IDs-->
-    <item name="tag" type="id" />
-    <item name="tag1" type="id" />
-    <item name="tag2" type="id" />
-    <item name="tag3" type="id" />
-    <item name="menu_group_1" type="id" />
-    <item name="menu_group_2" type="id" />
-    <item name="menu_1" type="id" />
-    <item name="fast_scroller" type="id" />
-    <item name="bettermovementmethod_highlight_background_span" type="id" />
 
 </resources>

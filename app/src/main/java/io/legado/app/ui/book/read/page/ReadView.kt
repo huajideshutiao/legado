@@ -10,7 +10,6 @@ import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import io.legado.app.constant.PageAnim
-import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadAloud
@@ -43,6 +42,140 @@ import kotlin.math.abs
 
 /**
  * 阅读视图
+ *
+ * ===========================================================================
+ * TODO(KP2-H TTS 阶段统一处理): Compose 化改造——统一 app / shared 阅读层
+ * ====================================================================================
+ *
+ * # 背景
+ *
+ * shared/sharedUiMain/.../page/ 下已有 Compose 版阅读层：
+ * - [io.legado.app.ui.book.read.page.PageViewComposable]：单页 Composable
+ *   （对应 app 端 [PageView]，渲染背景 + 文字 + 顶部/底部 tip）
+ * - [io.legado.app.ui.book.read.page.ReadViewComposable]：三页容器
+ *   （对应本类 [ReadView]，封装 prev/cur/next + 翻页 delegate）
+ * - delegate 目录下 *Compose.kt：5 个翻页 delegate 的 Compose 版
+ *   （Cover/Slide/NoAnim/Scroll/Simulation + 基类 PageDelegateCompose）
+ *
+ * 目标：让 app 端阅读页使用 shared 端 PageViewComposable delegate，统一阅读层实现。
+ *
+ * # 现状调研结论（2026-07-21）
+ *
+ * 1. 本类共 695 行，深度耦合 Android View 体系（FrameLayout + 3 个 [PageView] +
+ *    [PageDelegate] + [AutoPager]）。
+ * 2. 调用点：仅 [io.legado.app.ui.book.read.ReadBookActivity] 一处构造
+ *    `ReadView(this, Xml.asAttributeSet(parser))`（ReadBookActivity.kt:145），
+ *    但通过 `readView.xxx` 调用的方法 **60+ 处**，遍布 Activity 全身。
+ * 3. 5 个 app 端 delegate（[CoverPageDelegate]/[SlidePageDelegate]/
+ *    [NoAnimPageDelegate]/[ScrollPageDelegate]/[SimulationPageDelegate]）
+ *    构造签名均为 `(readView: ReadView)`，直接读 [startX]/[touchY]/[curPage]/
+ *    [nextPage]/[prevPage]/[pageSlopSquare2] 等内部状态，并回调 [fillPage]/
+ *    [setStartPoint]/[onScrollAnimStart] 等方法。
+ *
+ * # 三方案评估
+ *
+ * ## 方案 A：完全替换
+ * 在 ReadBookActivity 中用 `AndroidView { ComposeView() }` 包装
+ * [ReadViewComposable]，删除本类。
+ * - 不可行：[ReadViewComposable] 接受 [io.legado.app.ui.book.read.ReadBookViewModelShared]
+ *   作为入参，app 端**未注入**此 ViewModel（app 端用 [io.legado.app.ui.book.read.ReadBookViewModel]，
+ *   是两套独立实现，Grep `ReadBookViewModelShared` 在 app/ 下 0 命中）。
+ * - 不可行：ReadBookActivity 60+ 处 `readView.xxx()` 调用中，大量能力 shared 端**没有**：
+ *   文字选择 (`curPage.selectStartMoveIndex`/`selectEndMoveIndex`/`selectText`/
+ *   `cancelSelect`/`getReverseStartCursor`)、自动翻页 (`autoPager.start/stop/pause/resume`)、
+ *   朗读位置 (`getReadAloudPos`/`aloudStartSelect`)、cursor 视图 (`cursorLeft`/`cursorRight`)、
+ *   长按选择 (`onLongPress`)、Bitmap 渲染优化 (`invalidateTextPage`/`submitRenderTask`/
+ *   `isLongScreenShot`)、TextActionMenu/popupAction 集成等。
+ * - 违反约束：会改变实现逻辑 + 改变 UI 样式（shared 端 tip 用 `padding(horizontal=16.dp,
+ *   vertical=8.dp)`，app 端用 ViewBookPageBinding 布局，宽高边距不同）。
+ *
+ * ## 方案 B：渐进式兼容层
+ * 保留本类作为兼容层，内部用 `AndroidView { ComposeView() }` 委托给
+ * [PageViewComposable] / [ReadViewComposable]。
+ * - 不可行：[PageViewComposable] 是**单页** Composable，对应 [PageView] 而非本类；
+ *   [ReadViewComposable] 才对应本类，但同样依赖 [ReadBookViewModelShared]。
+ * - 不可行：[PageViewComposable] 内部用 [io.legado.app.help.config.LocalReadConfigProviders]
+ *   读取 `ReadBookConfigShared` / `ReadTipConfigShared`，app 端这套 CompositionLocal
+ *   **未提供**（app 端用 [io.legado.app.help.config.ReadBookConfig] /
+ *   [ReadTipConfig]，单例式 API，非 Compose 状态）。
+ * - 不可行：app 端 [PageView] 是 `FrameLayout + ViewBookPageBinding`，承担进度条/
+ *   状态栏/选区高亮/cursor/scroll 偏移/autoPager 集成/Bitmap 渲染等大量职责，
+ *   [PageViewComposable] 仅渲染背景+文字+tip，能力差距过大；即使只替换 [PageView]
+ *   内部也会破坏其全部 public API（`selectStartMoveIndex`/`scroll`/`setProgress`/
+ *   `upBattery`/`upTime`/`getReadAloudPos` 等），从而连锁影响本类和 delegate。
+ *
+ * ## 方案 C：暂不改造（已选定）
+ * 在本文件顶部记录 KDoc TODO，等 KP2-H TTS 阶段统一处理。
+ * - 理由 1：shared 端 Composable 是 KMP 跨平台（desktop/iOS/ohos）的简化版，
+ *   能力是 app 端 [PageView]/[ReadView] 的**严格子集**；强行接入等于 app 端降级。
+ * - 理由 2：真正的"统一阅读层"应反向进行——把 app 端的高级能力（文字选择/cursor/
+ *   autoPager/朗读位置/Bitmap 渲染/状态栏等）下沉到 shared 端 Composable，再让
+ *   app 端接入；而非把 app 端降级到 shared 端当前能力。
+ * - 理由 3：本类与 [PageView]/[PageDelegate]（5 子类）/[AutoPager]/
+ *   TextActionMenu/cursorLeft/cursorRight/[io.legado.app.ui.book.read.ReadBookViewModel]
+ *   紧密耦合，改造需整体设计，不能单点替换。
+ * - 理由 4：任务约束"严禁擅自修改 ui 样式（宽高边距）"+"修改时不得改变实现逻辑或偷懒"，
+ *   方案 A/B 都必然涉及这两项。
+ *
+ * # KP2-H 阶段需配套完成的事项（移交清单）
+ *
+ * 在 TTS 改造时一并处理本类 Compose 化，需先完成以下前置工作：
+ *
+ * 1. shared 端补齐 [PageViewComposable] 能力，至少对齐 app 端 [PageView] public API：
+ *    - 文字选择：`selectStartMove/selectStartMoveIndex/selectEndMove/selectEndMoveIndex/
+ *      selectText/cancelSelect/getReverseStartCursor/getReverseEndCursor/resetReverseCursor/
+ *      selectedText/selectStartPos/selectEndPos`
+ *    - 自动翻页：`AutoPager` 集成（start/stop/pause/resume/reset/upRecorder）
+ *    - 长按：`longPress(x, y, callback)` + `onClick(x, y)`
+ *    - 滚动：`scroll(offset)` / `setIsScroll` / `setAutoPager`
+ *    - 状态：`upBg/upBgAlpha/upTime/upBattery/upStatusBar/upStyle/setProgress`
+ *    - 朗读位置：`getReadAloudPos/getCurVisiblePage/textPage`
+ *    - 渲染优化：`invalidateAll/invalidateContentView/submitRenderTask/isLongScreenShot/
+ *      markAsMainPage`（对应 app 端 `optimizeRender` 路径）
+ *    - 布局参数：`headerHeight`（被 ReadBookActivity:280 引用）
+ * 2. shared 端补齐 [ReadViewComposable] 能力，对齐本类 public API：
+ *    - `upContent/upPageAnim/upPageSlopSquare/upBg/upBgAlpha/upStyle/upTime/upBattery/
+ *      upStatusBar/onDestroy/onPageChange/fillPage/setStartPoint/setTouchPoint/
+ *      cancelSelect/invalidateTextPage/submitRenderTask/getSelectText/getReadAloudPos/
+ *      getCurVisiblePage/aloudStartSelect/isLongScreenShot/onLayoutPageCompleted`
+ *    - `pageFactory/pageDelegate/autoPager/isScroll/isAutoPage/isTextSelected/
+ *      isImageMenuShowing` 属性
+ *    - `CallBack` 接口（showActionMenu/screenOffTimerStart/showTextActionMenu/
+ *      autoPageStop/openChapterList/addBookmark/changeReplaceRuleState/
+ *      openSearchActivity/upSystemUiVisibility）
+ * 3. app 端注入 shared 端依赖：
+ *    - 在 ReadBookActivity 的 `Content()` 中用 `CompositionLocalProvider(
+ *      LocalReadConfigProviders provides appReadConfigProviders)` 包一层
+ *    - 实现 `ReadConfigProviders` 的 app 端 actual（桥接 [ReadBookConfig]/
+ *      [ReadTipConfig] 单例到 Shared 配置流）
+ *    - 让 [io.legado.app.ui.book.read.ReadBookViewModel] 实现/桥接
+ *      [io.legado.app.ui.book.read.ReadBookViewModelShared] 接口
+ *      （prevTextPage/curTextPage/nextTextPage StateFlow + pageDelegate +
+ *      nextPage/prevPage/moveToNextChapter/moveToPrevChapter/canMoveToNextChapter/
+ *      canMoveToPrevChapter）
+ * 4. 替换 5 个 app 端 delegate 为 shared 端 *Compose delegate：
+ *    - [CoverPageDelegate] → [io.legado.app.ui.book.read.page.delegate.CoverPageDelegateCompose]
+ *    - [SlidePageDelegate] → SlidePageDelegateCompose
+ *    - [NoAnimPageDelegate] → NoAnimPageDelegateCompose
+ *    - [ScrollPageDelegate] → ScrollPageDelegateCompose
+ *    - [SimulationPageDelegate] → SimulationPageDelegateCompose
+ *    （5 个 app 端 delegate + 基类 [PageDelegate] 共 ~1000 行可删除）
+ * 5. 适配 ReadBookActivity 60+ 处 `readView.xxx` 调用：
+ *    - 大部分改为 `viewModel.xxx`（通过桥接后的 [ReadBookViewModelShared]）
+ *    - cursorLeft/cursorRight 仍在 Activity 层用 Android View（Compose 内部不接管）
+ *    - TextActionMenu/popupAction 仍在 Activity 层
+ * 6. 删除本类（[ReadView]）+ [PageView] + [AutoPager] + app 端 delegate 全部
+ *    （共 ~2000 行 Android View 代码可清理）
+ *
+ * # 验证检查项
+ *
+ * 改造完成后用 Grep 验证：
+ * - `ReadView\(` 在 app/ 下应 0 命中（已删除）
+ * - `: ReadView|readView\.|@BindView.*ReadView` 在 app/ 下应 0 命中
+ * - `LocalReadConfigProviders` 在 app/ 下应有命中（已注入）
+ * - `ReadBookViewModelShared` 在 app/ 下应有命中（已桥接）
+ *
+ * ===========================================================================
  */
 class ReadView(context: Context, attrs: AttributeSet) :
     FrameLayout(context, attrs),
@@ -692,6 +825,5 @@ class ReadView(context: Context, attrs: AttributeSet) :
         fun changeReplaceRuleState()
         fun openSearchActivity(searchWord: String?)
         fun upSystemUiVisibility()
-        fun sureNewProgress(progress: BookProgress)
     }
 }

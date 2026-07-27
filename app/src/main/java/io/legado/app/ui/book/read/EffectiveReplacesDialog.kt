@@ -1,43 +1,39 @@
 package io.legado.app.ui.book.read
 
-import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
-import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
+import androidx.compose.runtime.Composable
 import androidx.fragment.app.activityViewModels
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.viewbinding.ViewBinding
-import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.ThemeUtils
-import io.legado.app.lib.theme.space
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
+import io.legado.app.utils.showConverterSelector
 
 /**
  * 展示当前章节起效的替换规则；点击单条编辑，底部"管理全部"跳 [ReplaceRuleActivity]。
- * 复用 [R.layout.dialog_recycler_view] 布局，承担原"净化"入口职责。
+ * 承担原"净化"入口职责。
+ *
+ * 实现已下沉到 shared/sharedUiMain 的 [EffectiveReplacesScreen]（app + desktop 共用），
+ * 本类作为 thin wrapper 保留 `BaseComposeDialogFragment` 宿主与 AndroidX 特有 API：
+ * - `registerForActivityResult` + `Intent(ReplaceRuleActivity/ReplaceEditActivity)` 不能下沉
+ *   （依赖 AndroidX Activity Result + Fragment），通过 `onAddRule` / `onManageAll` /
+ *   `onItemClick` 回调桥接到 wrapper 内的 editActivity / manageActivity.launch
+ * - `activityViewModels<ReadBookViewModel>()` 不能下沉（依赖 AndroidX ViewModel），
+ *   onDismiss 时根据 isEdit 调用 `viewModel.replaceRuleChanged()`
+ * - `chineseConvert` 项（繁简转换）作为 items 的一部分由 wrapper 构造时附加，
+ *   `onItemClick` 中判断 `item === chineseConvert` 后调用 `showChineseConvertAlert`
+ *
+ * 调用方契约不变：`showDialogFragment<EffectiveReplacesDialog>()`。
  */
-class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
+class EffectiveReplacesDialog : BaseComposeDialogFragment() {
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by activityViewModels<ReadBookViewModel>()
-    private val adapter by lazy { ReplaceAdapter(requireContext()) }
     private val chineseConvert by lazy { ReplaceRule(0, "繁简转换") }
 
     override val isFullHeight: Boolean = true
@@ -58,42 +54,43 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
             }
         }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.effective_replaces),
-            menuRes = R.menu.dialog_add
-        ) {
-            if (it?.itemId == R.id.menu_add) {
-                val scope = listOfNotNull(
-                    ReadBook.book?.name,
-                    ReadBook.bookSource?.bookSourceUrl
-                ).joinToString(";")
-                editActivity.launch(
-                    ReplaceEditActivity.startIntent(requireContext(), scope = scope)
-                )
-            }
-            true
-        }
-        binding.tvEmpty.setText(R.string.empty)
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        binding.bottomLayout.visible()
-        binding.tvCancel.visible()
-        binding.tvCancel.text = getString(R.string.close)
-        binding.tvCancel.setOnClickListener { dismiss() }
-        binding.tvOk.visible()
-        binding.tvOk.text = getString(R.string.source_filter_rule_manage)
-        binding.tvOk.setOnClickListener {
-            manageActivity.launch(Intent(requireContext(), ReplaceRuleActivity::class.java))
-        }
+    @Composable
+    override fun Content() {
         val effectiveReplaceRules = ReadBook.curTextChapter?.effectiveReplaceRules ?: emptyList()
         val items = if (AppConfig.chineseConverterType > 0) {
             effectiveReplaceRules + chineseConvert
         } else {
             effectiveReplaceRules
         }
-        adapter.setItems(items)
-        binding.tvEmpty.isVisible = items.isEmpty()
+        EffectiveReplacesScreen(
+            items = items,
+            onAddRule = { addRule() },
+            onItemClick = { onItemClick(it) },
+            onManageAll = {
+                manageActivity.launch(
+                    Intent(requireContext(), ReplaceRuleActivity::class.java)
+                )
+            },
+            onDismiss = { dismiss() },
+        )
+    }
+
+    private fun addRule() {
+        val scope = listOfNotNull(
+            ReadBook.book?.name,
+            ReadBook.bookSource?.bookSourceUrl
+        ).joinToString(";")
+        editActivity.launch(
+            ReplaceEditActivity.startIntent(requireContext(), scope = scope)
+        )
+    }
+
+    private fun onItemClick(item: ReplaceRule) {
+        if (item === chineseConvert) {
+            showChineseConvertAlert()
+            return
+        }
+        editActivity.launch(ReplaceEditActivity.startIntent(requireContext(), item.id))
     }
 
     override fun onDismiss(dialog: DialogInterface) {
@@ -106,57 +103,6 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
     private fun showChineseConvertAlert() {
         ChineseUtils.showConverterSelector(requireContext()) {
             isEdit = true
-        }
-    }
-
-    class TextItemBinding(val root: TextView) : ViewBinding {
-        override fun getRoot(): View = root
-    }
-
-    private inner class ReplaceAdapter(context: Context) :
-        RecyclerAdapter<ReplaceRule, TextItemBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): TextItemBinding {
-            val tv = TextView(parent.context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(
-                    parent.context.space.lg,
-                    parent.context.space.default,
-                    parent.context.space.lg,
-                    parent.context.space.default
-                )
-                // 点击编辑替换规则,需有 ripple 反馈
-                background = ThemeUtils.resolveDrawable(
-                    parent.context, android.R.attr.selectableItemBackground
-                )
-                isSingleLine = true
-                setTextColor(parent.context.getColor(R.color.primaryText))
-            }
-            return TextItemBinding(tv)
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: TextItemBinding) {
-            binding.root.setOnClickListener {
-                getItem(holder.layoutPosition)?.let { item ->
-                    if (item === chineseConvert) {
-                        showChineseConvertAlert()
-                        return@let
-                    }
-                    editActivity.launch(ReplaceEditActivity.startIntent(requireContext(), item.id))
-                }
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: TextItemBinding,
-            item: ReplaceRule,
-            payloads: MutableList<Any>
-        ) {
-            binding.root.text = item.name
         }
     }
 }

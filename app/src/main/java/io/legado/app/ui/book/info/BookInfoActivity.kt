@@ -3,39 +3,31 @@ package io.legado.app.ui.book.info
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.Color
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
-import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.TextPaint
-import android.text.method.LinkMovementMethod
-import android.text.style.ClickableSpan
-import android.text.style.ImageSpan
-import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
-import android.view.MotionEvent
-import android.view.View
-import android.widget.CheckBox
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.widget.PopupMenu
-import androidx.core.graphics.drawable.toDrawable
-import androidx.core.view.doOnLayout
-import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
-import com.google.android.flexbox.FlexWrap
-import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Theme
@@ -43,8 +35,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.ActivityBookInfoBinding
-import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getRemoteUrl
@@ -55,23 +45,11 @@ import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
+import io.legado.app.utils.setLightStatusBar
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.neutralButton
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.isDarkTheme
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.space
-import io.legado.app.model.BookCover
-import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -87,41 +65,52 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
+import io.legado.app.ui.login.showLoginDialog
+import io.legado.app.ui.widget.dialog.showBookVariableDialog
+import io.legado.app.ui.widget.dialog.showSourceVariableDialog
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.ui.widget.text.IntroButtonSpan
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.StartActivityContract
-import io.legado.app.utils.applyBottomActionInsets
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
+import io.legado.app.ui.about.AppLogDialog
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.fleeksoft.ksoup.Ksoup
-import com.fleeksoft.ksoup.nodes.Element
-import com.fleeksoft.ksoup.nodes.TextNode
-import splitties.views.onClick
-import splitties.views.onLongClick
 
+/**
+ * 书籍详情页 Activity (薄壳模式)。
+ *
+ * 实现下沉到 shared 的 [BookInfoUiActions] 接口供 [BookInfoScreen] 回调,
+ * 已有同名方法直接 `override`; 新增的 [onBack] / [onSearchAuthor] / [onSearchKind]
+ * / [onDispatchIntroAction] / [onShowPhoto] / [onCopyBookUrl] / [onCopyTocUrl]
+ * / [onShowLog] 等为下沉适配方法, 内部桥接到 Activity 行为。
+ *
+ * L3 (Android 专属) Composable (BlurCoverBg/BookInfoCover/IntroImage) 通过
+ * [BookInfoAndroidSlots] 提供, 在 [Content] 内构造 slot lambda 注入。
+ *
+ * 状态字段 (book/bookTick/coverTick/inBookshelf/...) 由 Activity 托管,
+ * [Content] 内打包为 [BookInfoUiState] 传入 shared 端 [BookInfoScreen]。
+ */
 class BookInfoActivity :
-    VMBaseActivity<ActivityBookInfoBinding, BookInfoViewModel>(toolBarTheme = Theme.Dark),
-    GroupSelectDialog.CallBack, ChangeBookSourceDialog.CallBack, ChangeCoverDialog.CallBack {
+    BaseComposeActivity(toolBarTheme = Theme.Dark),
+    GroupSelectDialog.CallBack, ChangeBookSourceDialog.CallBack, ChangeCoverDialog.CallBack,
+    BookInfoUiActions {
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -176,145 +165,151 @@ class BookInfoActivity :
     }
     private var chapterChanged = false
     private val waitDialog by lazy { WaitDialog.from(this) }
-    private var editMenuItem: MenuItem? = null
 
-    override val binding by viewBinding(ActivityBookInfoBinding::inflate)
-    override val viewModel by viewModels<BookInfoViewModel>()
+    val viewModel by viewModels<BookInfoViewModel>()
 
-    @SuppressLint("PrivateResource")
+    // ---- Compose 状态(镜像原 binding 写点) ----
+    var book by mutableStateOf<Book?>(null)
+        private set
+    var bookTick by mutableIntStateOf(0) // book 原地可变，post 时递增驱动重组
+        private set
+    var coverTick by mutableIntStateOf(0) // 封面/模糊背景重载 key(对照 showCover 时机)
+        private set
+    var inBookshelf by mutableStateOf(false)
+        private set
+    var groupName by mutableStateOf("")
+        private set
+    var tocText by mutableStateOf<String?>(null) // null=加载中
+        private set
+    var lastedTitle by mutableStateOf("")
+        private set
+    var wordCountText by mutableStateOf<String?>(null) // null=隐藏
+        private set
+
+    @Composable
+    override fun Content() {
+        // 横竖屏 + useDevFeat (对照原 BookInfoScreen 顶层判断) 由 Activity 计算后传入 state,
+        // 避免 shared 端依赖 LocalConfiguration / AppConfig
+        val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val book = this.book
+        val useDevFeat = book != null && AppConfig.bookInfoHorizontalLayout &&
+            !book.isVideo && !isLandscape
+        LaunchedEffect(useDevFeat, isLandscape) {
+            // useDevFeat 态下标题栏文字为深色, 需要亮色状态栏图标; 其余沿用 Theme.Dark
+            setLightStatusBar(if (useDevFeat) isDarkTheme else false)
+        }
+        val menuState = BookInfoMenuState(
+            isLocal = book?.origin == BookType.localTag,
+            isWebDav = book?.origin?.startsWith(BookType.webDavTag) == true,
+            hasSource = viewModel.curBookSource != null,
+            sourceHasLogin = viewModel.curBookSource?.hasLogin() == true,
+            sourceHasReviewRule = !viewModel.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
+            canUpdate = book?.canUpdate ?: true,
+            isLocalTxt = book?.isLocalTxt == true,
+            splitLongChapter = book?.config?.splitLongChapter ?: false,
+            bookUrl = book?.bookUrl,
+            tocUrl = book?.tocUrl,
+        )
+        val state = BookInfoUiState(
+            book = book,
+            bookTick = bookTick,
+            coverTick = coverTick,
+            inBookshelf = inBookshelf,
+            groupName = groupName,
+            tocText = tocText,
+            lastedTitle = lastedTitle,
+            wordCountText = wordCountText,
+            isLandscape = isLandscape,
+            useDevFeat = useDevFeat,
+            isDarkTheme = this.isDarkTheme,
+            menuState = menuState,
+        )
+        BookInfoScreen(
+            state = state,
+            actions = this,
+            blurCoverBgSlot = { modifier ->
+                BookInfoBlurCoverBg(book, coverTick, viewModel.inBookshelf, AppConfig.isEInkMode, modifier)
+            },
+            coverSlot = { bookArg, modifier ->
+                BookInfoCover(bookArg, coverTick, viewModel.inBookshelf, modifier)
+            },
+            introImageSlot = { src, onClick ->
+                BookInfoIntroImage(src, onClick)
+            },
+        )
+    }
+
+    // ---- BookInfoUiActions 实现 ----
+    // 已有同名方法直接 override; Activity 内部其它地方仍调用同名方法 (如 observeLiveBus 调 refreshBook)
+    // 所以保留原名私有方法 + override 别名桥接, 避免改动其它调用点。
+
+    override fun onBack() = onBackPressedDispatcher.onBackPressed()
+
+    override fun onRefresh() = refreshBook()
+
+    override fun onEdit() = editBook()
+
+    override fun onShare() = shareBook()
+
+    override fun onUploadBook() = uploadBook()
+
+    override fun onDownloadToLocal() = downloadToLocal()
+
+    override fun onTopBook() {
+        viewModel.topBook()
+    }
+
+    override fun onLogin() = login()
+
+    override fun onOpenCommentDialog() {
+        viewModel.openCommentDialog(this)
+    }
+
+    override fun onSetSourceVariable() = setSourceVariable()
+
+    override fun onSetBookVariable() = setBookVariable()
+
+    override fun onCopyBookUrl() {
+        viewModel.getBook()?.bookUrl?.let { sendToClip(it) }
+    }
+
+    override fun onCopyTocUrl() {
+        viewModel.getBook()?.tocUrl?.let { sendToClip(it) }
+    }
+
+    override fun onToggleCanUpdate() = toggleCanUpdate()
+
+    override fun onToggleSplitLongChapter() = toggleSplitLongChapter()
+
+    override fun onClearCache() {
+        viewModel.clearCache()
+    }
+
+    override fun onShowLog() {
+        showDialogFragment<AppLogDialog>()
+    }
+
+    override fun onSearchAuthor(author: String, submit: Boolean) {
+        search(author, submit)
+    }
+
+    override fun onSearchKind(kind: String, submit: Boolean) {
+        search(kind, submit)
+    }
+
+    // 注: onNameClick/onCoverClick/onCoverLongClick/onOriginClick/onOriginLongClick/
+    // onTocClick/onGroupClick/onShelfClick/onReadClick/onDispatchIntroAction/onShowPhoto
+    // 直接 override 已有同名方法 (见下方各 fun 定义处)
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initView()
-        initData()
-        initViewEvent()
-    }
-
-    private fun initView() = binding.run {
-        titleBar.setBackgroundResource(R.color.transparent)
-        flAction.applyBottomActionInsets()
-        // 按钮悬浮在滚动列表上方，需动态设置 scrollView 底部 padding 防止内容被遮挡
-        flAction.post { scrollView.setPadding(0, 0, 0, flAction.height) }
-        tvShelf.tintBottom()
-        tvIntro.revealOnFocusHint = false
-        // 原 ScrollTextView 在 init 中自动设置 LinkMovementMethod，迁移到 TextView 后需显式设置
-        tvIntro.movementMethod = LinkMovementMethod.getInstance()
-    }
-
-    private fun initData() {
         viewModel.bookData.observe(this) { showBook(it) }
         viewModel.chapterListData.observe(this) { upLoading(false, it) }
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
         viewModel.initData()
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_info, menu)
-        editMenuItem = menu.findItem(R.id.menu_edit)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        val book = viewModel.bookData.value
-        val hasSource = viewModel.curBookSource != null
-        menu.findItem(R.id.menu_can_update)?.apply {
-            isChecked = book?.canUpdate ?: true
-            isVisible = hasSource
-        }
-        menu.findItem(R.id.menu_split_long_chapter)?.apply {
-            isChecked = book?.config?.splitLongChapter ?: true
-            isVisible = book?.isLocalTxt ?: false
-        }
-        menu.findItem(R.id.menu_login)?.isVisible = viewModel.curBookSource?.hasLogin() == true
-        menu.findItem(R.id.menu_set_source_variable)?.isVisible = hasSource
-        menu.findItem(R.id.menu_set_book_variable)?.isVisible = hasSource
-        menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag
-        menu.findItem(R.id.menu_download_local)?.isVisible =
-            book?.origin?.startsWith(BookType.webDavTag) == true
-        menu.findItem(R.id.menu_review)?.isVisible =
-            viewModel.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        val book = viewModel.getBook()
-        when (item.itemId) {
-            R.id.menu_edit -> book?.let {
-                IntentData.book = it
-                infoEditResult.launch {}
-            }
-
-            R.id.menu_share_it -> viewModel.curBook?.let { shareBook(it) }
-            R.id.menu_login -> viewModel.curBookSource?.let {
-                IntentData.book = viewModel.bookData.value
-                it.showLoginDialog(this)
-            }
-
-            R.id.menu_top -> viewModel.topBook()
-            R.id.menu_set_source_variable -> viewModel.curBookSource?.showSourceVariableDialog(this)
-            R.id.menu_set_book_variable -> book?.showBookVariableDialog(
-                this, viewModel.curBookSource
-            )
-
-            R.id.menu_copy_book_url -> book?.bookUrl?.let { sendToClip(it) }
-            R.id.menu_copy_toc_url -> book?.tocUrl?.let { sendToClip(it) }
-            R.id.menu_can_update -> book?.let {
-                it.canUpdate = !it.canUpdate
-                if (viewModel.inBookshelf) {
-                    if (!it.canUpdate) it.removeType(BookType.updateError)
-                    viewModel.saveBook(it)
-                }
-            }
-
-            R.id.menu_clear_cache -> viewModel.clearCache()
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
-            R.id.menu_split_long_chapter -> book?.let {
-                upLoading(true)
-                it.config.splitLongChapter = !item.isChecked
-                lifecycleScope.launch { viewModel.loadBookInfo(it) }
-                item.isChecked = !item.isChecked
-                if (!item.isChecked) longToastOnUi(R.string.need_more_time_load_content)
-            }
-
-            R.id.menu_upload -> book?.let { uploadBook(it) }
-            R.id.menu_download_local -> book?.let { viewModel.downloadToLocal(it) }
-            R.id.menu_review -> viewModel.openCommentDialog(this)
-        }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun shareBook(book: Book) {
-        share(
-            "[${
-                GSON.toJson(
-                    mapOf(
-                        "bookUrl" to book.bookUrl,
-                        "tocUrl" to book.tocUrl,
-                        "origin" to book.origin,
-                        "originName" to book.originName,
-                        "name" to book.name,
-                        "author" to book.author,
-                        "kind" to book.kind,
-                        "coverUrl" to book.coverUrl,
-                        "customCoverUrl" to book.customCoverUrl,
-                        "intro" to book.intro,
-                        "customIntro" to book.customIntro,
-                        "type" to book.type,
-                        "wordCount" to book.wordCount
-                    )
-                )
-            }]"
-        )
-    }
-
-    private fun uploadBook(book: Book) {
-        if (book.getRemoteUrl() != null) {
-            alert(R.string.draw, R.string.sure_upload) {
-                okButton { viewModel.uploadBook(book) }
-                cancelButton()
-            }
-        } else viewModel.uploadBook(book)
-    }
-
     override fun observeLiveBus() {
+        super.observeLiveBus()
         viewModel.actionLive.observe(this) {
             if (it == "selectBooksDir") localBookTreeSelect.launch {
                 title = getString(R.string.select_book_folder)
@@ -325,89 +320,22 @@ class BookInfoActivity :
         }
     }
 
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_DOWN) {
-            currentFocus?.let {
-                if (it === binding.tvIntro && binding.tvIntro.hasSelection()) it.clearFocus()
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
-    private fun refreshBook() {
+    fun refreshBook() {
         upLoading(true)
         viewModel.getBook()?.let { viewModel.refreshBook(it) }
     }
 
-    private fun showBook(book: Book) = binding.run {
-        applyDevFeatLayout(book)
-        tvName.text = book.name
-        tvAuthor.text = book.getRealAuthor()
-        tvOrigin.text = book.originName
-        tvLasted.text = getString(R.string.lasted_show, book.latestChapterTitle)
-        tvIntro.setIntroWithActions(book.getDisplayIntro())
-        tvToc.visible(!book.isWebFile)
+    private fun showBook(book: Book) {
+        this.book = book
+        bookTick++
+        coverTick++
+        lastedTitle = getString(R.string.lasted_show, book.latestChapterTitle)
         upTvBookshelf()
-        upKinds(book)
+        upWordCount(book)
         upGroup(book.group)
-        showCover(book)
     }
 
-    private fun applyDevFeatLayout(book: Book) = binding.run {
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val useDevFeat = AppConfig.bookInfoHorizontalLayout && !book.isVideo && !isLandscape
-
-        if (useDevFeat) {
-            setLightStatusBar(isDarkTheme)
-            bgBook.gone()
-            titleBar.setTextColor(primaryTextColor)
-            titleBar.setColorFilter(primaryTextColor)
-            titleBar.toolbar.menu.applyTint(this@BookInfoActivity)
-
-            llTop.orientation = LinearLayout.HORIZONTAL
-            ivCover.updateLayoutParams<LinearLayout.LayoutParams> {
-                width = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-            llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
-                width = 0
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-            llInfoTop.setPadding(0, 0, llInfoTop.paddingRight, 0)
-            tvName.gravity = Gravity.START
-            llLasted.updateLayoutParams<LinearLayout.LayoutParams> {
-                gravity = Gravity.START
-            }
-            tvWordCount.gravity = Gravity.START
-        } else {
-            setLightStatusBar(false)
-            bgBook.visible()
-            val textColor = getPrimaryTextColor(false)
-            titleBar.setTextColor(textColor)
-            titleBar.setColorFilter(textColor)
-            titleBar.toolbar.menu.applyTint(this@BookInfoActivity, Theme.Dark)
-
-            if (!isLandscape) {
-                llTop.orientation = LinearLayout.VERTICAL
-                ivCover.updateLayoutParams<LinearLayout.LayoutParams> {
-                    width = LinearLayout.LayoutParams.WRAP_CONTENT
-                }
-                llInfoTop.updateLayoutParams<LinearLayout.LayoutParams> {
-                    width = LinearLayout.LayoutParams.MATCH_PARENT
-                    height = 0
-                }
-                llInfoTop.setPadding(llInfoTop.paddingRight, 0, llInfoTop.paddingRight, 0)
-                tvName.gravity = Gravity.CENTER
-                llLasted.updateLayoutParams<LinearLayout.LayoutParams> {
-                    gravity = Gravity.CENTER
-                }
-                tvWordCount.gravity = Gravity.CENTER
-            }
-        }
-    }
-
-    private fun upKinds(book: Book) = binding.run {
-        book.kind?.splitNotBlank(",", "\n")?.let { bindKinds(lbKind, it) }
-
+    private fun upWordCount(book: Book) {
         lifecycleScope.launch {
             val wordCounts = arrayListOf<String>()
             book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
@@ -425,302 +353,186 @@ class BookInfoActivity :
                 }
                 if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
             }
-            tvWordCount.isVisible = wordCounts.isNotEmpty() || book.isLocal
-            if (wordCounts.isNotEmpty()) {
-                tvWordCount.text = wordCounts.joinToString(",")
+            wordCountText = when {
+                wordCounts.isNotEmpty() -> wordCounts.joinToString(",")
+                book.isLocal -> ""
+                else -> null
             }
-        }
-    }
-
-    private fun bindKinds(container: LinearLayout, kinds: Array<String>) {
-        if (kinds.isEmpty()) {
-            container.gone()
-            return
-        }
-        container.visible()
-        container.removeAllViews()
-
-        val groups = linkedMapOf<String, MutableList<Pair<String, String?>>>()
-        val otherLabel = getString(R.string.other)
-        kinds.forEach { kind ->
-            val tagContent = kind.substringBefore("::").trim()
-            val groupSplit = tagContent.split(":", limit = 2)
-            if (groupSplit.size > 1 && groupSplit.all { it.isNotBlank() }) {
-                groups.getOrPut(groupSplit[0].trim()) { mutableListOf() }
-                    .add(groupSplit[1].trim() to kind)
-            } else if (tagContent.isNotBlank()) {
-                groups.getOrPut(otherLabel) { mutableListOf() }.add(tagContent to kind)
-            }
-        }
-
-        groups.forEach { (groupName, items) ->
-            val flexboxLayout = FlexboxLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                flexWrap = FlexWrap.WRAP
-            }
-            if (groups.size > 1 || groupName != otherLabel) {
-                addTagToFlexbox(flexboxLayout, groupName, null)
-            }
-            items.forEach { (value, fullKind) ->
-                if (value.isNotEmpty()) addTagToFlexbox(flexboxLayout, value, fullKind)
-            }
-            container.addView(flexboxLayout)
-        }
-    }
-
-    private fun addTagToFlexbox(
-        flexboxLayout: FlexboxLayout, text: String, fullKind: String?
-    ) {
-        ItemFilletTextBinding.inflate(layoutInflater, flexboxLayout, false).apply {
-            textView.text = text
-            root.isClickable = fullKind != null
-            root.isFocusable = fullKind != null
-
-            if (fullKind == null) {
-                textView.alpha = 0.8f
-                textView.paint.isFakeBoldText = true
-            } else {
-                root.onClick {
-                    search(fullKind)
-                }
-                root.onLongClick {
-                    search(text, false)
-                }
-            }
-            flexboxLayout.addView(root)
-        }
-    }
-
-    private fun showCover(book: Book) = binding.run {
-        val coverUrl = book.getDisplayCover()
-        ivCover.coverRatio = if (book.isVideo) BookCover.CoverRatio.VIDEO
-        else BookCover.CoverRatio.NOVEL
-        ivCover.load(
-            coverUrl,
-            book.name,
-            book.getRealAuthor(),
-            false,
-            book.origin,
-            inBookshelf = viewModel.inBookshelf
-        )
-        if (!AppConfig.isEInkMode && bgBook.isVisible) {
-            // seed 与 ivCover 的默认封面 seed (name) 对齐,
-            // BookInfoBgTransformation 经 extraTransformations 并入,
-            // 失败回退会同时套用 blur+渐变,且与前景挑到同一张默认图。
-            BookCover.loadBlur(
-                Glide.with(this@BookInfoActivity),
-                coverUrl,
-                sourceOrigin = book.origin,
-                inBookshelf = viewModel.inBookshelf,
-                seed = book.name,
-                extraTransformations = listOf(BookInfoBgTransformation()),
-            ).placeholder(bgBook.drawable).into(bgBook)
         }
     }
 
     private fun upLoading(isLoading: Boolean, chapterList: List<BookChapter>? = null) {
-        binding.tvToc.text = when {
-            isLoading -> getString(R.string.loading)
+        tocText = when {
+            isLoading -> null
             chapterList.isNullOrEmpty() -> getString(R.string.error_load_toc)
-            else -> viewModel.curBook?.durChapterTitle
+            else -> viewModel.curBook?.durChapterTitle ?: ""
         }
         if (!isLoading && !chapterList.isNullOrEmpty()) {
             viewModel.curBook?.let {
-                binding.tvLasted.text = getString(R.string.lasted_show, it.latestChapterTitle)
+                lastedTitle = getString(R.string.lasted_show, it.latestChapterTitle)
             }
         }
     }
 
     private fun upTvBookshelf() {
-        binding.tvShelf.text =
-            getString(if (viewModel.inBookshelf) R.string.remove_from_bookshelf else R.string.add_to_bookshelf)
-        editMenuItem?.isVisible = viewModel.inBookshelf
+        inBookshelf = viewModel.inBookshelf
     }
 
     private fun upGroup(groupId: Long) {
         viewModel.loadGroup(groupId) {
-            binding.tvGroup.text = it.takeIf { !it.isNullOrEmpty() } ?: getString(R.string.no_group)
+            groupName = it.takeIf { !it.isNullOrEmpty() } ?: getString(R.string.no_group)
         }
     }
 
-    private fun initViewEvent() = binding.run {
-        ivCover.onLongClick {
-            viewModel.getBook()
-                ?.let { showDialogFragment(ChangeCoverDialog(it.name, it.getRealAuthor())) }
+    // ---- 标题栏菜单动作(对照 onCompatOptionsItemSelected) ----
+
+    fun editBook() {
+        viewModel.getBook()?.let {
+            IntentData.book = it
+            infoEditResult.launch {}
         }
-        ivCover.onClick {
-            viewModel.getBook()?.getDisplayCover()?.let { showDialogFragment(PhotoDialog(it)) }
-        }
-        tvRead.onClick {
-            viewModel.getBook()?.let { book ->
-                if (book.isWebFile) showWebFileDownloadAlert { readBook(it) } else readBook(book)
-            }
-        }
-        tvShelf.onClick {
-            viewModel.getBook()?.let {
-                if (viewModel.inBookshelf) deleteBook()
-                else if (it.isWebFile) showWebFileDownloadAlert()
-                else viewModel.addToBookshelf {
-                    setResult(RESULT_OK)
-                    upTvBookshelf()
-                }
-            }
-        }
-        tvOrigin.onClick {
-            if (viewModel.curBook?.isLocal == true) return@onClick
-            viewModel.curBookSource?.let { editSourceResult.launch { IntentData.source = it } }
-                ?: toastOnUi(R.string.error_no_source)
-        }
-        tvOrigin.onLongClick {
-            viewModel.getBook()
-                ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getRealAuthor())) }
-        }
-        tvToc.onClick {
-            val chapters = viewModel.chapterListData.value
-            if (chapters.isNullOrEmpty()) return@onClick toastOnUi(R.string.chapter_list_empty)
-            viewModel.getBook()?.let {
-                IntentData.book = it
-                IntentData.chapterList = chapters
-                tocActivityResult.launch(it.bookUrl)
-            }
-        }
-        tvGroup.onClick {
-            viewModel.getBook()?.let { showDialogFragment(GroupSelectDialog(it.group)) }
-        }
-        tvAuthor.onClick {
-            viewModel.getBook(false)?.let { book ->
-                val authors = book.author.splitNotBlank("\n")
-                if (authors.isEmpty()) return@let
-                if (authors.size == 1) search(authors[0])
-                else PopupMenu(this@BookInfoActivity, it).apply {
-                    authors.forEachIndexed { index, s ->
-                        menu.add(
-                            0, index, index, s.split("::")[0]
+    }
+
+    fun shareBook() {
+        viewModel.curBook?.let { book ->
+            share(
+                "[${
+                    GSON.toJson(
+                        mapOf(
+                            "bookUrl" to book.bookUrl,
+                            "tocUrl" to book.tocUrl,
+                            "origin" to book.origin,
+                            "originName" to book.originName,
+                            "name" to book.name,
+                            "author" to book.author,
+                            "kind" to book.kind,
+                            "coverUrl" to book.coverUrl,
+                            "customCoverUrl" to book.customCoverUrl,
+                            "intro" to book.intro,
+                            "customIntro" to book.customIntro,
+                            "type" to book.type,
+                            "wordCount" to book.wordCount
                         )
-                    }
-                    setOnMenuItemClickListener { menuItem -> search(authors[menuItem.itemId]); true }
-                }.show()
-            }
-        }
-        tvAuthor.onLongClick {
-            search(tvAuthor.text.toString(), false)
-        }
-        tvName.onClick {
-            viewModel.getBook(false)?.let {
-                startActivity<SearchActivity> {
-                    putExtra("key", it.name)
-                }
-            }
-        }
-        refreshLayout.setOnRefreshListener {
-            refreshLayout.isRefreshing = false
-            refreshBook()
-        }
-    }
-
-    private fun TextView.setIntroWithActions(intro: String?) {
-        if (intro.isNullOrBlank() || !intro.contains('<')) {
-            text = intro
-            return
-        }
-        val body = Ksoup.parseBodyFragment(intro).body()
-        val builder = SpannableStringBuilder()
-        appendIntroNodes(builder, body, this)
-        movementMethod = LinkMovementMethod.getInstance()
-        text = builder
-    }
-
-    private fun appendIntroNodes(
-        builder: SpannableStringBuilder, parent: Element, target: TextView
-    ) {
-        for (node in parent.childNodes()) {
-            when (node) {
-                is TextNode -> builder.append(node.getWholeText())
-                is Element -> when (node.tagName().lowercase()) {
-                    "button" -> appendActionSpan(builder, node)
-                    "img" -> appendImageSpan(builder, node, target)
-                    else -> appendIntroNodes(builder, node, target)
-                }
-            }
-        }
-    }
-
-    private inline fun noUnderlineClick(crossinline onClick: () -> Unit) =
-        object : ClickableSpan() {
-            override fun onClick(widget: View) = onClick()
-            override fun updateDrawState(ds: TextPaint) {
-                ds.isUnderlineText = false
-            }
-        }
-
-    private fun appendActionSpan(
-        builder: SpannableStringBuilder, node: Element
-    ) {
-        val label = node.text().ifBlank { return }
-        val action = node.attr("onclick")
-        val start = builder.length
-        builder.append(label)
-        val end = builder.length
-        builder.setSpan(
-            IntroButtonSpan(this, label), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        builder.setSpan(
-            noUnderlineClick { dispatchIntroAction(action) },
-            start,
-            end,
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-    }
-
-    private fun appendImageSpan(
-        builder: SpannableStringBuilder, node: Element, target: TextView
-    ) {
-        val src = node.absUrl("src").ifEmpty { node.attr("src") }
-        if (src.isBlank()) return
-        val placeholder: Drawable = Color.TRANSPARENT.toDrawable().apply {
-            setBounds(0, 0, 1, 1)
-        }
-        val start = builder.length
-        builder.append("\n \n")
-        val end = builder.length
-        val imgSpan = ImageSpan(placeholder, ImageSpan.ALIGN_BOTTOM)
-        builder.setSpan(imgSpan, start + 1, end - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        builder.setSpan(
-            noUnderlineClick { showDialogFragment(PhotoDialog(src)) },
-            start + 1,
-            end - 1,
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        target.doOnLayout {
-            val width = target.width - target.paddingLeft - target.paddingRight
-            if (width <= 0) return@doOnLayout
-            Glide.with(this).load(src).into(object : CustomTarget<Drawable>() {
-                override fun onResourceReady(
-                    resource: Drawable, transition: Transition<in Drawable>?
-                ) {
-                    if (end > builder.length) return
-                    val intrinsicW = resource.intrinsicWidth.coerceAtLeast(1)
-                    val intrinsicH = resource.intrinsicHeight.coerceAtLeast(1)
-                    val height = (intrinsicH.toFloat() * width / intrinsicW).toInt()
-                    resource.setBounds(0, 0, width, height)
-                    builder.removeSpan(imgSpan)
-                    builder.setSpan(
-                        ImageSpan(resource, ImageSpan.ALIGN_BOTTOM),
-                        start + 1,
-                        end - 1,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
-                    target.text = builder
-                }
-
-                override fun onLoadCleared(placeholder: Drawable?) {}
-            })
+                }]"
+            )
         }
     }
 
-    private fun dispatchIntroAction(action: String) {
+    fun login() {
+        viewModel.curBookSource?.let {
+            IntentData.book = viewModel.bookData.value
+            it.showLoginDialog(this)
+        }
+    }
+
+    fun setSourceVariable() {
+        viewModel.curBookSource?.showSourceVariableDialog(this)
+    }
+
+    fun setBookVariable() {
+        viewModel.getBook()?.showBookVariableDialog(this, viewModel.curBookSource)
+    }
+
+    fun toggleCanUpdate() {
+        viewModel.getBook()?.let {
+            it.canUpdate = !it.canUpdate
+            bookTick++
+            if (viewModel.inBookshelf) {
+                if (!it.canUpdate) it.removeType(BookType.updateError)
+                viewModel.saveBook(it)
+            }
+        }
+    }
+
+    fun toggleSplitLongChapter() {
+        viewModel.getBook()?.let {
+            upLoading(true)
+            val newValue = !it.config.splitLongChapter
+            it.config.splitLongChapter = newValue
+            bookTick++
+            lifecycleScope.launch { viewModel.loadBookInfo(it) }
+            if (!newValue) longToastOnUi(R.string.need_more_time_load_content)
+        }
+    }
+
+    fun uploadBook() {
+        viewModel.getBook()?.let { book ->
+            if (book.getRemoteUrl() != null) {
+                alert(R.string.draw, R.string.sure_upload) {
+                    okButton { viewModel.uploadBook(book) }
+                    cancelButton()
+                }
+            } else viewModel.uploadBook(book)
+        }
+    }
+
+    fun downloadToLocal() {
+        viewModel.getBook()?.let { viewModel.downloadToLocal(it) }
+    }
+
+    // ---- 界面点击(对照 initViewEvent) ----
+
+    override fun onCoverClick() {
+        viewModel.getBook()?.getDisplayCover()?.let { showDialogFragment(PhotoDialog(it)) }
+    }
+
+    override fun onCoverLongClick() {
+        viewModel.getBook()
+            ?.let { showDialogFragment(ChangeCoverDialog(it.name, it.getRealAuthor())) }
+    }
+
+    override fun onReadClick() {
+        viewModel.getBook()?.let { book ->
+            if (book.isWebFile) showWebFileDownloadAlert { readBook(it) } else readBook(book)
+        }
+    }
+
+    override fun onShelfClick() {
+        viewModel.getBook()?.let {
+            if (viewModel.inBookshelf) deleteBook()
+            else if (it.isWebFile) showWebFileDownloadAlert()
+            else viewModel.addToBookshelf {
+                setResult(RESULT_OK)
+                upTvBookshelf()
+            }
+        }
+    }
+
+    override fun onOriginClick() {
+        if (viewModel.curBook?.isLocal == true) return
+        viewModel.curBookSource?.let { editSourceResult.launch { IntentData.source = it } }
+            ?: toastOnUi(R.string.error_no_source)
+    }
+
+    override fun onOriginLongClick() {
+        viewModel.getBook()
+            ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getRealAuthor())) }
+    }
+
+    override fun onTocClick() {
+        val chapters = viewModel.chapterListData.value
+        if (chapters.isNullOrEmpty()) return toastOnUi(R.string.chapter_list_empty)
+        viewModel.getBook()?.let {
+            IntentData.book = it
+            IntentData.chapterList = chapters
+            tocActivityResult.launch(it.bookUrl)
+        }
+    }
+
+    override fun onGroupClick() {
+        viewModel.getBook()?.let { showDialogFragment(GroupSelectDialog(it.group)) }
+    }
+
+    override fun onNameClick() {
+        viewModel.getBook(false)?.let {
+            startActivity<SearchActivity> {
+                putExtra("key", it.name)
+            }
+        }
+    }
+
+    override fun onDispatchIntroAction(action: String) {
         val js = action.trim().ifEmpty { return }
         val source = viewModel.curBookSource ?: return toastOnUi(R.string.error_no_source)
         try {
@@ -732,7 +544,11 @@ class BookInfoActivity :
         }
     }
 
-    private fun search(author: String, submit: Boolean = true) {
+    override fun onShowPhoto(src: String) {
+        showDialogFragment(PhotoDialog(src))
+    }
+
+    fun search(author: String, submit: Boolean = true) {
         val tmp = author.split("::", limit = 2)
         if (tmp.size > 1) {
             IntentData.source = viewModel.curBookSource
@@ -753,7 +569,6 @@ class BookInfoActivity :
         }
     }
 
-
     @SuppressLint("InflateParams")
     private fun deleteBook() {
         viewModel.getBook()?.let { book ->
@@ -765,26 +580,28 @@ class BookInfoActivity :
                 return
             }
             alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-                var checkBox: CheckBox? = null
+                val deleteFile = mutableStateOf(LocalConfig.deleteBookOriginal)
                 if (book.isLocal) {
-                    checkBox = CheckBox(this@BookInfoActivity).apply {
-                        setText(R.string.delete_book_file)
-                        isChecked = LocalConfig.deleteBookOriginal
-                    }
                     customView {
-                        LinearLayout(this@BookInfoActivity).apply {
-                            setPadding(
-                                space.lg,
-                                0,
-                                space.lg,
-                                0
-                            )
-                            addView(checkBox)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = deleteFile.value,
+                                    role = Role.Checkbox,
+                                    onValueChange = { deleteFile.value = it },
+                                )
+                                .padding(horizontal = 24.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            AppCheckbox(checked = deleteFile.value, onCheckedChange = null)
+                            Text(stringResource(R.string.delete_book_file), color = AppTheme.colors.primaryText)
                         }
                     }
                 }
                 yesButton {
-                    checkBox?.let { LocalConfig.deleteBookOriginal = it.isChecked }
+                    if (book.isLocal) LocalConfig.deleteBookOriginal = deleteFile.value
                     viewModel.delBook(LocalConfig.deleteBookOriginal) {
                         setResult(RESULT_DELETED)
                         finish()
@@ -865,7 +682,7 @@ class BookInfoActivity :
     override fun coverChangeTo(coverUrl: String) {
         viewModel.bookData.value?.let { book ->
             book.customCoverUrl = coverUrl
-            showCover(book)
+            coverTick++
             if (viewModel.inBookshelf) viewModel.saveBook(book)
         }
     }

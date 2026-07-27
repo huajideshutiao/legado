@@ -3,7 +3,7 @@ package io.legado.app.ui.book.explore
 import androidx.core.view.isVisible
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.databinding.ItemExploreVideoBinding
-import io.legado.app.model.BookCover
+import io.legado.app.model.CoverRatio
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -25,7 +25,7 @@ fun ItemExploreVideoBinding.bindVideoCard(
     llKind.isVisible = kinds.isNotEmpty()
     if (kinds.isNotEmpty()) llKind.setLabels(kinds)
     ivInBookshelf.isVisible = showBookshelfBadge && isInBookshelf
-    ivCover.coverRatio = BookCover.CoverRatio.VIDEO
+    ivCover.coverRatio = CoverRatio.VIDEO
     if (coverUrl.isNullOrBlank()) {
         ivCover.gone()
     } else {

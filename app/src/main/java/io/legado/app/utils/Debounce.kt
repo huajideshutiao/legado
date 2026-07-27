@@ -3,6 +3,23 @@ package io.legado.app.utils
 import android.os.SystemClock
 import kotlin.math.max
 
+// 未下沉至 shared/jvmAndAndroidMain 原因:
+// 本类通过 buildMainHandler() 获取 Android 主线程 Handler, trailing/maxWait 回调
+// 在主线程执行。调研调用方:
+//   1. ReadBookActivity.upSeekBarThrottle: 回调内已 runOnUiThread { ... }, 不依赖.
+//   2. ReadMangaActivity.nextPageThrottle/prevPageThrottle: trailing=false, 仅 leading
+//      同步执行, 不依赖.
+//   3. ReadView.upProgressThrottle: 回调内已 post { ... }, 不依赖.
+//   4. ReadBookActivity.keyPageDebounce 的 nextPageDebounce/prevPageDebounce:
+//      鼠标滚轮场景 leading=false/trailing=true, trailing 回调直接执行 keyPage() ->
+//      keyTurnPage() -> nextPageByAnim() -> abortAnim()/readView.setStartPoint()/
+//      onAnimStart() 等 View 动画操作, 严格依赖主线程.
+// 方案 A (ScheduledExecutorService + Dispatchers.Main 切回) 不可行: jvmAndAndroidMain
+// 无 Dispatchers.Main actual (kotlinx-coroutines-android 仅在 androidMain, 见 shared
+// build.gradle).
+// 方案 B (纯 ScheduledExecutorService) 会破坏 case 4: trailing 回调跑到工作线程引发
+// UI 线程违例.
+// 故保留 app 端实现, 维持 buildMainHandler() 主线程 Handler 语义.
 @Suppress("MemberVisibilityCanBePrivate")
 open class Debounce<T>(
     var wait: Long = 0L,

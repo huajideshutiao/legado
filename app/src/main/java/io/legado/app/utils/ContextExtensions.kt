@@ -31,9 +31,10 @@ import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
-import androidx.preference.PreferenceManager
+
 import io.legado.app.R
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.authority
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
@@ -158,7 +159,8 @@ fun Context.startForegroundServiceCompat(intent: Intent) {
 }
 
 val Context.defaultSharedPreferences: SharedPreferences
-    get() = PreferenceManager.getDefaultSharedPreferences(this)
+    // 等价 androidx.preference PreferenceManager.getDefaultSharedPreferences（该依赖已随 lib/prefs 移除）
+    get() = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
 
 fun Context.getPrefBoolean(key: String, defValue: Boolean = false) =
     defaultSharedPreferences.getBoolean(key, defValue)

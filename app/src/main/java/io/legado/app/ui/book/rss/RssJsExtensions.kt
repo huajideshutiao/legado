@@ -1,9 +1,8 @@
-package io.legado.app.ui.rss.read
+package io.legado.app.ui.book.rss
 
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.help.JsExtensions
 import io.legado.app.ui.association.AddToBookshelfHelper
-import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.search.SearchActivity
 
 @Suppress("unused")

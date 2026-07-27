@@ -1,10 +1,11 @@
 package io.legado.app.utils
 
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.appInfo
+import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import splitties.init.appCtx
 import java.io.File
 import java.net.URLEncoder
@@ -66,12 +67,10 @@ object RemoteAssetsUtils {
             try {
                 val encodedFileName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
                 val url = "$BASE_URL/$dirPath/$encodedFileName"
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "Legado/${AppConst.appInfo.versionName}")
-                    .build()
-
-                okHttpClient.newCall(request).execute().use { response ->
+                okHttpClient.newCallResponse {
+                    url(url)
+                    header("User-Agent", "Legado/${AppConst.appInfo.versionName}")
+                }.use { response ->
                     if (response.isSuccessful) {
                         response.body.bytes().also {
                             cachedFile.writeBytes(it)

@@ -23,6 +23,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
@@ -35,6 +36,7 @@ import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.stackBlur
 import splitties.init.appCtx
@@ -58,6 +60,12 @@ object ThemeConfig {
         AppConfig.isNightTheme -> Theme.Dark
         else -> Theme.Light
     }
+
+    /** 当前日/夜模式的背景图路径,未设置为 null */
+    val curBgImagePath: String?
+        get() = appCtx.getPrefString(
+            if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage
+        )
 
     fun applyDayNight(context: Context) {
         initNightMode()
@@ -117,6 +125,52 @@ object ThemeConfig {
                 getCompatColorForMode(R.color.arco_default_bbg, isNight)
             )
         }
+
+    /** 自定义主题编辑页的 pref 快照 */
+    data class CustomTheme(
+        val accent: Int,
+        val background: Int,
+        val bottomBackground: Int,
+        val bgImage: String?,
+        val bgImageBlur: Int,
+    )
+
+    /** 读取指定模式的自定义主题,色值 0 视为未设置回落默认色 */
+    fun readCustomTheme(context: Context, isNight: Boolean): CustomTheme = with(context) {
+        val (defAccent, defBg, defBbg) = readDefaultColors(context, isNight)
+        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
+        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
+        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
+        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
+        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
+        CustomTheme(
+            accent = getPrefInt(accentKey).let { if (it == 0) defAccent else it },
+            background = getPrefInt(bgKey).let { if (it == 0) defBg else it },
+            bottomBackground = getPrefInt(bbgKey).let { if (it == 0) defBbg else it },
+            bgImage = getPrefString(bgImageKey),
+            bgImageBlur = getPrefInt(blurKey, 0),
+        )
+    }
+
+    /** 保存指定模式的自定义主题;bgImage 为空清除背景图 */
+    fun saveCustomTheme(context: Context, isNight: Boolean, theme: CustomTheme) = with(context) {
+        val primaryKey = if (isNight) PreferKey.cNPrimary else PreferKey.cPrimary
+        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
+        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
+        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
+        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
+        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
+        putPrefInt(primaryKey, theme.background)
+        putPrefInt(accentKey, theme.accent)
+        putPrefInt(bgKey, theme.background)
+        putPrefInt(bbgKey, theme.bottomBackground)
+        if (theme.bgImage.isNullOrBlank()) {
+            removePref(bgImageKey)
+        } else {
+            putPrefString(bgImageKey, theme.bgImage)
+        }
+        putPrefInt(blurKey, theme.bgImageBlur)
+    }
 
     /**
      * 前置到主题列表最前的两个虚拟条目，不写盘、不进 configList

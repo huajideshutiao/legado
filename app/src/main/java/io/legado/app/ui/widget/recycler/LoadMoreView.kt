@@ -8,8 +8,8 @@ import android.widget.FrameLayout
 import androidx.annotation.ColorRes
 import io.legado.app.R
 import io.legado.app.databinding.ViewLoadMoreBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.neutralButton
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
@@ -27,6 +27,8 @@ class LoadMoreView(context: Context, attrs: AttributeSet? = null) : FrameLayout(
         private set
 
     init {
+        // 无 Factory2 注入后显式取 ThemeStore accent 着色转圈
+        binding.rotateLoading.setIndicatorColor(context.accentColor)
         super.setOnClickListener {
             if (!showErrorDialog(it)) {
                 onClickListener?.onClick(it)

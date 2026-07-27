@@ -3,6 +3,8 @@ package io.legado.app.ui.config
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.MutableLiveData
+import androidx.room.execSQL
+import androidx.room.useWriterConnection
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -56,7 +58,8 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
         execute {
             appDb.bookChapterDao.deleteNotShelfBookChapters()
             appDb.bookDao.deleteNotShelfBook()
-            appDb.openHelper.writableDatabase.execSQL("VACUUM")
+            // 配置 SQLiteDriver 后 openHelper 不可用，走 driver 连接执行
+            appDb.useWriterConnection { it.execSQL("VACUUM") }
         }.onSuccess {
             context.toastOnUi(R.string.success)
         }

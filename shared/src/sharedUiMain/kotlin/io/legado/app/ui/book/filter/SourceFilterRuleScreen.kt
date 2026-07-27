@@ -1,0 +1,378 @@
+package io.legado.app.ui.book.filter
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import io.legado.app.data.entities.SourceFilterRule
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.component.SelectAction
+import io.legado.app.ui.compose.component.SelectActionBar
+import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
+import sh.calvin.reorderable.ReorderableCollectionItemScope
+
+/**
+ * 源过滤规则列表 Screen (KMP 版, sharedUiMain 共享)。
+ *
+ * 对照 app 端 `SourceFilterRuleActivity.Content` 下沉, 复用 shared/compose/component 的
+ * `RuleManageScaffold` 骨架 + 通用组件 (AppTitleBar/AppSearchField/AppDropdownMenu/
+ * OverflowMenu/SelectActionBar/AppCheckbox/AppSwitch/dragSelectable 等):
+ * - 数据/选中/查询状态由调用方(Activity 壳层)持有并打包成 [SourceFilterRuleUiState],
+ *   本 Composable 纯渲染 + 通过 [SourceFilterRuleUiActions] 回调驱动平台层
+ * - 路由跳转 / appDb / showDialogFragment / alert 全部走 actions 回调,
+ *   不直接依赖 Activity/Intent/Android 框架
+ * - 字符串走 [rememberString](key), app 端 getIdentifier 命中 R.string, desktop 返回 key 本身
+ * - 图标走 [rememberPainter](key), app 端命中 R.drawable, desktop 未注册返回 Help 占位
+ * - 删除确认(批量/单条/全部)用 [AppAlertDialog] 替代 app 端 alert 扩展,
+ *   commonMain 无 android.app.AlertDialog 依赖; 确认后回调 actions 执行真正删除
+ */
+data class SourceFilterRuleUiState(
+    val rules: List<SourceFilterRule> = emptyList(),
+    val selected: Set<String> = emptySet(),
+    val searchKey: String = "",
+)
+
+/**
+ * 平台行为回调集合。宿主(Activity/Dialog 壳层)实现本接口, 在方法内桥接
+ * appDb / ViewModel / showDialogFragment / 文件 launcher / alert 等平台依赖。
+ *
+ * 删除类回调([onDeleteSelection]/[onDeleteRule]/[onDeleteAll]) 在 shared 层
+ * 确认对话框 OK 后才调用, 宿主实现无需再弹确认框。
+ */
+interface SourceFilterRuleUiActions {
+    /** 返回上一页 */
+    fun onBack()
+
+    /** 搜索框输入回调, 宿主据此更新 searchKey state 并重启数据流订阅 */
+    fun onSearchKeyChange(key: String)
+
+    /** 列表项勾选/取消勾选 */
+    fun onToggleSelected(item: SourceFilterRule, checked: Boolean)
+
+    /** 全选/取消全选 */
+    fun onSelectAll(all: Boolean)
+
+    /** 反选 */
+    fun onRevertSelection()
+
+    /** 拖拽换位 (即时 state 交换由调用方负责) */
+    fun onMoveItem(from: Int, to: Int)
+
+    /** 松手落库, 持久化当前顺序 */
+    fun onPersistOrder()
+
+    /** 批量删除选中项 (确认对话框 OK 后调用) */
+    fun onDeleteSelection()
+
+    /** 单条删除 (确认对话框 OK 后调用) */
+    fun onDeleteRule(rule: SourceFilterRule)
+
+    /** 删除全部 (确认对话框 OK 后调用) */
+    fun onDeleteAll()
+
+    /** 启用选中项 */
+    fun onEnableSelection()
+
+    /** 禁用选中项 */
+    fun onDisableSelection()
+
+    /** 置顶选中项 */
+    fun onTopSelect()
+
+    /** 置底选中项 */
+    fun onBottomSelect()
+
+    /** 导出选中项 (宿主端负责文件保存) */
+    fun onExportSelection()
+
+    /** 编辑规则 */
+    fun onEditRule(rule: SourceFilterRule)
+
+    /** 单项置顶 */
+    fun onToTop(rule: SourceFilterRule)
+
+    /** 单项置底 */
+    fun onToBottom(rule: SourceFilterRule)
+
+    /** 单项启用开关切换 */
+    fun onToggleEnabled(rule: SourceFilterRule, enabled: Boolean)
+
+    /** 新增规则 (弹出编辑对话框) */
+    fun onAddRule()
+
+    /** 本地导入 */
+    fun onImportLocal()
+
+    /** 在线导入 */
+    fun onImportOnline()
+}
+
+@Composable
+fun SourceFilterRuleScreen(
+    state: SourceFilterRuleUiState,
+    actions: SourceFilterRuleUiActions,
+) {
+    val rules = state.rules
+    val selected = state.selected
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    // 批量删除/单条删除/删除全部三个确认对话框的显示状态由本 Composable 持有,
+    // 替代 app 端 alert 扩展 (commonMain 无 AlertDialog 依赖)
+    var showDeleteSelectionConfirm by remember { mutableStateOf(false) }
+    var showDeleteAllConfirm by remember { mutableStateOf(false) }
+    val pendingDeleteRule = remember { mutableStateOf<SourceFilterRule?>(null) }
+
+    RuleManageScaffold(
+        items = rules,
+        itemKey = { it.id },
+        onMove = { from, to -> actions.onMoveItem(from, to) },
+        emptyText = rememberString("source_filter_rule_empty"),
+        listState = listState,
+        titleBar = {
+            AppTitleBar(
+                title = rememberString("source_filter_rule"),
+                onBack = { actions.onBack() },
+                titleContent = {
+                    AppSearchField(
+                        value = state.searchKey,
+                        onValueChange = { actions.onSearchKeyChange(it) },
+                        hint = rememberString("search"),
+                    )
+                },
+                actions = {
+                    SourceFilterRuleActions(
+                        actions = actions,
+                        onRequestDeleteAll = { showDeleteAllConfirm = true },
+                    )
+                },
+            )
+        },
+        listModifier = Modifier.dragSelectable(
+            listState = listState,
+            autoScrollScope = scope,
+            isSelected = { index -> rules.getOrNull(index)?.let { selected.contains(it.id) } ?: false },
+            onSelectedChanged = { index, sel ->
+                rules.getOrNull(index)?.let { actions.onToggleSelected(it, sel) }
+            },
+        ),
+        actionBar = {
+            SelectActionBar(
+                selectCount = selected.size,
+                allCount = rules.size,
+                onSelectAll = { actions.onSelectAll(it) },
+                onRevertSelection = { actions.onRevertSelection() },
+                mainActionText = rememberString("delete"),
+                onMainAction = { showDeleteSelectionConfirm = true },
+                actions = listOf(
+                    SelectAction(rememberString("enable_selection")) {
+                        actions.onEnableSelection()
+                    },
+                    SelectAction(rememberString("disable_selection")) {
+                        actions.onDisableSelection()
+                    },
+                    SelectAction(rememberString("selection_to_top")) {
+                        actions.onTopSelect()
+                    },
+                    SelectAction(rememberString("selection_to_bottom")) {
+                        actions.onBottomSelect()
+                    },
+                    SelectAction(rememberString("export_selection")) {
+                        actions.onExportSelection()
+                    },
+                ),
+            )
+        },
+    ) { item ->
+        SourceFilterRuleItem(
+            item = item,
+            checked = selected.contains(item.id),
+            actions = actions,
+            onDelete = { pendingDeleteRule.value = item },
+        )
+    }
+
+    // 批量删除确认
+    if (showDeleteSelectionConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showDeleteSelectionConfirm = false },
+            title = rememberString("draw"),
+            message = rememberString("sure_del"),
+            okButton = AlertButton(rememberString("ok")) {
+                actions.onDeleteSelection()
+            },
+            cancelButton = AlertButton(rememberString("cancel")) {},
+        )
+    }
+    // 删除全部确认
+    if (showDeleteAllConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showDeleteAllConfirm = false },
+            title = rememberString("delete_all"),
+            message = rememberString("source_filter_rule_delete_all_confirm"),
+            okButton = AlertButton(rememberString("ok")) {
+                actions.onDeleteAll()
+            },
+            cancelButton = AlertButton(rememberString("cancel")) {},
+        )
+    }
+    // 单条删除确认
+    pendingDeleteRule.value?.let { rule ->
+        AppAlertDialog(
+            onDismissRequest = { pendingDeleteRule.value = null },
+            title = rememberString("draw"),
+            message = rememberString("sure_del") + "\n" + rule.name,
+            okButton = AlertButton(rememberString("ok")) {
+                actions.onDeleteRule(rule)
+            },
+            cancelButton = AlertButton(rememberString("cancel")) {},
+        )
+    }
+}
+
+/**
+ * 顶部右侧操作区: 新增按钮 + 溢出菜单 (本地导入/在线导入/删除全部)。
+ *
+ * 注: 新增用 ic_add 图标, app 端 getIdentifier 命中 R.drawable.ic_add;
+ * desktop jvmMain 未注册该 key 会 fallback 到 Help 占位图标。
+ *
+ * @param onRequestDeleteAll 点击"删除全部"时触发, 由外层切换确认对话框显示状态
+ */
+@Composable
+private fun SourceFilterRuleActions(
+    actions: SourceFilterRuleUiActions,
+    onRequestDeleteAll: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    IconButton(onClick = { actions.onAddRule() }) {
+        Icon(
+            painter = rememberPainter("ic_add"),
+            contentDescription = rememberString("add"),
+            tint = colors.primaryText,
+        )
+    }
+    OverflowMenu { dismiss ->
+        DropdownMenuItem(
+            text = { Text(rememberString("import_local"), color = colors.primaryText) },
+            onClick = {
+                dismiss()
+                actions.onImportLocal()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(rememberString("import_on_line"), color = colors.primaryText) },
+            onClick = {
+                dismiss()
+                actions.onImportOnline()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(rememberString("delete_all"), color = colors.primaryText) },
+            onClick = {
+                dismiss()
+                onRequestDeleteAll()
+            },
+        )
+    }
+}
+
+/**
+ * 单条规则项: 复选框 + 名称(为空回退 pattern) + 启用开关 + 编辑按钮 + 更多菜单(置顶/置底/删除)。
+ * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
+ */
+@Composable
+private fun ReorderableCollectionItemScope.SourceFilterRuleItem(
+    item: SourceFilterRule,
+    checked: Boolean,
+    actions: SourceFilterRuleUiActions,
+    onDelete: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    var showMenu by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .longPressDraggableHandle(onDragStopped = { actions.onPersistOrder() })
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppCheckbox(
+            checked = checked,
+            onCheckedChange = { actions.onToggleSelected(item, it) },
+        )
+        Text(
+            text = item.name.ifEmpty { item.pattern },
+            color = colors.primaryText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { actions.onToggleSelected(item, !checked) },
+        )
+        AppSwitch(
+            checked = item.enabled,
+            onCheckedChange = { actions.onToggleEnabled(item, it) },
+        )
+        Spacer(Modifier.width(8.dp))
+        IconButton(onClick = { actions.onEditRule(item) }) {
+            Icon(
+                painter = rememberPainter("ic_edit"),
+                contentDescription = rememberString("edit"),
+                tint = colors.primaryText,
+            )
+        }
+        Box {
+            IconButton(onClick = { showMenu = true }) {
+                Icon(
+                    painter = rememberPainter("ic_more_vert"),
+                    contentDescription = rememberString("more_menu"),
+                    tint = colors.primaryText,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(rememberString("to_top"), color = colors.primaryText) },
+                    onClick = { showMenu = false; actions.onToTop(item) },
+                )
+                DropdownMenuItem(
+                    text = { Text(rememberString("to_bottom"), color = colors.primaryText) },
+                    onClick = { showMenu = false; actions.onToBottom(item) },
+                )
+                DropdownMenuItem(
+                    text = { Text(rememberString("delete"), color = colors.primaryText) },
+                    onClick = { showMenu = false; onDelete() },
+                )
+            }
+        }
+    }
+}

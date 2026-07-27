@@ -6,25 +6,27 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.compose.runtime.Composable
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import io.legado.app.base.BaseActivity
-import io.legado.app.databinding.ViewEmptyBinding
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.space
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.JsFn
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Suppress("unused")
-open class JsActivity : BaseActivity<ViewEmptyBinding>() {
-    override val binding by viewBinding(ViewEmptyBinding::inflate)
+open class JsActivity : BaseComposeActivity() {
+
+    /** 内容由 JS 侧经 [dialog]/[dialogView] 动态填充，宿主自身无 UI */
+    @Composable
+    override fun Content() = Unit
 
     /**
      * 当前 Activity 关联的 JsScope（rhino Scriptable / quickjs QuickJsContext）。

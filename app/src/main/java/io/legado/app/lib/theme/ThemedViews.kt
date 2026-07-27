@@ -1,143 +1,265 @@
 package io.legado.app.lib.theme
 
-import android.content.Context
+import android.annotation.SuppressLint
+import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.RadioButton
-import android.widget.Switch
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.RecyclerView
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.progressindicator.BaseProgressIndicator
 import com.google.android.material.textfield.TextInputLayout
+import io.legado.app.R
+import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.setEdgeEffectColor
 
 /**
- * 动态创建 View 的主题色兜底扩展。
+ * 残留 View 岛的显式主题着色（accent 取自 ThemeStore）。
  *
- * 背景: 代码里 `new EditText(context)` 等直接构造的 View 不走 LayoutInflater.inflate,
- * 不会被 ThemeInterceptor 的 Factory2 拦截。ThemeInterceptor.applyToTree 已在两个入口兜底:
- * - alert DSL 的 customView / customTitle (AndroidDialogs.kt)
- * - ItemViewHolder 构造 (覆盖所有继承 RecyclerAdapter / DiffRecyclerAdapter 的 Adapter)
- *
- * 但仍有少量场景绕过上述入口:
- * - 直接继承 RecyclerView.Adapter 且自定义 ViewHolder 的 Adapter (如 BookSourceEditAdapter)
- * - MenuItem actionView (MenuExtensions.kt)
- * - Dialog 内零散动态构造的 View (如 SourceLoginDialog 内 TextView)
- *
- * 这些场景推荐使用本文件提供的扩展函数替代裸 `new View(context)`,
- * 或对已构造的 View 调用 [View.applyTheme] / [View.applyThemeTree]。
- *
- * 用法:
- * ```kotlin
- * val et = context.editText { hint = "请输入" }
- * val tv = context.textView { setTextColor(Color.RED) }
- * container.applyThemeTree()   // 对已构造的容器整树着色
- * ```
+ * Factory2 注入链已删除：inflate 不再被拦截，需要动态色的 View 在构造点显式调用
+ * [View.applyTheme]（单个）或 [View.applyThemeTree]（整树，如 alert customView 的
+ * ViewBinding 根、RecyclerView item）。着色幂等，重复调用无副作用。
  */
 
-/**
- * 构造一个 EditText 并立即应用主题色。
- * 等价于 `EditText(this).also { ThemeInterceptor.applyDynamic(it) }`。
- *
- * @param init 可选的配置块, 在着色前执行 (避免着色覆盖业务设置的颜色)。
- *             注意: 主题色 tint 主要影响底线/光标/hint/link 颜色, 不影响 setTextColor 设置的文本颜色,
- *             但为安全起见, 业务配置应在此块内完成, 着色在最后执行。
- */
-inline fun Context.editText(init: EditText.() -> Unit = {}): EditText =
-    EditText(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.textView(init: TextView.() -> Unit = {}): TextView =
-    TextView(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.checkBox(init: CheckBox.() -> Unit = {}): CheckBox =
-    CheckBox(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.radioButton(init: RadioButton.() -> Unit = {}): RadioButton =
-    RadioButton(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.switch(init: Switch.() -> Unit = {}): Switch =
-    Switch(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.switchCompat(init: SwitchCompat.() -> Unit = {}): SwitchCompat =
-    SwitchCompat(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.progressBar(init: ProgressBar.() -> Unit = {}): ProgressBar =
-    ProgressBar(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun <T : BaseProgressIndicator<*>> Context.baseProgressIndicator(
-    factory: (Context) -> T,
-    init: T.() -> Unit = {}
-): T = factory(this).also {
-    it.init()
-    ThemeInterceptor.applyDynamic(it)
-}
-
-inline fun Context.swipeRefreshLayout(init: SwipeRefreshLayout.() -> Unit = {}): SwipeRefreshLayout =
-    SwipeRefreshLayout(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.recyclerView(init: RecyclerView.() -> Unit = {}): RecyclerView =
-    RecyclerView(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-inline fun Context.textInputLayout(init: TextInputLayout.() -> Unit = {}): TextInputLayout =
-    TextInputLayout(this).also {
-        it.init()
-        ThemeInterceptor.applyDynamic(it)
-    }
-
-/**
- * 对已构造的 View 应用主题色 (单 View, 不递归子树)。
- * 适用: 不在 alert DSL / ItemViewHolder 路径内的零散动态 View。
- */
 fun View.applyTheme() {
-    ThemeInterceptor.applyDynamic(this)
+    val accentColor = context.accentColor
+    val isDark = AppConfig.isNightTheme
+    when (this) {
+        is EditText -> {
+            // ViewCompat: AppCompatEditText 走 supportBackgroundTintList，普通 EditText 走框架 tint
+            ViewCompat.setBackgroundTintList(this, editTextTintList(accentColor, isDark))
+            setCursorTint(this, accentColor)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                isLocalePreferredLineHeightForMinimumUsed = false
+            }
+            setLinkTextColor(accentColor)
+            highlightColor = ColorUtils.adjustAlpha(accentColor, 0.4f)
+        }
+
+        is CheckBox -> buttonTintList = checkableTintList(accentColor, isDark)
+
+        is RadioButton -> buttonTintList = checkableTintList(accentColor, isDark)
+
+        is SwitchCompat -> {
+            trackDrawable = tintSwitchDrawable(trackDrawable, accentColor, isDark, thumb = false)
+            thumbDrawable = tintSwitchDrawable(thumbDrawable, accentColor, isDark, thumb = true)
+        }
+
+        is SeekBar -> {
+            val sl = ColorStateList(
+                arrayOf(
+                    intArrayOf(-android.R.attr.state_enabled),
+                    intArrayOf(android.R.attr.state_enabled)
+                ), intArrayOf(
+                    ContextCompat.getColor(
+                        context,
+                        if (isDark) R.color.ate_control_disabled_dark else R.color.ate_control_disabled_light
+                    ),
+                    accentColor
+                )
+            )
+            thumbTintList = sl
+            progressTintList = sl
+        }
+
+        is BaseProgressIndicator<*> -> setIndicatorColor(accentColor)
+
+        is ProgressBar -> {
+            val sl = ColorStateList.valueOf(accentColor)
+            progressTintList = sl
+            secondaryProgressTintList = sl
+            indeterminateTintList = sl
+        }
+
+        is RecyclerView -> setEdgeEffectColor(accentColor)
+
+        is TextView -> {
+            setLinkTextColor(accentColor)
+            highlightColor = ColorUtils.adjustAlpha(accentColor, 0.4f)
+        }
+
+        // Material 1.14.0: TextInputLayout 无 editTextBackgroundTintList public setter,
+        // 必须使用 setBoxStrokeColorStateList(ColorStateList) 与 setHintTextColor(ColorStateList)
+        // 否则聚焦态的底线/hint 颜色会回落到主题 colorAccent(静态 #165DFF),无法跟随 ThemeStore.accentColor。
+        is TextInputLayout -> {
+            val csl = editTextTintList(accentColor, isDark)
+            setBoxStrokeColorStateList(csl)
+            setHintTextColor(csl)
+            // BOX_BACKGROUND_NONE 模式下 boxBackground 为 null, setBoxStrokeColorStateList 无视觉效果;
+            // 底部线由 EditText 自身背景 abc_edit_text_material 绘制, focused 状态默认回退到
+            // ?attr/colorControlActivated = colorAccent = #165DFF(静态蓝)。
+            // 必须显式给 editText 设置 backgroundTint, 才能让聚焦底线跟随 ThemeStore.accentColor。
+            // 与下方 is EditText 分支幂等叠加, 无副作用。
+            editText?.let { ViewCompat.setBackgroundTintList(it, csl) }
+        }
+    }
 }
 
-/**
- * 对已构造的 View 及其整棵子树应用主题色 (去重)。
- * 适用: 动态构造的容器 View (如 LinearLayout 内 addView 多个动态子 View),
- *       在 addView 完成后调用一次, 整树着色。
- */
+/** 对 View 树整树着色（迭代而非递归，防深层级 StackOverflow）。 */
 fun View.applyThemeTree() {
-    ThemeInterceptor.applyToTree(this)
+    applyTheme()
+    if (this is ViewGroup) {
+        val stack = ArrayDeque<ViewGroup>()
+        stack.addLast(this)
+        while (stack.isNotEmpty()) {
+            val group = stack.removeLast()
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i) ?: continue
+                child.applyTheme()
+                if (child is ViewGroup) {
+                    stack.addLast(child)
+                }
+            }
+        }
+    }
 }
 
-/**
- * 对 ViewGroup 内所有子 View 应用主题色 (不包含自身)。
- * 适用: 父容器已通过其他路径着色 (如 inflate), 仅需对动态 addView 进来的子 View 兜底。
- */
-fun ViewGroup.applyThemeToChildren() {
-    for (i in 0 until childCount) {
-        getChildAt(i)?.let { ThemeInterceptor.applyToTree(it) }
+/** CheckBox/RadioButton：disabled / 未选中(control normal) / 选中(accent) */
+private fun View.checkableTintList(color: Int, isDark: Boolean): ColorStateList {
+    return ColorStateList(
+        arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(android.R.attr.state_enabled, -android.R.attr.state_checked),
+            intArrayOf(android.R.attr.state_enabled, android.R.attr.state_checked)
+        ), intArrayOf(
+            ContextCompat.getColor(
+                context,
+                if (isDark) R.color.ate_control_disabled_dark else R.color.ate_control_disabled_light
+            ),
+            ContextCompat.getColor(
+                context,
+                if (isDark) R.color.ate_control_normal_dark else R.color.ate_control_normal_light
+            ),
+            color
+        )
+    )
+}
+
+/** EditText 底线：disabled / 未聚焦(control normal) / 聚焦(accent) */
+private fun View.editTextTintList(color: Int, isDark: Boolean): ColorStateList {
+    return ColorStateList(
+        arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(
+                android.R.attr.state_enabled,
+                -android.R.attr.state_pressed,
+                -android.R.attr.state_focused
+            ),
+            intArrayOf()
+        ),
+        intArrayOf(
+            ContextCompat.getColor(
+                context,
+                if (isDark) R.color.ate_text_disabled_dark else R.color.ate_text_disabled_light
+            ),
+            ContextCompat.getColor(
+                context,
+                if (isDark) R.color.ate_control_normal_dark else R.color.ate_control_normal_light
+            ),
+            color
+        )
+    )
+}
+
+/** SwitchCompat thumb/track：勾选=accent(track 半透明)，未勾选=ate 灰阶 */
+private fun View.tintSwitchDrawable(
+    from: Drawable?,
+    color: Int,
+    isDark: Boolean,
+    thumb: Boolean
+): Drawable? {
+    from ?: return null
+    var tint = if (isDark) ColorUtils.shiftColor(color, 1.1f) else color
+    tint = ColorUtils.adjustAlpha(tint, if (thumb) 1.0f else 0.5f)
+    val disabled: Int
+    val normal: Int
+    if (thumb) {
+        disabled = ContextCompat.getColor(
+            context,
+            if (isDark) R.color.ate_switch_thumb_disabled_dark else R.color.ate_switch_thumb_disabled_light
+        )
+        normal = ContextCompat.getColor(
+            context,
+            if (isDark) R.color.ate_switch_thumb_normal_dark else R.color.ate_switch_thumb_normal_light
+        )
+    } else {
+        disabled = ContextCompat.getColor(
+            context,
+            if (isDark) R.color.ate_switch_track_disabled_dark else R.color.ate_switch_track_disabled_light
+        )
+        normal = ContextCompat.getColor(
+            context,
+            if (isDark) R.color.ate_switch_track_normal_dark else R.color.ate_switch_track_normal_light
+        )
+    }
+    val sl = ColorStateList(
+        arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(
+                android.R.attr.state_enabled,
+                -android.R.attr.state_activated,
+                -android.R.attr.state_checked
+            ),
+            intArrayOf(android.R.attr.state_enabled, android.R.attr.state_activated),
+            intArrayOf(android.R.attr.state_enabled, android.R.attr.state_checked)
+        ),
+        intArrayOf(disabled, normal, tint, tint)
+    )
+    val wrapped = DrawableCompat.wrap(from.mutate())
+    DrawableCompat.setTintList(wrapped, sl)
+    return wrapped
+}
+
+@SuppressLint("DiscouragedPrivateApi", "SoonBlockedPrivateApi")
+private fun setCursorTint(editText: EditText, color: Int) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // API 29+：取系统 drawable mutate+tint，保持系统光标/手柄原始尺寸形状
+        editText.textCursorDrawable?.mutate()?.let {
+            it.setTint(color)
+            editText.setTextCursorDrawable(it)
+        }
+        editText.textSelectHandleLeft?.mutate()?.let {
+            it.setTint(color)
+            editText.setTextSelectHandleLeft(it)
+        }
+        editText.textSelectHandleRight?.mutate()?.let {
+            it.setTint(color)
+            editText.setTextSelectHandleRight(it)
+        }
+        editText.textSelectHandle?.mutate()?.let {
+            it.setTint(color)
+            editText.setTextSelectHandle(it)
+        }
+        return
+    }
+    // API 26~28：反射（失败静默，仅光标颜色回落默认）
+    try {
+        val fCursorDrawableRes = TextView::class.java.getDeclaredField("mCursorDrawableRes")
+        fCursorDrawableRes.isAccessible = true
+        val mCursorDrawableRes = fCursorDrawableRes.getInt(editText)
+        val fEditor = TextView::class.java.getDeclaredField("mEditor")
+        fEditor.isAccessible = true
+        val editor = fEditor.get(editText)
+        val fCursorDrawable = editor.javaClass.getDeclaredField("mCursorDrawable")
+        fCursorDrawable.isAccessible = true
+        val drawables = arrayOfNulls<Drawable>(2)
+        for (i in drawables.indices) {
+            drawables[i] = ContextCompat.getDrawable(editText.context, mCursorDrawableRes)?.let {
+                DrawableCompat.wrap(it.mutate()).apply { DrawableCompat.setTint(this, color) }
+            }
+        }
+        fCursorDrawable.set(editor, drawables)
+    } catch (_: Exception) {
     }
 }

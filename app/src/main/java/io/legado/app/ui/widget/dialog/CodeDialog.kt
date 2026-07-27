@@ -1,22 +1,29 @@
 package io.legado.app.ui.widget.dialog
 
 import android.os.Bundle
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.LinearLayout
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.utils.disableEdit
 
-class CodeDialog() : BaseDialogFragment(0) {
+class CodeDialog() : BaseComposeDialogFragment() {
+
 
     constructor(code: String, disableEdit: Boolean = true, requestId: String? = null) : this() {
         arguments = Bundle().apply {
@@ -26,64 +33,54 @@ class CodeDialog() : BaseDialogFragment(0) {
         }
     }
 
-    private lateinit var codeView: CodeView
+    private var codeView: CodeView? = null
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        val dp12 = space.md
-        return LinearLayout(requireContext()).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            orientation = LinearLayout.VERTICAL
-            // 复用 dialog_title_bar 模板: attachToActivity=false / displayHomeAsUp=false / fitStatusBar=false,
-            // 避免 TitleBar 污染宿主 Activity ActionBar 导致返回箭头关闭宿主界面
-            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
-            addView(CodeView(requireContext()).apply {
-                codeView = this
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT
-                ).apply { weight = 1f }
-                gravity = Gravity.TOP or Gravity.START
-                setPadding(dp12, dp12, dp12, dp12)
-            })
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        if (arguments?.getBoolean("disableEdit") == true) {
-            setupTitleBar(title = "code view")
-            codeView.disableEdit()
-        } else {
-            initMenu()
-        }
-        codeView.addLegadoPattern()
-        codeView.addJsonPattern()
-        codeView.addJsPattern()
-        arguments?.getString("code")?.let {
-            codeView.text = IntentData.get(it)
-        }
-    }
-
-    private fun initMenu() {
-        setupTitleBar(menuRes = R.menu.code_edit) {
-            when (it?.itemId) {
-                R.id.menu_save -> {
-                    codeView.text?.toString()?.let { code ->
-                        val requestId = arguments?.getString("requestId")
-                        (parentFragment as? Callback)?.onCodeSave(code, requestId)
-                            ?: (activity as? Callback)?.onCodeSave(code, requestId)
+    @Composable
+    override fun Content() {
+        val disableEdit = arguments?.getBoolean("disableEdit") == true
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = if (disableEdit) "code view" else "",
+                onBack = { dismissAllowingStateLoss() }
+            ) {
+                if (!disableEdit) {
+                    IconButton(onClick = ::onSave) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = stringResource(R.string.action_save),
+                            tint = AppTheme.colors.primaryText
+                        )
                     }
-                    dismiss()
                 }
             }
-            return@setupTitleBar true
+            AndroidView(
+                factory = { ctx ->
+                    CodeView(ctx).apply {
+                        codeView = this
+                        val dp12 = ctx.space.md
+                        setPadding(dp12, dp12, dp12, dp12)
+                        gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                        if (disableEdit) disableEdit()
+                        addLegadoPattern()
+                        addJsonPattern()
+                        addJsPattern()
+                        setText(IntentData.get(arguments?.getString("code")))
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+            )
         }
+    }
+
+    private fun onSave() {
+        codeView?.text?.toString()?.let { code ->
+            val requestId = arguments?.getString("requestId")
+            (parentFragment as? Callback)?.onCodeSave(code, requestId)
+                ?: (activity as? Callback)?.onCodeSave(code, requestId)
+        }
+        dismiss()
     }
 
     interface Callback {

@@ -6,6 +6,7 @@ import io.legado.app.ui.book.read.config.ReadAloudDialog
 /**
  * 统一的阅读界面回调接口，合并了 ReadMenu、SearchMenu、AutoReadDialog、ReadAloudDialog 的 CallBack。
  * 菜单和对话框可使用 activity as ReadBookCallback 代替各自的 CallBack 类型进行转换。
+ * 异步 UI 刷新类事件不走 CallBack，见 ReadBookEvents。
  *
  * 未纳入的接口：
  * - MangaMenu.CallBack：由 ReadMangaActivity 实现，upSystemUiVisibility(Boolean) 签名与无参版本冲突

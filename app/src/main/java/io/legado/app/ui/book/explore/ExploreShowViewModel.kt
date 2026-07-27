@@ -4,213 +4,179 @@ import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import io.legado.app.BuildConfig
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.AppConst.timeLimit
-import io.legado.app.constant.AppLog
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.IntentData
-import io.legado.app.help.PinnedExploreHelp
-import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.source.SearchBookFilter
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.ExploreOption
-import io.legado.app.model.webBook.WebBook.getBookListAwait
-import io.legado.app.model.webBook.parseExploreOptionsFromUrl
-import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.stackTraceStr
-import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.mapLatest
-import java.util.concurrent.ConcurrentHashMap
+import io.legado.app.ui.explore.ExploreShowViewModelShared
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalCoroutinesApi::class)
+/**
+ * 发现页展示 VM (Android 端, 组合委托)。
+ *
+ * # KMP 化重构说明
+ *
+ * 核心业务编排 (initData / 收藏 / 分页加载 / 书架 key 维护 / 列数与样式切换) 已下沉到
+ * shared commonMain [ExploreShowViewModelShared], 用 7 个 `MutableStateFlow` 替代
+ * `MutableLiveData` (LiveData 不可 KMP)。
+ *
+ * 本类采用**组合委托**模式持有 [shared] 实例, 不通过继承 [ExploreShowViewModelShared]:
+ * - 本类必须继承 [BaseViewModel] (AndroidViewModel 子类, 提供 `execute` / `context` /
+ *   `viewModelScope`), Kotlin 单继承无法同时继承 [ExploreShowViewModelShared];
+ * - 仅注入 `scope = viewModelScope` 一个参数;
+ * - 7 个 LiveData 字段订阅 [shared] 对应的 StateFlow 转发, 调用方 `observe` 用法不变;
+ * - `initData(intent: Intent)` 解析 Intent 后转发到 [shared.initData] (name, url, sourceUrl);
+ * - 其余方法 (`isFavorite` / `toggleFavorite` / `explore` / `isInBookShelf` /
+ *   `switchLayout` / `setColumnCount`) 直接转发到 [shared]。
+ *
+ * # 状态桥接
+ *
+ * 7 个 LiveData 字段内部用 [viewModelScope] 协程订阅 [shared] 对应的 StateFlow, 转发到 MutableLiveData:
+ * - StateFlow 是 hot flow, collect 时立即收到当前值, 但 shared 初始值为 null (可空字段),
+ *   桥接时过滤 null 避免初始假触发;
+ * - `postValue` 异步切到主线程, 与原 LiveData.postValue 行为一致;
+ * - 不用 `androidx.lifecycle.asLiveData()` 扩展: 项目未显式引入 lifecycle-livedata-ktx,
+ *   用 viewModelScope.launch + collect 自己桥接确保编译通过。
+ *
+ * # 调用方兼容
+ *
+ * [ExploreShowActivity] 调用方式保持不变:
+ * - `viewModel.booksData.observe(...)` / `viewModel.errorLiveData.observe(...)` 等 7 个 LiveData;
+ * - `viewModel.initData(intent)` (Intent 解析在本类做, 转发到 [shared.initData]);
+ * - `viewModel.bookSource` / `viewModel.exploreStyle` / `viewModel.exploreName` /
+ *   `viewModel.exploreOptions` / `viewModel.page` / `viewModel.hasNextPage` (getter 转发);
+ * - `viewModel.toggleFavorite()` / `viewModel.isFavorite()` / `viewModel.isInBookShelf(book)` /
+ *   `viewModel.explore(resetPage)` / `viewModel.switchLayout()` / `viewModel.setColumnCount(cols)`
+ *   (方法转发)。
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ExploreShowViewModel(application: Application) : BaseViewModel(application) {
-    val bookshelf: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    val upAdapterLiveData = MutableLiveData<String>()
-    val booksData = MutableLiveData<List<SearchBook>>()
-    val errorLiveData = MutableLiveData<String>()
-    val sourceReadyLiveData = MutableLiveData<Unit>()
-    val optionsReadyLiveData = MutableLiveData<Unit>()
-    val upStarLiveData = MutableLiveData<Boolean>()
-    var bookSource: BookSource? = null
-        private set
-    val exploreStyle get() = bookSource?.exploreStyle ?: 0
-    private var rawExploreUrl: String? = null
-    var exploreName: String? = null
-    val exploreOptions = mutableListOf<ExploreOption>()
-    var page = 1
-        private set
-
-    /** 最近一次拉取后，是否还有下一页。书源配了 hasMoreRule 走 JS，否则按"本页非空就当还有"。 */
-    var hasNextPage: Boolean = true
-        private set
-    private var books = linkedSetOf<SearchBook>()
-
-    init {
-        execute {
-            appDb.bookDao.flowAll().mapLatest { books ->
-                val keys = arrayListOf<String>()
-                books.filterNot { it.isNotShelf }.forEach {
-                    keys.add("${it.name}-${it.author}")
-                    keys.add(it.name)
-                    keys.add(it.bookUrl)
-                }
-                keys
-            }.catch {
-                AppLog.put("发现列表界面获取书籍数据失败\n${it.localizedMessage}", it)
-            }.collect {
-                bookshelf.clear()
-                bookshelf.addAll(it)
-                upAdapterLiveData.postValue("isInBookshelf")
-            }
-        }.onError {
-            AppLog.put("加载书架数据失败", it)
-        }
-    }
-
-    fun initData(intent: Intent) {
-        execute {
-            rawExploreUrl = intent.getStringExtra("exploreUrl")
-            exploreName = intent.getStringExtra("exploreName")
-            if (bookSource == null) {
-                bookSource =
-                    (IntentData.source as? BookSource) ?: appDb.bookSourceDao.getBookSource(
-                        intent.getStringExtra("sourceUrl") ?: return@execute,
-                )
-            }
-            parseExploreOptions()
-            sourceReadyLiveData.postValue(Unit)
-            if (exploreOptions.isNotEmpty()) {
-                optionsReadyLiveData.postValue(Unit)
-            }
-            upStarLiveData.postValue(isFavorite())
-            explore()
-        }
-    }
-
-    fun isFavorite(): Boolean {
-        val sourceUrl = bookSource?.bookSourceUrl ?: return false
-        val url = rawExploreUrl ?: return false
-        val favorites = PinnedExploreHelp.getPinnedExplores()
-        return favorites.any { it.sourceUrl == sourceUrl && it.categoryUrl == url }
-    }
-
-    fun toggleFavorite() {
-        val sourceUrl = bookSource?.bookSourceUrl ?: return
-        val sourceName = bookSource?.bookSourceName ?: return
-        val categoryName = exploreName ?: return
-        val categoryUrl = rawExploreUrl ?: return
-
-        val favorites = PinnedExploreHelp.getPinnedExplores()
-        val existing = favorites.find { it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl }
-        if (existing != null) {
-            PinnedExploreHelp.removePinnedExplore(existing)
-        } else {
-            PinnedExploreHelp.addPinnedExplore(
-                PinnedExplore(
-                    sourceUrl,
-                    sourceName,
-                    categoryName,
-                    categoryUrl
-                )
-            )
-        }
-        upStarLiveData.postValue(isFavorite())
-    }
-
-    private fun parseExploreOptions() {
-        val url = rawExploreUrl ?: return
-        exploreOptions.clear()
-        mergeOptions(parseExploreOptionsFromUrl(url))
-    }
-
-    private fun mergeOptions(newOptions: List<ExploreOption>) {
-        newOptions.forEach { newOpt ->
-            if (exploreOptions.any { it.name == newOpt.name }) return@forEach
-            exploreOptions.add(newOpt)
-        }
-    }
-
-    fun explore(resetPage: Boolean = false) {
-        val source = bookSource ?: return
-        val url = rawExploreUrl ?: return
-        if (resetPage) {
-            page = 1
-            books.clear()
-        }
-        val selectedOptions = exploreOptions.associate { it.name to it.resolvedValue }
-        Coroutine.async(viewModelScope) {
-            getBookListAwait(
-                source, url, page, isSearch = false,
-                onUrlResolved = { analyzeUrl: AnalyzeUrl ->
-                    val oldSize = exploreOptions.size
-                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.urlAfterJs))
-                    if (exploreOptions.size > oldSize) {
-                        optionsReadyLiveData.postValue(Unit)
-                    }
-                },
-                selectedOptions = selectedOptions,
-            )
-        }.timeout(if (BuildConfig.DEBUG) 0L else timeLimit).onSuccess(IO) { pageResult ->
-            val prevSize = books.size
-            val (items, filteredCount) = SearchBookFilter.apply(pageResult.books)
-            if (filteredCount > 0) {
-                context.toastOnUi(
-                    context.getString(
-                        R.string.source_filter_rule_filtered_count,
-                        filteredCount
-                    )
-                )
-            }
-            books.addAll(items)
-            // 兜底：翻到第二页起，去重后整体未增长则视为到底；防止 hasMoreRule 缺失或配错时无限触底
-            hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
-            booksData.postValue(books.toList())
-            page++
-        }.onError {
-            it.printOnDebug()
-            errorLiveData.postValue(it.stackTraceStr)
-        }
-    }
-
-
-    fun isInBookShelf(book: BaseBook): Boolean {
-        if (book.bookUrl.contains("::")) return false
-        val key = if (book.author.isNotBlank()) "${book.name}-${book.author}" else book.name
-        return bookshelf.contains(key) || bookshelf.contains(book.bookUrl)
-    }
 
     /**
-     * 切换视频/非视频两类样式：切到非视频写 0（列表），切到视频写 0x10（视频标志）。
+     * 共享核心 VM (KMP), 注入 [viewModelScope] 供 shared 内部协程使用。
+     *
+     * - shared 承担状态托管 (StateFlow) + 全部业务方法;
+     * - 本类仅作 LiveData 桥接 + Intent 解析。
      */
-    fun switchLayout() {
-        bookSource?.let {
-            it.exploreStyle = if (BookSource.exploreStyleIsVideo(it.exploreStyle)) 0
-            else BookSource.EXPLORE_STYLE_VIDEO_FLAG
-            execute {
-                appDb.bookSourceDao.update(it)
+    private val shared: ExploreShowViewModelShared = ExploreShowViewModelShared(
+        scope = viewModelScope,
+    )
+
+    // region 7 个 LiveData 桥接 (订阅 shared 的 StateFlow, 转发到 MutableLiveData)
+
+    /** 书架变化信号 (订阅 [shared.upAdapterFlow], 对照原 `upAdapterLiveData: MutableLiveData<String>`)。 */
+    val upAdapterLiveData = MutableLiveData<String>()
+
+    /** 当前发现结果列表 (订阅 [shared.booksFlow], 对照原 `booksData: MutableLiveData<List<SearchBook>>`)。 */
+    val booksData = MutableLiveData<List<SearchBook>>()
+
+    /** 加载错误信息 (订阅 [shared.errorFlow], 对照原 `errorLiveData: MutableLiveData<String>`)。 */
+    val errorLiveData = MutableLiveData<String>()
+
+    /** 书源就绪信号 (订阅 [shared.sourceReadyFlow], 对照原 `sourceReadyLiveData: MutableLiveData<Unit>`)。 */
+    val sourceReadyLiveData = MutableLiveData<Unit>()
+
+    /** 参数 chip 就绪信号 (订阅 [shared.optionsReadyFlow], 对照原 `optionsReadyLiveData: MutableLiveData<Unit>`)。 */
+    val optionsReadyLiveData = MutableLiveData<Unit>()
+
+    /** 收藏状态变化信号 (订阅 [shared.upStarFlow], 对照原 `upStarLiveData: MutableLiveData<Boolean>`)。 */
+    val upStarLiveData = MutableLiveData<Boolean>()
+    // endregion
+
+    init {
+        // 订阅 shared 的 7 个 StateFlow, 把变化推到对应 LiveData
+        // 一次性订阅, viewModelScope cancel 时自动结束
+        viewModelScope.launch {
+            shared.upAdapterFlow.collect { value ->
+                value?.let { upAdapterLiveData.postValue(it) }
+            }
+        }
+        viewModelScope.launch {
+            shared.booksFlow.collect { value ->
+                // booksFlow 初始 null (与原 LiveData 默认 null 一致), 过滤 null 避免初始假触发
+                value?.let { booksData.postValue(it) }
+            }
+        }
+        viewModelScope.launch {
+            shared.errorFlow.collect { value ->
+                value?.let { errorLiveData.postValue(it) }
+            }
+        }
+        viewModelScope.launch {
+            shared.sourceReadyFlow.collect { value ->
+                value?.let { sourceReadyLiveData.postValue(it) }
+            }
+        }
+        viewModelScope.launch {
+            shared.optionsReadyFlow.collect { value ->
+                value?.let { optionsReadyLiveData.postValue(it) }
+            }
+        }
+        viewModelScope.launch {
+            shared.upStarFlow.collect { value ->
+                value?.let { upStarLiveData.postValue(it) }
             }
         }
     }
 
-    /** 设置列数（保留视频布局标志位）。范围 0..6。 */
-    fun setColumnCount(cols: Int) {
-        bookSource?.let {
-            val flag = it.exploreStyle and BookSource.EXPLORE_STYLE_VIDEO_FLAG
-            it.exploreStyle = flag or cols.coerceIn(0, 6)
-            execute {
-                appDb.bookSourceDao.update(it)
-            }
-        }
+    // region 字段 getter 转发 (供 Activity 直接读)
+
+    /** 当前发现目标书源, 转发到 [shared.bookSource]。 */
+    val bookSource: BookSource? get() = shared.bookSource
+
+    /** 当前发现样式, 转发到 [shared.exploreStyle]。 */
+    val exploreStyle: Int get() = shared.exploreStyle
+
+    /** 发现分类名, 转发到 [shared.exploreName]。 */
+    val exploreName: String? get() = shared.exploreName
+
+    /** 参数 chip 列表, 转发到 [shared.exploreOptions]。 */
+    val exploreOptions: MutableList<ExploreOption> get() = shared.exploreOptions
+
+    /** 当前分页页码, 转发到 [shared.page]。 */
+    val page: Int get() = shared.page
+
+    /** 是否还有下一页, 转发到 [shared.hasNextPage]。 */
+    val hasNextPage: Boolean get() = shared.hasNextPage
+    // endregion
+
+    /**
+     * 初始化数据 (从 Intent 解析 exploreName / exploreUrl / sourceUrl)。
+     *
+     * 保留原 `(intent: Intent)` 签名以兼容 [ExploreShowActivity] 调用。
+     * 解析 Intent 后转发到 [shared.initData]。
+     *
+     * - exploreName: intent.getStringExtra("exploreName")
+     * - exploreUrl: intent.getStringExtra("exploreUrl")
+     * - sourceUrl: intent.getStringExtra("sourceUrl") (IntentData.source 为 null 时用此查 DAO)
+     */
+    fun initData(intent: Intent) {
+        val exploreName = intent.getStringExtra("exploreName")
+        val exploreUrl = intent.getStringExtra("exploreUrl")
+        val sourceUrl = intent.getStringExtra("sourceUrl")
+        shared.initData(exploreName, exploreUrl, sourceUrl)
     }
 
+    /** 是否已收藏, 转发到 [shared.isFavorite]。 */
+    fun isFavorite(): Boolean = shared.isFavorite()
+
+    /** 切换收藏, 转发到 [shared.toggleFavorite]。 */
+    fun toggleFavorite() = shared.toggleFavorite()
+
+    /**
+     * 加载一页发现结果, 转发到 [shared.explore]。
+     *
+     * @param resetPage true=重置 page + 清 books (参数 chip 变化 / 错误重试用)
+     */
+    fun explore(resetPage: Boolean = false) = shared.explore(resetPage)
+
+    /** 判断书籍是否在书架, 转发到 [shared.isInBookShelf]。 */
+    fun isInBookShelf(book: BaseBook): Boolean = shared.isInBookShelf(book)
+
+    /** 切换视频/非视频样式, 转发到 [shared.switchLayout]。 */
+    fun switchLayout() = shared.switchLayout()
+
+    /** 设置列数 (保留视频布局标志位), 转发到 [shared.setColumnCount]。 */
+    fun setColumnCount(cols: Int) = shared.setColumnCount(cols)
 }

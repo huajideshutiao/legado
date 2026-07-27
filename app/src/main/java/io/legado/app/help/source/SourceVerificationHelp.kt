@@ -1,29 +1,28 @@
 package io.legado.app.help.source
 
-import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.CacheManager
-import io.legado.app.help.IntentData
 import io.legado.app.ui.association.VerificationCodeDialog
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.utils.isMainThread
 import io.legado.app.utils.startActivity
 import splitties.init.appCtx
-import java.util.concurrent.locks.LockSupport
-import kotlin.time.Duration.Companion.minutes
 
 /**
- * 源验证
+ * 源验证 (app 端薄壳)。
+ *
+ * 核心流程 (缓存 key 生成 / setResult / getResult / clearResult / 内存轮询等待 /
+ * 注册并唤醒等待线程) 下沉到 [SourceVerificationHelpShared] (shared commonMain),
+ * 供 desktop/iOS/鸿蒙 复用。
+ *
+ * UI 部分 (VerificationCodeDialog.display / 启动 WebViewActivity) 经
+ * [VerificationUiProvider] 注入, 本文件 [VerificationUiProviderImpl] 为 app 端实现,
+ * 在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册。
+ *
+ * 调用方 import 不变 (包名 `io.legado.app.help.source.SourceVerificationHelp` 保持)。
+ * 行为与下沉前完全一致, 仅位置迁移 + 依赖抽象。
  */
 object SourceVerificationHelp {
-
-    private val waitTime = 1.minutes.inWholeNanoseconds
-
-    private fun getVerificationResultKey(source: BaseSource) =
-        getVerificationResultKey(source.getKey())
-
-    private fun getVerificationResultKey(sourceKey: String) = "${sourceKey}_verificationResult"
 
     /**
      * 获取书源验证结果
@@ -45,33 +44,13 @@ object SourceVerificationHelp {
         clearResult(source.getKey())
 
         if (!useBrowser) {
-            VerificationCodeDialog.display(
-                url,
-                source.getKey(),
-                source.getTag(),
-                source.getSourceType()
-            )
-            IntentData.put(getVerificationResultKey(source), Thread.currentThread())
+            VerificationUiProviders.get().showVerificationCodeDialog(url, source)
+            SourceVerificationHelpShared.registerWaitingThread(source.getKey())
         } else {
             startBrowser(source, url, title, true, refetchAfterSuccess)
         }
 
-        var waitUserInput = false
-        while (getResult(source.getKey()) == null) {
-            if (!waitUserInput) {
-                AppLog.putDebug("等待返回验证结果...")
-                waitUserInput = true
-            }
-            LockSupport.parkNanos(this, waitTime)
-        }
-
-        val result = getResult(source.getKey())!!
-        clearResult(source.getKey())
-        result.ifBlank {
-            throw NoStackTraceException("验证结果为空")
-        }
-
-        return result
+        return SourceVerificationHelpShared.waitVerificationResult(source.getKey())
     }
 
     /**
@@ -87,6 +66,54 @@ object SourceVerificationHelp {
     ) {
         source ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
         require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
+        VerificationUiProviders.get().startBrowser(source, url, title, saveResult, refetchAfterSuccess)
+        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
+    }
+
+
+    fun checkResult(sourceKey: String) {
+        SourceVerificationHelpShared.getResult(sourceKey) ?: SourceVerificationHelpShared.setResult(sourceKey, "")
+        SourceVerificationHelpShared.notifyResultArrived(sourceKey)
+    }
+
+    fun setResult(sourceKey: String, result: String?) {
+        SourceVerificationHelpShared.setResult(sourceKey, result)
+    }
+
+    fun getResult(sourceKey: String): String? {
+        return SourceVerificationHelpShared.getResult(sourceKey)
+    }
+
+    fun clearResult(sourceKey: String) {
+        SourceVerificationHelpShared.clearResult(sourceKey)
+    }
+}
+
+/**
+ * [VerificationUiProvider] 的 app 端实现。
+ *
+ * 委托原 [VerificationCodeDialog.display] / [appCtx.startActivity]<[WebViewActivity]>,
+ * 行为与下沉前完全一致。在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册
+ * 到 [VerificationUiProviders]。
+ */
+object VerificationUiProviderImpl : VerificationUiProvider {
+
+    override fun showVerificationCodeDialog(url: String, source: BaseSource) {
+        VerificationCodeDialog.display(
+            url,
+            source.getKey(),
+            source.getTag(),
+            source.getSourceType()
+        )
+    }
+
+    override fun startBrowser(
+        source: BaseSource,
+        url: String,
+        title: String,
+        saveResult: Boolean?,
+        refetchAfterSuccess: Boolean?
+    ) {
         appCtx.startActivity<WebViewActivity> {
             putExtra("title", title)
             putExtra("url", url)
@@ -95,26 +122,16 @@ object SourceVerificationHelp {
             putExtra("sourceType", source.getSourceType())
             putExtra("sourceVerificationEnable", saveResult)
             putExtra("refetchAfterSuccess", refetchAfterSuccess)
-            IntentData.put(getVerificationResultKey(source), Thread.currentThread())
         }
     }
+}
 
-
-    fun checkResult(sourceKey: String) {
-        getResult(sourceKey) ?: setResult(sourceKey, "")
-        val thread = IntentData.get<Thread>(getVerificationResultKey(sourceKey))
-        LockSupport.unpark(thread)
-    }
-
-    fun setResult(sourceKey: String, result: String?) {
-        CacheManager.putMemory(getVerificationResultKey(sourceKey), result ?: "")
-    }
-
-    fun getResult(sourceKey: String): String? {
-        return CacheManager.getFromMemory(getVerificationResultKey(sourceKey)) as? String
-    }
-
-    fun clearResult(sourceKey: String) {
-        CacheManager.delete(getVerificationResultKey(sourceKey))
-    }
+/**
+ * 注册 app 端 [VerificationUiProviderImpl] 到 [VerificationUiProviders]。
+ *
+ * 在 App.onCreate 早期 (registerAndroidWebBookProviders 中) 调用一次,
+ * 任何 SourceVerificationHelp 调用之前。
+ */
+fun registerAndroidVerificationUiProvider() {
+    VerificationUiProviders.register(VerificationUiProviderImpl)
 }

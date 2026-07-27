@@ -1,0 +1,550 @@
+package io.legado.app.ui.book.source
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.model.Debug
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.component.SelectAction
+import io.legado.app.ui.compose.component.SelectActionBar
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
+import sh.calvin.reorderable.ReorderableCollectionItemScope
+
+/**
+ * 书源列表 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.manage.BookSourceScreen`)。
+ *
+ * 下沉改动:
+ * - 去掉对 `BookSourceActivity` 的直接依赖, 改为通过 [BookSourceListState] + [BookSourceListCallbacks]
+ *   传入状态与回调, 解耦 Composable 与 Android Activity
+ * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
+ * - 复用 shared/commonMain 已下沉的 16 个通用组件 (RuleManageScaffold / AppTitleBar /
+ *   SelectActionBar / AppDropdownMenu / AppCheckbox / AppSwitch / AppMenuCheckbox /
+ *   AppSearchField / OverflowMenu)
+ *
+ * UI 结构 (与 app 端一致):
+ * - 顶部: AppTitleBar (返回 + 标题/搜索框 + 排序/分组/溢出菜单)
+ * - 中部: RuleManageScaffold 的 LazyColumn (拖拽排序 + 按域名分组头 + 单项 checkbox/switch/编辑/更多)
+ * - 底部: SelectActionBar (全选/反选/删除/溢出批量操作) + 校验进度卡
+ *
+ * @param state      列表状态 (数据/选中/查询/排序/校验进度)
+ * @param callbacks  事件回调 (查询/排序/选中/单项操作/批量操作/导航)
+ * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
+ * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
+ */
+@Composable
+fun BookSourceListScreen(
+    state: BookSourceListState,
+    callbacks: BookSourceListCallbacks,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    listModifier: Modifier = Modifier,
+) {
+    // 按域名分组时预计算各 host 组首项 url 集合, 避免 item 内 O(n) 回查 (对照 adapter.isItemHeader)
+    val headerUrls = remember(state.sources, state.groupSourcesByDomain, state.checkTick) {
+        if (!state.groupSourcesByDomain) emptySet()
+        else buildSet {
+            var lastHost: String? = null
+            state.sources.forEach { part ->
+                val host = callbacks.getSourceHost(part.bookSourceUrl)
+                if (host != lastHost) {
+                    add(part.bookSourceUrl)
+                    lastHost = host
+                }
+            }
+        }
+    }
+    // 手动排序且未按域名分组时才允许拖拽 (对照原 itemTouchCallback.isCanDrag)
+    val canDrag = state.sort == BookSourceSort.Default && !state.groupSourcesByDomain
+    RuleManageScaffold(
+        items = state.sources,
+        itemKey = { it.bookSourceUrl },
+        onMove = { from, to -> callbacks.onMove(from, to) },
+        modifier = modifier,
+        listState = listState,
+        listModifier = listModifier,
+        emptyText = rememberString("empty"),
+        titleBar = {
+            AppTitleBar(
+                title = rememberString("book_source"),
+                onBack = callbacks.onBack,
+                titleContent = {
+                    AppSearchField(
+                        value = state.searchKey,
+                        onValueChange = callbacks.onQueryChange,
+                        hint = rememberString("search_book_source"),
+                    )
+                },
+                actions = { BookSourceActions(state, callbacks) },
+            )
+        },
+        actionBar = {
+            Column {
+                if (state.checkSourceVisible) {
+                    CheckSourceProgress(
+                        msg = state.checkSourceMsg.orEmpty(),
+                        onCancel = callbacks.onCancelCheckSource,
+                    )
+                }
+                SelectActionBar(
+                    selectCount = state.selected.size,
+                    allCount = state.sources.size,
+                    onSelectAll = callbacks.onSelectAll,
+                    onRevertSelection = callbacks.onRevertSelection,
+                    mainActionText = rememberString("delete"),
+                    onMainAction = callbacks.onDelSelection,
+                    actions = callbacks.onSelectActions(),
+                )
+            }
+        },
+    ) { item ->
+        BookSourceItem(
+            state = state,
+            callbacks = callbacks,
+            item = item,
+            checked = state.selected.contains(item.bookSourceUrl),
+            headerUrls = headerUrls,
+            canDrag = canDrag,
+        )
+    }
+}
+
+/**
+ * 列表状态 (immutable)。host 端持有 mutableStateOf<BookSourceListState>, 修改时 copy出新实例。
+ */
+data class BookSourceListState(
+    val sources: List<BookSourcePart> = emptyList(),
+    val selected: Set<String> = emptySet(),
+    val searchKey: String = "",
+    val groups: List<String> = emptyList(),
+    val sort: BookSourceSort = BookSourceSort.Default,
+    val sortAscending: Boolean = true,
+    val groupSourcesByDomain: Boolean = false,
+    val checkSourceMsg: String? = null,
+    val checkSourceVisible: Boolean = false,
+    val checkTick: Int = 0,
+)
+
+/**
+ * 事件回调集合。host 端用 `remember { BookSourceListCallbacks(...) }` 持有稳定实例,
+ * 避免 lambda 重组; 不用的回调用默认空实现。
+ */
+data class BookSourceListCallbacks(
+    val onBack: () -> Unit = {},
+    val onQueryChange: (String) -> Unit = {},
+    val onSortChange: (BookSourceSort) -> Unit = {},
+    val onToggleSortDesc: () -> Unit = {},
+    val onToggleGroupByDomain: () -> Unit = {},
+    val onToggle: (BookSourcePart, Boolean) -> Unit = { _, _ -> },
+    val onSelectAll: (Boolean) -> Unit = {},
+    val onRevertSelection: () -> Unit = {},
+    val onMove: (Int, Int) -> Unit = { _, _ -> },
+    val onPersistOrder: () -> Unit = {},
+    val onEdit: (BookSourcePart) -> Unit = {},
+    val onEnable: (Boolean, BookSourcePart) -> Unit = { _, _ -> },
+    val onEnableExplore: (Boolean, BookSourcePart) -> Unit = { _, _ -> },
+    val onToTop: (BookSourcePart) -> Unit = {},
+    val onToBottom: (BookSourcePart) -> Unit = {},
+    val onSearchBook: (BookSourcePart) -> Unit = {},
+    val onDebug: (BookSourcePart) -> Unit = {},
+    val onLogin: (BookSourcePart) -> Unit = {},
+    val onDel: (BookSourcePart) -> Unit = {},
+    val onDelSelection: () -> Unit = {},
+    val onCancelCheckSource: () -> Unit = {},
+    val onAddBookSource: () -> Unit = {},
+    val onImportLocal: () -> Unit = {},
+    val onImportOnline: () -> Unit = {},
+    val onGroupManage: () -> Unit = {},
+    val onHelp: () -> Unit = {},
+    val onSelectActions: () -> List<SelectAction> = { emptyList() },
+    val getSourceHost: (String) -> String = { "#" },
+)
+
+// ---- 私有 Composable (对照 app 端 BookSourceScreen.kt 同名函数) ----
+
+@Composable
+private fun BookSourceActions(state: BookSourceListState, callbacks: BookSourceListCallbacks) {
+    val colors = AppTheme.colors
+    var showSort by remember { mutableStateOf(false) }
+    var showGroup by remember { mutableStateOf(false) }
+    // 预取字面串, 供菜单项点击回调 (lambda) 中使用 (rememberString 是 @Composable, 不能在 lambda 里调)
+    val strSortDesc = rememberString("sort_desc")
+    val strSortManual = rememberString("sort_manual")
+    val strSortAuto = rememberString("sort_auto")
+    val strSortByName = rememberString("sort_by_name")
+    val strSortByUrl = rememberString("sort_by_url")
+    val strSortByLastUpdate = rememberString("sort_by_lastUpdateTime")
+    val strSortByRespond = rememberString("sort_by_respondTime")
+    val strIsEnabled = rememberString("is_enabled")
+    val strEnabled = rememberString("enabled")
+    val strDisabled = rememberString("disabled")
+    val strNeedLogin = rememberString("need_login")
+    val strNoGroup = rememberString("no_group")
+    val strEnabledExplore = rememberString("enabled_explore")
+    val strDisabledExplore = rememberString("disabled_explore")
+    val strGroupManage = rememberString("group_manage")
+    val strAddBookSource = rememberString("add_book_source")
+    val strImportLocal = rememberString("import_local")
+    val strImportOnline = rememberString("import_on_line")
+    val strGroupSourcesByDomain = rememberString("group_sources_by_domain")
+    val strHelp = rememberString("help")
+
+    // 排序菜单 (降序开关 + 单选各排序方式 + 按域名分组开关)
+    Box {
+        IconButton(onClick = { showSort = true }) {
+            Icon(
+                painter = rememberPainter("ic_sort"),
+                contentDescription = rememberString("sort"),
+                tint = colors.primaryText,
+            )
+        }
+        AppDropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }) {
+            CheckDropdownItem(
+                text = strSortDesc,
+                checked = !state.sortAscending,
+            ) { callbacks.onToggleSortDesc() }
+            SortItem(strSortManual, BookSourceSort.Default, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strSortAuto, BookSourceSort.Weight, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strSortByName, BookSourceSort.Name, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strSortByUrl, BookSourceSort.Url, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strSortByLastUpdate, BookSourceSort.Update, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strSortByRespond, BookSourceSort.Respond, state.sort) { callbacks.onSortChange(it); showSort = false }
+            SortItem(strIsEnabled, BookSourceSort.Enable, state.sort) { callbacks.onSortChange(it); showSort = false }
+        }
+    }
+    // 分组筛选菜单
+    Box {
+        IconButton(onClick = { showGroup = true }) {
+            Icon(
+                painter = rememberPainter("ic_groups"),
+                contentDescription = rememberString("menu_action_group"),
+                tint = colors.primaryText,
+            )
+        }
+        AppDropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }) {
+            MenuItem(strGroupManage) { showGroup = false; callbacks.onGroupManage() }
+            MenuItem(strEnabled) { showGroup = false; callbacks.onQueryChange(strEnabled) }
+            MenuItem(strDisabled) { showGroup = false; callbacks.onQueryChange(strDisabled) }
+            MenuItem(strNeedLogin) { showGroup = false; callbacks.onQueryChange(strNeedLogin) }
+            MenuItem(strNoGroup) { showGroup = false; callbacks.onQueryChange(strNoGroup) }
+            MenuItem(strEnabledExplore) { showGroup = false; callbacks.onQueryChange(strEnabledExplore) }
+            MenuItem(strDisabledExplore) { showGroup = false; callbacks.onQueryChange(strDisabledExplore) }
+            state.groups.forEach { group ->
+                MenuItem(group) { showGroup = false; callbacks.onQueryChange("group:$group") }
+            }
+        }
+    }
+    OverflowMenu { dismiss ->
+        MenuItem(strAddBookSource) { dismiss(); callbacks.onAddBookSource() }
+        MenuItem(strImportLocal) { dismiss(); callbacks.onImportLocal() }
+        MenuItem(strImportOnline) { dismiss(); callbacks.onImportOnline() }
+        CheckDropdownItem(
+            text = strGroupSourcesByDomain,
+            checked = state.groupSourcesByDomain,
+        ) { dismiss(); callbacks.onToggleGroupByDomain() }
+        MenuItem(strHelp) { dismiss(); callbacks.onHelp() }
+    }
+}
+
+@Composable
+private fun SortItem(
+    text: String,
+    value: BookSourceSort,
+    current: BookSourceSort,
+    onClick: (BookSourceSort) -> Unit,
+) {
+    val colors = AppTheme.colors
+    DropdownMenuItem(
+        text = { Text(text, color = colors.primaryText) },
+        trailingIcon = { AppMenuCheckbox(checked = current == value) },
+        onClick = { onClick(value) },
+    )
+}
+
+@Composable
+private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    DropdownMenuItem(
+        text = { Text(text, color = colors.primaryText) },
+        trailingIcon = { AppMenuCheckbox(checked = checked) },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun MenuItem(text: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text, color = AppTheme.colors.primaryText) },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ReorderableCollectionItemScope.BookSourceItem(
+    state: BookSourceListState,
+    callbacks: BookSourceListCallbacks,
+    item: BookSourcePart,
+    checked: Boolean,
+    headerUrls: Set<String>,
+    canDrag: Boolean,
+) {
+    val colors = AppTheme.colors
+    var showMenu by remember { mutableStateOf(false) }
+    // 校验文案随 checkTick 重组读取 (EventBus 桥接)
+    val tick = state.checkTick
+    val debugMsg = remember(item.bookSourceUrl, tick) {
+        Debug.debugMessageMap[item.bookSourceUrl].orEmpty()
+    }
+    val showProgress = remember(item.bookSourceUrl, tick) {
+        Debug.isChecking && debugMsg.isNotEmpty() && !debugMsg.contains(Regex("成功|失败"))
+    }
+    // 预取单项菜单文案
+    val strToTop = rememberString("to_top")
+    val strToBottom = rememberString("to_bottom")
+    val strLogin = rememberString("login")
+    val strSearch = rememberString("search")
+    val strDebug = rememberString("debug")
+    val strDelete = rememberString("delete")
+    val strEnableExplore = rememberString("enable_explore")
+    val strDisableExplore = rememberString("disable_explore")
+    val strEdit = rememberString("edit")
+    val strMoreMenu = rememberString("more_menu")
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .longPressDraggableHandle(
+                enabled = canDrag,
+                onDragStopped = { callbacks.onPersistOrder() },
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        // 按域名分组开启时, 每个 host 组首项上方显示 host 头 (对照 tv_host_text/AccentTextView 16sp)
+        if (state.groupSourcesByDomain && headerUrls.contains(item.bookSourceUrl)) {
+            Text(
+                text = callbacks.getSourceHost(item.bookSourceUrl),
+                color = colors.accent,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AppCheckbox(
+                checked = checked,
+                onCheckedChange = { callbacks.onToggle(item, it) },
+            )
+            Box(Modifier.weight(1f)) {
+                Text(
+                    text = item.getDisPlayNameGroup(),
+                    color = colors.primaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { callbacks.onToggle(item, !checked) },
+                )
+            }
+            AppSwitch(
+                checked = item.enabled,
+                onCheckedChange = { callbacks.onEnable(it, item) },
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = { callbacks.onEdit(item) }) {
+                Icon(
+                    painter = rememberPainter("ic_edit"),
+                    contentDescription = strEdit,
+                    tint = colors.primaryText,
+                )
+            }
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        painter = rememberPainter("ic_more_vert"),
+                        contentDescription = strMoreMenu,
+                        tint = colors.primaryText,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                // 发现入口开关状态点: 绿=启用/红=禁用, 无发现地址不显示 (对照 iv_explore 约束 iv_menu_more 右上角)
+                if (item.hasExploreUrl) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (item.enabledExplore) Color(0xFF43A047) else Color(0xFFE53935)),
+                    )
+                }
+                BookSourceItemMenu(
+                    state = state,
+                    item = item,
+                    expanded = showMenu,
+                    onDismiss = { showMenu = false },
+                    callbacks = callbacks,
+                    strToTop = strToTop,
+                    strToBottom = strToBottom,
+                    strLogin = strLogin,
+                    strSearch = strSearch,
+                    strDebug = strDebug,
+                    strDelete = strDelete,
+                    strEnableExplore = strEnableExplore,
+                    strDisableExplore = strDisableExplore,
+                )
+            }
+        }
+        // 校验进度文案 + 转圈 (对照 iv_debug_text/iv_progressBar)
+        if (debugMsg.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = debugMsg,
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (showProgress) {
+                    CircularProgressIndicator(
+                        color = colors.accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookSourceItemMenu(
+    state: BookSourceListState,
+    item: BookSourcePart,
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    callbacks: BookSourceListCallbacks,
+    strToTop: String,
+    strToBottom: String,
+    strLogin: String,
+    strSearch: String,
+    strDebug: String,
+    strDelete: String,
+    strEnableExplore: String,
+    strDisableExplore: String,
+) {
+    val colors = AppTheme.colors
+    AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        if (state.sort == BookSourceSort.Default) {
+            DropdownMenuItem(
+                text = { Text(strToTop, color = colors.primaryText) },
+                onClick = { onDismiss(); callbacks.onToTop(item) },
+            )
+            DropdownMenuItem(
+                text = { Text(strToBottom, color = colors.primaryText) },
+                onClick = { onDismiss(); callbacks.onToBottom(item) },
+            )
+        }
+        if (item.hasLoginUrl) {
+            DropdownMenuItem(
+                text = { Text(strLogin, color = colors.primaryText) },
+                onClick = { onDismiss(); callbacks.onLogin(item) },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text(strSearch, color = colors.primaryText) },
+            onClick = { onDismiss(); callbacks.onSearchBook(item) },
+        )
+        DropdownMenuItem(
+            text = { Text(strDebug, color = colors.primaryText) },
+            onClick = { onDismiss(); callbacks.onDebug(item) },
+        )
+        DropdownMenuItem(
+            text = { Text(strDelete, color = colors.primaryText) },
+            onClick = { onDismiss(); callbacks.onDel(item) },
+        )
+        if (item.hasExploreUrl) {
+            val txt = if (item.enabledExplore) strDisableExplore else strEnableExplore
+            DropdownMenuItem(
+                text = { Text(txt, color = colors.primaryText) },
+                onClick = { onDismiss(); callbacks.onEnableExplore(!item.enabledExplore, item) },
+            )
+        }
+    }
+}
+
+/** 底部校验进度卡 (对照 view_check_source_progress: card_background + 转圈 + 文案 + 取消)。 */
+@Composable
+private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.bottomBackground)
+            .border(0.5.dp, colors.secondaryText.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CircularProgressIndicator(
+            color = colors.accent,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = msg,
+            color = colors.primaryText,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = rememberString("cancel"),
+            color = colors.accent,
+            fontSize = 14.sp,
+            modifier = Modifier.clickable { onCancel() },
+        )
+    }
+}

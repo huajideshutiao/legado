@@ -496,7 +496,6 @@
     <string name="wrong_format">格式不对</string>
     <string name="error">错误</string>
     <string name="language">语言</string>
-    <string name="js_engine_title">JS 引擎</string>
     <string name="read_record">阅读记录</string>
     <string name="thread_count">线程数</string>
     <string name="all_read_time">总阅读时间</string>
@@ -999,4 +998,62 @@
     <string name="home_manage_for_tab">管理"%1$s"组件</string>
     <string name="home_manage_empty">此分组无组件，点击右上角+添加</string>
     <string name="bottom_nav_items_order">底栏项目顺序</string>
+
+    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 与 jvmStringTable 对齐)-->
+    <!--GroupEditDialog 书籍排序-->
+    <string name="book_sort_default">默认</string>
+    <string name="book_sort_reading_time">按阅读时间</string>
+    <string name="book_sort_update_time">按更新时间</string>
+    <string name="book_sort_name">按书名</string>
+    <string name="book_sort_manual">手动排序</string>
+    <string name="book_sort_comprehensive">综合排序</string>
+    <string name="book_sort_author">按作者</string>
+    <!--BookmarkDialog-->
+    <string name="bookmark_content">内容</string>
+    <string name="bookmark_note">备注内容</string>
+    <!--ContentEditDialog-->
+    <string name="content_edit_reset">重置</string>
+    <string name="content_edit_copy_all">复制全部</string>
+    <string name="content_edit_copy_success">已复制</string>
+    <!--ComposeTextToolbar (原 android.R.string.copy/cut/paste)-->
+    <string name="copy">复制</string>
+    <string name="cut">剪切</string>
+    <string name="paste">粘贴</string>
+    <!--SourceLoginDialog-->
+    <string name="cookie_input">Cookie</string>
+    <!--DictRuleEditDialog-->
+    <string name="dict_rule_edit_name">名称</string>
+    <string name="dict_rule_edit_url_rule">URL 规则</string>
+    <string name="dict_rule_edit_show_rule">显示规则</string>
+    <string name="dict_rule_edit_copy_success">已复制</string>
+    <!--TxtTocRuleEditDialog-->
+    <string name="txt_toc_rule_edit_name">名称</string>
+    <string name="txt_toc_rule_edit_rule">规则</string>
+    <string name="txt_toc_rule_edit_example">示例</string>
+    <string name="txt_toc_rule_edit_name_required">名称不能为空</string>
+    <string name="txt_toc_rule_edit_regex_error">正则语法错误或不支持(txt)</string>
+    <string name="txt_toc_rule_edit_copy_success">已复制</string>
+    <!--SourceFilterEditDialog-->
+    <string name="source_filter_rule_edit_name">规则名</string>
+    <string name="source_filter_rule_edit_pattern">规则</string>
+    <string name="source_filter_rule_edit_invalid_pattern">正则无效或为空</string>
+    <string name="source_filter_rule_edit_title_add">添加屏蔽规则</string>
+    <string name="source_filter_rule_edit_title_edit">屏蔽规则</string>
+    <!--ReadMenu/ReadConfigPanel-->
+    <string name="background">背景</string>
+    <string name="page_turn">翻页</string>
+    <!--BookSourceEditScreen/DebugScreen 教程入口-->
+    <string name="book_source_tutorial">书源教程</string>
+    <string name="js_tutorial">JS 教程</string>
+    <string name="regex_tutorial">正则教程</string>
+    <!--SearchScreen 空结果提示-->
+    <string name="search_result_empty">搜索结果为空</string>
+    <string name="search_result_empty_close_precision">%s 分组搜索结果为空，是否关闭精准搜索？</string>
+    <string name="search_result_empty_switch_all">%s 分组搜索结果为空，是否切换到全部分组？</string>
+    <!--SourcePickerDialog-->
+    <string name="select_book_source">选择书源</string>
+    <!--SpeakEngineDialog-->
+    <string name="system_default">系统默认</string>
+    <!--MyConfigScreen RSS 入口 (桌面端独有, app 端 showRssEntry=false 不调用, 补充以防万一)-->
+    <string name="rss_sources">RSS</string>
 </resources>

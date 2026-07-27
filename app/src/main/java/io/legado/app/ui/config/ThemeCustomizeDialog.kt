@@ -1,44 +1,74 @@
 package io.legado.app.ui.config
 
-import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.widget.SeekBar
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.core.os.bundleOf
-import com.jaredrummler.android.colorpicker.ColorPickerDialog
-import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
+import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogThemeCustomizeBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.preference.ColorPickerDialogContent
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.getPrefInt
-import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
-import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
 import java.io.FileOutputStream
 
-class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customize),
-    ColorPickerDialogListener {
+/**
+ * 主题定制（迁 dialog_theme_customize.xml → Compose；取色正文原本已是 Compose）。
+ * 三模式（改 prefs/改 Config/新建 Config）、日夜切换、色块/背景图/模糊、保存校验逐项等价。
+ */
+class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
 
     companion object {
         const val RESULT_CONFIG_CHANGED = "themeConfigChanged"
@@ -76,18 +106,16 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
         }
     }
 
-    private val binding by viewBinding(DialogThemeCustomizeBinding::bind)
-
     private val mode by lazy { requireArguments().getInt(ARG_MODE) }
     private val configIndex by lazy { requireArguments().getInt(ARG_CONFIG_INDEX, -1) }
 
-    private var isNight: Boolean = false
-    private var accent: Int = 0
-    private var bg: Int = 0
-    private var bbg: Int = 0
-    private var bgImagePath: String? = null
-    private var blur: Int = 0
-    private var themeName: String = ""
+    private var isNight by mutableStateOf(false)
+    private var accent by mutableIntStateOf(0)
+    private var bg by mutableIntStateOf(0)
+    private var bbg by mutableIntStateOf(0)
+    private var bgImagePath by mutableStateOf<String?>(null)
+    private var blur by mutableIntStateOf(0)
+    private var themeName by mutableStateOf("")
 
     private val requestCodeBg = 3101
 
@@ -97,19 +125,15 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
                 if (result.requestCode == requestCodeBg) {
                     setBgFromUri(uri) { path ->
                         bgImagePath = path
-                        refreshBgImageViews()
                     }
                 }
             }
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         initState(savedInstanceState)
-        initToolbar()
-        initViews()
-        initListeners()
-        refreshSwatches()
     }
 
     private fun initState(savedInstanceState: Bundle?) {
@@ -146,18 +170,13 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
         super.onSaveInstanceState(outState)
     }
 
-    private fun loadFromPrefs() = with(requireContext()) {
-        val (defAccent, defBg, defBbg) = ThemeConfig.readDefaultColors(this, isNight)
-        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
-        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
-        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
-        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
-        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
-        accent = getPrefInt(accentKey).let { if (it == 0) defAccent else it }
-        bg = getPrefInt(bgKey).let { if (it == 0) defBg else it }
-        bbg = getPrefInt(bbgKey).let { if (it == 0) defBbg else it }
-        bgImagePath = getPrefString(bgImageKey)
-        blur = getPrefInt(blurKey, 0)
+    private fun loadFromPrefs() {
+        val theme = ThemeConfig.readCustomTheme(requireContext(), isNight)
+        accent = theme.accent
+        bg = theme.background
+        bbg = theme.bottomBackground
+        bgImagePath = theme.bgImage
+        blur = theme.bgImageBlur
     }
 
     private fun loadFromConfig() {
@@ -181,83 +200,193 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
         0
     }
 
-    private fun initToolbar() {
-        titleBar!!.title = getString(
-            when (mode) {
-                MODE_EDIT_PREFS ->
-                    if (isNight) R.string.customize_night_theme else R.string.customize_day_theme
-                MODE_NEW_CONFIG -> R.string.new_theme
-                else -> R.string.theme_customize_title
+    private fun titleText(): String = getString(
+        when (mode) {
+            MODE_EDIT_PREFS ->
+                if (isNight) R.string.customize_night_theme else R.string.customize_day_theme
+
+            MODE_NEW_CONFIG -> R.string.new_theme
+            else -> R.string.theme_customize_title
+        }
+    )
+
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = titleText(),
+                onBack = { dismissAllowingStateLoss() },
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+            ) {
+                // 主题名字段：EDIT_CONFIG / NEW_CONFIG 显示，EDIT_PREFS 隐藏
+                if (mode != MODE_EDIT_PREFS) {
+                    AppOutlinedTextField(
+                        value = themeName,
+                        onValueChange = { themeName = it },
+                        label = stringResource(R.string.theme_name),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // 日/夜切换单选组：EDIT_PREFS 是从设置页明确入口进的, 不显示
+                    Row(Modifier.fillMaxWidth()) {
+                        ModeRadio(
+                            text = stringResource(R.string.day),
+                            selected = !isNight,
+                            modifier = Modifier.weight(1f),
+                        ) { switchIsNight(false) }
+                        ModeRadio(
+                            text = stringResource(R.string.night),
+                            selected = isNight,
+                            modifier = Modifier.weight(1f),
+                        ) { switchIsNight(true) }
+                    }
+                }
+                ColorRow(
+                    label = stringResource(R.string.accent),
+                    color = accent,
+                ) { showColorPicker(DIALOG_ID_ACCENT, accent) }
+                ColorRow(
+                    label = stringResource(R.string.background_color),
+                    color = bg,
+                ) { showColorPicker(DIALOG_ID_BG, bg) }
+                ColorRow(
+                    label = stringResource(R.string.navbar_color),
+                    color = bbg,
+                ) { showColorPicker(DIALOG_ID_BBG, bbg) }
+                // 背景图和模糊：仅 EDIT_PREFS 保留（Config 不含背景图字段）
+                if (mode == MODE_EDIT_PREFS) {
+                    val hasImage = !bgImagePath.isNullOrBlank()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable {
+                                selectImage.launch {
+                                    requestCode = requestCodeBg
+                                    this.mode = HandleFileContract.IMAGE
+                                }
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.background_image),
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = if (hasImage) bgImagePath.orEmpty()
+                            else stringResource(R.string.select_image),
+                            color = colors.secondaryText,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            modifier = Modifier.widthIn(max = 180.dp),
+                        )
+                        if (hasImage) {
+                            IconButton(onClick = { bgImagePath = null }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_baseline_close),
+                                    contentDescription = stringResource(R.string.delete),
+                                    tint = colors.secondaryText,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.background_image_blurring),
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                        )
+                        AppSlider(
+                            value = blur,
+                            max = 25,
+                            onValueChange = { blur = it },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = blur.toString(),
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                            modifier = Modifier.widthIn(min = 32.dp),
+                        )
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(text = stringResource(R.string.cancel)) {
+                        dismissAllowingStateLoss()
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    AppTextButton(text = stringResource(R.string.ok)) { onSaveClicked() }
+                }
             }
-        )
-    }
-
-    private fun initViews() {
-        // 日/夜切换单选组：EDIT_PREFS 是从设置页明确入口进的, 不显示
-        binding.rgMode.visibility =
-            if (mode == MODE_EDIT_PREFS) View.GONE else View.VISIBLE
-        binding.rgMode.check(if (isNight) R.id.rb_night else R.id.rb_day)
-
-        // 主题名字段：EDIT_CONFIG / NEW_CONFIG 显示，EDIT_PREFS 隐藏
-        binding.tilName.visibility =
-            if (mode == MODE_EDIT_PREFS) View.GONE else View.VISIBLE
-        binding.etName.setText(themeName)
-
-        refreshBgImageViews()
-    }
-
-    private fun refreshBgImageViews() {
-        // 背景图和模糊：仅 EDIT_PREFS 保留（Config 不含背景图字段）
-        val showBgImage = mode == MODE_EDIT_PREFS
-        binding.rowBgImage.visibility = if (showBgImage) View.VISIBLE else View.GONE
-        binding.rowBlur.visibility = if (showBgImage) View.VISIBLE else View.GONE
-        if (showBgImage) {
-            val hasImage = !bgImagePath.isNullOrBlank()
-            binding.tvBgImageSummary.text =
-                if (hasImage) bgImagePath else getString(R.string.select_image)
-            binding.ivBgImageClear.visibility =
-                if (hasImage) View.VISIBLE else View.GONE
-            binding.sbBlur.progress = blur
-            binding.tvBlurValue.text = blur.toString()
         }
     }
 
-    private fun initListeners() = binding.run {
-        rgMode.setOnCheckedChangeListener { _, checkedId ->
-            val newNight = checkedId == R.id.rb_night
-            if (newNight != isNight) {
-                onSwitchIsNight(newNight)
-            }
+    @Composable
+    private fun ModeRadio(
+        text: String,
+        selected: Boolean,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit,
+    ) {
+        Row(
+            modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppRadioButton(selected = selected, onClick = null)
+            Text(text, color = AppTheme.colors.primaryText, fontSize = 15.sp)
         }
-        rowAccent.setOnClickListener { showColorPicker(DIALOG_ID_ACCENT, accent) }
-        rowBg.setOnClickListener { showColorPicker(DIALOG_ID_BG, bg) }
-        rowBbg.setOnClickListener { showColorPicker(DIALOG_ID_BBG, bbg) }
-        rowBgImage.setOnClickListener {
-            selectImage.launch {
-                requestCode = requestCodeBg
-                this.mode = HandleFileContract.IMAGE
-            }
-        }
-        ivBgImageClear.setOnClickListener {
-            bgImagePath = null
-            refreshBgImageViews()
-        }
-        sbBlur.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                blur = progress
-                tvBlurValue.text = progress.toString()
-            }
-        })
-        btnCancel.setOnClickListener { dismissAllowingStateLoss() }
-        btnOk.setOnClickListener { onSaveClicked() }
     }
 
-    private fun onSwitchIsNight(newNight: Boolean) {
+    /** 复刻 ColorPanelView circle 形态：色块圆 + 1dp 灰描边 */
+    @Composable
+    private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                color = AppTheme.colors.primaryText,
+                fontSize = 15.sp,
+                modifier = Modifier.weight(1f),
+            )
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .size(30.dp)
+                    .background(Color(color), CircleShape)
+                    .border(1.dp, Color(0xFF6E6E6E), CircleShape),
+            )
+        }
+    }
+
+    private fun switchIsNight(newNight: Boolean) {
+        if (newNight == isNight) return
         isNight = newNight
         when (mode) {
             MODE_EDIT_PREFS -> {
                 loadFromPrefs()
-                refreshBgImageViews()
             }
 
             MODE_NEW_CONFIG -> {
@@ -265,29 +394,27 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
             }
             // EDIT_CONFIG 仅改 Config.isNightTheme, 颜色保留
         }
-        refreshSwatches()
-    }
-
-    private fun refreshSwatches() = binding.run {
-        cpvAccent.color = accent
-        cpvBg.color = bg
-        cpvBbg.color = bbg
     }
 
     private fun showColorPicker(dialogId: Int, seedColor: Int) {
-        val dialog = ColorPickerDialog.newBuilder()
-            .setDialogId(dialogId)
-            .setColor(seedColor)
-            .setShowAlphaSlider(false)
-            .setDialogType(ColorPickerDialog.TYPE_PRESETS)
-            .create()
-        dialog.setColorPickerDialogListener(this)
-        childFragmentManager.beginTransaction()
-            .add(dialog, "themeCustomize_$dialogId")
-            .commitAllowingStateLoss()
+        val titleRes = when (dialogId) {
+            DIALOG_ID_ACCENT -> R.string.accent
+            DIALOG_ID_BG -> R.string.background_color
+            else -> R.string.navbar_color
+        }
+        val dialog = ComposeDialog(requireContext(), applyFilletBackground = false)
+        dialog.setComposeContent {
+            ColorPickerDialogContent(
+                initColor = seedColor,
+                title = getString(titleRes),
+                onDismissRequest = { dialog.dismiss() },
+                onConfirm = { color -> onColorSelected(dialogId, color) },
+            )
+        }
+        dialog.show()
     }
 
-    override fun onColorSelected(dialogId: Int, color: Int) {
+    private fun onColorSelected(dialogId: Int, color: Int) {
         val opaque = ColorUtils.withAlpha(color, 1f)
         when (dialogId) {
             DIALOG_ID_ACCENT -> {
@@ -303,10 +430,7 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
                 bbg = opaque
             }
         }
-        refreshSwatches()
     }
-
-    override fun onDialogDismissed(dialogId: Int) = Unit
 
     private fun checkBgColor(color: Int): Boolean {
         if (!isNight && !ColorUtils.isColorLight(color)) {
@@ -320,7 +444,6 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
         return true
     }
 
-    @SuppressLint("SetTextI18n")
     private fun setBgFromUri(uri: Uri, success: (String) -> Unit) {
         val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
         readUri(uri) { fileDoc, inputStream ->
@@ -351,33 +474,20 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
         }
     }
 
-    private fun saveToPrefs() = with(requireContext()) {
-        val primaryKey = if (isNight) PreferKey.cNPrimary else PreferKey.cPrimary
-        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
-        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
-        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
-        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
-        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
-        putPrefInt(primaryKey, bg)
-        putPrefInt(accentKey, accent)
-        putPrefInt(bgKey, bg)
-        putPrefInt(bbgKey, bbg)
-        val bgPath = bgImagePath
-        if (bgPath.isNullOrBlank()) {
-            removePref(bgImageKey)
-        } else {
-            putPrefString(bgImageKey, bgPath)
-        }
-        putPrefInt(blurKey, blur)
+    private fun saveToPrefs() {
+        ThemeConfig.saveCustomTheme(
+            requireContext(), isNight,
+            ThemeConfig.CustomTheme(accent, bg, bbg, bgImagePath, blur)
+        )
         if (AppConfig.isNightTheme == isNight) {
-            ThemeConfig.applyTheme(this)
+            ThemeConfig.applyTheme(requireContext())
             postEvent(EventBus.RECREATE, "")
         }
         dismissAllowingStateLoss()
     }
 
     private fun saveToConfig() {
-        val name = binding.etName.text?.toString()?.trim().orEmpty()
+        val name = themeName.trim()
         if (name.isEmpty()) {
             toastOnUi(R.string.theme_name)
             return
@@ -401,7 +511,7 @@ class ThemeCustomizeDialog() : BaseDialogFragment(R.layout.dialog_theme_customiz
     }
 
     private fun saveAsNewConfig() {
-        val name = binding.etName.text?.toString()?.trim().orEmpty()
+        val name = themeName.trim()
         if (name.isEmpty()) {
             toastOnUi(R.string.theme_name)
             return

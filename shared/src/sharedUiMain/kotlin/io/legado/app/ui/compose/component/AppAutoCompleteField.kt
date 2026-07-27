@@ -1,0 +1,118 @@
+package io.legado.app.ui.compose.component
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme
+
+/**
+ * 复刻 widget.text.AutoCompleteTextView（DialogEditTextBinding 的历史下拉输入框）：
+ * 聚焦/输入时弹历史候选下拉，每项可选删除按钮（onDelete != null 时显示，删除后从下拉移除并回调）。
+ * 下拉不抢焦点，输入可持续过滤（contains，对齐历史建议语义）。
+ */
+@Composable
+fun AppAutoCompleteField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    values: List<String> = emptyList(),
+    onDelete: ((String) -> Unit)? = null,
+    singleLine: Boolean = true,
+    autoFocus: Boolean = false,
+) {
+    val colors = AppTheme.colors
+    val history = remember { mutableStateListOf<String>().apply { addAll(values) } }
+    LaunchedEffect(values) {
+        history.clear(); history.addAll(values)
+    }
+    var focused by remember { mutableStateOf(false) }
+    val suggestions = history.filter { focused && (value.isEmpty() || it.contains(value, ignoreCase = true)) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (autoFocus) {
+        LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    }
+    Box(modifier) {
+        AppOutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { focused = it.isFocused },
+            label = label,
+            singleLine = singleLine,
+        )
+        if (suggestions.isNotEmpty()) {
+            Popup(
+                alignment = Alignment.TopStart,
+                properties = PopupProperties(focusable = false),
+                onDismissRequest = { focused = false },
+            ) {
+                Surface(
+                    color = colors.fillet,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                ) {
+                    LazyColumn(Modifier.heightIn(max = 200.dp)) {
+                        items(suggestions, key = { it }) { item ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onValueChange(item) }
+                                    .padding(start = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    item,
+                                    color = colors.primaryText,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(vertical = 12.dp),
+                                )
+                                if (onDelete != null) {
+                                    IconButton(onClick = {
+                                        history.remove(item)
+                                        onDelete(item)
+                                    }) {
+                                        Icon(
+                                            painter = rememberPainter("ic_clear_all"),
+                                            contentDescription = null,
+                                            tint = colors.secondaryText,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

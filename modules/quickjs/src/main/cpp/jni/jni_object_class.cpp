@@ -2,13 +2,19 @@
 #include "jni_value_convert.h"
 #include "jni_handle.h"
 #include "jni_callbacks.h"
-#include <android/log.h>
 #include <cstring>
 #include <cstdlib>
 #include <pthread.h>
 
+// KP1.1 跨平台日志: Android 走 __android_log_print, 桌面 JVM 走 fprintf(stderr)
 #define TAG "legado_qjs"
+#ifdef __ANDROID__
+#include <android/log.h>
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#else
+#include <cstdio>
+#define LOGE(...) fprintf(stderr, "[ERROR][%s] ", TAG); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#endif
 
 // 静态成员初始化
 JSClassID JavaObjectClass::classId = 0;
@@ -66,7 +72,13 @@ namespace {
         if (ret == JNI_EDETACHED) {
             // 当前线程未 attached,尝试 attach
             // 注意: 如果 JS 在主线程执行,主线程已 attached,这里不会触发
-            ret = JavaObjectClass::cachedJvm->AttachCurrentThread(&env, &args);
+            // Android NDK 27 的 AttachCurrentThread 严格要求 JNIEnv**,
+            // 标准 JDK (桌面 JVM) 接收 void**, 用条件编译兼容两端
+#ifdef __ANDROID__
+            ret = JavaObjectClass::cachedJvm->AttachCurrentThread((JNIEnv **) &env, &args);
+#else
+            ret = JavaObjectClass::cachedJvm->AttachCurrentThread((void **) &env, &args);
+#endif
             if (ret != JNI_OK) return nullptr;
         }
         return env;
@@ -1064,7 +1076,13 @@ void JavaObjectClass::finalizer(JSRuntime *rt, JSValueConst val) {
     JNIEnv *env = nullptr;
     jint ret = cachedJvm->GetEnv((void **) &env, JNI_VERSION_1_6);
     if (ret == JNI_EDETACHED) {
-        ret = cachedJvm->AttachCurrentThread(&env, nullptr);
+        // Android NDK 27 的 AttachCurrentThread 严格要求 JNIEnv**,
+        // 标准 JDK (桌面 JVM) 要求 void**, 用条件编译兼容两端
+#ifdef __ANDROID__
+        ret = cachedJvm->AttachCurrentThread((JNIEnv **) &env, nullptr);
+#else
+        ret = cachedJvm->AttachCurrentThread((void **) &env, nullptr);
+#endif
         if (ret != JNI_OK) return;
     }
     if (env) {

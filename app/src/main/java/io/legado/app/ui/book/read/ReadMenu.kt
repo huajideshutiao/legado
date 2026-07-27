@@ -1,244 +1,159 @@
 package io.legado.app.ui.book.read
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.PorterDuff
-import android.util.AttributeSet
-import android.view.LayoutInflater
-import android.view.animation.Animation
-import android.widget.SeekBar
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.PopupMenu
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.graphics.toColorInt
-import androidx.core.view.isGone
-import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.databinding.ViewReadMenuBinding
+import io.legado.app.data.entities.Book
+import io.legado.app.help.AppWebDav
+import io.legado.app.help.book.getAbsoluteURL
+import io.legado.app.help.book.getUseReplaceRule
+import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.onCancelled
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.browser.WebViewActivity
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.ui.widget.dialog.showBookVariableDialog
+import io.legado.app.ui.widget.dialog.showSourceVariableDialog
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.activity
-import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.visible
-import splitties.views.onClick
-import splitties.views.onLongClick
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * 阅读界面菜单
+ * 阅读界面菜单：Compose 状态持有者（app 端薄壳）。
+ *
+ * UI Composable 已下沉到 shared/sharedUiMain 的 [ReadMenuOverlay]（12 个 @Composable），
+ * 本类仅保留状态属性 + Android 专属逻辑（lifecycleScope / alert / Intent /
+ * AppConfig / ReadBookConfig / ThemeConfig / ReadBook / AppWebDav 等深度依赖，
+ * 属 L3 不可下沉），实现 [ReadMenuState] 供 shared Composable 解耦访问。
+ *
+ * 对外 API(runMenuIn/runMenuOut/upBookView/upSeekBar/setSeekPage/setAutoPage/reset)
+ * 与原 View 版一致，UI 由 shared [ReadMenuOverlay] 渲染。
+ *
+ * 调用方契约不变：`val readMenu: ReadMenu by lazy { ReadMenu(this) }`。
  */
-class ReadMenu @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null
-) : BaseReadMenu(context, attrs) {
-    private val callBack: CallBack get() = activity as CallBack
-    private val binding = ViewReadMenuBinding.inflate(LayoutInflater.from(context), this, true)
-    private var confirmSkipToChapter: Boolean = false
-    private val immersiveMenu: Boolean
-        get() = ReadBookConfig.durConfig.curBgType() == 0
-    private var bgColor: Int = if (immersiveMenu) {
-        kotlin.runCatching {
-            ReadBookConfig.durConfig.curBgStr().toColorInt()
-        }.getOrDefault(context.bottomBackground)
-    } else {
-        context.bottomBackground
-    }
-    private var textColor: Int = if (immersiveMenu) {
-        ReadBookConfig.durConfig.curTextColor()
-    } else {
-        context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
-    }
+class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
 
-    private var bottomBackgroundList: ColorStateList = Selector.colorBuild()
-        .setDefaultColor(bgColor)
-        .setPressedColor(ColorUtils.darkenColor(bgColor))
-        .create()
+    private val callBack: CallBack get() = activity
+    private val context: Context get() = activity
+
+    // ---- 显隐与动画(语义对齐原 menuTopIn/menuTopOut 监听器) ----
+    override val visibleState = MutableTransitionState(false)
+    override val isVisible: Boolean get() = visibleState.currentState || visibleState.targetState
+    override var canShowMenu: Boolean = false
+    var isMenuOutAnimating = false
+        private set
+    override var animate by mutableStateOf(true)
+        private set
+
+    /** 原 vw_menu_bg click listener 有无(出场动画中/拖动进度中禁点) */
+    private var bgClickEnabled = true
+    private var pendingInEnd = false
+    private var pendingOutEnd = false
     private var onMenuOutEnd: (() -> Unit)? = null
-    private val sourceMenu by lazy {
-        PopupMenu(context, binding.tvSourceAction).apply {
-            inflate(R.menu.book_read_source)
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    R.id.menu_login -> callBack.showLogin()
-                    R.id.menu_chapter_pay -> callBack.payAction()
-                    R.id.menu_set_source_variable -> ReadBook.bookSource?.showSourceVariableDialog(
-                        context as AppCompatActivity
-                    )
 
-                    R.id.menu_set_book_variable -> ReadBook.book?.showBookVariableDialog(
-                        context as AppCompatActivity,
-                        ReadBook.bookSource
-                    )
-                    R.id.menu_edit_source -> callBack.openSourceEditActivity()
-                    R.id.menu_disable_source -> callBack.disableSource()
-                }
-                true
-            }
-        }
-    }
-    private val menuInListener = object : Animation.AnimationListener {
-        override fun onAnimationStart(animation: Animation) {
-            binding.tvSourceAction.text =
-                ReadBook.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
-            binding.tvSourceAction.isGone = ReadBook.isLocalBook
-            callBack.upSystemUiVisibility()
-        }
+    // ---- 沉浸式菜单色彩 ----
+    override var immersive by mutableStateOf(false)
+        private set
+    override var bgColor by mutableIntStateOf(0)
+        private set
+    override var textColor by mutableIntStateOf(0)
+        private set
+    override var hasBgImage by mutableStateOf(false)
+        private set
 
-        @SuppressLint("RtlHardcoded")
-        override fun onAnimationEnd(animation: Animation) {
-            binding.vwMenuBg.setOnClickListener { runMenuOut() }
-            callBack.upSystemUiVisibility()
-            if (!LocalConfig.readMenuHelpVersionIsLast) {
-                callBack.showHelp()
-            }
-        }
+    // ---- 顶栏 ----
+    override var title by mutableStateOf<String?>(null)
+        private set
+    override var chapterName by mutableStateOf<String?>(null)
+        private set
+    override var chapterUrl by mutableStateOf<String?>(null)
+        private set
+    override var chapterNameVisible by mutableStateOf(false)
+        private set
+    override var chapterUrlVisible by mutableStateOf(false)
+        private set
+    override var sourceActionText by mutableStateOf("")
+        private set
+    override var sourceActionVisible by mutableStateOf(false)
+        private set
+    override var titleBarAdditionVisible by mutableStateOf(AppConfig.showReadTitleBarAddition)
+        private set
+    override val topMenu = TopMenuState()
 
-        override fun onAnimationRepeat(animation: Animation) = Unit
-    }
-    private val menuOutListener = object : Animation.AnimationListener {
-        override fun onAnimationStart(animation: Animation) {
-            isMenuOutAnimating = true
-            binding.vwMenuBg.setOnClickListener(null)
-        }
+    // ---- 底栏 ----
+    override var seekMax by mutableIntStateOf(0)
+        private set
+    override var seekValue by mutableIntStateOf(0)
+        private set
+    override var prevEnabled by mutableStateOf(false)
+        private set
+    override var nextEnabled by mutableStateOf(false)
+        private set
+    override var autoPage by mutableStateOf(false)
 
-        override fun onAnimationEnd(animation: Animation) {
-            this@ReadMenu.invisible()
-            binding.titleBar.invisible()
-            binding.bottomMenu.invisible()
-            canShowMenu = false
-            isMenuOutAnimating = false
-            onMenuOutEnd?.invoke()
-            callBack.upSystemUiVisibility()
-        }
-
-        override fun onAnimationRepeat(animation: Animation) = Unit
-    }
+    private var confirmSkipToChapter = false
 
     init {
-        initView()
-        bindEvent()
-    }
-
-    private fun initView(reset: Boolean = false) = binding.run {
-        if (AppConfig.isNightTheme) {
-            fabNightTheme.setImageResource(R.drawable.ic_daytime)
-        } else {
-            fabNightTheme.setImageResource(R.drawable.ic_brightness)
-        }
-        initAnimation(menuInListener, menuOutListener)
-        if (immersiveMenu) {
-            val lightTextColor = ColorUtils.withAlpha(ColorUtils.lightenColor(textColor), 0.75f)
-            titleBar.setTextColor(textColor)
-            titleBar.setBackgroundColor(bgColor)
-            titleBar.setColorFilter(textColor)
-            tvChapterName.setTextColor(lightTextColor)
-            tvChapterUrl.setTextColor(lightTextColor)
-        } else if (reset) {
-            val bgColor = context.primaryColor
-            val textColor = context.primaryTextColor
-            titleBar.setTextColor(textColor)
-            titleBar.setBackgroundColor(bgColor)
-            titleBar.setColorFilter(textColor)
-            tvChapterName.setTextColor(textColor)
-            tvChapterUrl.setTextColor(textColor)
-        }
-        if (AppConfig.isEInkMode) {
-            titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
-            llBottomBg.setBackgroundResource(R.drawable.bg_eink_border_top)
-        } else {
-            llBottomBg.setBackgroundColor(bgColor)
-        }
-        fabSearch.backgroundTintList = bottomBackgroundList
-        fabSearch.setColorFilter(textColor)
-        fabAutoPage.backgroundTintList = bottomBackgroundList
-        fabAutoPage.setColorFilter(textColor)
-        fabReplaceRule.backgroundTintList = bottomBackgroundList
-        fabReplaceRule.setColorFilter(textColor)
-        fabNightTheme.backgroundTintList = bottomBackgroundList
-        fabNightTheme.setColorFilter(textColor)
-        tvPre.setTextColor(textColor)
-        tvNext.setTextColor(textColor)
-        ivCatalog.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvCatalog.setTextColor(textColor)
-        ivReadAloud.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvReadAloud.setTextColor(textColor)
-        ivFont.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvFont.setTextColor(textColor)
-        ivSetting.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
-        tvSetting.setTextColor(textColor)
-        if (AppConfig.showReadTitleBarAddition) {
-            titleBarAddition.visible()
-        } else {
-            titleBarAddition.gone()
-        }
-        /**
-         * 确保视图不被导航栏遮挡
-         */
-        applyNavigationBarPadding()
-    }
-
-    fun reset() {
         upColorConfig()
-        initView(true)
-    }
-
-    fun refreshMenuColorFilter() {
-        if (immersiveMenu) {
-            binding.titleBar.setColorFilter(textColor)
-        }
     }
 
     private fun upColorConfig() {
-        bgColor = if (immersiveMenu) {
-            kotlin.runCatching {
+        immersive = ReadBookConfig.durConfig.curBgType() == 0
+        bgColor = if (immersive) {
+            runCatching {
                 ReadBookConfig.durConfig.curBgStr().toColorInt()
             }.getOrDefault(context.bottomBackground)
         } else {
             context.bottomBackground
         }
-        textColor = if (immersiveMenu) {
+        textColor = if (immersive) {
             ReadBookConfig.durConfig.curTextColor()
         } else {
             context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
         }
-        bottomBackgroundList = Selector.colorBuild()
-            .setDefaultColor(bgColor)
-            .setPressedColor(ColorUtils.darkenColor(bgColor))
-            .create()
+        hasBgImage = !ThemeConfig.curBgImagePath.isNullOrBlank()
+    }
+
+    fun reset() {
+        upColorConfig()
+        titleBarAdditionVisible = AppConfig.showReadTitleBarAddition
     }
 
     fun runMenuIn(anim: Boolean = !AppConfig.isEInkMode) {
         callBack.onMenuShow()
-        this.visible()
-        binding.titleBar.visible()
-        binding.bottomMenu.visible()
-        if (anim) {
-            binding.titleBar.startAnimation(menuTopIn)
-            binding.bottomMenu.startAnimation(menuBottomIn)
-        } else {
-            menuInListener.onAnimationStart(menuBottomIn)
-            menuInListener.onAnimationEnd(menuBottomIn)
+        animate = anim
+        // 原 menuInListener.onAnimationStart
+        sourceActionText =
+            ReadBook.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
+        sourceActionVisible = !ReadBook.isLocalBook
+        callBack.upSystemUiVisibility()
+        // 打断出场：原监听器不会再回调，丢弃出场收尾(与 View 替换动画语义一致)
+        pendingOutEnd = false
+        isMenuOutAnimating = false
+        onMenuOutEnd = null
+        if (visibleState.targetState && visibleState.isIdle) {
+            menuInEnd()
+            return
         }
+        pendingInEnd = true
+        visibleState.targetState = true
     }
 
     fun runMenuOut(anim: Boolean = !AppConfig.isEInkMode, onMenuOutEnd: (() -> Unit)? = null) {
@@ -247,218 +162,234 @@ class ReadMenu @JvmOverloads constructor(
         }
         callBack.onMenuHide()
         this.onMenuOutEnd = onMenuOutEnd
-        if (this.isVisible) {
-            if (anim) {
-                binding.titleBar.startAnimation(menuTopOut)
-                binding.bottomMenu.startAnimation(menuBottomOut)
-            } else {
-                menuOutListener.onAnimationStart(menuBottomOut)
-                menuOutListener.onAnimationEnd(menuBottomOut)
-            }
+        if (isVisible) {
+            animate = anim
+            // 原 menuOutListener.onAnimationStart
+            isMenuOutAnimating = true
+            bgClickEnabled = false
+            pendingInEnd = false
+            pendingOutEnd = true
+            visibleState.targetState = false
         }
     }
 
-    private fun bindEvent() = binding.run {
-        vwMenuBg.setOnClickListener { runMenuOut() }
-        titleBar.toolbar.setOnClickListener {
-            callBack.openBookInfoActivity()
+    /** 原 menuInListener.onAnimationEnd */
+    private fun menuInEnd() {
+        bgClickEnabled = true
+        callBack.upSystemUiVisibility()
+        if (!LocalConfig.readMenuHelpVersionIsLast) {
+            callBack.showHelp()
         }
-        val chapterViewClickListener = OnClickListener {
-            if (ReadBook.isLocalBook) {
-                return@OnClickListener
-            }
-            if (AppConfig.readUrlInBrowser) {
-                context.openUrl(tvChapterUrl.text.toString().substringBefore(",{"))
-            } else {
-                Coroutine.async {
-                    context.startActivity<WebViewActivity> {
-                        val url = tvChapterUrl.text.toString()
-                        val bookSource = ReadBook.bookSource
-                        putExtra("title", tvChapterName.text)
-                        putExtra("url", url)
-                        putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                        putExtra("sourceName", bookSource?.bookSourceName)
-                        putExtra("sourceType", bookSource?.getSourceType())
-                    }
-                }
-            }
+    }
+
+    /** 原 menuOutListener.onAnimationEnd */
+    private fun menuOutEnd() {
+        canShowMenu = false
+        isMenuOutAnimating = false
+        onMenuOutEnd?.invoke()
+        onMenuOutEnd = null
+        callBack.upSystemUiVisibility()
+    }
+
+    override fun onTransitionIdle(shown: Boolean) {
+        if (shown && pendingInEnd) {
+            pendingInEnd = false
+            menuInEnd()
+        } else if (!shown && pendingOutEnd) {
+            pendingOutEnd = false
+            menuOutEnd()
         }
-        val chapterViewLongClickListener = OnLongClickListener {
-            if (ReadBook.isLocalBook) {
-                return@OnLongClickListener true
-            }
-            context.alert(R.string.open_fun) {
-                setMessage(R.string.use_browser_open)
-                okButton {
-                    AppConfig.readUrlInBrowser = true
-                }
-                noButton {
-                    AppConfig.readUrlInBrowser = false
-                }
-            }
-            true
-        }
-        tvChapterName.setOnClickListener(chapterViewClickListener)
-        tvChapterName.setOnLongClickListener(chapterViewLongClickListener)
-        tvChapterUrl.setOnClickListener(chapterViewClickListener)
-        tvChapterUrl.setOnLongClickListener(chapterViewLongClickListener)
-        //书源操作
-        tvSourceAction.onClick {
-            sourceMenu.menu.findItem(R.id.menu_login).isVisible =
-                ReadBook.bookSource?.hasLogin() == true
-            sourceMenu.menu.findItem(R.id.menu_chapter_pay).isVisible =
-                ReadBook.bookSource?.hasLogin() == true
-                        && ReadBook.curTextChapter?.isVip == true
-                        && ReadBook.curTextChapter?.isPay != true
-            sourceMenu.show()
-        }
-        //阅读进度
-        seekReadPage.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+    }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar) {
-                binding.vwMenuBg.setOnClickListener(null)
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                binding.vwMenuBg.setOnClickListener { runMenuOut() }
-                when (AppConfig.progressBarBehavior) {
-                    "page" -> ReadBook.skipToPage(seekBar.progress)
-                    "chapter" -> {
-                        if (confirmSkipToChapter) {
-                            callBack.skipToChapter(seekBar.progress)
-                        } else {
-                            context.alert("章节跳转确认", "确定要跳转章节吗？") {
-                                yesButton {
-                                    confirmSkipToChapter = true
-                                    callBack.skipToChapter(seekBar.progress)
-                                }
-                                noButton {
-                                    upSeekBar()
-                                }
-                                onCancelled {
-                                    upSeekBar()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-        })
-
-        //搜索
-        fabSearch.setOnClickListener {
-            runMenuOut {
-                callBack.openSearchActivity(null)
-            }
-        }
-
-        //自动翻页
-        fabAutoPage.setOnClickListener {
-            runMenuOut {
-                callBack.autoPage()
-            }
-        }
-
-        //替换
-        fabReplaceRule.setOnClickListener { callBack.openReplaceRule() }
-
-        //夜间模式
-        fabNightTheme.setOnClickListener {
-            AppConfig.isNightTheme = !AppConfig.isNightTheme
-            ThemeConfig.applyDayNight(context)
-        }
-
-        //上一章
-        tvPre.setOnClickListener { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
-
-        //下一章
-        tvNext.setOnClickListener { ReadBook.moveToNextChapter(true) }
-
-        //目录
-        llCatalog.setOnClickListener {
-            runMenuOut {
-                callBack.openChapterList()
-            }
-        }
-
-        //朗读
-        llReadAloud.setOnClickListener {
-            runMenuOut {
-                callBack.onClickReadAloud()
-            }
-        }
-        llReadAloud.onLongClick {
-            runMenuOut {
-                callBack.showReadAloudDialog()
-            }
-        }
-        //界面
-        llFont.setOnClickListener {
-            runMenuOut {
-                callBack.showReadStyle()
-            }
-        }
-
-        //设置
-        llSetting.setOnClickListener {
-            runMenuOut {
-                callBack.showMoreSetting()
-            }
-        }
+    override fun onBgClick() {
+        if (bgClickEnabled) runMenuOut()
     }
 
     fun upBookView() {
-        binding.titleBar.title = ReadBook.book?.name
-        ReadBook.curTextChapter?.let {
-            binding.tvChapterName.text = it.title
-            binding.tvChapterName.visible()
+        title = ReadBook.book?.name
+        val textChapter = ReadBook.curTextChapter
+        if (textChapter != null) {
+            chapterName = textChapter.title
+            chapterNameVisible = true
             if (!ReadBook.isLocalBook) {
-                binding.tvChapterUrl.text = it.chapter.getAbsoluteURL(ReadBook.book!!)
-                binding.tvChapterUrl.visible()
+                chapterUrl = textChapter.chapter.getAbsoluteURL(ReadBook.book!!)
+                chapterUrlVisible = true
             } else {
-                binding.tvChapterUrl.gone()
+                chapterUrlVisible = false
             }
             upSeekBar()
-            binding.tvPre.isEnabled = ReadBook.durChapterIndex != 0
-            binding.tvNext.isEnabled = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
-        } ?: let {
-            binding.tvChapterName.gone()
-            binding.tvChapterUrl.gone()
+            prevEnabled = ReadBook.durChapterIndex != 0
+            nextEnabled = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
+        } else {
+            chapterNameVisible = false
+            chapterUrlVisible = false
         }
     }
 
     fun upSeekBar() {
-        binding.seekReadPage.apply {
-            when (AppConfig.progressBarBehavior) {
-                "page" -> {
-                    ReadBook.curTextChapter?.let {
-                        max = it.pageSize.minus(1)
-                        progress = ReadBook.durPageIndex
-                    }
-                }
+        when (AppConfig.progressBarBehavior) {
+            "page" -> ReadBook.curTextChapter?.let {
+                seekMax = it.pageSize.minus(1)
+                seekValue = ReadBook.durPageIndex
+            }
 
-                "chapter" -> {
-                    max = ReadBook.simulatedChapterSize - 1
-                    progress = ReadBook.durChapterIndex
-                }
+            "chapter" -> {
+                seekMax = ReadBook.simulatedChapterSize - 1
+                seekValue = ReadBook.durChapterIndex
             }
         }
     }
 
     fun setSeekPage(seek: Int) {
-        binding.seekReadPage.progress = seek
+        seekValue = seek
     }
 
-    fun setAutoPage(autoPage: Boolean) = binding.run {
-        if (autoPage) {
-            fabAutoPage.setImageResource(R.drawable.ic_auto_page_stop)
-            fabAutoPage.contentDescription = context.getString(R.string.auto_next_page_stop)
-        } else {
-            fabAutoPage.setImageResource(R.drawable.ic_auto_page)
-            fabAutoPage.contentDescription = context.getString(R.string.auto_next_page)
+    /** 原 menuHandler.upMenu()：刷新顶栏菜单状态 */
+    fun upTopMenu() {
+        val book = ReadBook.book ?: return
+        val onLine = !book.isLocal
+        topMenu.onLine = onLine
+        topMenu.isLocalTxt = book.isLocalTxt
+        topMenu.isEpub = book.isEpub
+        topMenu.enableReplaceChecked = book.getUseReplaceRule()
+        topMenu.reSegmentChecked = book.config.reSegment
+        topMenu.delRubyChecked = book.config.delTag and Book.rubyTag == Book.rubyTag
+        topMenu.delHChecked = book.config.delTag and Book.hTag == Book.hTag
+        activity.lifecycleScope.launch {
+            val show = ReadBook.inBookshelf && withContext(IO) {
+                AppWebDav.isOk
+            }
+            topMenu.syncProgressVisible = show
         }
-        fabAutoPage.setColorFilter(textColor)
+    }
+
+    /** 原 onMenuOpened：展开溢出菜单时刷新动态项 */
+    override fun onOverflowOpened() {
+        topMenu.sameTitleRemovedChecked = ReadBook.curTextChapter?.sameTitleRemoved == true
+        topMenu.reviewVisible =
+            ReadBook.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
+    }
+
+    // ---- 事件(原 bindEvent) ----
+
+    override fun onChapterViewClick() {
+        if (ReadBook.isLocalBook) {
+            return
+        }
+        if (AppConfig.readUrlInBrowser) {
+            context.openUrl(chapterUrl.orEmpty().substringBefore(",{"))
+        } else {
+            Coroutine.async {
+                context.startActivity<WebViewActivity> {
+                    val bookSource = ReadBook.bookSource
+                    putExtra("title", chapterName)
+                    putExtra("url", chapterUrl)
+                    putExtra("sourceOrigin", bookSource?.bookSourceUrl)
+                    putExtra("sourceName", bookSource?.bookSourceName)
+                    putExtra("sourceType", bookSource?.getSourceType())
+                }
+            }
+        }
+    }
+
+    override fun onChapterViewLongClick() {
+        if (ReadBook.isLocalBook) {
+            return
+        }
+        context.alert(R.string.open_fun) {
+            setMessage(R.string.use_browser_open)
+            okButton {
+                AppConfig.readUrlInBrowser = true
+            }
+            noButton {
+                AppConfig.readUrlInBrowser = false
+            }
+        }
+    }
+
+    override fun onSeekDragStart() {
+        bgClickEnabled = false
+    }
+
+    override fun onSeekStop(progress: Int) {
+        bgClickEnabled = true
+        when (AppConfig.progressBarBehavior) {
+            "page" -> ReadBook.skipToPage(progress)
+            "chapter" -> {
+                if (confirmSkipToChapter) {
+                    callBack.skipToChapter(progress)
+                } else {
+                    context.alert("章节跳转确认", "确定要跳转章节吗？") {
+                        yesButton {
+                            confirmSkipToChapter = true
+                            callBack.skipToChapter(progress)
+                        }
+                        noButton {
+                            upSeekBar()
+                        }
+                        onCancelled {
+                            upSeekBar()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override fun clickSearch() = runMenuOut { callBack.openSearchActivity(null) }
+
+    override fun clickAutoPage() = runMenuOut { callBack.autoPage() }
+
+    override fun clickReplaceRule() = callBack.openReplaceRule()
+
+    override fun clickNightTheme() {
+        AppConfig.isNightTheme = !AppConfig.isNightTheme
+        ThemeConfig.applyDayNight(context)
+    }
+
+    override fun clickPre() { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
+
+    override fun clickNext() { ReadBook.moveToNextChapter(true) }
+
+    override fun clickCatalog() = runMenuOut { callBack.openChapterList() }
+
+    override fun clickReadAloud() = runMenuOut { callBack.onClickReadAloud() }
+
+    override fun longClickReadAloud() = runMenuOut { callBack.showReadAloudDialog() }
+
+    override fun clickFont() = runMenuOut { callBack.showReadStyle() }
+
+    override fun clickSetting() = runMenuOut { callBack.showMoreSetting() }
+
+    // ---- 宿主桥接（原 Composable 直接访问 state.activity.xxx）----
+
+    override fun openBookInfoActivity() = activity.openBookInfoActivity()
+
+    override fun supportFinishAfterTransition() = activity.supportFinishAfterTransition()
+
+    override fun onTopMenuAction(action: ReadMenuAction) = activity.onTopMenuAction(action)
+
+    // ---- 书源操作(原 sourceMenu PopupMenu) ----
+
+    override fun sourceLoginVisible() = ReadBook.bookSource?.hasLogin() == true
+
+    override fun sourcePayVisible() = ReadBook.bookSource?.hasLogin() == true
+            && ReadBook.curTextChapter?.isVip == true
+            && ReadBook.curTextChapter?.isPay != true
+
+    override fun onSourceAction(action: SourceAction) {
+        when (action) {
+            SourceAction.LOGIN -> callBack.showLogin()
+            SourceAction.CHAPTER_PAY -> callBack.payAction()
+            SourceAction.SET_SOURCE_VARIABLE ->
+                ReadBook.bookSource?.showSourceVariableDialog(activity)
+
+            SourceAction.SET_BOOK_VARIABLE ->
+                ReadBook.book?.showBookVariableDialog(activity, ReadBook.bookSource)
+
+            SourceAction.EDIT_SOURCE -> callBack.openSourceEditActivity()
+            SourceAction.DISABLE_SOURCE -> callBack.disableSource()
+        }
     }
 
     interface CallBack {
@@ -481,5 +412,4 @@ class ReadMenu @JvmOverloads constructor(
         fun onMenuShow()
         fun onMenuHide()
     }
-
 }

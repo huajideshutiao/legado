@@ -2,64 +2,73 @@ package io.legado.app.ui.book.read
 
 import android.app.Activity.RESULT_OK
 import android.app.Application
-import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.widget.PopupMenu
-import androidx.core.content.ContextCompat
+import androidx.appcompat.widget.AppCompatImageView
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
-import io.legado.app.databinding.DialogReviewListBinding
-import io.legado.app.databinding.ItemReviewBinding
-import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.glide.ImageLoader
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.space
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
+import io.legado.app.ui.compose.platform.AndroidEventBusProvider
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 
-// 用 payload 局部刷点赞/点踩 UI，避免 ImageLoader 重新拉头像导致整 item 闪烁
-private const val PAYLOAD_VOTE = 1
-
 /**
- * 评论列表对话框（BottomSheet 风格）
+ * 评论列表对话框（BottomSheet 风格，内容委托 shared ReviewListDialog Composable）
  * - paragraphIndex > 0：段评（点击段落尾部气泡进入）
  * - paragraphIndex == 0：章节级评论（阅读类页面菜单进入）
  * - paragraphIndex == -1：书籍级评论（详情页菜单进入，chapter 传 null）
  * book/chapter 通过 IntentData 透传，无 DB 二次查询
+ *
+ * UI 由 shared 模块 ReviewListDialog Composable 提供，本类仅保留:
+ * - BottomSheetDialogFragment 壳 (透明容器 + 撑高 + 默认展开)
+ * - ReviewViewModel (拉取书评列表 / 点赞点踩 / 回复 / 删除)
+ * - 状态管理 (reviews / expandedKeys / votedIds / footer 状态)
+ * - Glide 图片渲染槽 (avatarSlot / imageSlot)
+ * - 平台专属行为: alert 删除确认 / ReviewPostActivity 发书评 / PhotoDialog 查看大图 / sendToClip 复制
  */
 class ReviewListDialog() : BottomSheetDialogFragment() {
 
@@ -77,20 +86,31 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         }
     }
 
-    private var _binding: DialogReviewListBinding? = null
-    private val binding get() = _binding!!
     private val viewModel by viewModels<ReviewViewModel>()
-    private val loadMoreView by lazy { LoadMoreView(requireContext()) }
     private var replyToReview: Review? = null
-
-    // 段评模式头部，sort 切换时要刷按钮文案，保留 binding 引用
-    private var listHeaderBinding: ListHeaderWrapper? = null
-
-    private val adapter by lazy { ReviewAdapter(requireContext()) }
-
-    // 楼主原评论 binding，用于回复详情页"乐观点赞"局部刷新
-    private var parentBinding: ItemReviewBinding? = null
     private var parentReview: Review? = null
+
+    // ---- 原 adapter/loadMoreView/binding 的 UI 态，改为 Compose state ----
+    // neverEqualPolicy：回复数是对 Review 原地自增后 toList()，结构相等也要触发重组
+    private var reviews by mutableStateOf<List<Review>>(emptyList(), neverEqualPolicy())
+    private var titleText by mutableStateOf("")
+    private var listTitleText by mutableStateOf("")
+    private var repliesTitleText by mutableStateOf("")
+    private var sortState by mutableIntStateOf(0)
+    private var inputHintRes by mutableIntStateOf(R.string.review_post_hint)
+
+    // footer 三态对照 LoadMoreView：loading 转圈 / stop 空白 / noMore 显示 bottom_line
+    private var footerLoading by mutableStateOf(true)
+    private var footerHasMore by mutableStateOf(true)
+
+    // 展开态、点赞/点踩态都用 review.id 跟踪：稳定，与重载/翻页解耦
+    // id 缺失的条目（极少数老书源）始终走折叠态、无法点赞，是可接受的退化
+    // 无 id 条目使用 review.content 的 hashCode 作为 key（不会与正常 id 冲突，因为前者带 #）
+    private var expandedKeys by mutableStateOf(emptySet<String>())
+    private var votedIds by mutableStateOf(emptySet<String>())
+    private var votedDownIds by mutableStateOf(emptySet<String>())
+    // 已用书源初始状态种子过的 id；保证用户点击翻转后不被 item 旧值回灌覆盖
+    private val voteSeeded = HashSet<String>()
 
     // 段评输入面板:Activity 模拟 BottomSheet,通过 launcher 回写内容
     private val reviewPostLauncher = registerForActivityResult(
@@ -116,9 +136,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         launchPostActivity(review.content)
     }
 
-    private fun confirmDelete(review: Review, onRemove: (id: String) -> Unit) {
+    private fun confirmDelete(review: Review) {
         alert(R.string.delete, R.string.confirm_delete_review) {
-            yesButton { viewModel.delete(review, onRemove) }
+            yesButton { viewModel.delete(review) { id -> removeReviewById(id) } }
             noButton { }
         }
     }
@@ -136,20 +156,78 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
-    ): View {
-        _binding = DialogReviewListBinding.inflate(inflater, container, false)
-        return binding.root
+    ): View = ComposeView(requireContext()).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setContent {
+            // 注入 Android actual Provider，供 commonMain AppTheme 通过 LocalXxx 取依赖
+            val themeStoreProvider = remember { AndroidThemeStoreProvider() }
+            val appConfigProvider = remember { AndroidAppConfigProvider() }
+            val eventBusProvider = remember { AndroidEventBusProvider() }
+            val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
+            CompositionLocalProvider(
+                LocalThemeStoreProvider provides themeStoreProvider,
+                LocalAppConfigProvider provides appConfigProvider,
+                LocalEventBusProvider provides eventBusProvider,
+                LocalPreferenceStoreProvider provides preferenceStoreProvider,
+            ) {
+                AppTheme {
+                    // nestedScroll 桥接: 列表到顶后继续下拉交还 BottomSheetBehavior 收起
+                    val lazyListModifier = Modifier.nestedScroll(rememberNestedScrollInteropConnection())
+                    ReviewListDialog(
+                        title = titleText,
+                        parentReview = parentReview,
+                        listTitleText = listTitleText,
+                        repliesTitleText = repliesTitleText,
+                        inputHint = getString(inputHintRes),
+                        reviews = reviews,
+                        sortState = sortState,
+                        footerLoading = footerLoading,
+                        footerHasMore = footerHasMore,
+                        expandedKeys = expandedKeys,
+                        votedIds = votedIds,
+                        votedDownIds = votedDownIds,
+                        onDismiss = { dismiss() },
+                        onLoadMore = {
+                            // 立刻置 loading 防止 snapshotFlow 重复触发, 对照原 footerLoading = true
+                            footerLoading = true
+                            viewModel.loadMore()
+                        },
+                        onChangeSort = { changeSort(it) },
+                        onReviewClick = { onReviewClicked(it) },
+                        onReviewLongClick = { requireContext().sendToClip(it.content) },
+                        onToggleExpand = { key ->
+                            expandedKeys = if (expandedKeys.contains(key)) {
+                                expandedKeys - key
+                            } else expandedKeys + key
+                        },
+                        onVoteUp = { voteUp(it) },
+                        onVoteDown = { voteDown(it) },
+                        onDeleteClick = { confirmDelete(it) },
+                        onOpenReplies = { openReplies(it) },
+                        onPostClick = {
+                            replyToReview = parentReview
+                            launchPostActivity(parentReview?.content)
+                        },
+                        onAvatarClick = { url -> url?.let { showDialogFragment(PhotoDialog(it)) } },
+                        onImageClick = { showDialogFragment(PhotoDialog(it)) },
+                        avatarSlot = { url, modifier -> GlideAvatar(url, modifier) },
+                        imageSlot = { url, modifier -> GlideImage(url, modifier) },
+                        lazyListModifier = lazyListModifier,
+                    )
+                }
+            }
+        }
     }
 
     override fun onStart() {
         super.onStart()
-        // 透明掉 BottomSheet 默认 white 容器，让 LinearLayout 自己的顶部圆角显示出来
+        // 透明掉 BottomSheet 默认 white 容器，让内容自己的顶部圆角显示出来
         // 同时默认完全展开 + 撑高，跟图片设计一致
         val dialog = dialog as? BottomSheetDialog ?: return
         val bottomSheet = dialog.findViewById<View>(
             com.google.android.material.R.id.design_bottom_sheet
         ) ?: return
-        bottomSheet.setBackgroundColor(Color.TRANSPARENT)
+        bottomSheet.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         val dm = resources.displayMetrics
         bottomSheet.layoutParams = bottomSheet.layoutParams.apply {
             height = (dm.heightPixels * 0.92f).toInt()
@@ -179,90 +257,43 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         viewModel.chapter = chapter
         viewModel.paragraphIndex = paragraphIndex
         viewModel.replyReviewId = parentReview?.id
-        binding.tvTitle.text = when {
+        sortState = viewModel.sort
+        titleText = when {
             parentReview != null -> {
-                binding.etInput.setHint(R.string.reply_review)
+                inputHintRes = R.string.reply_review
                 getString(R.string.review_replies_detail_title)
             }
             paragraphIndex <= 0 -> getString(R.string.review)
             else -> getString(R.string.review) + "  #" + paragraphIndex
         }
-        binding.btnClose.setOnClickListener { dismiss() }
-
-        // 列表
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        // 回复模式：顶部加楼主原评论 + "全部回复·N" 分隔条
         if (parentReview != null) {
-            adapter.addHeaderView { parent ->
-                val b = ItemReviewBinding.inflate(layoutInflater, parent, false)
-                parentBinding = b
-                bindParentReview(b, parentReview)
-                b
-            }
-            adapter.addHeaderView { parent ->
-                val b = createRepliesHeaderBinding(layoutInflater, parent)
-                b.tvRepliesTitle.text = getString(
-                    R.string.review_replies_section_title, parentReview.replyCount
-                )
-                b
-            }
-        } else {
-            // 段评模式：顶部加"全部评论·N + 排序选择"分隔条
-            // N 由请求级 totalCountRule 解析，通过 totalCountLiveData 灌进来
-            // totalCount 与 hasMore 一起解析，回到主线程时 lambda 还没跑，
-            // 由 observer 写文案就行，这里只设排序按钮和默认占位
-            adapter.addHeaderView { parent ->
-                val b = createListHeaderBinding(layoutInflater, parent)
-                listHeaderBinding = b
-                b.btnSort.setText(sortLabelRes(viewModel.sort))
-                b.btnSort.setOnClickListener { v -> showSortMenu(v) }
-                b
-            }
-        }
-        // 翻到底用 footer LoadMoreView 显示"加载中"
-        // 首屏也复用它：默认 startLoad，等 loadMoreDoneLiveData 回来再决定 stop/noMore
-        adapter.addFooterView { ViewLoadMoreBinding.bind(loadMoreView) }
-        loadMoreView.startLoad()
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                if (recyclerView.canScrollVertically(1)) return
-                if (adapter.getActualItemCount() == 0) return
-                if (!loadMoreView.hasMore || loadMoreView.isLoading) return
-                loadMoreView.startLoad()
-                viewModel.loadMore()
-            }
-        })
-
-        // 底部"输入栏"只是个触发器，点击后弹出真正的输入对话框
-        // 回复详情页：默认就是回复楼主
-        binding.etInput.setOnClickListener {
-            replyToReview = parentReview
-            val preview = parentReview?.content
-            launchPostActivity(preview)
+            seedVoteFromItem(parentReview)
+            repliesTitleText =
+                getString(R.string.review_replies_section_title, parentReview.replyCount)
         }
 
         viewModel.reviewsLiveData.observe(viewLifecycleOwner) { list ->
-            adapter.setItems(list)
+            list.forEach { seedVoteFromItem(it) }
+            reviews = list
         }
-        // 翻页追加：notifyItemRangeInserted，不动已有 ViewHolder，避免抖动
+        // 翻页追加：只拼接新批次，已有条目状态不动
         viewModel.appendReviewsLiveData.observe(viewLifecycleOwner) { list ->
-            if (list.isNotEmpty()) adapter.addItems(list)
+            if (list.isNotEmpty()) {
+                list.forEach { seedVoteFromItem(it) }
+                reviews = reviews + list
+            }
         }
         // 段评总数：仅段评模式有 header，回复模式忽略；规则未配置时不显示数字
         viewModel.totalCountLiveData.observe(viewLifecycleOwner) { text ->
-            val b = listHeaderBinding ?: return@observe
-            b.tvListTitle.text = if (!text.isNullOrBlank()) {
+            listTitleText = if (!text.isNullOrBlank()) {
                 getString(R.string.review_list_section_title, text)
             } else ""
         }
         // footer 状态：首次 load 完成 + 每次 loadMore 完成都同步 hasMore，
-        // 否则首页一返空/一返完，loadMoreView.hasMore 仍是初始 true，
-        // 上拉到底会触发一次多余的第 2 页请求（回复页尤为明显）
+        // 否则上拉到底会触发一次多余的第 2 页请求（回复页尤为明显）
         viewModel.loadMoreDoneLiveData.observe(viewLifecycleOwner) { hasMore ->
-            if (hasMore) loadMoreView.stopLoad()
-            else loadMoreView.noMore()
+            footerLoading = false
+            footerHasMore = hasMore
         }
         viewModel.load()
     }
@@ -270,443 +301,123 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     private fun submitPost(text: String) {
         val target = replyToReview
         replyToReview = null
-        val targetIdx = target?.let { t ->
-            adapter.getItems().indexOfFirst { it.id == t.id }
-        } ?: -1
-        viewModel.reply(content = text, reviewId = target?.id, onHandled = {
-            target ?: return@reply
+        viewModel.reply(content = text, reviewId = target?.id, onHandled = handled@{
+            target ?: return@handled
             target.replyCount += 1
-            if (targetIdx >= 0) {
-                adapter.notifyItemChanged(targetIdx + adapter.getHeaderCount())
-            }
+            // 目标条目在列表中时靠列表重组刷新回复数
+            reviews = reviews.toList()
         })
     }
 
-    private fun sortLabelRes(sort: Int): Int =
-        if (sort == 1) R.string.review_sort_latest else R.string.review_sort_hot
+    private fun changeSort(newSort: Int) {
+        if (newSort == viewModel.sort) return
+        viewModel.sort = newSort
+        sortState = newSort
+        // 立刻清空列表，footer 重新转起来当首屏 loading
+        reviews = emptyList()
+        footerLoading = true
+        viewModel.load()
+    }
 
-    private fun showSortMenu(anchor: View) {
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add(0, 0, 0, R.string.review_sort_hot)
-            menu.add(0, 1, 1, R.string.review_sort_latest)
-            setOnMenuItemClickListener { mi ->
-                val newSort = mi.itemId
-                if (newSort != viewModel.sort) {
-                    viewModel.sort = newSort
-                    listHeaderBinding?.btnSort?.setText(sortLabelRes(newSort))
-                    // 立刻清空列表，footer 重新转起来当首屏 loading
-                    adapter.setItems(emptyList())
-                    loadMoreView.startLoad()
-                    viewModel.load()
+    // ---- 原 ReviewAdapter 的展开/点赞状态逻辑 ----
+
+    /**
+     * 把书源返回的 voted/votedDown 初始态首次灌入本地集合；同一 id 只灌一次。
+     * 书源解析的 voteUpCount 一般是页面上的总数（已含当前用户的点赞），
+     * 而显示按 voteUpCount + (isVoted?1:0) 计算，
+     * 所以这里把 item.voteUpCount 抹去"自己那 1 票"，让基数永远是"不含自己"。
+     */
+    private fun seedVoteFromItem(item: Review) {
+        val id = item.id ?: return
+        if (!voteSeeded.add(id)) return
+        if (item.voted) {
+            votedIds = votedIds + id
+            if (item.voteUpCount > 0) item.voteUpCount -= 1
+        }
+        if (item.votedDown) votedDownIds = votedDownIds + id
+    }
+
+    private fun toggleVoteUp(id: String): Boolean {
+        val target = !votedIds.contains(id)
+        if (target) {
+            votedIds = votedIds + id
+            votedDownIds = votedDownIds - id // 互斥
+        } else votedIds = votedIds - id
+        return target
+    }
+
+    private fun toggleVoteDown(id: String): Boolean {
+        val target = !votedDownIds.contains(id)
+        if (target) {
+            votedDownIds = votedDownIds + id
+            votedIds = votedIds - id // 互斥
+        } else votedDownIds = votedDownIds - id
+        return target
+    }
+
+    private fun revertVoteUp(id: String) {
+        votedIds = if (votedIds.contains(id)) votedIds - id else votedIds + id
+    }
+
+    private fun revertVoteDown(id: String) {
+        votedDownIds = if (votedDownIds.contains(id)) votedDownIds - id else votedDownIds + id
+    }
+
+    private fun voteUp(item: Review) {
+        val id = item.id ?: return
+        val target = toggleVoteUp(id)
+        viewModel.voteUp(item, !target) { revertVoteUp(id) }
+    }
+
+    private fun voteDown(item: Review) {
+        val id = item.id ?: return
+        val target = toggleVoteDown(id)
+        viewModel.voteDown(item, !target) { revertVoteDown(id) }
+    }
+
+    private fun removeReviewById(reviewId: String) {
+        reviews = reviews.filterNot { it.id == reviewId }
+    }
+
+    // ---- Glide 图片渲染槽 (注入 shared Composable 的 avatarSlot / imageSlot) ----
+
+    /** Glide 头像（ImageLoader 栈，tag 防重复加载闪烁） */
+    @Composable
+    private fun GlideAvatar(url: String?, modifier: Modifier) {
+        AndroidView(
+            factory = { ctx -> AppCompatImageView(ctx) },
+            modifier = modifier,
+            update = { iv ->
+                // url 为 null 时 tag(null)==url，靠 drawable 空判定兜首帧占位图
+                if (iv.tag != url || iv.drawable == null) {
+                    iv.tag = url
+                    ImageLoader.load(iv.context, url)
+                        .placeholder(R.drawable.ic_bottom_person)
+                        .error(R.drawable.ic_bottom_person)
+                        .into(iv)
                 }
-                true
-            }
-        }.show()
+            },
+        )
     }
 
-    /** 回复详情页 header：渲染楼主原评论；vote 与图片复用 adapter 的同一套逻辑。 */
-    private fun bindParentReview(b: ItemReviewBinding, item: Review) {
-        b.tvName.text = item.name.orEmpty()
-        b.tvContent.text = item.content
-        b.tvContent.maxLines = Int.MAX_VALUE
-        b.tvPostTime.text = item.postTime.orEmpty()
-        b.tvExtra.text = item.extra.orEmpty()
-        adapter.captureDefaultVoteColors(b.tvVoteCount.textColors)
-        adapter.seedVoteFromItem(item)
-        adapter.renderVoteState(b, item)
-        ImageLoader.load(requireContext(), item.avatar)
-            .placeholder(R.drawable.ic_bottom_person)
-            .error(R.drawable.ic_bottom_person)
-            .into(b.ivAvatar)
-        b.ivAvatar.setOnClickListener {
-            item.avatar?.takeIf { it.isNotBlank() }?.let {
-                showDialogFragment(PhotoDialog(it))
-            }
-        }
-        b.tvExpand.gone()
-        b.tvReplyPreview.gone()
-        b.btnMenu.gone()
-        val voteUpClick = View.OnClickListener {
-            val id = item.id ?: return@OnClickListener
-            val target = adapter.toggleVoteUp(id)
-            adapter.renderVoteState(b, item)
-            viewModel.voteUp(item, !target) {
-                adapter.revertVoteUp(id)
-                adapter.renderVoteState(b, item)
-            }
-        }
-        b.btnVoteUp.setOnClickListener(voteUpClick)
-        b.tvVoteCount.setOnClickListener(voteUpClick)
-        b.btnVoteDown.setOnClickListener {
-            val id = item.id ?: return@setOnClickListener
-            val target = adapter.toggleVoteDown(id)
-            adapter.renderVoteState(b, item)
-            viewModel.voteDown(item, !target) {
-                adapter.revertVoteDown(id)
-                adapter.renderVoteState(b, item)
-            }
-        }
-        adapter.bindImages(b, item.images)
-    }
-
-    class ListHeaderWrapper(
-        val root: LinearLayout,
-        val tvListTitle: TextView,
-        val btnSort: TextView
-    ) : androidx.viewbinding.ViewBinding {
-        override fun getRoot(): View = root
-    }
-
-    class RepliesHeaderWrapper(
-        val root: LinearLayout,
-        val tvRepliesTitle: TextView
-    ) : androidx.viewbinding.ViewBinding {
-        override fun getRoot(): View = root
-    }
-
-    private fun createRepliesHeaderBinding(
-        inflater: LayoutInflater,
-        parent: ViewGroup
-    ): RepliesHeaderWrapper {
-        val ctx = parent.context
-        val root = LinearLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            orientation = LinearLayout.VERTICAL
-        }
-        val divider = View(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ctx.space.default
-            )
-            setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider))
-        }
-        val tvRepliesTitle = TextView(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(
-                ctx.space.lg,
-                ctx.space.md,
-                ctx.space.lg,
-                ctx.space.xs
-            )
-            setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        root.addView(divider)
-        root.addView(tvRepliesTitle)
-        return RepliesHeaderWrapper(root, tvRepliesTitle)
-    }
-
-    private fun createListHeaderBinding(
-        inflater: LayoutInflater,
-        parent: ViewGroup
-    ): ListHeaderWrapper {
-        val ctx = parent.context
-        val root = LinearLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(
-                ctx.space.lg,
-                ctx.space.md,
-                ctx.space.default,
-                ctx.space.xs
-            )
-        }
-        val tvListTitle = TextView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            setTextColor(ContextCompat.getColor(ctx, R.color.primaryText))
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        val btnSort = TextView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            val ta =
-                ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
-            val bg = ta.getDrawable(0)
-            ta.recycle()
-            setBackground(bg)
-            setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_arrow_drop_down, 0)
-            compoundDrawablePadding = 2.dpToPx()
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(
-                ctx.space.default,
-                ctx.space.xs,
-                ctx.space.default,
-                ctx.space.xs
-            )
-            setTextColor(ContextCompat.getColor(ctx, R.color.secondaryText))
-            textSize = 13f
-        }
-        root.addView(tvListTitle)
-        root.addView(btnSort)
-        return ListHeaderWrapper(root, tvListTitle, btnSort)
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        listHeaderBinding = null
-        parentBinding = null
-        parentReview = null
-        _binding = null
-    }
-
-    inner class ReviewAdapter(context: Context) :
-        RecyclerAdapter<Review, ItemReviewBinding>(context) {
-
-        // 展开态、点赞/点踩态都用 review.id 跟踪：稳定，与重载/翻页解耦
-        // id 缺失的条目（极少数老书源）始终走折叠态、无法点赞，是可接受的退化
-        // 无 id 条目使用 review.content 的 hashCode 作为 key（不会与正常 id 冲突，因为前者带 #）
-        private val expanded = HashSet<String>()
-        private val voted = HashSet<String>()
-        private val votedDown = HashSet<String>()
-        // 已用书源初始状态种子过的 id；保证用户点击翻转后，再次 convert 不会被 item 旧值回灌覆盖
-        private val voteSeeded = HashSet<String>()
-
-        private val voteUpColor = ContextCompat.getColor(context, R.color.review_voted)
-        private var defaultVoteCountColors: ColorStateList? = null
-
-        private fun expandKey(item: Review): String = item.id ?: "#${item.content.hashCode()}"
-
-        /** 父项 binding 也用这套色；首次进来时由父项捕获到默认 textColors */
-        fun captureDefaultVoteColors(colors: ColorStateList) {
-            if (defaultVoteCountColors == null) defaultVoteCountColors = colors
-        }
-
-        /**
-         * 把书源返回的 voted/votedDown 初始态首次灌入本地集合；同一 id 只灌一次。
-         * 书源解析的 voteUpCount 一般是页面上的总数（已含当前用户的点赞），
-         * 而 renderVoteState 按 voteUpCount + (isVoted?1:0) 显示，
-         * 所以这里把 item.voteUpCount 抹去"自己那 1 票"，让基数永远是"不含自己"。
-         */
-        fun seedVoteFromItem(item: Review) {
-            val id = item.id ?: return
-            if (!voteSeeded.add(id)) return
-            if (item.voted) {
-                voted.add(id)
-                if (item.voteUpCount > 0) item.voteUpCount -= 1
-            }
-            if (item.votedDown) votedDown.add(id)
-        }
-
-        fun toggleVoteUp(id: String): Boolean {
-            val target = !voted.contains(id)
-            if (target) {
-                voted.add(id)
-                votedDown.remove(id) // 互斥
-            } else voted.remove(id)
-            return target
-        }
-
-        fun toggleVoteDown(id: String): Boolean {
-            val target = !votedDown.contains(id)
-            if (target) {
-                votedDown.add(id)
-                voted.remove(id) // 互斥
-            } else votedDown.remove(id)
-            return target
-        }
-
-        fun revertVoteUp(id: String) {
-            if (voted.contains(id)) voted.remove(id) else voted.add(id)
-            notifyItemByReviewId(id)
-        }
-
-        fun revertVoteDown(id: String) {
-            if (votedDown.contains(id)) votedDown.remove(id) else votedDown.add(id)
-            notifyItemByReviewId(id)
-        }
-
-        override fun getViewBinding(parent: ViewGroup): ItemReviewBinding {
-            return ItemReviewBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemReviewBinding,
-            item: Review,
-            payloads: MutableList<Any>
-        ) {
-            // 仅局部刷新点赞/点踩
-            if (payloads.isNotEmpty() && payloads.all { it == PAYLOAD_VOTE }) {
-                renderVoteState(binding, item)
-                return
-            }
-            seedVoteFromItem(item)
-            binding.run {
-                tvName.text = item.name.orEmpty()
-                tvContent.text = item.content
-                tvPostTime.text = item.postTime.orEmpty()
-                tvExtra.text = item.extra.orEmpty()
-                captureDefaultVoteColors(tvVoteCount.textColors)
-                renderVoteState(binding, item)
-                if (item.replyCount > 0) {
-                    tvReplyPreview.text =
-                        context.getString(R.string.review_replies_count, item.replyCount)
-                    tvReplyPreview.visible()
-                } else {
-                    tvReplyPreview.gone()
+    /** Glide 评论配图 */
+    @Composable
+    private fun GlideImage(url: String, modifier: Modifier) {
+        AndroidView(
+            factory = { ctx ->
+                AppCompatImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+            },
+            modifier = modifier,
+            update = { iv ->
+                if (iv.tag != url) {
+                    iv.tag = url
+                    val size = 120.dpToPx()
+                    ImageLoader.load(iv.context, url)
+                        .override(size, size)
+                        .into(iv)
                 }
-                ImageLoader.load(context, item.avatar)
-                    .placeholder(R.drawable.ic_bottom_person)
-                    .error(R.drawable.ic_bottom_person)
-                    .into(ivAvatar)
-                bindImages(binding, item.images)
-                // 展开/折叠
-                val isExpanded = expanded.contains(expandKey(item))
-                tvContent.maxLines = if (isExpanded) Int.MAX_VALUE else 6
-                tvExpand.setText(
-                    if (isExpanded) R.string.review_collapse else R.string.review_expand
-                )
-                // 折叠态下检查文本是否真的被省略；只在被截断或已经展开时显示按钮
-                tvContent.post {
-                    val layout = tvContent.layout ?: return@post
-                    val truncated = layout.lineCount > 0 &&
-                        layout.getEllipsisCount(layout.lineCount - 1) > 0
-                    tvExpand.visibility = if (isExpanded || truncated) View.VISIBLE else View.GONE
-                }
-            }
-        }
-
-        fun renderVoteState(binding: ItemReviewBinding, item: Review) {
-            val id = item.id
-            val isVoted = id != null && voted.contains(id)
-            val isVotedDown = id != null && votedDown.contains(id)
-            val displayVoteCount = item.voteUpCount + if (isVoted) 1 else 0
-            binding.tvVoteCount.text =
-                if (displayVoteCount > 0) displayVoteCount.toString()
-                else context.getString(R.string.vote_up)
-            if (isVoted) {
-                binding.tvVoteCount.setTextColor(voteUpColor)
-                binding.btnVoteUp.setImageResource(R.drawable.ic_review_thumb_up_filled)
-            } else {
-                defaultVoteCountColors?.let { binding.tvVoteCount.setTextColor(it) }
-                binding.btnVoteUp.setImageResource(R.drawable.ic_review_thumb_up)
-            }
-            binding.btnVoteDown.setImageResource(
-                if (isVotedDown) R.drawable.ic_review_thumb_down_filled
-                else R.drawable.ic_review_thumb_down
-            )
-        }
-
-        private fun notifyItemByReviewId(reviewId: String) {
-            for (i in 0 until getActualItemCount()) {
-                if (getItem(i)?.id == reviewId) {
-                    notifyItemChanged(i + getHeaderCount(), PAYLOAD_VOTE)
-                    return
-                }
-            }
-        }
-
-        fun removeReviewById(reviewId: String) {
-            for (i in 0 until getActualItemCount()) {
-                if (getItem(i)?.id == reviewId) {
-                    removeItem(i)
-                    return
-                }
-            }
-        }
-
-        fun bindImages(binding: ItemReviewBinding, images: List<String>) {
-            val container = binding.llImages
-            container.removeAllViews()
-            if (images.isEmpty()) {
-                binding.hsvImages.gone()
-                return
-            }
-            binding.hsvImages.visible()
-            val density = context.resources.displayMetrics.density
-            val size = (120 * density).toInt()
-            val gap = (4 * density).toInt()
-            images.forEachIndexed { i, url ->
-                val iv = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                        if (i > 0) marginStart = gap
-                    }
-                    setOnClickListener { showDialogFragment(PhotoDialog(url)) }
-                }
-                container.addView(iv)
-                ImageLoader.load(context, url)
-                    .override(size, size)
-                    .into(iv)
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemReviewBinding) {
-            // 整条空白区/正文点击 → 回复；长按 → 复制内容
-            val clickToReply = View.OnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.let { onReviewClicked(it) }
-            }
-            val longClickToCopy = View.OnLongClickListener {
-                val item = getItemByLayoutPosition(holder.layoutPosition)
-                    ?: return@OnLongClickListener false
-                context.sendToClip(item.content)
-                true
-            }
-            binding.root.setOnClickListener(clickToReply)
-            binding.root.setOnLongClickListener(longClickToCopy)
-            binding.tvContent.setOnClickListener(clickToReply)
-            binding.tvContent.setOnLongClickListener(longClickToCopy)
-            binding.tvExpand.setOnClickListener {
-                val item = getItemByLayoutPosition(holder.layoutPosition)
-                    ?: return@setOnClickListener
-                val key = expandKey(item)
-                if (expanded.contains(key)) expanded.remove(key) else expanded.add(key)
-                notifyItemChanged(holder.layoutPosition)
-            }
-            binding.ivAvatar.setOnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.avatar
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { showDialogFragment(PhotoDialog(it)) }
-            }
-            binding.btnMenu.setOnClickListener {
-                val item = getItemByLayoutPosition(holder.layoutPosition)
-                    ?: return@setOnClickListener
-                PopupMenu(context, it).apply {
-                    menu.add(0, 1, 1, R.string.delete)
-                    setOnMenuItemClickListener { menuItem ->
-                        if (menuItem.itemId == 1) {
-                            confirmDelete(item) { id -> removeReviewById(id) }
-                        }
-                        true
-                    }
-                }.show()
-            }
-            val voteUpClick = View.OnClickListener {
-                val item = getItemByLayoutPosition(holder.layoutPosition)
-                    ?: return@OnClickListener
-                val id = item.id ?: return@OnClickListener
-                val target = toggleVoteUp(id)
-                notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteUp(item, !target) { revertVoteUp(id) }
-            }
-            binding.btnVoteUp.setOnClickListener(voteUpClick)
-            binding.tvVoteCount.setOnClickListener(voteUpClick)
-            binding.btnVoteDown.setOnClickListener {
-                val item = getItemByLayoutPosition(holder.layoutPosition)
-                    ?: return@setOnClickListener
-                val id = item.id ?: return@setOnClickListener
-                val target = toggleVoteDown(id)
-                notifyItemChanged(holder.layoutPosition, PAYLOAD_VOTE)
-                viewModel.voteDown(item, !target) { revertVoteDown(id) }
-            }
-            binding.tvReplyPreview.setOnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.let { openReplies(it) }
-            }
-        }
+            },
+        )
     }
 
     class ReviewViewModel(application: Application) : BaseViewModel(application) {
@@ -779,7 +490,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 if (!append && replyReviewId == null) {
                     totalCountLiveData.value = result.totalCount
                 }
-                // 首页也同步 hasMore，避免 loadMoreView.hasMore 残留 true
+                // 首页也同步 hasMore，避免残留 true
                 // 触发多余的下一页请求（回复页通常一页就完）
                 loadMoreDoneLiveData.value = hasMore
             }.onError {

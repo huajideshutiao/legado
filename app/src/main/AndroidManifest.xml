@@ -152,7 +152,8 @@
             android:windowSoftInputMode="adjustNothing" /> <!-- 书籍信息编辑 -->
         <activity
             android:name=".ui.book.info.edit.BookInfoEditActivity"
-            android:launchMode="singleTask" /> <!-- 音频播放界面 -->
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize|stateHidden" /> <!-- 音频播放界面 -->
         <activity
             android:name=".ui.book.audio.AudioPlayActivity"
             android:launchMode="singleTask" /> <!-- 授权界面 -->

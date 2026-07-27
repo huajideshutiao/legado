@@ -15,14 +15,16 @@ import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.DefaultData
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.compress.ZipUtils
@@ -37,7 +39,6 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.hexString
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
@@ -263,6 +264,12 @@ object ReadBookConfig {
     var hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
     var hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
     var useZhLayout = appCtx.getPrefBoolean(PreferKey.useZhLayout)
+
+    /** 设置页直写 pref 后同步缓存字段 */
+    fun reloadHideBarPrefs() {
+        hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
+        hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
+    }
 
     val config get() = if (shareLayout) shareConfig else durConfig
 
@@ -739,7 +746,7 @@ object ReadBookConfig {
                             Coroutine.async {
                                 val downloaded = RemoteAssetsUtils.downloadBgIfNeeded(bgName)
                                 if (downloaded != null) {
-                                    postEvent(EventBus.UP_CONFIG, arrayListOf(1))
+                                    ReadBookEvents.postConfig(ReadConfigChange.BG)
                                 }
                             }
                             val previewBytes = RemoteAssetsUtils.getBgPreviewBytes(bgName)

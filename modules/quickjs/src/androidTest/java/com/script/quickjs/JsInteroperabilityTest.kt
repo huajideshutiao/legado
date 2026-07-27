@@ -1,6 +1,7 @@
 package com.script.quickjs
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.legado.jshost.MapParamReceiver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
@@ -659,7 +660,7 @@ class JsInteroperabilityTest {
             yy.join(',');
         """.trimIndent()
         )
-        assertEquals("id.gdt@,id.gdt@", result.toString())
+        assertEquals("id.gdt@a,id.gdt@a", result.toString())
     }
 
     @Test
@@ -876,6 +877,41 @@ class JsInteroperabilityTest {
             assertEquals(3, (count as Number).toInt())
         } finally {
             scope.close()
+        }
+    }
+
+    // ============ JSON 字符串 -> Map 参数强转 (书源 header 惯例) ============
+
+    @Test
+    fun testJsonStringCoercedToMapParam() {
+        // 书源惯例把 header 写成 JSON 字符串传给期望 Map 的参数 (java.post(url, body, '{"h":"v"}'))。
+        // 修复前 coerceValue(String, Map) 原样返回 String, invoke 抛 argument type mismatch。
+        val result = QuickJsEngine.eval(
+            """recv.echoHeaders('{"User-Agent":"UA","Cookie":"a=b"}');"""
+        ) {
+            put("recv", MapParamReceiver())
+        }
+        assertEquals("User-Agent=UA,Cookie=a=b", result.toString())
+    }
+
+    @Test
+    fun testObjectLiteralStillCoercedToMapParam() {
+        // 回归: 对象字面量 header 仍走 NativeObject(是 Map) 直通, 不受 JSON 字符串分支影响。
+        val result = QuickJsEngine.eval(
+            """recv.echoHeaders({ 'User-Agent': 'UA', 'Cookie': 'a=b' });"""
+        ) {
+            put("recv", MapParamReceiver())
+        }
+        assertEquals("User-Agent=UA,Cookie=a=b", result.toString())
+    }
+
+    @Test
+    fun testNonJsonStringToMapParamStillThrows() {
+        // 非 JSON 对象字符串无法转 Map, 仍应抛出 (不静默吞掉, 保持行为可见)。
+        assertThrows(Throwable::class.java) {
+            QuickJsEngine.eval("recv.echoHeaders('not-json');") {
+                put("recv", MapParamReceiver())
+            }
         }
     }
 }

@@ -1,6 +1,5 @@
 #include <jni.h>
 #include <quickjs.h>
-#include <android/log.h>
 #include <cstring>
 #include <cstdlib>
 
@@ -9,9 +8,17 @@
 #include "jni_value_convert.h"
 #include "jni_callbacks.h"
 
+// KP1.1 跨平台日志: Android 走 __android_log_print, 桌面 JVM 走 fprintf(stderr)
 #define TAG "legado_qjs"
+#ifdef __ANDROID__
+#include <android/log.h>
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#else
+#include <cstdio>
+#define LOGI(...) fprintf(stderr, "[INFO][%s] ", TAG); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#define LOGE(...) fprintf(stderr, "[ERROR][%s] ", TAG); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#endif
 
 // 覆盖 libc++abi 的 __cxa_demangle: 已 -fno-exceptions, 只有 demangling_terminate_handler
 // (uncaught 异常时打印 typename) 一处会用它, 我们让它返回 nullptr, 触发上游 gc-sections

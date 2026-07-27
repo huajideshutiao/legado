@@ -1,26 +1,40 @@
 package io.legado.app.ui.association
 
 import android.content.Intent
-import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import io.legado.app.R
+import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.SourceType
+import io.legado.app.help.LifecycleHelp
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.SourceHelp
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.negativeButton
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.positiveButton
-import io.legado.app.lib.dialogs.yesButton
-import io.legado.app.lib.theme.space
-import io.legado.app.utils.applyTint
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
@@ -33,68 +47,105 @@ object OpenUrlConfirmDialog {
         sourceName: String? = null,
         sourceType: Int = SourceType.book
     ) {
-        val activity = io.legado.app.help.LifecycleHelp.currentActivity as? AppCompatActivity
+        val activity = LifecycleHelp.currentActivity as? AppCompatActivity
         if (activity == null) {
             appCtx.toastOnUi("无法在后台显示跳转确认对话框")
             return
         }
-
-        val padding = activity.space.lg
-
-        // 应用 Style.DialogToolbar(elevation=0, titleTextAppearance, popupTheme), 与其他对话框 Toolbar 一致
-        val toolbar =
-            Toolbar(android.view.ContextThemeWrapper(activity, R.style.Style_DialogToolbar)).apply {
-            setTitle("跳转确认")
-            subtitle = sourceName
-            inflateMenu(R.menu.open_url_confirm)
-            menu.applyTint(activity)
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-        }
-
-        // Message
-        val messageText = TextView(activity).apply {
-            text = "${sourceName} 正在请求跳转链接/应用，是否跳转？"
-            setTextColor(activity.getColor(R.color.primaryText))
-            textSize = 16f
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-            setPadding(padding, padding, padding, padding)
-        }
-
-        // customView 仅承载 Toolbar(带菜单) + 提示文案, 操作按钮交给 alert DSL 标准底栏(水平排布)
-        val root = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(toolbar)
-            addView(messageText)
-        }
-
-        val dialog = activity.alert {
-            customView { root }
-            negativeButton(R.string.cancel)
-            // positiveButton 点击后 AlertDialog 默认 dismiss, openUrl 执行完即关闭
-            positiveButton(R.string.ok) {
-                openUrl(uri, mimeType)
-            }
-        }
-
-        toolbar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.menu_disable_source -> {
-                    sourceOrigin?.let { SourceHelp.enableSource(it, sourceType, false) }
+        val dialog = ComposeDialog(activity)
+        dialog.setComposeContent {
+            Content(
+                sourceName = sourceName,
+                onDisableSource = {
+                    sourceOrigin?.let { Coroutine.async { SourceHelp.enableSource(it, sourceType, false) } }
                     dialog.dismiss()
-                }
-
-                R.id.menu_delete_source -> {
+                },
+                onDeleteSource = {
                     activity.alert(R.string.draw) {
                         setMessage(activity.getString(R.string.sure_del) + "\n" + sourceName)
                         noButton()
                         yesButton {
-                            sourceOrigin?.let { SourceHelp.deleteSource(it, sourceType) }
+                            sourceOrigin?.let { Coroutine.async { SourceHelp.deleteSource(it, sourceType) } }
                             dialog.dismiss()
                         }
                     }
-                }
+                },
+                onCancel = { dialog.dismiss() },
+                onOk = {
+                    openUrl(uri, mimeType)
+                    dialog.dismiss()
+                },
+            )
+        }
+        dialog.show()
+    }
+
+    @Composable
+    private fun Content(
+        sourceName: String?,
+        onDisableSource: () -> Unit,
+        onDeleteSource: () -> Unit,
+        onCancel: () -> Unit,
+        onOk: () -> Unit,
+    ) {
+        val colors = AppTheme.colors
+        Column(Modifier.fillMaxWidth()) {
+            DialogTitleBar(
+                title = "跳转确认",
+                subtitle = sourceName,
+                actions = { OverflowMenu(onDisableSource, onDeleteSource) },
+            )
+            Text(
+                text = "$sourceName 正在请求跳转链接/应用，是否跳转？",
+                color = colors.primaryText,
+                modifier = Modifier.padding(24.dp),
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                AppTextButton(
+                    text = stringResource(R.string.cancel),
+                    color = colors.secondaryText,
+                    onClick = onCancel,
+                )
+                AppTextButton(text = stringResource(R.string.ok), onClick = onOk)
             }
-            true
+        }
+    }
+
+    @Composable
+    private fun RowScope.OverflowMenu(
+        onDisableSource: () -> Unit,
+        onDeleteSource: () -> Unit,
+    ) {
+        var expanded by remember { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { expanded = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = null,
+                    tint = AppTheme.colors.primaryText,
+                )
+            }
+            AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.disable_source)) },
+                    onClick = {
+                        expanded = false
+                        onDisableSource()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete_source)) },
+                    onClick = {
+                        expanded = false
+                        onDeleteSource()
+                    },
+                )
+            }
         }
     }
 

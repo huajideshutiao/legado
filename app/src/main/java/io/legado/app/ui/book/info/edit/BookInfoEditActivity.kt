@@ -2,15 +2,15 @@ package io.legado.app.ui.book.info.edit
 
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import androidx.activity.viewModels
-import androidx.core.view.WindowInsetsCompat
-import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
-import io.legado.app.databinding.ActivityBookInfoEditBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
@@ -21,24 +21,38 @@ import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
+import io.legado.app.model.CoverRatio
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.main.bookshelf.ShelfCover
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.readUri
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
-import splitties.views.bottomPadding
 import java.io.FileOutputStream
 
-class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInfoEditViewModel>(),
-    ChangeCoverDialog.CallBack {
+/**
+ * 书籍信息编辑 Activity (薄壳模式)。
+ *
+ * Composable 已下沉到 shared/sharedUiMain 的 [BookInfoEditScreen], 本 Activity 仅:
+ * - 持有各编辑态字段 (name/author/typeIndex/coverUrl/intro/bookUrl/coverTick) 的
+ *   `mutableStateOf` 与 [BookInfoEditViewModel]
+ * - 实现 [BookInfoEditUiActions] 接口, 在回调内桥接平台依赖 (HandleFileContract /
+ *   ChangeCoverDialog / FileUtils / MD5Utils / externalFiles / readUri)
+ * - [Content] 内构造 state, 调用 [BookInfoEditScreen] 渲染
+ *
+ * 选图 ([selectCover]) / 换源弹窗 ([showDialogFragment] + [ChangeCoverDialog]) /
+ * Uri 落盘 ([coverChangeTo] (Uri)) 仍保留在本类: 它们依赖 Android 专属 API。
+ */
+class BookInfoEditActivity :
+    BaseComposeActivity(),
+    ChangeCoverDialog.CallBack,
+    BookInfoEditUiActions {
 
     private val selectCover by lazy {
         registerHandleFile { result ->
@@ -48,91 +62,125 @@ class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInf
         }
     }
 
-    override val binding by viewBinding(ActivityBookInfoEditBinding::inflate)
-    override val viewModel by viewModels<BookInfoEditViewModel>()
+    val viewModel by viewModels<BookInfoEditViewModel>()
+
+    // ---- 编辑态(镜像原 tie_* 输入框) ----
+    private var name by mutableStateOf("")
+    private var author by mutableStateOf("")
+    private var typeIndex by mutableIntStateOf(0)
+    private var coverUrl by mutableStateOf("")
+    private var intro by mutableStateOf("")
+    private var bookUrl by mutableStateOf("")
+    private var coverTick by mutableIntStateOf(0)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        //viewModel.bookData.observe(this) { upView(it) }
         viewModel.loadBook()
-        initView()
-        initEvent()
         upView(viewModel.book!!)
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_info_edit, menu)
-        return super.onCompatCreateOptionsMenu(menu)
+    private fun upView(book: Book) {
+        name = book.name
+        author = book.author
+        typeIndex = when {
+            book.isRss -> 5
+            book.isVideo -> 4
+            book.isWebFile -> 3
+            book.isImage -> 2
+            book.isAudio -> 1
+            else -> 0
+        }
+        coverUrl = book.getDisplayCover().orEmpty()
+        intro = book.getDisplayIntro().orEmpty()
+        bookUrl = book.bookUrl
+        coverTick++
     }
 
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_save -> saveData()
-        }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun initView() {
-        binding.root.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            val typeMask = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
-            val insets = windowInsets.getInsets(typeMask)
-            view.bottomPadding = insets.bottom
-            windowInsets
-        }
-    }
-
-    private fun initEvent() = binding.run {
-        tvChangeCover.setOnClickListener {
-            viewModel.book?.let {
-                showDialogFragment(
-                    ChangeCoverDialog(it.name, it.author)
-                )
-            }
-        }
-        tvSelectCover.setOnClickListener {
-            selectCover.launch {
-                mode = HandleFileContract.IMAGE
-            }
-        }
-        tvRefreshCover.setOnClickListener {
-            viewModel.book?.customCoverUrl = tieCoverUrl.text?.toString()
-            upCover()
-        }
-    }
-
-    private fun upView(book: Book) = binding.run {
-        tieBookName.setText(book.name)
-        tieBookAuthor.setText(book.author)
-        spType.setSelection(
-            when {
-                book.isRss -> 5
-                book.isVideo -> 4
-                book.isWebFile -> 3
-                book.isImage -> 2
-                book.isAudio -> 1
-                else -> 0
-            }
+    @Composable
+    override fun Content() {
+        val state = BookInfoEditUiState(
+            book = viewModel.book,
+            name = name,
+            author = author,
+            typeIndex = typeIndex,
+            coverUrl = coverUrl,
+            intro = intro,
+            bookUrl = bookUrl,
+            coverTick = coverTick,
         )
-        tieCoverUrl.setText(book.getDisplayCover())
-        tieBookIntro.setText(book.getDisplayIntro())
-        tieBookUrl.setText(book.bookUrl)
-        upCover()
+        BookInfoEditScreen(
+            state = state,
+            actions = this,
+            coverSlot = { book, modifier ->
+                ShelfCover(
+                    path = book?.getDisplayCover(),
+                    name = book?.name,
+                    author = book?.author,
+                    origin = book?.origin,
+                    ratio = CoverRatio.NOVEL,
+                    reloadKey = coverTick,
+                    inBookshelf = true,
+                    modifier = modifier,
+                )
+            },
+        )
     }
 
-    private fun upCover() {
-        viewModel.book?.let {
-            binding.ivCover.load(
-                it.getDisplayCover(), it.name, it.author, false, it.origin, inBookshelf = true
-            )
+    // ===== BookInfoEditUiActions 适配 =====
+
+    override fun onBack() = finish()
+
+    override fun onSave() = saveData()
+
+    override fun onSelectCover() {
+        selectCover.launch {
+            mode = HandleFileContract.IMAGE
         }
     }
 
-    private fun saveData() = binding.run {
-        val book = viewModel.book ?: return@run
+    override fun onChangeCoverSource() {
+        viewModel.book?.let {
+            showDialogFragment(ChangeCoverDialog(it.name, it.author))
+        }
+    }
+
+    override fun onRefreshCover() {
+        viewModel.book?.customCoverUrl = coverUrl
+        coverTick++
+    }
+
+    override fun onNameChange(value: String) {
+        name = value
+    }
+
+    override fun onAuthorChange(value: String) {
+        author = value
+    }
+
+    override fun onTypeChange(index: Int) {
+        typeIndex = index
+    }
+
+    override fun onCoverUrlChange(value: String) {
+        coverUrl = value
+    }
+
+    override fun onIntroChange(value: String) {
+        intro = value
+    }
+
+    override fun onBookUrlChange(value: String) {
+        bookUrl = value
+    }
+
+    // ===== 平台相关方法 (依赖 HandleFileContract / FileUtils / MD5Utils / externalFiles / readUri, 不下沉) =====
+
+    private fun saveData() {
+        val book = viewModel.book ?: return
         val oldBook = book.copy()
-        book.name = tieBookName.text?.toString() ?: ""
-        book.author = tieBookAuthor.text?.toString() ?: ""
+        book.name = name
+        book.author = author
         val local = if (book.isLocal) BookType.local else 0
-        val bookType = when (spType.selectedItemPosition) {
+        val bookType = when (typeIndex) {
             5 -> BookType.rss or local
             4 -> BookType.video or local
             3 -> BookType.webFile or local
@@ -150,16 +198,12 @@ class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInf
             BookType.rss
         )
         book.addType(bookType)
-        val customCoverUrl = tieCoverUrl.text?.toString()
-        book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
-        val customIntro = tieBookIntro.text?.toString()
-        book.customIntro = if (customIntro == book.intro) null else customIntro
+        book.customCoverUrl = if (coverUrl == book.coverUrl) null else coverUrl
+        book.customIntro = if (intro == book.intro) null else intro
         BookHelp.updateCacheFolder(oldBook, book)
-        viewModel.saveBook(book, tieBookUrl.text?.toString()) {
+        viewModel.saveBook(book, bookUrl) {
             setResult(RESULT_OK)
-            tieBookUrl.text?.apply {
-                book.bookUrl = this.toString()
-            }
+            book.bookUrl = bookUrl
             IntentData.book = book
             finish()
         }
@@ -167,8 +211,8 @@ class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInf
 
     override fun coverChangeTo(coverUrl: String) {
         viewModel.book?.customCoverUrl = coverUrl
-        binding.tieCoverUrl.setText(coverUrl)
-        upCover()
+        this.coverUrl = coverUrl
+        coverTick++
     }
 
     private fun coverChangeTo(uri: Uri) {
@@ -191,5 +235,4 @@ class BookInfoEditActivity : VMBaseActivity<ActivityBookInfoEditBinding, BookInf
             }
         }
     }
-
 }

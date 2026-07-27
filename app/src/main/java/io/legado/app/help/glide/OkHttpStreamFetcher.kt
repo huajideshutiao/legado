@@ -21,6 +21,7 @@ import io.legado.app.utils.isWifiConnect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
 import okhttp3.Call
 import okhttp3.Request
 import okhttp3.Response
@@ -62,7 +63,8 @@ class OkHttpStreamFetcher(
         }
 
         options.get(OkHttpModelLoader.sourceOriginOption)?.let { sourceUrl ->
-            source = SourceHelp.getSource(sourceUrl)
+            // Glide loadData 同步接口约束; app 模块 JVM 专属路径, 允许 runBlocking
+            source = runBlocking { SourceHelp.getSource(sourceUrl) }
         }
 
         analyzedUrl = AnalyzeUrl(

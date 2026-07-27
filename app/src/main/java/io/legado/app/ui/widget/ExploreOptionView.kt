@@ -14,11 +14,7 @@ import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
 import io.legado.app.databinding.ItemFilletTextBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.neutralButton
-import io.legado.app.lib.dialogs.okButton
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.lib.theme.space
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.utils.dpToPx
@@ -198,7 +194,9 @@ private fun showMultiSelectDialog(
         }
         container.addView(searchBox)
         container.addView(list)
-        customView { container }
+        customView {
+            androidx.compose.ui.viewinterop.AndroidView(factory = { container })
+        }
         okButton {
             if (working != option.selectedValues) {
                 option.selectedValues.clear()

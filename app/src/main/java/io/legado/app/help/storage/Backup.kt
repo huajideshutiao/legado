@@ -3,25 +3,30 @@ package io.legado.app.help.storage
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.help.ruleFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.defaultSharedPreferences
+import io.legado.app.utils.delete
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.normalizeFileName
@@ -37,7 +42,6 @@ import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,7 +77,7 @@ object Backup {
             "dictRule.json",
             "sourceFilterRule.json",
             "servers.json",
-            DirectLinkUpload.ruleFileName,
+            ruleFileName,
             ReadBookConfig.configFileName,
             ReadBookConfig.shareConfigFileName,
             ThemeConfig.configFileName,
@@ -129,20 +133,20 @@ object Backup {
         LocalConfig.lastBackup = System.currentTimeMillis()
         val aes = BackupAES()
         FileUtils.delete(backupPath)
-        writeListToJson(appDb.bookDao.all, "bookshelf.json", backupPath)
-        writeListToJson(appDb.bookmarkDao.all, "bookmark.json", backupPath)
-        writeListToJson(appDb.bookGroupDao.all, "bookGroup.json", backupPath)
-        writeListToJson(appDb.bookSourceDao.all, "bookSource.json", backupPath)
-        writeListToJson(appDb.replaceRuleDao.all, "replaceRule.json", backupPath)
-        writeListToJson(appDb.readRecordDao.all, "readRecord.json", backupPath)
-        writeListToJson(appDb.searchKeywordDao.all, "searchHistory.json", backupPath)
-        writeListToJson(appDb.ruleSubDao.all, "sourceSub.json", backupPath)
-        writeListToJson(appDb.txtTocRuleDao.all, "txtTocRule.json", backupPath)
-        writeListToJson(appDb.httpTTSDao.all, "httpTTS.json", backupPath)
-        writeListToJson(appDb.keyboardAssistsDao.all, "keyboardAssists.json", backupPath)
-        writeListToJson(appDb.dictRuleDao.all, "dictRule.json", backupPath)
-        writeListToJson(appDb.sourceFilterRuleDao.all, "sourceFilterRule.json", backupPath)
-        GSON.toJson(appDb.serverDao.all).let { json ->
+        writeListToJson(appDb.bookDao.all(), "bookshelf.json", backupPath)
+        writeListToJson(appDb.bookmarkDao.all(), "bookmark.json", backupPath)
+        writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json", backupPath)
+        writeListToJson(appDb.bookSourceDao.all(), "bookSource.json", backupPath)
+        writeListToJson(appDb.replaceRuleDao.all(), "replaceRule.json", backupPath)
+        writeListToJson(appDb.readRecordDao.all(), "readRecord.json", backupPath)
+        writeListToJson(appDb.searchKeywordDao.all(), "searchHistory.json", backupPath)
+        writeListToJson(appDb.ruleSubDao.all(), "sourceSub.json", backupPath)
+        writeListToJson(appDb.txtTocRuleDao.all(), "txtTocRule.json", backupPath)
+        writeListToJson(appDb.httpTTSDao.all(), "httpTTS.json", backupPath)
+        writeListToJson(appDb.keyboardAssistsDao.all(), "keyboardAssists.json", backupPath)
+        writeListToJson(appDb.dictRuleDao.all(), "dictRule.json", backupPath)
+        writeListToJson(appDb.sourceFilterRuleDao.all(), "sourceFilterRule.json", backupPath)
+        GSON.toJson(appDb.serverDao.all()).let { json ->
             aes.runCatching {
                 encryptBase64(json)
             }.getOrDefault(json).let {
@@ -164,7 +168,7 @@ object Backup {
                 .writeText(it)
         }
         DirectLinkUpload.getConfig()?.let {
-            FileUtils.createFileIfNotExist(backupPath + File.separator + DirectLinkUpload.ruleFileName)
+            FileUtils.createFileIfNotExist(backupPath + File.separator + ruleFileName)
                 .writeText(GSON.toJson(it))
         }
         currentCoroutineContext().ensureActive()
@@ -206,7 +210,7 @@ object Backup {
                 }
 
                 path.isContentScheme() -> {
-                    copyBackup(context, path.toUri(), backupFileName)
+                    copyBackup(path.toUri(), backupFileName)
                 }
 
                 else -> {
@@ -257,13 +261,18 @@ object Backup {
 
     @Throws(Exception::class)
     @Suppress("SameParameterValue")
-    private fun copyBackup(context: Context, uri: Uri, fileName: String) {
-        val treeDoc = DocumentFile.fromTreeUri(context, uri)!!
-        treeDoc.findFile(fileName)?.delete()
-        val fileDoc = treeDoc.createFile("", fileName)
-            ?: throw NoStackTraceException("创建文件失败")
-        val outputS = fileDoc.openOutputStream()
-            ?: throw NoStackTraceException("打开OutputStream失败")
+    private fun copyBackup(uri: Uri, fileName: String) {
+        val treeDoc = FileDoc.fromDir(uri)
+        treeDoc.find(fileName)?.delete()
+        val fileDoc = kotlin.runCatching {
+            treeDoc.createFileIfNotExist(fileName)
+        }.getOrElse {
+            throw NoStackTraceException("创建文件失败")
+        }
+        val outputS = fileDoc.openOutputStream().getOrElse {
+            if (it is NullPointerException) throw NoStackTraceException("打开OutputStream失败")
+            throw it
+        }
         outputS.use {
             FileInputStream(zipFilePath).use { inputS ->
                 inputS.copyTo(outputS)
@@ -274,12 +283,8 @@ object Backup {
     @Throws(Exception::class)
     @Suppress("SameParameterValue")
     private fun copyBackup(rootFile: File, fileName: String) {
-        FileInputStream(File(zipFilePath)).use { inputS ->
-            val file = FileUtils.createFileIfNotExist(rootFile, fileName)
-            FileOutputStream(file).use { outputS ->
-                inputS.copyTo(outputS)
-            }
-        }
+        // 复用下沉的 BackupFileOps.copyFile 纯文件复制 (与原 FileInputStream+FileOutputStream+copyTo 等价)
+        BackupFileOps.copyFile(zipFilePath, File(rootFile, fileName).absolutePath)
     }
 
     fun clearCache() {

@@ -2,9 +2,10 @@
 
 package io.legado.app.lib.cronet
 
+import android.net.http.X509TrustManagerExtensions
 import androidx.annotation.Keep
-import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
+import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.externalCache
@@ -20,6 +21,11 @@ import org.json.JSONObject
 import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
+
+// unsafeTrustManagerExtensions 依赖 Android 独有的 X509TrustManagerExtensions, 仅 Cronet 使用, 内联于此
+private val unsafeTrustManagerExtensions by lazy {
+    X509TrustManagerExtensions(SSLHelper.unsafeTrustManager)
+}
 
 private var cronetEngineCache: ExperimentalCronetEngine? = null
 private var cronetEngineInitialized = false
@@ -44,10 +50,10 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
         val x509UtilClass = Class.forName("org.chromium.net.impl.X509Util")
         val sDefaultTrustManager = x509UtilClass.getDeclaredField("sDefaultTrustManager")
         sDefaultTrustManager.isAccessible = true
-        sDefaultTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
+        sDefaultTrustManager.set(null, unsafeTrustManagerExtensions)
         val sTestTrustManager = x509UtilClass.getDeclaredField("sTestTrustManager")
         sTestTrustManager.isAccessible = true
-        sTestTrustManager.set(null, SSLHelper.unsafeTrustManagerExtensions)
+        sTestTrustManager.set(null, unsafeTrustManagerExtensions)
     }.onFailure {
         LogUtils.d("Cronet", "Failed to disable cert verify: ${it.message}")
     }

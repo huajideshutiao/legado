@@ -1,287 +1,45 @@
+@file:Suppress("unused")
+
 package io.legado.app.model
 
-import android.content.Intent
 import io.legado.app.R
-import io.legado.app.constant.EventBus
-import io.legado.app.constant.IntentAction
-import io.legado.app.constant.Status
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.getBookSource
-import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.readSimulating
-import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.service.AudioPlayService
-import io.legado.app.utils.postEvent
-import io.legado.app.utils.startService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 
 /**
- * 音频播放跨组件共享状态 + Service 派发包装。
+ * AudioPlay 跨平台 typealias (app 端)。
  *
- * 这里只保留:
- * - 跨 Activity / Service 的可见状态 (book, chapter, durPlayUrl, lrc 等)
- * - 向 [AudioPlayService] 派发命令的薄封装
- * - 与 state 强耦合的写入操作 (saveRead, saveDurChapter, upDurChapter, playPositionChanged)
+ * 主体逻辑 (状态字段 + 章节切换 + Service 派发 + 状态变更) 已下沉到
+ * shared commonMain 的 [AudioPlayShared] object。本文件仅提供:
+ * - `typealias AudioPlay = AudioPlayShared`: 保持 app 端 100+ 调用点零改动
+ *   (AudioPlay.book / AudioPlay.durChapterIndex / AudioPlay.PlayMode / AudioPlay.prev() 等
+ *   全部通过 typealias 自动解析到 AudioPlayShared 对应成员)
+ * - [PlayMode.iconRes] 扩展属性: R.drawable.* 是 Android 资源 ID, enum 构造参数无法
+ *   跨平台, 故 commonMain 的 PlayMode enum 不含 iconRes, 由本文件扩展属性补回
  *
- * 不在这里:
- * - 歌词解析:见 [LrcParser]
- * - 加载播放 URL / 封面 / 歌词:见 [AudioPlayService] (Service 拥有生命周期作用域,适合做异步加载)
+ * # 平台差异
+ * - Service 派发: AudioPlayShared 通过 [io.legado.app.model.AudioPlayCommander] 接口抽象,
+ *   app 端注册 [AndroidAudioPlayCommander] 实现 (见 AudioPlayProvidersImpl.kt),
+ *   内部走 `appCtx.startService<AudioPlayService>` + IntentAction + extras,
+ *   与原 `sendAction` 完全等价
+ * - Book 操作: AudioPlayShared 通过 [io.legado.app.model.AudioPlayBookBridge] 接口抽象,
+ *   app 端注册实现委托 `book.saveRead()` / `book.save()` / `book.getBookSource()` 扩展
  *
- * UI 更新一律通过 EventBus 推送(AUDIO_COVER / AUDIO_LRC / AUDIO_LOADING / ...),
- * 不持有 Activity 引用以避免内存泄漏。
- *
- * UI 命令面应通过 AudioPlayViewModel,而不是直接调本对象。
+ * 注册时机: App.onCreate, 经 `registerAndroidAudioPlayProviders()` (见 AudioPlayProvidersImpl.kt)。
  */
-@Suppress("unused")
-object AudioPlay {
+typealias AudioPlay = AudioPlayShared
 
-    enum class PlayMode(val iconRes: Int) {
-        LIST_END_STOP(R.drawable.ic_play_mode_list_end_stop),
-        SINGLE_LOOP(R.drawable.ic_play_mode_single_loop),
-        RANDOM(R.drawable.ic_play_mode_random),
-        LIST_LOOP(R.drawable.ic_play_mode_list_loop);
-
-        fun next(): PlayMode = when (this) {
-            LIST_END_STOP -> SINGLE_LOOP
-            SINGLE_LOOP -> RANDOM
-            RANDOM -> LIST_LOOP
-            LIST_LOOP -> LIST_END_STOP
-        }
+/**
+ * PlayMode 图标资源 ID (Android 专属扩展)。
+ *
+ * commonMain 的 `AudioPlayShared.PlayMode` enum 不含 `iconRes` 构造参数 (R.drawable.*
+ * 是 Android 资源 ID, 无法跨平台引用)。本扩展属性补回图标资源, 调用方
+ * `playMode.iconRes` 语法不变 (Kotlin 扩展属性与构造属性访问语法一致)。
+ *
+ * 调用点: AudioPlayScreen.kt (播放模式切换按钮图标)
+ */
+val AudioPlayShared.PlayMode.iconRes: Int
+    get() = when (this) {
+        AudioPlayShared.PlayMode.LIST_END_STOP -> R.drawable.ic_play_mode_list_end_stop
+        AudioPlayShared.PlayMode.SINGLE_LOOP -> R.drawable.ic_play_mode_single_loop
+        AudioPlayShared.PlayMode.RANDOM -> R.drawable.ic_play_mode_random
+        AudioPlayShared.PlayMode.LIST_LOOP -> R.drawable.ic_play_mode_list_loop
     }
-
-    var playMode = PlayMode.LIST_END_STOP
-    var status = Status.STOP
-    var book: Book? = null
-    var chapterSize = 0
-    var simulatedChapterSize = 0
-    var chapterList: List<BookChapter>? = null
-    var durChapterIndex = 0
-    var durChapterPos = 0
-    var durChapter: BookChapter? = null
-    var durPlayUrl = ""
-    var durCoverUrl: String? = null
-    var durLrcData: List<Pair<Int, String>>? = null
-    var durAudioSize = 0
-    var inBookshelf = false
-    var bookSource: BookSource? = null
-
-    // ---------- Service 派发 ----------
-
-    /**
-     * 向 [AudioPlayService] 发送命令。
-     *
-     * @param requireRunning 仅在服务运行中才派发(默认 true)。
-     *                       播放/加载类命令需要设置为 false 来启动服务。
-     */
-    private inline fun sendAction(
-        action: String,
-        requireRunning: Boolean = true,
-        extras: Intent.() -> Unit = {}
-    ) {
-        if (requireRunning && !AudioPlayService.isRun) return
-        appCtx.startService<AudioPlayService> {
-            this.action = action
-            extras()
-        }
-    }
-
-    fun play() = sendAction(IntentAction.play, requireRunning = false)
-
-    private fun playNew() = sendAction(IntentAction.playNew, requireRunning = false)
-
-    fun stop() = sendAction(IntentAction.stop)
-
-    fun stopPlay() = sendAction(IntentAction.stopPlay)
-
-    fun pause() {
-        saveRead()
-        sendAction(IntentAction.pause)
-    }
-
-    fun resume() = sendAction(IntentAction.resume)
-
-    fun adjustSpeed(adjust: Float) =
-        sendAction(IntentAction.adjustSpeed) { putExtra("adjust", adjust) }
-
-    fun adjustProgress(position: Int) {
-        durChapterPos = position
-        sendAction(IntentAction.adjustProgress) { putExtra("position", position) }
-    }
-
-    fun setTimer(minute: Int) {
-        if (AudioPlayService.isRun) {
-            sendAction(IntentAction.setTimer) { putExtra("minute", minute) }
-        } else {
-            AudioPlayService.pendingTimerMinute = minute
-            postEvent(EventBus.AUDIO_DS, minute)
-        }
-    }
-
-    fun addTimer() = sendAction(IntentAction.addTimer, requireRunning = false)
-
-    /**
-     * 触发 Service 加载当前章节的播放 URL / 封面 / 歌词。
-     * Service 未运行时此调用会启动 Service。
-     */
-    fun loadOrUpPlayUrl() {
-        if (durPlayUrl.isEmpty()) {
-            sendAction(IntentAction.loadPlayUrl, requireRunning = false)
-        } else {
-            play()
-        }
-    }
-
-    // ---------- 状态变更 ----------
-
-    fun changePlayMode() {
-        playMode = playMode.next()
-        postEvent(EventBus.PLAY_MODE_CHANGED, playMode)
-    }
-
-    suspend fun upData(book: Book) {
-        if (durChapterIndex != book.durChapterIndex || this.book?.bookUrl != book.bookUrl) {
-            resetData(book)
-            return
-        }
-        durCoverUrl?.let { postEvent(EventBus.AUDIO_COVER, it) }
-        durLrcData?.let { postEvent(EventBus.AUDIO_LRC, it) }
-        postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
-    }
-
-    suspend fun resetData(book: Book) {
-        stop()
-        status = Status.STOP
-        AudioPlay.book = book
-        ReadTimeRecorder.setBook(ReadTimeRecorder.Source.AUDIO, book.name)
-        if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl) {
-            chapterList = null
-        }
-        chapterSize = chapterList?.size ?: withContext(Dispatchers.IO) {
-            appDb.bookChapterDao.getChapterCount(book.bookUrl)
-        }
-        simulatedChapterSize =
-            if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
-        bookSource = book.getBookSource()
-        durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos
-        durPlayUrl = ""
-        durAudioSize = 0
-        upDurChapter()
-        postEvent(EventBus.AUDIO_BUFFER_PROGRESS, 0)
-    }
-
-    suspend fun upDurChapter() {
-        val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: withContext(Dispatchers.IO) {
-            appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
-        }
-        durAudioSize = durChapter?.end?.toInt() ?: 0
-        durLrcData = null
-        postEvent(EventBus.AUDIO_LRC, emptyList<Pair<Int, String>>())
-        postEvent(EventBus.AUDIO_LRCPROGRESS, -1)
-        val title = durChapter?.title ?: appCtx.getString(R.string.data_loading)
-        postEvent(EventBus.AUDIO_SUB_TITLE, title)
-        postEvent(EventBus.AUDIO_SIZE, durAudioSize)
-        postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
-    }
-
-    /**
-     * 应用云端进度: 章节变化则 skipTo 并保留新的 pos, 同章节仅调 adjustProgress
-     */
-    fun setProgress(progress: io.legado.app.data.entities.BookProgress) {
-        if (progress.durChapterIndex >= simulatedChapterSize) return
-        if (durChapterIndex == progress.durChapterIndex
-            && durChapterPos == progress.durChapterPos
-        ) return
-        if (durChapterIndex != progress.durChapterIndex) {
-            skipTo(progress.durChapterIndex)
-            durChapterPos = progress.durChapterPos
-        } else {
-            adjustProgress(progress.durChapterPos)
-        }
-    }
-
-    fun skipTo(index: Int, startPos: Int = 0) {
-        if (index !in 0..<simulatedChapterSize) return
-        ReadTimeRecorder.flushAll()
-        stopPlay()
-        durChapterIndex = index
-        durChapterPos = startPos
-        // 同步落到 book, 否则 Service 读 book.durChapterPos 会拿到旧值(saveRead 是 async 落库)
-        book?.durChapterPos = startPos
-        book?.durChapterIndex = index
-        durPlayUrl = ""
-        saveRead()
-        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
-    }
-
-    fun prev() {
-        if (durChapterIndex <= 0) return
-        ReadTimeRecorder.flushAll()
-        stopPlay()
-        durChapterIndex -= 1
-        durChapterPos = 0
-        durPlayUrl = ""
-        saveRead()
-        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
-    }
-
-    fun next() {
-        val newIndex = when (playMode) {
-            PlayMode.LIST_END_STOP ->
-                if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return
-            PlayMode.SINGLE_LOOP -> durChapterIndex
-            PlayMode.RANDOM -> (0 until simulatedChapterSize).random()
-            PlayMode.LIST_LOOP -> (durChapterIndex + 1) % simulatedChapterSize
-        }
-        ReadTimeRecorder.flushAll()
-        stopPlay()
-        durChapterIndex = newIndex
-        durChapterPos = 0
-        durPlayUrl = ""
-        saveRead()
-        sendAction(IntentAction.loadPlayUrl, requireRunning = false)
-    }
-
-    fun saveRead() {
-        val book = book ?: return
-        Coroutine.async {
-            val chapterChanged = book.durChapterIndex != durChapterIndex
-            book.durChapterIndex = durChapterIndex
-            book.durChapterPos = durChapterPos
-            if (chapterChanged) {
-                durChapter?.let {
-                    book.durChapterTitle = it.getDisplayTitle(
-                        ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
-                        book.getUseReplaceRule()
-                    )
-                }
-            }
-            book.saveRead()
-        }
-    }
-
-    /**
-     * 保存章节长度
-     */
-    fun saveDurChapter(audioSize: Long) {
-        val chapter = durChapter ?: return
-        Coroutine.async {
-            durAudioSize = audioSize.toInt()
-            chapter.end = audioSize
-            if (!book!!.isNotShelf) appDb.bookChapterDao.update(chapter)
-        }
-    }
-
-    fun playPositionChanged(position: Int) {
-        durChapterPos = position
-    }
-
-}

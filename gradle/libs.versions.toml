@@ -2,14 +2,13 @@
 
 cronet = "143.7445.0"
 kotlin = "2.3.21"
+krypto = "4.0.10"
 ksoup = "0.2.6"
 ksp = "2.3.7"
 #agp影响范围太大，暂不升级
 #noinspection AndroidGradlePluginVersion
 agp = "8.13.2"
 appcompat = "1.7.1"
-# 上游 2018 年后停更，但调用面过大（4 处 Dialog/Listener + ColorPanelView + 10 个 cpv_ 属性 + 4 个布局 + 多份资源），迁移成本远高于收益
-colorpicker = "1.1.0"
 constraintlayout = "2.2.1"
 core = "1.18.0"
 flexbox = "3.0.0"
@@ -18,10 +17,11 @@ documentfile = "1.1.0"
 
 libarchive = "1.1.6"
 glide = "5.0.7"
-gson = "2.14.0"
 jsonPath = "3.0.0"
 kotlinxSerializationJson = "1.8.1"
 coroutines = "1.11.0"
+# KJ3 并发原语下沉：仅用 locks 门面(synchronized/SynchronizedObject)，纯库无需 gradle 插件
+atomicfu = "0.23.2"
 # 作者已声明项目暂停维护（最后发布 2021），但 Android 平台无同等功能的活跃替代品
 markwon = "4.6.2"
 material = "1.14.0"
@@ -29,7 +29,8 @@ media = "1.8.0"
 # 出于轻量化考虑，不改用ktor
 nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
-preference = "1.2.1"
+# 与 okhttp 5.3.2 传递引入的版本对齐；存储层直接依赖
+okio = "3.16.4"
 quickChineseTransfer = "0.2.16"
 playServicesCronet = "18.1.1"
 
@@ -52,6 +53,9 @@ webkit = "1.16.0"
 activity = "1.13.0"
 lifecycle = "2.10.0"
 room = "2.8.4"
+# KMP Room 2.8.x 配套: sqlite-bundled 2.7.0 提供 BundledSQLiteDriver (跨平台 SQLite)
+# 见 https://developer.android.com/kotlin/multiplatform/room
+sqlite = "2.7.0"
 recyclerview = "1.4.0"
 viewpager2 = "1.1.0"
 annotation = "1.10.0"
@@ -60,9 +64,14 @@ testJunit = "1.3.0"
 testRunner = "1.7.0"
 # 上游 2017 年后基本无更新，但仍是 Android 平台唯一成熟的运行时 SVG 渲染器（VectorDrawable 需编译期转换，不适用）
 androidsvg = "1.4"
-# MikeOrtiz/TouchImageView 仍在维护（maintenance mode），缩放手势库，替代已停滞的 chrisbanes/PhotoView
-touchimageview = "3.7.2"
+# 桌面端 MP3 解码（javax.sound.sampled 默认不支持 MP3 SPI），jlayer 是 Java 平台 MP3 解码事实标准
+# 上游 2010 年后停止维护，但纯 Java 实现、无 native 依赖、API 稳定，仍是最轻量选择
+jlayer = "1.0.1"
 junit = "4.13.2"
+# Compose BOM 只统一 compose.* 组件版本；编译器插件版本跟随 kotlin(2.3.21)，二者解耦
+composeBom = "2026.06.01"
+# 拖拽排序：KMP 原生库(Maven Central，经 Aliyun central 镜像可达)，替代 ItemTouchHelper。3.x 用 animateItem API，需 compose≥1.7(BOM 已满足)
+reorderable = "3.1.0"
 
 [libraries]
 
@@ -70,8 +79,13 @@ activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activ
 cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
 cronet-embedded = { module = "org.chromium.net:cronet-embedded", version.ref = "cronet" }
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
+fragment-compose = { module = "androidx.fragment:fragment-compose", version.ref = "fragment" }
 
 androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
+
+# KMP Room 2.8.x 配套: sqlite-bundled 提供 BundledSQLiteDriver (跨平台 SQLite, jvm/android 均可用)
+# 见 https://developer.android.com/kotlin/multiplatform/room
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 
 androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
@@ -83,6 +97,7 @@ core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 
+krypto = { module = "com.soywiz.korlibs.krypto:krypto", version.ref = "krypto" }
 ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
 play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
@@ -102,13 +117,15 @@ markwon-html = { module = "io.noties.markwon:html", version.ref = "markwon" }
 nanohttpd-nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanoHttpd" }
 nanohttpd-websocket = { module = "org.nanohttpd:nanohttpd-websocket", version.ref = "nanoHttpd" }
 
-preference-ktx = { module = "androidx.preference:preference-ktx", version.ref = "preference" }
 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
 
 quick-chinese-transfer-core = { module = "com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core", version.ref = "quickChineseTransfer" }
 
+room-common = { module = "androidx.room:room-common", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
@@ -119,7 +136,8 @@ glide-okhttp = { module = "com.github.bumptech.glide:okhttp3-integration", versi
 glide-recyclerview = { module = "com.github.bumptech.glide:recyclerview-integration", version.ref = "glide" }
 glide-ksp = { module = "com.github.bumptech.glide:ksp", version.ref = "glide" }
 androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
-touchimageview = { module = "com.github.mikeortiz:touchimageview", version.ref = "touchimageview" }
+# 桌面端 MP3 解码: jlayer 纯 Java 实现 (无 native 依赖), 配合 javax.sound.sampled 输出 PCM
+jlayer = { module = "javazoom:jlayer", version.ref = "jlayer" }
 
 splitties-appctx = { module = "com.louiscad.splitties:splitties-appctx", version.ref = "splitties" }
 splitties-systemservices = { module = "com.louiscad.splitties:splitties-systemservices", version.ref = "splitties" }
@@ -132,14 +150,13 @@ androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version
 androidx-viewpager2 = { module = "androidx.viewpager2:viewpager2", version.ref = "viewpager2" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
-colorpicker = { module = "com.jaredrummler:colorpicker", version.ref = "colorpicker" }
 desugar = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
 
 flexbox = { module = "com.google.android.flexbox:flexbox", version.ref = "flexbox" }
-gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 json-path = { module = "com.jayway.jsonpath:json-path", version.ref = "jsonPath" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { module = "junit:junit", version.ref = "junit" }
+kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
@@ -150,6 +167,17 @@ material = { module = "com.google.android.material:material", version.ref = "mat
 
 mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 quickjs-kt-android = { module = "io.github.dokar3:quickjs-kt-android", version.ref = "quickjsKt" }
+# quickjs-kt KMP variant (JVM target 自带 .dll/.so/.dylib): 桌面端 JS 引擎用, Android 端继续用 quickjs-kt-android
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
+
+# Compose：BOM 统一版本，activity-compose/lifecycle-runtime-compose 跟随现有 activity/lifecycle ref
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 
 [bundles]
 coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]
@@ -161,8 +189,16 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
 
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+
+# 桌面端入口模块（验证 KMP shared jvm target）
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+# Compose Multiplatform 桌面端 (plan 附录J: desktop/jvm 走 CMP 桌面官方 JVM)
+# 1.10.3 兼容 Kotlin 2.2.20+, 本项目 Kotlin 2.3.21
+compose-multiplatform = { id = "org.jetbrains.compose", version = "1.10.3" }

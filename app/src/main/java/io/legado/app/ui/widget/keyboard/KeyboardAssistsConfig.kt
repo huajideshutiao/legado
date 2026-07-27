@@ -1,34 +1,34 @@
 package io.legado.app.ui.widget.keyboard
 
-import android.content.Context
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
-import androidx.core.view.setPadding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
-import io.legado.app.databinding.DialogMultipleEditTextBinding
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.Item1lineTextAndDelBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.theme.space
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
+import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -37,70 +37,115 @@ import kotlinx.coroutines.launch
 /**
  * 辅助按键配置
  */
-class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener {
+class KeyboardAssistsConfig : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy { KeyAdapter(requireContext()) }
+    private val items = mutableStateListOf<KeyboardAssist>()
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.assists_key_config),
-            menuRes = R.menu.keyboard_assists_config,
-            onMenuClick = ::onMenuItemClick
-        )
-        initView()
-        initData()
-    }
-
-    private fun initView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
-
-    }
-
-    private fun initData() {
-        lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        LaunchedEffect(Unit) {
             appDb.keyboardAssistsDao.flowAll.catch {
                 AppLog.put("辅助按键配置获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
-                adapter.setItems(it)
+                items.clear()
+                items.addAll(it)
+            }
+        }
+        RuleManageScaffold(
+            items = items,
+            itemKey = { "${it.type}#${it.key}" },
+            onMove = { from, to -> items.add(to, items.removeAt(from)) },
+            titleBar = {
+                DialogTitleBar(
+                    title = stringResource(R.string.assists_key_config),
+                    actions = {
+                        IconButton(onClick = { editKey(null) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = stringResource(R.string.add),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+        ) { item ->
+            val colors = AppTheme.colors
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { editKey(item) }
+                    .longPressDraggableHandle(onDragStopped = { persistOrder() })
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    item.key,
+                    color = colors.primaryText,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_clear_all),
+                    contentDescription = stringResource(R.string.delete),
+                    tint = colors.primaryText,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            lifecycleScope.launch(IO) {
+                                appDb.keyboardAssistsDao.delete(item)
+                            }
+                        },
+                )
             }
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_add -> editKey(null)
+    /** 拖拽落定后按当前顺序重排 serialNo 并落库（对齐 ItemTouchCallback.onClearView） */
+    private fun persistOrder() {
+        for ((index, item) in items.withIndex()) {
+            item.serialNo = index + 1
         }
-        return false
+        val snapshot = items.toTypedArray()
+        lifecycleScope.launch(IO) {
+            appDb.keyboardAssistsDao.update(*snapshot)
+        }
     }
 
     private fun editKey(keyboardAssist: KeyboardAssist?) {
         alert {
             setTitle("辅助按键")
-            val alertBinding = DialogMultipleEditTextBinding.inflate(layoutInflater).apply {
-                layout1.hint = "key"
-                edit1.setText(keyboardAssist?.key)
-                layout2.hint = "value"
-                layout2.visible()
-                edit2.setText(keyboardAssist?.value)
+            val key = mutableStateOf(keyboardAssist?.key ?: "")
+            val value = mutableStateOf(keyboardAssist?.value ?: "")
+            customView {
+                Column(Modifier.padding(horizontal = 24.dp)) {
+                    AppOutlinedTextField(
+                        value = key.value,
+                        onValueChange = { key.value = it },
+                        label = "key",
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    AppOutlinedTextField(
+                        value = value.value,
+                        onValueChange = { value.value = it },
+                        label = "value",
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
-            customView { alertBinding.root }
             cancelButton()
             okButton {
                 lifecycleScope.launch(IO) {
                     val newKeyboardAssist = KeyboardAssist(
-                        key = alertBinding.edit1.text.toString(),
-                        value = alertBinding.edit2.text.toString()
+                        key = key.value,
+                        value = value.value
                     )
                     if (keyboardAssist == null) {
-                        newKeyboardAssist.serialNo = appDb.keyboardAssistsDao.maxSerialNo + 1
+                        newKeyboardAssist.serialNo = appDb.keyboardAssistsDao.maxSerialNo() + 1
                         appDb.keyboardAssistsDao.insert(newKeyboardAssist)
                     } else {
                         newKeyboardAssist.serialNo = keyboardAssist.serialNo
@@ -109,62 +154,6 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
                     }
                 }
             }
-        }
-    }
-
-    private inner class KeyAdapter(context: Context) :
-        RecyclerAdapter<KeyboardAssist, Item1lineTextAndDelBinding>(context),
-        ItemTouchCallback.Callback {
-
-        private var isMoved = false
-
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextAndDelBinding {
-            return Item1lineTextAndDelBinding.inflate(inflater, parent, false).apply {
-                root.setPadding(root.context.space.lg)
-                ivDelete.visible()
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: Item1lineTextAndDelBinding,
-            item: KeyboardAssist,
-            payloads: MutableList<Any>
-        ) {
-            binding.textView.text = item.key
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextAndDelBinding) {
-            binding.root.setOnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.let { keyboardAssist ->
-                    editKey(keyboardAssist)
-                }
-            }
-            binding.ivDelete.setOnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.let { keyboardAssist ->
-                    lifecycleScope.launch(IO) {
-                        appDb.keyboardAssistsDao.delete(keyboardAssist)
-                    }
-                }
-            }
-        }
-
-        override fun swap(srcPosition: Int, targetPosition: Int): Boolean {
-            swapItem(srcPosition, targetPosition)
-            isMoved = true
-            return true
-        }
-
-        override fun onClearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-            if (isMoved) {
-                for ((index, item) in getItems().withIndex()) {
-                    item.serialNo = index + 1
-                }
-                lifecycleScope.launch(IO) {
-                    appDb.keyboardAssistsDao.update(*getItems().toTypedArray())
-                }
-            }
-            isMoved = false
         }
     }
 }

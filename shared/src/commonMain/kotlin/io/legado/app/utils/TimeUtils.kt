@@ -1,0 +1,54 @@
+package io.legado.app.utils
+
+import kotlin.math.abs
+
+fun Long.toTimeAgo(): String {
+    // commonMain 不能直接调用 java.lang.System.currentTimeMillis()，
+    // 走 shared 模块 expect/actual 桥接（actual 在 jvmAndAndroidMain 委托 System.currentTimeMillis()）。
+    val curTime = systemCurrentTimeMillis()
+    val time = this
+    val seconds = abs(systemCurrentTimeMillis() - time) / 1000f
+    val end = if (time < curTime) "前" else "后"
+
+    val start = when {
+        seconds < 60 -> "${seconds.toInt()}秒"
+        seconds < 3600 -> {
+            val minutes = seconds / 60f
+            "${minutes.toInt()}分钟"
+        }
+        seconds < 86400 -> {
+            val hours = seconds / 3600f
+            "${hours.toInt()}小时"
+        }
+        seconds < 604800 -> {
+            val days = seconds / 86400f
+            "${days.toInt()}天"
+        }
+        seconds < 2_628_000 -> {
+            val weeks = seconds / 604800f
+            "${weeks.toInt()}周"
+        }
+        seconds < 31_536_000 -> {
+            val months = seconds / 2_628_000f
+            "${months.toInt()}月"
+        }
+        else -> {
+            val years = seconds / 31_536_000f
+            "${years.toInt()}年"
+        }
+    }
+    return start + end
+}
+
+fun Int.toDurationTime(): String {
+    val totalSeconds = this / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
+}

@@ -28,11 +28,11 @@ import io.legado.app.model.BookCover.load
 import io.legado.app.model.BookCover.upDefaultCover
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.topCrop
@@ -42,25 +42,32 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
 
+/**
+ * 封面比例枚举 -- 下沉至 shared [BookCoverShared.CoverRatio]。
+ * 顶层 typealias 保持原 `CoverRatio` 简短引用, 同时让 `BookCover.CoverRatio` 调用方
+ * 仅需删除 `BookCover.` 前缀即可 (typealias 与 BookCover 同包, 自动可见)。
+ */
+typealias CoverRatio = BookCoverShared.CoverRatio
+
+/**
+ * 默认封面图集 entry -- 下沉至 shared [BookCoverShared.DefaultCoverEntry]。
+ * 纯数据类 (id, ninePatch), 不含路径计算逻辑。
+ */
+typealias DefaultCoverEntry = BookCoverShared.DefaultCoverEntry
+
+/**
+ * 计算默认封面烘焙后的本地路径 (.9.png 或 webp)。
+ *
+ * 顶层扩展函数, 保持原 `entry.bakedPath(ratio)` 签名不变,
+ * 内部委托 shared [BookCoverShared.bakedPath], 注入 app 端专属的 [BookCover.coversDir]。
+ * desktop 端如需使用, 可自行包装注入 desktop 的 coversDir。
+ */
+fun DefaultCoverEntry.bakedPath(ratio: CoverRatio): String =
+    BookCoverShared.bakedPath(BookCover.coversDir.absolutePath, this, ratio)
+
 @Keep
 @Suppress("ConstPropertyName")
 object BookCover {
-
-    /**
-     * 封面比例 -- novel 用于普通书籍 (3:4, 居中裁剪);
-     * video 用于视频源 (16:9, 顶部裁剪保留封面信息).
-     * bakeW/bakeH 是按 480dpi 烘焙落盘的目标像素尺寸。
-     */
-    enum class CoverRatio(
-        val widthRatio: Int,
-        val heightRatio: Int,
-        val bakeW: Int,
-        val bakeH: Int,
-        val fileTag: String,
-    ) {
-        NOVEL(3, 4, 300, 400, "novel"),
-        VIDEO(16, 9, 720, 405, "video"),
-    }
 
     var drawBookName = true
         private set
@@ -81,7 +88,8 @@ object BookCover {
     private val drawableCache = LruCache<String, Drawable>(16)
 
     // 列表滑动时 bakedPath 会被频繁调用,提前 mkdirs 一次就够了
-    private val coversDir: File by lazy {
+    // internal: 供顶层扩展函数 DefaultCoverEntry.bakedPath 注入此目录, 委托 shared 路径计算
+    internal val coversDir: File by lazy {
         FileUtils.createFolderIfNotExist(appCtx.externalFiles, "covers", "default")
     }
 
@@ -145,16 +153,8 @@ object BookCover {
 
     fun upDefaultCover() {
         val isNightTheme = AppConfig.isNightTheme
-        drawBookName = if (isNightTheme) {
-            appCtx.getPrefBoolean(PreferKey.coverShowNameN, true)
-        } else {
-            appCtx.getPrefBoolean(PreferKey.coverShowName, true)
-        }
-        drawBookAuthor = if (isNightTheme) {
-            appCtx.getPrefBoolean(PreferKey.coverShowAuthorN, true)
-        } else {
-            appCtx.getPrefBoolean(PreferKey.coverShowAuthor, true)
-        }
+        drawBookName = if (isNightTheme) AppConfig.coverShowNameN else AppConfig.coverShowName
+        drawBookAuthor = if (isNightTheme) AppConfig.coverShowAuthorN else AppConfig.coverShowAuthor
         dayCovers = loadCovers(PreferKey.defaultCover)
         nightCovers = loadCovers(PreferKey.defaultCoverDark)
         drawableCache.evictAll()
@@ -350,26 +350,6 @@ object BookCover {
             if (bitmap.width > 16 && bitmap.height > 16) {
                 onLoaded(bitmap)
             }
-        }
-    }
-
-    /**
-     * 默认封面图集中的一项。
-     * - 普通图:bakedPath(ratio) 指向 `covers/default/{id}_{tag}.webp` 的烘焙结果,原图不保留。
-     * - .9.png:不烘焙,所有 ratio 都指向 `covers/default/{id}.9.png` (NinePatchDrawable 会按容器自适应)。
-     */
-    @Keep
-    data class DefaultCoverEntry(
-        val id: String,
-        val ninePatch: Boolean = false,
-    ) {
-        fun bakedPath(ratio: CoverRatio): String {
-            val file = if (ninePatch) {
-                File(coversDir, "$id.9.png")
-            } else {
-                File(coversDir, "${id}_${ratio.fileTag}.webp")
-            }
-            return file.absolutePath
         }
     }
 

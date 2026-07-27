@@ -9,24 +9,21 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
+import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.negativeButton
-import io.legado.app.lib.dialogs.onCancelled
-import io.legado.app.lib.dialogs.positiveButton
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
 
 class PermissionActivity : AppCompatActivity() {
 
-    private var rationaleDialog: AlertDialog? = null
+    private var rationaleDialog: ComposeDialog? = null
 
     private val settingActivityResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {

@@ -1,28 +1,20 @@
+@file:JvmName("EventBusObserveExtensions")
+
 package io.legado.app.utils
 
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.LifecycleService
-import kotlinx.coroutines.flow.MutableSharedFlow
 
-fun eventObservable(tag: String): MutableSharedFlow<Any> {
-    return FlowBus.with(tag)
-}
-
-inline fun <reified EVENT : Any> postEvent(tag: String, event: EVENT) {
-    FlowBus.with(tag).tryEmit(event)
-    FlowBus.withSticky(tag).tryEmit(event)
-}
-
-inline fun <reified EVENT : Any> postEventDelay(tag: String, event: EVENT, delay: Long) {
-    // 简单的延迟发送可以用协程实现，这里暂时维持 API 兼容
-    // 实际项目中可以考虑是否真的需要这个
-    postEvent(tag, event) 
-}
-
-inline fun <reified EVENT : Any> postEventOrderly(tag: String, event: EVENT) {
-    postEvent(tag, event)
-}
+/**
+ * EventBus 观察面扩展 (Android 平台专属)。
+ *
+ * post 侧 (postEvent/postEventDelay/postEventOrderly) 已下沉到
+ * modules/shared/src/commonMain/kotlin/io/legado/app/utils/EventBusExtensions.kt。
+ *
+ * 注意: 本文件使用 @file:JvmName("EventBusObserveExtensions") 改变生成的 class 文件名,
+ * 避免与 shared 模块的 EventBusExtensionsKt.class 同名冲突导致符号遮蔽。
+ */
 
 inline fun <reified EVENT : Any> AppCompatActivity.observeEvent(
     vararg tags: String,

@@ -15,6 +15,7 @@ import io.legado.app.ui.book.read.page.delegate.PageDelegate
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
+import io.legado.app.ui.book.read.page.entities.getTextChapter
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ButtonColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
@@ -22,6 +23,9 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.TextPageFactory
+import io.legado.app.ui.book.read.page.render.draw
+import io.legado.app.ui.book.read.page.render.format
+import io.legado.app.ui.book.read.page.render.render
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.activity
 import io.legado.app.utils.dpToPx
@@ -46,7 +50,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val visibleRect = ChapterProvider.visibleRect
     val selectStart = TextPos(0, -1, -1)
     private val selectEnd = TextPos(0, -1, -1)
-    var textPage: TextPage = TextPage()
+    // 初始占位页：保持数据化前的 UI 行为（text/title 显示"加载中"），
+    // 首次 upContent 后被真实 TextPage 替换。
+    var textPage: TextPage = TextPage(
+        text = context.getString(R.string.data_loading),
+        title = context.getString(R.string.data_loading)
+    )
         private set
     var isMainView = false
     var longScreenshot = false

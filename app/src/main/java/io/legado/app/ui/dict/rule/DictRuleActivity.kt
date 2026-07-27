@@ -2,33 +2,21 @@ package io.legado.app.ui.dict.rule
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View
 import androidx.activity.viewModels
-import androidx.appcompat.widget.PopupMenu
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
-import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.ui.association.ImportDictRuleDialog
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.SelectActionBar
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
@@ -36,71 +24,44 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.toJson
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
-class DictRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, DictRuleViewModel>(),
-    PopupMenu.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    DictRuleAdapter.CallBack {
+/**
+ * 字典规则管理页宿主 (薄壳)。
+ *
+ * 实现 [DictRuleUiActions] 接口供下沉到 shared/sharedUiMain 的 [DictRuleScreen] 回调,
+ * 平台依赖 (appDb/showDialogFragment/HandleFileContract/ACache/showHelp 等) 均在此桥接;
+ * 展示状态打包为 [DictRuleUiState] 传入 [DictRuleScreen]。
+ */
+class DictRuleActivity : BaseComposeActivity(), DictRuleUiActions {
 
-    override val viewModel by viewModels<DictRuleViewModel>()
-    override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
+    private val viewModel by viewModels<DictRuleViewModel>()
     private val importRecordKey = "dictRuleUrls"
-    private val adapter by lazy { DictRuleAdapter(this, this) }
+
+    private var dictRules by mutableStateOf<List<DictRule>>(emptyList())
+    private val selected = mutableStateOf<Set<String>>(emptySet())
 
     private val importDoc by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            showDialogFragment(ImportDictRuleDialog(uri.toString()))
-        }
+                showDialogFragment(ImportDictRuleDialog(uri.toString()))
+            }
         }
     }
     private val exportResult by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
-            showExportSuccess(uri)
-        }
+                showExportSuccess(uri)
+            }
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.title = getString(R.string.dict_rule)
-        binding.titleBar.findViewById<View>(R.id.search_view).visibility = View.GONE
-        initRecyclerView()
-        initSelectActionView()
         observeDictRuleData()
-    }
-
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.rule_list, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        val dragSelectTouchHelper: DragSelectTouchHelper =
-            DragSelectTouchHelper(adapter.dragSelectCallback).setSlideArea(16, 50)
-        dragSelectTouchHelper.attachToRecyclerView(binding.recyclerView)
-        // When this page is opened, it is in selection mode
-        dragSelectTouchHelper.activeSlideSelect()
-
-        // Note: need judge selection first, so add ItemTouchHelper after it.
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
-    }
-
-
-    private fun initSelectActionView() {
-        binding.selectActionBar.setMainActionText(R.string.delete)
-        binding.selectActionBar.inflateMenu(R.menu.dict_rule_sel)
-        binding.selectActionBar.setOnMenuItemClickListener(this)
-        binding.selectActionBar.setCallBack(this)
     }
 
     private fun observeDictRuleData() {
@@ -108,92 +69,111 @@ class DictRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, Di
             appDb.dictRuleDao.flowAll().catch {
                 AppLog.put("字典规则获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
-                adapter.setItems(it, adapter.diffItemCallBack)
+                dictRules = it
+                // 落库回推后清理已不存在的选中项
+                selected.value = selected.value.intersect(it.map { r -> r.name }.toSet())
             }
         }
     }
 
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_add -> showDialogFragment<DictRuleEditDialog>()
-            R.id.menu_import_local -> importDoc.launch {
-                mode = HandleFileContract.FILE
-                allowExtensions = arrayOf("txt", "json")
-            }
-
-            R.id.menu_import_onLine -> showImportDialog()
-
-            R.id.menu_import_default -> viewModel.importDefault()
-            R.id.menu_help -> showHelp("dictRuleHelp")
-        }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_enable_selection -> {
-                viewModel.enableSelection(*adapter.selection.toTypedArray())
-            }
-
-            R.id.menu_disable_selection -> {
-                viewModel.disableSelection(*adapter.selection.toTypedArray())
-            }
-
-            R.id.menu_export_selection -> exportResult.launch {
-                mode = HandleFileContract.EXPORT
-                fileData = HandleFileContract.FileData(
-                    "exportDictRule.json",
-                    GSON.toJson(adapter.selection).toByteArray(),
-                    "application/json"
-                )
-            }
-        }
-        return true
-    }
-
-    override fun onClickSelectBarMainAction() {
-        viewModel.delete(*adapter.selection.toTypedArray())
-    }
-
-    override fun selectAll(selectAll: Boolean) {
-        if (selectAll) {
-            adapter.selectAll()
-        } else {
-            adapter.revertSelection()
-        }
-    }
-
-    override fun revertSelection() {
-        adapter.revertSelection()
-    }
-
-    override fun update(vararg rule: DictRule) {
-        viewModel.update(*rule)
-    }
-
-    override fun delete(rule: DictRule) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + rule.name)
-            noButton()
-            yesButton {
-                viewModel.delete(rule)
-            }
-        }
-    }
-
-    override fun edit(rule: DictRule) {
-        showDialogFragment(DictRuleEditDialog(rule.name))
-    }
-
-    override fun upOrder() {
-        viewModel.upSortNumber()
-    }
-
-    override fun upCountView() {
-        binding.selectActionBar.upCountView(
-            adapter.selection.size,
-            adapter.itemCount
+    @Composable
+    override fun Content() {
+        val state = DictRuleUiState(
+            dictRules = dictRules,
+            selected = selected.value,
         )
+        DictRuleScreen(state = state, actions = this)
+    }
+
+    // ===== DictRuleUiActions 桥接 =====
+
+    override fun onBack() = finish()
+
+    override fun onAddRule() {
+        showDialogFragment<DictRuleEditDialog>()
+    }
+
+    override fun onEditRule(name: String) {
+        showDialogFragment(DictRuleEditDialog(name))
+    }
+
+    override fun onImportLocal() {
+        importDoc.launch {
+            mode = HandleFileContract.FILE
+            allowExtensions = arrayOf("txt", "json")
+        }
+    }
+
+    override fun onImportOnline() {
+        showImportDialog()
+    }
+
+    override fun onImportDefault() {
+        viewModel.importDefault()
+    }
+
+    override fun onHelp() {
+        showHelp("dictRuleHelp")
+    }
+
+    override fun onToggleSelected(item: DictRule, checked: Boolean) {
+        selected.value = if (checked) selected.value + item.name else selected.value - item.name
+    }
+
+    override fun onSelectAll(all: Boolean) {
+        selected.value = if (all) dictRules.map { it.name }.toSet() else emptySet()
+    }
+
+    override fun onRevertSelection() {
+        selected.value = dictRules.map { it.name }.toSet() - selected.value
+    }
+
+    override fun onMoveItem(from: Int, to: Int) {
+        dictRules = dictRules.toMutableList().apply { add(to, removeAt(from)) }
+    }
+
+    override fun onPersistOrder() {
+        persistOrder()
+    }
+
+    override fun onUpdateRuleEnabled(item: DictRule, enabled: Boolean) {
+        viewModel.update(item.copy(enabled = enabled))
+    }
+
+    override fun onDeleteRule(rule: DictRule) {
+        viewModel.delete(rule)
+    }
+
+    override fun onDeleteSelection() {
+        viewModel.delete(*selection().toTypedArray())
+    }
+
+    override fun onEnableSelection() {
+        viewModel.enableSelection(*selection().toTypedArray())
+    }
+
+    override fun onDisableSelection() {
+        viewModel.disableSelection(*selection().toTypedArray())
+    }
+
+    override fun onExportSelection() {
+        exportResult.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "exportDictRule.json",
+                GSON.toJson(selection()).toByteArray(),
+                "application/json"
+            )
+        }
+    }
+
+    // ===== 内部辅助 =====
+
+    private fun selection(): List<DictRule> = dictRules.filter { selected.value.contains(it.name) }
+
+    private fun persistOrder() {
+        dictRules.forEachIndexed { index, item -> item.sortNumber = index + 1 }
+        viewModel.update(*dictRules.toTypedArray())
     }
 
     @SuppressLint("InflateParams")
@@ -204,18 +184,17 @@ class DictRuleActivity : VMBaseActivity<ActivityRecyclerWithActionBarBinding, Di
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
         alert(titleResource = R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
+            val getText = editTextView(
+                hint = "url",
+                filterValues = cacheUrls,
+                onDelete = {
                     cacheUrls.remove(it)
                     aCache.put(importRecordKey, cacheUrls.joinToString(","))
-                }
-            }
-            customView { alertBinding.root }
+                },
+            )
             okButton {
-                val text = alertBinding.editView.text?.toString()
-                text?.let {
+                val text = getText()
+                text.let {
                     if (it.isAbsUrl() && !cacheUrls.contains(it)) {
                         cacheUrls.add(0, it)
                         aCache.put(importRecordKey, cacheUrls.joinToString(","))

@@ -1,80 +1,50 @@
 package io.legado.app.ui.config
 
 import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.LinearLayout
 import androidx.activity.viewModels
-import androidx.fragment.app.Fragment
-import androidx.viewbinding.ViewBinding
-import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
-import io.legado.app.ui.widget.TitleBar
+import androidx.compose.runtime.Composable
+import io.legado.app.base.BaseComposeActivity
 
-class ConfigActivity : VMBaseActivity<ConfigActivity.Binding, ConfigViewModel>() {
+/**
+ * 设置宿主 Activity：按 intent extra "configTag" 直接路由到对应 Compose 页面。
+ * 原 Fragment 壳的残留逻辑（launcher/菜单/prefs 监听）上浮到各 ConfigHost 状态类。
+ * 启动契约不变：callers 仍 putExtra("configTag", ConfigTag.XXX)。
+ */
+class ConfigActivity : BaseComposeActivity() {
 
-    companion object {
-        private val CONFIG_FRAME_ID = View.generateViewId()
-    }
+    val viewModel by viewModels<ConfigViewModel>()
 
-    class Binding(private val root: View) : ViewBinding {
-        override fun getRoot() = root
-        lateinit var titleBar: TitleBar
-        lateinit var configFrameLayout: LinearLayout
-    }
+    private var host: ConfigHost? = null
 
-    override val viewModel by viewModels<ConfigViewModel>()
-
-    public override val binding by lazy {
-        val ctx = this
-        val root = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-        }
-        val titleBar = TitleBar(ctx).apply {
-            id = R.id.title_bar
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-        }
-        root.addView(titleBar)
-        val configFrameLayout = LinearLayout(ctx).apply {
-            id = CONFIG_FRAME_ID
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                height = 0
-                weight = 1f
-            }
-            orientation = LinearLayout.VERTICAL
-        }
-        root.addView(configFrameLayout)
-        Binding(root).also {
-            it.titleBar = titleBar
-            it.configFrameLayout = configFrameLayout
-        }
-    }
+    private fun obtainHost(): ConfigHost? = host ?: when (intent.getStringExtra("configTag")) {
+        ConfigTag.OTHER_CONFIG -> OtherConfigHost(this)
+        ConfigTag.THEME_CONFIG -> ThemeConfigHost(this)
+        ConfigTag.BACKUP_CONFIG -> BackupConfigHost(this)
+        ConfigTag.COVER_CONFIG -> CoverConfigHost(this)
+        ConfigTag.WELCOME_CONFIG -> WelcomeConfigHost(this)
+        else -> null
+    }?.also { host = it }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        when (val configTag = intent.getStringExtra("configTag")) {
-            ConfigTag.OTHER_CONFIG -> replaceFragment<OtherConfigFragment>(configTag)
-            ConfigTag.THEME_CONFIG -> replaceFragment<ThemeConfigFragment>(configTag)
-            ConfigTag.BACKUP_CONFIG -> replaceFragment<BackupConfigFragment>(configTag)
-            ConfigTag.COVER_CONFIG -> replaceFragment<CoverConfigFragment>(configTag)
-            ConfigTag.WELCOME_CONFIG -> replaceFragment<WelcomeConfigFragment>(configTag)
-            else -> finish()
-        }
+        if (obtainHost() == null) finish()
     }
 
-    override fun setTitle(resId: Int) {
-        super.setTitle(resId)
-        binding.titleBar.setTitle(resId)
+    @Composable
+    override fun Content() {
+        obtainHost()?.Content()
     }
 
-    inline fun <reified T : Fragment> replaceFragment(configTag: String) {
-        intent.putExtra("configTag", configTag)
-        @Suppress("DEPRECATION")
-        val configFragment = supportFragmentManager.findFragmentByTag(configTag)
-            ?: T::class.java.newInstance()
-        supportFragmentManager.beginTransaction()
-            .replace(binding.configFrameLayout.id, configFragment, configTag)
-            .commit()
+    override fun onDestroy() {
+        super.onDestroy()
+        host?.onDestroy()
     }
+}
+
+/** 单个设置页宿主：持有状态/launcher/prefs 监听，[Content] 输出整页（含标题栏）。 */
+abstract class ConfigHost(protected val activity: ConfigActivity) {
+
+    @Composable
+    abstract fun Content()
+
+    open fun onDestroy() {}
 }

@@ -5,12 +5,12 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
-import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.AppConfig
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.importLocalFile
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.delete
-import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.list
 import io.legado.app.utils.mapParallel
 import io.legado.app.utils.toastOnUi
@@ -33,7 +33,7 @@ import java.util.Collections
 class ImportBookViewModel(application: Application) : BaseViewModel(application) {
     var rootDoc: FileDoc? = null
     val subDocs = arrayListOf<FileDoc>()
-    var sort = context.getPrefInt(PreferKey.localBookImportSort)
+    var sort = AppConfig.localBookImportSort
     var dataCallback: DataCallback? = null
     var dataFlowStart: (() -> Unit)? = null
     var filterKey: String? = null

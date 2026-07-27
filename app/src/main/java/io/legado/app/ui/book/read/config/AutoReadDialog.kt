@@ -1,84 +1,88 @@
 package io.legado.app.ui.book.read.config
 
-import android.os.Bundle
-import android.view.View
-import android.widget.SeekBar
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseBottomDialogFragment
-import io.legado.app.databinding.DialogAutoReadBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.BaseReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.ui.compose.component.AppSlider
 import java.util.Locale
 
-
-class AutoReadDialog : BaseBottomDialogFragment(R.layout.dialog_auto_read) {
+/** 自动翻页控制：速度滑条 + 目录/菜单/停止/设置 */
+class AutoReadDialog : BaseReadBottomComposeDialog() {
 
     override val dismissWhenOtherBottomDialogShowing = true
-
-    private val binding by viewBinding(DialogAutoReadBinding::bind)
     private val callBack: CallBack? get() = activity as? CallBack
 
-    override fun onBottomDialogCreated(view: View, savedInstanceState: Bundle?) = binding.run {
-        val theme = createReadMenuTheme(requireContext())
-        root.applyMenuTheme(theme)
-        tvReadSpeedTitle.applyMenuThemeTextColor(theme)
-        tvReadSpeed.applyMenuThemeTextColor(theme)
-        tvCatalog.applyMenuThemeTextColor(theme)
-        tvCatalog.applyMenuThemeCompoundDrawableTint(theme)
-        tvMainMenu.applyMenuThemeTextColor(theme)
-        tvMainMenu.applyMenuThemeCompoundDrawableTint(theme)
-        tvAutoPageStop.applyMenuThemeTextColor(theme)
-        tvAutoPageStop.applyMenuThemeCompoundDrawableTint(theme)
-        tvSetting.applyMenuThemeTextColor(theme)
-        tvSetting.applyMenuThemeCompoundDrawableTint(theme)
-        initOnChange()
-        initData()
-        initEvent()
-    }
-
-    private fun initData() {
-        val speed = if (ReadBookConfig.autoReadSpeed < 1) 1 else ReadBookConfig.autoReadSpeed
-        binding.tvReadSpeed.text = String.format(Locale.ROOT, "%ds", speed)
-        binding.seekAutoRead.progress = speed
-    }
-
-    private fun initOnChange() {
-        binding.seekAutoRead.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                val speed = if (progress < 1) 1 else progress
-                binding.tvReadSpeed.text = String.format(Locale.ROOT, "%ds", speed)
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                ReadBookConfig.autoReadSpeed =
-                    if (binding.seekAutoRead.progress < 1) 1 else binding.seekAutoRead.progress
-                upTtsSpeechRate()
-            }
-        })
-    }
-
-    private fun initEvent() {
-        binding.tvMainMenu.setOnClickListener {
-            callBack?.showMenuBar()
-            dismissAllowingStateLoss()
+    @Composable
+    override fun Content() {
+        val colors = rememberReadMenuColors()
+        var speed by remember {
+            mutableIntStateOf(ReadBookConfig.autoReadSpeed.coerceAtLeast(1))
         }
-        binding.tvSetting.setOnClickListener {
-            (activity as BaseReadBookActivity).showPageAnimConfig {
-                (activity as ReadBookActivity).upPageAnim()
-                ReadBook.loadContent(false)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.auto_page_speed),
+                    color = colors.text, fontSize = 14.sp,
+                    modifier = Modifier.weight(1f).padding(8.dp),
+                )
+                Text(
+                    String.format(Locale.ROOT, "%ds", speed),
+                    color = colors.text, fontSize = 14.sp,
+                    modifier = Modifier.padding(8.dp),
+                )
             }
-        }
-        binding.tvCatalog.setOnClickListener { callBack?.openChapterList() }
-        binding.tvAutoPageStop.setOnClickListener {
-            callBack?.autoPageStop()
-            binding.tvAutoPageStop.post {
-                dismissAllowingStateLoss()
+            AppSlider(
+                value = speed,
+                min = 1,
+                max = 120,
+                onValueChange = { speed = it.coerceAtLeast(1) },
+                onValueChangeFinished = {
+                    ReadBookConfig.autoReadSpeed = speed
+                    upTtsSpeechRate()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                ReadMenuIconButton(R.drawable.ic_toc, stringResource(R.string.chapter_list), colors.text) {
+                    callBack?.openChapterList()
+                }
+                ReadMenuIconButton(R.drawable.ic_menu, stringResource(R.string.main_menu), colors.text) {
+                    callBack?.showMenuBar()
+                    dismissAllowingStateLoss()
+                }
+                ReadMenuIconButton(R.drawable.ic_auto_page_stop, stringResource(R.string.stop), colors.text) {
+                    callBack?.autoPageStop()
+                    dismissAllowingStateLoss()
+                }
+                ReadMenuIconButton(R.drawable.ic_settings, stringResource(R.string.setting), colors.text) {
+                    (activity as BaseReadBookActivity).showPageAnimConfig {
+                        (activity as ReadBookActivity).upPageAnim()
+                        ReadBook.loadContent(false)
+                    }
+                }
             }
         }
     }

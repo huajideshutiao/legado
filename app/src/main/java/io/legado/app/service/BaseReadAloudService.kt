@@ -18,7 +18,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
@@ -32,6 +31,7 @@ import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
 import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.BookCover
@@ -44,7 +44,6 @@ import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeSharedPreferences
 import io.legado.app.utils.postEvent
@@ -85,7 +84,7 @@ abstract class BaseReadAloudService : BaseService() {
     private val playbackLock by lazy {
         MediaPlaybackLock(
             tag = "legado:ReadAloudService",
-            enabled = appCtx.getPrefBoolean(PreferKey.readAloudWakeLock, false)
+            enabled = AppConfig.readAloudWakeLock
         )
     }
     private val audioFocus by lazy {
@@ -104,9 +103,24 @@ abstract class BaseReadAloudService : BaseService() {
         ReadAloudPhoneStateListener()
     }
 
-    internal var contentList = emptyList<String>()
-    internal var nowSpeak: Int = 0
-    internal var readAloudNumber: Int = 0
+    /** 播放队列纯状态机(段落列表+位置推进),页跟踪与章节切换仍在本类 */
+    internal val aloudQueue = ReadAloudQueue()
+
+    internal var contentList: List<String>
+        get() = aloudQueue.contentList
+        set(value) {
+            aloudQueue.contentList = value
+        }
+    internal var nowSpeak: Int
+        get() = aloudQueue.nowSpeak
+        set(value) {
+            aloudQueue.nowSpeak = value
+        }
+    internal var readAloudNumber: Int
+        get() = aloudQueue.readAloudNumber
+        set(value) {
+            aloudQueue.readAloudNumber = value
+        }
     internal var textChapter: TextChapter? = null
     internal var pageIndex = 0
     private var needResumeOnCallStateIdle = false
@@ -127,7 +141,11 @@ abstract class BaseReadAloudService : BaseService() {
 
     var pageChanged = false
     private var toLast = false
-    var paragraphStartPos = 0
+    var paragraphStartPos: Int
+        get() = aloudQueue.paragraphStartPos
+        set(value) {
+            aloudQueue.paragraphStartPos = value
+        }
     var readAloudByPage = false
         private set
     private var waitNewReadAloud = true
@@ -139,7 +157,7 @@ abstract class BaseReadAloudService : BaseService() {
         pause = false
         sleepTimer = SleepTimer(
             scope = lifecycleScope,
-            eventKey = EventBus.READ_ALOUD_DS,
+            postMinute = { postEvent(EventBus.READ_ALOUD_DS, it) },
             isPaused = { pause },
             onTimeout = { ReadAloud.stop(this) },
             onTick = { upReadAloudNotification() }
@@ -226,10 +244,10 @@ abstract class BaseReadAloudService : BaseService() {
             val textChapter = textChapter ?: return@execute
             if (!textChapter.isCompleted) return@execute
             readAloudNumber = textChapter.getReadLength(pageIndex) + startPos
-            readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
-            contentList = textChapter.getNeedReadAloud(0, readAloudByPage, 0)
-                .split("\n")
-                .filter { it.isNotEmpty() }
+            readAloudByPage = AppConfig.readAloudByPage
+            contentList = ReadAloudQueue.splitParagraphs(
+                textChapter.getNeedReadAloud(0, readAloudByPage, 0)
+            )
             var pos = startPos
             val page = textChapter.getPage(pageIndex)!!
             if (pos > 0) {
@@ -309,11 +327,7 @@ abstract class BaseReadAloudService : BaseService() {
         if (waitNewReadAloud) return
         if (nowSpeak > 0) {
             playStop()
-            do {
-                nowSpeak--
-                readAloudNumber -= contentList[nowSpeak].length + 1 + paragraphStartPos
-                paragraphStartPos = 0
-            } while (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
+            aloudQueue.retreatToPrevSpeakable()
             textChapter?.let {
                 if (readAloudByPage) {
                     val paragraphs = it.getParagraphs(true)
@@ -337,9 +351,7 @@ abstract class BaseReadAloudService : BaseService() {
         if (waitNewReadAloud) return
         if (nowSpeak < contentList.size - 1) {
             playStop()
-            readAloudNumber += contentList[nowSpeak].length.plus(1) - paragraphStartPos
-            paragraphStartPos = 0
-            nowSpeak++
+            aloudQueue.stepNext()
             textChapter?.let {
                 if (readAloudByPage) {
                     val paragraphs = it.getParagraphs(true)
@@ -394,10 +406,10 @@ abstract class BaseReadAloudService : BaseService() {
             override fun onPlay() = resumeReadAloud()
             override fun onPause() = pauseReadAloud()
             override fun onSkipToNext() {
-                if (getPrefBoolean("mediaButtonPerNext", false)) nextChapter() else nextP()
+                if (AppConfig.mediaButtonPerNext) nextChapter() else nextP()
             }
             override fun onSkipToPrevious() {
-                if (getPrefBoolean("mediaButtonPerNext", false)) prevChapter() else prevP()
+                if (AppConfig.mediaButtonPerNext) prevChapter() else prevP()
             }
 
             override fun onStop() {
@@ -457,7 +469,7 @@ abstract class BaseReadAloudService : BaseService() {
             )
         }
         // fix #4090: android 14 lock screen 媒体控件需要在 MediaStyle 上挂 session token
-        val sessionToken = if (getPrefBoolean("systemMediaControlCompatibilityChange")) {
+        val sessionToken = if (AppConfig.systemMediaControlCompatibilityChange) {
             mediaSessionCompat.sessionToken
         } else null
         return MediaPlaybackNotification.build(

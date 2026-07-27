@@ -1,0 +1,471 @@
+@file:Suppress("unused")
+
+package io.legado.app.napi
+
+import io.legado.app.utils.KS_JSON
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+
+/**
+ * 鸿蒙 napi 桥接基础设施: Kotlin → ArkTS 反向调用 (KP7+)。
+ *
+ * # 设计目的
+ * 与 [LegadoNativeExports] (ArkTS → Kotlin, 用 @CName 导出) 反向。
+ * 鸿蒙 `@ohos.promptAction.showToast` / `@ohos.notificationManager.publish` 仅提供 ArkTS API,
+ * 无 NDK C 接口, Kotlin/Native 无法直接调用。本桥接通过 threadsafe_function 把 Kotlin 业务线程
+ * 的调用调度到 ArkTS 主线程执行。
+ *
+ * # tsfn 注入模型
+ * 当前阶段 cinterop (node_api.h) 未接入, tsfn 以 Kotlin lambda `(String) -> Unit` 抽象表示,
+ * 接收 JSON 字符串并 dispatch 到 ArkTS。后续 legado_napi.cpp 实现 registerToastCallback /
+ * registerNotificationCallback 后, 由 C++ 侧创建真实 napi_threadsafe_function 并通过 @CName
+ * 注入口注入到此 object。
+ *
+ * # 降级策略
+ * 未注册 tsfn 时降级为 println (兼容当前未接入 napi 阶段, stdout 由鸿蒙 runtime 重定向到 hilog)。
+ *
+ * # 跨语言传递格式
+ * JSON 字符串 (与 LegadoNativeExports.kt 一致), 见 [ToastPayload] / [NotificationPayload]。
+ *
+ * # 线程安全
+ * tsfn 引用用 [lock] + synchronized 块保护 (KMP 业务代码可能在 worker 线程调用)。
+ *
+ * 模式参考 [LegadoNativeExports] 与 nativeMain 下 NativeLocalBookLocator 的 synchronized 用法。
+ */
+object OhosNativeBridge {
+
+    /** tsfn 注入回调类型: 接收 JSON 字符串, 内部 dispatch 到 ArkTS 主线程。 */
+    private typealias TsfnCallback = (String) -> Unit
+
+    /** tsfn 引用保护锁 (与 NativeLocalBookLocator.pathCache 同模式)。 */
+    private val lock = Any()
+
+    /** toast threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
+    @Volatile
+    private var toastTsfn: TsfnCallback? = null
+
+    /** notification threadsafe_function 引用。 */
+    @Volatile
+    private var notificationTsfn: TsfnCallback? = null
+
+    /** 注入 toast tsfn (由 legado_napi.cpp registerToastCallback 调用)。 */
+    fun registerToastFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            toastTsfn = tsfn
+        }
+    }
+
+    /** 注入 notification tsfn。 */
+    fun registerNotificationFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            notificationTsfn = tsfn
+        }
+    }
+
+    /**
+     * 显示 toast。未注册 tsfn 时降级 println。
+     *
+     * @param message toast 文本
+     * @param durationMs 显示时长 (对齐 Android Toast: 2000ms 短 / 3500ms 长)
+     */
+    fun showToast(message: String, durationMs: Int) {
+        val json = KS_JSON.encodeToString(ToastPayload(message = message, durationMs = durationMs))
+        val tsfn = synchronized(lock) { toastTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                // tsfn 调用失败 (module 卸载 / 线程异常) 时降级 println
+                println("[ohos-toast] tsfn call failed, fallback: $message")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            println("[ohos-toast] $message")
+        }
+    }
+
+    /**
+     * 显示/更新进度通知。未注册 tsfn 时降级 println。
+     *
+     * @param id 通知 id (由调用方稳定生成, 如 title.hashCode())
+     * @param title 通知标题
+     * @param content 通知正文 (已含进度文本, 如 "下载中 (50/100)")
+     * @param progress 当前进度
+     * @param max 最大进度 (<=0 视为不确定进度)
+     */
+    fun showNotification(id: Int, title: String, content: String, progress: Int, max: Int) {
+        val json = KS_JSON.encodeToString(
+            NotificationPayload(
+                action = NotificationAction.SHOW,
+                id = id,
+                title = title,
+                content = content,
+                progress = progress,
+                max = max,
+            )
+        )
+        val tsfn = synchronized(lock) { notificationTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                println("[ohos-notification] tsfn call failed, fallback: $title | $content")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            val progressText = if (max > 0) "$content ($progress/$max)" else content
+            println("[ohos-notification] $title | $progressText")
+        }
+    }
+
+    /**
+     * 取消通知。未注册 tsfn 时降级 println。
+     *
+     * @param id 通知 id (与 showNotification 传入的 id 一致)
+     */
+    fun cancelNotification(id: Int) {
+        val json = KS_JSON.encodeToString(
+            NotificationPayload(action = NotificationAction.CANCEL, id = id)
+        )
+        val tsfn = synchronized(lock) { notificationTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                println("[ohos-notification] tsfn call failed, fallback: cancel id=$id")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            println("[ohos-notification] cancel id=$id")
+        }
+    }
+
+    // ===== FileDir / CacheDir 路径注入 (ArkTS → Kotlin 同步推送) =====
+
+    /**
+     * filesDir 沙盒路径 (ArkTS EntryAbility.onCreate 调 [registerFileDirFn] 注入)。
+     *
+     * # 与 toast/notification 的 tsfn 模型差异
+     * toast/notification 是运行期事件 (Kotlin → ArkTS fire-and-forget), 用 tsfn 跨线程 dispatch,
+     * 无返回值; 而目录路径是静态配置 (启动时已知, 不变), 消费方 (AppFilesDir/DatabaseDriver) 需
+     * 同步读取, tsfn 无法回传值。故采用 ArkTS → Kotlin 同步推送: ArkTS 取 `context.filesDir` /
+     * `context.cacheDir` 后, 经 @CName (legado_register_file_dir) 直接把路径字符串注入本字段。
+     *
+     * # 降级策略
+     * 未注入 (null) 时, AppFilesDir 回退 POSIX `user.dir` 派生路径 (兼容 .so 未加载 / napi 未接入阶段,
+     * 与历史行为一致; 对齐 toast 未注册 tsfn 时降级 println 的思路: 保证未接入阶段可运行)。
+     *
+     * # 线程安全
+     * 与 tsfn 同用 [lock] + synchronized (AppFilesDir 可能在 worker 线程访问)。
+     */
+    @Volatile
+    private var filesDirPath: String? = null
+
+    /** cacheDir 沙盒路径 (同 [filesDirPath], ArkTS 注入)。 */
+    @Volatile
+    private var cacheDirPath: String? = null
+
+    /**
+     * 注入鸿蒙应用沙盒 filesDir 路径 (由 @CName legado_register_file_dir 调用)。
+     *
+     * 时机: 须在 [io.legado.app.help.config.registerOhosProviders] 之前注入, 使
+     * OhosDatabaseDriver.defaultDbPath / BookStorage 等读到真实沙盒路径; 即便迟到
+     * (LegadoNativeExports init 块提前触发 registerOhosProviders), AppFilesDirs 用计算 getter,
+     * 显式 registerOhosProviders 重注册时 OhosDatabaseDriver 重建即读到真实路径 (自愈)。
+     */
+    fun registerFileDirFn(path: String) {
+        synchronized(lock) {
+            filesDirPath = path
+        }
+    }
+
+    /** 注入鸿蒙应用沙盒 cacheDir 路径 (由 @CName legado_register_cache_dir 调用)。 */
+    fun registerCacheDirFn(path: String) {
+        synchronized(lock) {
+            cacheDirPath = path
+        }
+    }
+
+    /** 读取已注入的 filesDir 路径, 未注入返回 null (调用方回退 POSIX user.dir)。 */
+    fun getFilesDir(): String? = synchronized(lock) { filesDirPath }
+
+    /** 读取已注入的 cacheDir 路径, 未注入返回 null。 */
+    fun getCacheDir(): String? = synchronized(lock) { cacheDirPath }
+
+    // ===== Image 同步桥 (tsfn + callback, KP8+) =====
+    // 图片操作 (decode/encode/size/crop/split/stitch) 是同步接口, 但 ArkTS @ohos.multimedia.image
+    // 只能通过 napi 桥接异步调用。采用 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    //
+    // 调用链 (以 decode 为例):
+    // KMP OhosImageOps.decode(bytes)
+    //   → invokeImageSync("decode", json)
+    //   → 生成 requestId, 存入 imagePendingRequests (CompletableDeferred)
+    //   → imageTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
+    //   → [ArkTS 主线程] image callback 收到 requestJson
+    //   → image.createImageSource(bytes).createPixelMap() → 存入 pixelMaps Map<id, PixelMap>
+    //   → legado.imageCallback(requestId, resultJson)  (napi → @CName legado_image_callback)
+    //   → onImageResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → runBlocking 返回, OhosImageOps.decode 返回 ImageRef(pixelMapId)
+    //
+    // 线程安全: JS 引擎线程阻塞等待, ArkTS 主线程回调 complete, 不同线程无死锁。
+
+    /** image threadsafe_function 引用 (Kotlin → ArkTS 发送图片操作请求)。 */
+    @Volatile
+    private var imageTsfn: TsfnCallback? = null
+
+    /** 待响应的图片同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val imagePendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** 图片请求自增 ID (原子性由 [lock] 保护)。 */
+    private var imageRequestCounter = 0L
+
+    /** 注入 image tsfn (由 legado_napi.cpp registerImageCallback 调用)。 */
+    fun registerImageFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            imageTsfn = tsfn
+        }
+    }
+
+    /**
+     * 图片操作结果回调 (由 ArkTS 侧调 @CName legado_image_callback 触发)。
+     * ArkTS 完成 decode/encode/size/crop/split/stitch 后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
+     * 唤醒 [invokeImageSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeImageSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (含 ok/result 或 ok/error 字段)
+     */
+    fun onImageResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { imagePendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用图片操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "decode" / "encode" / "size" / "crop" / "split" / "stitch" / "release"
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 如 `{"bytes":"<base64>"}`)
+     * @param timeoutMs 超时毫秒 (默认 15s, 防止 ArkTS 无响应永久阻塞)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
+     */
+    fun invokeImageSync(action: String, payloadJson: String, timeoutMs: Long = 15000L): String? {
+        val requestId = synchronized(lock) { ++imageRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { imagePendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            ImageBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { imageTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { imagePendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { imagePendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { imagePendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 image 桥是否已就绪 (tsfn 已注入)。
+     * OhosImageOps 据此判断走真实 PixelMap 实现还是降级占位。
+     */
+    fun isImageBridgeReady(): Boolean = synchronized(lock) { imageTsfn != null }
+
+    // ===== Media 事件桥 (tsfn fire-and-forget + @CName event callback, KP8+) =====
+    // HttpTtsPlayer 的 play/pause/stop/seekTo 是 fire-and-forget 命令 (无返回值),
+    // 用 tsfn dispatch 到 ArkTS 主线程操作 AVPlayer;
+    // AVPlayer 事件 (onReady/onEndOfMedia/onError/onBufferingUpdate/duration/position)
+    // 由 ArkTS 通过 @CName legado_media_event 回调推送, Kotlin 侧 [MediaEventListener] 接收。
+
+    /** media threadsafe_function 引用 (Kotlin → ArkTS 发送播放器命令)。 */
+    @Volatile
+    private var mediaTsfn: TsfnCallback? = null
+
+    /** media 事件监听器 (由 [OhosHttpTtsPlayer] 设置, 接收 ArkTS 推送的 AVPlayer 事件)。 */
+    @Volatile
+    private var mediaEventListener: MediaEventListener? = null
+
+    /**
+     * media 事件监听器接口 (ArkTS → Kotlin 推送 AVPlayer 事件)。
+     * OhosHttpTtsPlayer 实现此接口, 把事件转换为 [HttpTtsPlayerListener] 回调。
+     */
+    fun interface MediaEventListener {
+        fun onMediaEvent(eventJson: String)
+    }
+
+    /** 注入 media tsfn (由 legado_napi.cpp registerMediaCallback 调用)。 */
+    fun registerMediaFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            mediaTsfn = tsfn
+        }
+    }
+
+    /** 设置 media 事件监听器 (由 OhosHttpTtsPlayer 设置/清除)。 */
+    fun setMediaEventListener(listener: MediaEventListener?) {
+        mediaEventListener = listener
+    }
+
+    /**
+     * 发送 media 命令到 ArkTS (fire-and-forget, 无返回值)。
+     * 命令类型: "setUrl" / "play" / "pause" / "stop" / "seekTo" / "release"。
+     *
+     * @param commandJson 命令 JSON (含 action + data, 由 OhosHttpTtsPlayer 序列化)
+     */
+    fun sendMediaCommand(commandJson: String) {
+        val tsfn = synchronized(lock) { mediaTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(commandJson) }.onFailure {
+                println("[ohos-media] tsfn call failed: $commandJson")
+            }
+        } else {
+            // 降级: tsfn 未注册
+            println("[ohos-media] tsfn not registered: $commandJson")
+        }
+    }
+
+    /**
+     * media 事件回调 (由 ArkTS 侧调 @CName legado_media_event 触发)。
+     * ArkTS AVPlayer 状态变化 / 播放结束 / 错误 / 缓冲进度等事件通过 napi 回调推送给 Kotlin,
+     * 转发给 [mediaEventListener] (即 OhosHttpTtsPlayer)。
+     *
+     * @param eventJson 事件 JSON (含 event + data, 如 `{"event":"onReady"}`)
+     */
+    fun onMediaEvent(eventJson: String) {
+        mediaEventListener?.onMediaEvent(eventJson)
+    }
+
+    /**
+     * 检查 media 桥是否已就绪 (tsfn 已注入)。
+     * OhosHttpTtsPlayer 据此判断走真实 AVPlayer 实现还是降级占位。
+     */
+    fun isMediaBridgeReady(): Boolean = synchronized(lock) { mediaTsfn != null }
+
+    // ===== TTS 事件桥 (tsfn fire-and-forget + @CName event callback) =====
+    // OhosSystemTtsEngine 的 speak/pause/resume/stop/shutdown 是 fire-and-forget 命令,
+    // 用 tsfn dispatch 到 ArkTS 主线程操作 @ohos.textToSpeech;
+    // TTS 事件 (onStart/onComplete/onStop/onError) 由 ArkTS 通过 @CName legado_tts_event 回调推送。
+
+    /** tts threadsafe_function 引用 (Kotlin → ArkTS 发送 TTS 命令)。 */
+    @Volatile
+    private var ttsTsfn: TsfnCallback? = null
+
+    /** tts 事件监听器 (由 [OhosSystemTtsEngine] 设置, 接收 ArkTS 推送的 TTS 事件)。 */
+    @Volatile
+    private var ttsEventListener: TtsEventListener? = null
+
+    /**
+     * TTS 事件监听器接口 (ArkTS → Kotlin 推送 TTS 事件)。
+     * OhosSystemTtsEngine 实现此接口, 把事件转换为 [TtsProgressListener] 回调。
+     */
+    fun interface TtsEventListener {
+        fun onTtsEvent(eventJson: String)
+    }
+
+    /** 注入 tts tsfn (由 legado_napi.cpp registerTtsCallback 调用)。 */
+    fun registerTtsFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            ttsTsfn = tsfn
+        }
+    }
+
+    /** 设置 tts 事件监听器 (由 OhosSystemTtsEngine 设置/清除)。 */
+    fun setTtsEventListener(listener: TtsEventListener?) {
+        ttsEventListener = listener
+    }
+
+    /**
+     * 发送 tts 命令到 ArkTS (fire-and-forget, 无返回值)。
+     * 命令类型: "createEngine" / "speak" / "pause" / "resume" / "stop" / "shutdown"。
+     *
+     * @param commandJson 命令 JSON (含 action + text/utteranceId/rate/lang, 由调用方序列化)
+     */
+    fun sendTtsCommand(commandJson: String) {
+        val tsfn = synchronized(lock) { ttsTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(commandJson) }.onFailure {
+                println("[ohos-tts] tsfn call failed: $commandJson")
+            }
+        } else {
+            // 降级: tsfn 未注册
+            println("[ohos-tts] tsfn not registered: $commandJson")
+        }
+    }
+
+    /**
+     * 便捷方法: 构造 [TtsCommand] 并发送。
+     * 内部用 [TtsCommand] 序列化为 JSON, 再调 [sendTtsCommand]。
+     */
+    fun sendTtsCommand(
+        action: String,
+        text: String? = null,
+        utteranceId: String? = null,
+        rate: Float? = null,
+        lang: String? = null,
+    ) {
+        val json = KS_JSON.encodeToString(TtsCommand(action, text, utteranceId, rate, lang))
+        sendTtsCommand(json)
+    }
+
+    /**
+     * tts 事件回调 (由 ArkTS 侧调 @CName legado_tts_event 触发)。
+     * ArkTS @ohos.textToSpeech 的 onStart/onComplete/onStop/onError 事件通过 napi 回调推送给 Kotlin,
+     * 转发给 [ttsEventListener] (即 OhosSystemTtsEngine)。
+     *
+     * @param eventJson 事件 JSON (含 event + utteranceId, 如 `{"event":"onStart"}`)
+     */
+    fun onTtsEvent(eventJson: String) {
+        ttsEventListener?.onTtsEvent(eventJson)
+    }
+
+    /**
+     * 检查 tts 桥是否已就绪 (tsfn 已注入)。
+     * OhosSystemTtsEngine 据此判断走真实 @ohos.textToSpeech 实现还是降级占位。
+     */
+    fun isTtsBridgeReady(): Boolean = synchronized(lock) { ttsTsfn != null }
+
+    /** toast 跨语言传递 payload (序列化为 JSON 给 ArkTS)。 */
+    @Serializable
+    private data class ToastPayload(
+        val message: String,
+        val durationMs: Int,
+    )
+
+    /** notification 跨语言传递 payload。show 携带 title/content/progress/max, cancel 仅 id。 */
+    @Serializable
+    private data class NotificationPayload(
+        val action: NotificationAction,
+        val id: Int,
+        val title: String? = null,
+        val content: String? = null,
+        val progress: Int? = null,
+        val max: Int? = null,
+    )
+
+    /** notification 操作类型 (ArkTS 侧据 action 分支 show/cancel)。 */
+    @Serializable
+    private enum class NotificationAction { SHOW, CANCEL }
+
+    /** image 桥请求 payload (Kotlin → ArkTS, 包含 requestId/action/payload)。 */
+    @Serializable
+    private data class ImageBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** TTS 命令 payload (Kotlin → ArkTS, createEngine/speak/pause/resume/stop/shutdown)。 */
+    @Serializable
+    private data class TtsCommand(
+        val action: String,
+        val text: String? = null,
+        val utteranceId: String? = null,
+        val rate: Float? = null,
+        val lang: String? = null,
+    )
+}

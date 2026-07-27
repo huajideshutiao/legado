@@ -2,114 +2,69 @@ package io.legado.app.ui.book.source.debug
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View
 import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
-import io.legado.app.databinding.ActivitySourceDebugBinding
+import io.legado.app.base.BaseComposeActivity
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.accentColor
+import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.ui.widget.dialog.autoLinkText
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
-import splitties.views.onClick
-import splitties.views.onLongClick
 
-class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookSourceDebugModel>() {
+/**
+ * 书源调试(纯 Compose)。intent 契约不变: 入 `key` extra (sourceUrl)。
+ *
+ * 薄壳模式: 实现 [BookSourceDebugUiActions] 接口供 shared 端 [BookSourceDebugScreen] 回调,
+ * 状态字段由 Activity 托管, [Content] 内打包为 [BookSourceDebugUiState] 传入 shared 端
+ * [BookSourceDebugScreen]; `autoLinkText` (依赖 android.util.Patterns.WEB_URL) 以
+ * `linkifyText` 回调注入。exploreKinds / clearExploreKindsCache / showDialogFragment /
+ * showHelp / selector / toastOnUi 等平台依赖保留在 Activity, 通过回调触发。
+ */
+class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions {
 
-    override val binding by viewBinding(ActivitySourceDebugBinding::inflate)
-    override val viewModel by viewModels<BookSourceDebugModel>()
+    val viewModel by viewModels<BookSourceDebugModel>()
 
-    private val adapter by lazy { BookSourceDebugAdapter(this) }
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
+    private val logs = mutableStateListOf<String>()
+    private var query by mutableStateOf("")
+    private var helpVisible by mutableStateOf(true)
+    private var loading by mutableStateOf(false)
+    private var textMy by mutableStateOf("我的")
+    private var textFx by mutableStateOf("系统::http://xxx")
+    private var exploreKinds: List<ExploreKind> = emptyList()
 
+    /** 对齐旧版 SearchView.clearFocus 语义：提交/出错后收键盘失焦，重新点搜索框可唤回帮助面板 */
+    private var clearFocusTick by mutableIntStateOf(0)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initRecyclerView()
-        initSearchView()
         viewModel.init(intent.getStringExtra("key")) {
             initHelpView()
         }
         viewModel.observe { state, msg ->
             lifecycleScope.launch {
-                adapter.addItem(msg)
+                logs.add(msg)
                 if (state == -1 || state == 1000) {
-                    // CircularProgressIndicator 需用 hide() 停止 indeterminate 动画并隐藏，
-                    // 直接 setVisibility(GONE) 不会停止 spinner
-                    binding.rotateLoading.hide()
+                    loading = false
                 }
             }
         }
     }
 
-    private fun initRecyclerView() {
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.applyNavigationBarPadding()
-        // Material CircularProgressIndicator 用 setIndicatorColor 替代原 loadingColor 属性
-        binding.rotateLoading.setIndicatorColor(accentColor)
-    }
-
-    private fun initSearchView() {
-        searchView.onActionViewExpanded()
-        searchView.queryHint = getString(R.string.search_book_key)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                searchView.clearFocus()
-                openOrCloseHelp(false)
-                startSearch(query ?: "我的")
-                return true
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                return false
-            }
-        })
-        searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
-            openOrCloseHelp(hasFocus)
-        }
-        openOrCloseHelp(true)
-    }
-
-    @SuppressLint("SetTextI18n")
     private fun initHelpView() {
         viewModel.bookSource?.searchRule?.checkKeyWord?.let {
             if (it.isNotBlank()) {
-                binding.textMy.text = it
+                textMy = it
             }
-        }
-        binding.textMy.onClick {
-            searchView.setQuery(binding.textMy.text, true)
-        }
-        binding.textXt.onClick {
-            searchView.setQuery(binding.textXt.text, true)
-        }
-        binding.textFx.onClick {
-            if (!binding.textFx.text.startsWith("ERROR:")) {
-                searchView.setQuery(binding.textFx.text, true)
-            }
-        }
-        binding.textInfo.onClick {
-            if (!searchView.query.isNullOrBlank()) {
-                searchView.setQuery(searchView.query, true)
-            }
-        }
-        binding.textToc.onClick {
-            prefixAutoComplete("++")
-        }
-        binding.textContent.onClick {
-            prefixAutoComplete("--")
         }
         initExploreKinds()
     }
@@ -118,94 +73,141 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     private fun initExploreKinds() {
         lifecycleScope.launch {
             try {
-                val exploreKinds = viewModel.bookSource?.exploreKinds()?.filter {
+                val kinds = viewModel.bookSource?.exploreKinds()?.filter {
                     !it.url.isNullOrBlank()
-                }
-                exploreKinds?.firstOrNull()?.let {
-                    binding.textFx.text = "${it.title}::${it.url}"
+                }.orEmpty()
+                exploreKinds = kinds
+                kinds.firstOrNull()?.let {
+                    textFx = "${it.title}::${it.url}"
                     if (it.title.startsWith("ERROR:")) {
-                        adapter.addItem("获取发现出错\n${it.url}")
-                        openOrCloseHelp(false)
-                        searchView.clearFocus()
-                        return@launch
-                    }
-                }
-                @Suppress("USELESS_ELVIS")
-                exploreKinds?.map { it.title ?: "" }?.let { exploreKindTitles ->
-                    binding.textFx.onLongClick {
-                        selector("选择发现", exploreKindTitles) { _, index ->
-                            val explore = exploreKinds[index]
-                            binding.textFx.text = "${explore.title}::${explore.url}"
-                            searchView.setQuery(binding.textFx.text, true)
-                        }
+                        logs.add("获取发现出错\n${it.url}")
+                        helpVisible = false
                     }
                 }
             } catch (e: NullPointerException) {
-                adapter.addItem("获取发现出错 JSON 数据错误\n$e")
-                openOrCloseHelp(false)
-                searchView.clearFocus()
+                logs.add("获取发现出错 JSON 数据错误\n$e")
+                helpVisible = false
             }
+        }
+    }
+
+    /** 对齐 SearchView.setQuery(text, submit) 语义 */
+    private fun setQuery(text: String, submit: Boolean) {
+        query = text
+        if (submit) {
+            helpVisible = false
+            clearFocusTick++
+            startSearch(text.ifBlank { "我的" })
         }
     }
 
     private fun prefixAutoComplete(prefix: String) {
-        val query = searchView.query
-        if (query.isNullOrBlank() || query.length <= 2) {
-            searchView.setQuery(prefix, false)
+        if (query.isBlank() || query.length <= 2) {
+            setQuery(prefix, false)
         } else {
             if (!query.startsWith(prefix)) {
-                searchView.setQuery("$prefix$query", true)
+                setQuery("$prefix$query", true)
             } else {
-                searchView.setQuery(query, true)
+                setQuery(query, true)
             }
         }
     }
 
-    /**
-     * 打开关闭历史界面
-     */
-    private fun openOrCloseHelp(open: Boolean) {
-        if (open) {
-            binding.help.visibility = View.VISIBLE
-        } else {
-            binding.help.visibility = View.GONE
-        }
-    }
-
     private fun startSearch(key: String) {
-        adapter.clearItems()
+        logs.clear()
         viewModel.startDebug(key, {
-            // CircularProgressIndicator 需用 show() 启动 indeterminate 动画，
-            // 直接 setVisibility(VISIBLE) 控件可见但不转
-            binding.rotateLoading.show()
+            loading = true
         }, {
             toastOnUi("未获取到书源")
         })
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_source_debug, menu)
-        return super.onCompatCreateOptionsMenu(menu)
+    @Composable
+    override fun Content() {
+        val state = BookSourceDebugUiState(
+            logs = logs,
+            query = query,
+            helpVisible = helpVisible,
+            loading = loading,
+            textMy = textMy,
+            textFx = textFx,
+            clearFocusTick = clearFocusTick,
+        )
+        BookSourceDebugScreen(
+            state = state,
+            actions = this,
+            linkifyText = { text, linkColor -> autoLinkText(text, linkColor) },
+        )
     }
 
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
+    // ---- BookSourceDebugUiActions 实现 ----
+    // 以 override fun onXxx() = xxx() 桥接现有方法, 不改动 Activity 内部其它调用点
 
-            R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
-            R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))
-            R.id.menu_toc_src -> showDialogFragment(TextDialog("html", viewModel.tocSrc))
-            R.id.menu_content_src -> showDialogFragment(TextDialog("html", viewModel.contentSrc))
-            R.id.menu_review_src -> showDialogFragment(TextDialog("html", viewModel.reviewSrc))
-            R.id.menu_refresh_explore -> lifecycleScope.launch {
-                viewModel.bookSource?.clearExploreKindsCache()
-                adapter.clearItems()
-                openOrCloseHelp(true)
-                initExploreKinds()
+    override fun onBack() = finish()
+
+    override fun onQueryChange(text: String) {
+        query = text
+    }
+
+    override fun onSubmitQuery() = setQuery(query, true)
+
+    override fun onSearchFocusChanged(focused: Boolean) {
+        helpVisible = focused
+    }
+
+    override fun onChipMyClick() = setQuery(textMy, true)
+
+    override fun onChipSystemClick() = setQuery("系统", true)
+
+    override fun onChipFxClick() = setQuery(textFx, true)
+
+    override fun onChipFxLongClick() {
+        val kinds = exploreKinds
+        if (kinds.isNotEmpty()) {
+            @Suppress("USELESS_ELVIS")
+            selector("选择发现", kinds.map { it.title ?: "" }) { _, index ->
+                val explore = kinds[index]
+                textFx = "${explore.title}::${explore.url}"
+                setQuery(textFx, true)
             }
-
-            R.id.menu_help -> showHelp("debugHelp")
         }
-        return super.onCompatOptionsItemSelected(item)
     }
+
+    override fun onChipDetailClick() = setQuery(query, true)
+
+    override fun onChipTocClick() = prefixAutoComplete("++")
+
+    override fun onChipContentClick() = prefixAutoComplete("--")
+
+    override fun onShowSearchSrc() {
+        showDialogFragment(TextDialog("html", viewModel.searchSrc))
+    }
+
+    override fun onShowBookSrc() {
+        showDialogFragment(TextDialog("html", viewModel.bookSrc))
+    }
+
+    override fun onShowTocSrc() {
+        showDialogFragment(TextDialog("html", viewModel.tocSrc))
+    }
+
+    override fun onShowContentSrc() {
+        showDialogFragment(TextDialog("html", viewModel.contentSrc))
+    }
+
+    override fun onShowReviewSrc() {
+        showDialogFragment(TextDialog("html", viewModel.reviewSrc))
+    }
+
+    override fun onRefreshExplore() {
+        lifecycleScope.launch {
+            viewModel.bookSource?.clearExploreKindsCache()
+            logs.clear()
+            helpVisible = true
+            initExploreKinds()
+        }
+    }
+
+    override fun onShowHelp() = showHelp("debugHelp")
 
 }

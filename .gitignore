@@ -20,3 +20,6 @@ package-lock.json
 .vscode
 .proxyai
 /.mimocode/.cron-lock
+
+# 文档目录仅本地保留，不入库（调研/计划类文档，非源码）
+docs/

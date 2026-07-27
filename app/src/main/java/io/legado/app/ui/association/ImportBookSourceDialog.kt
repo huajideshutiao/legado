@@ -1,49 +1,53 @@
 package io.legado.app.ui.association
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.DialogInterface
 import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
-import io.legado.app.constant.PreferKey
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
-import io.legado.app.databinding.DialogImportCustomGroupBinding
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemSourceImportBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
+import kotlinx.coroutines.runBlocking
+import io.legado.app.ui.compose.component.AppAutoCompleteField
+import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.dpToPx
+import io.legado.app.utils.toJson
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.setOnUserCheckedChangeListener
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
-import splitties.views.onClick
-
 
 /**
  * 导入书源弹出窗口
  */
-class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener,
-    CodeDialog.Callback {
+class ImportBookSourceDialog() : BaseComposeDialogFragment(), CodeDialog.Callback {
+
 
     constructor(source: String, finishOnDismiss: Boolean = false) : this() {
         arguments = Bundle().apply {
@@ -52,233 +56,218 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
         }
     }
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by viewModels<ImportBookSourceViewModel>()
-    private val adapter by lazy { SourcesAdapter(requireContext()) }
+    private var version by mutableIntStateOf(0)
 
-    override fun onDismiss(dialog: DialogInterface) {
+    // 分组菜单项文案随选择变化，复刻原 menu_new_group 的 item.title 动态更新
+    private var groupTitle by mutableStateOf("")
+
+    override fun onDismiss(dialog: android.content.DialogInterface) {
         super.onDismiss(dialog)
         if (arguments?.getBoolean("finishOnDismiss") == true) {
             activity?.finish()
         }
     }
 
-    @SuppressLint("NotifyDataSetChanged")
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
+    @Composable
+    override fun Content() {
+        var loading by remember { mutableStateOf(true) }
+        var error by remember { mutableStateOf<String?>(null) }
+        if (groupTitle.isEmpty()) groupTitle = getString(R.string.diy_source_group)
+        version
+
+        LaunchedEffect(Unit) {
+            viewModel.errorLiveData.observe(this@ImportBookSourceDialog) {
+                loading = false
+                error = it
+            }
+            viewModel.successLiveData.observe(this@ImportBookSourceDialog) {
+                loading = false
+                if (it > 0) version++ else error = getString(R.string.wrong_format)
+            }
+            val source = arguments?.getString("source")
+            if (source.isNullOrEmpty()) dismiss() else viewModel.importSource(source)
+        }
+
+        ImportListScaffold(
             title = getString(R.string.import_book_source),
-            menuRes = R.menu.import_source,
-            onMenuClick = ::onMenuItemClick
+            loading = loading,
+            errorText = error,
+            itemCount = viewModel.allSources.size,
+            selectCount = viewModel.selectCount,
+            isSelectAll = viewModel.isSelectAll,
+            itemLabel = { viewModel.allSources[it].bookSourceName },
+            itemState = {
+                val local = viewModel.checkSources[it]
+                when {
+                    local == null -> "新增"
+                    viewModel.allSources[it].lastUpdateTime > local.lastUpdateTime -> "更新"
+                    else -> "已有"
+                }
+            },
+            itemChecked = { viewModel.selectStatus[it] },
+            onItemChecked = { index, checked ->
+                viewModel.selectStatus[index] = checked
+                version++
+            },
+            onOpen = { openCode(it) },
+            onToggleAll = { toggleAll() },
+            onCancel = { dismissAllowingStateLoss() },
+            onOk = { onImport() },
+            titleActions = { TitleMenu() },
         )
-        // 保留菜单项 isChecked 的动态同步逻辑
-        titleBar!!.menu.findItem(R.id.menu_keep_original_name)
-            ?.isChecked = AppConfig.importKeepName
-        titleBar!!.menu.findItem(R.id.menu_keep_group)
-            ?.isChecked = AppConfig.importKeepGroup
-        titleBar!!.menu.findItem(R.id.menu_keep_enable)
-            ?.isChecked = AppConfig.importKeepEnable
-        binding.rotateLoading.show()
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        binding.bottomLayout.visible()
-        binding.tvCancel.visible()
-        binding.tvCancel.setOnClickListener {
-            dismissAllowingStateLoss()
-        }
-        binding.tvOk.visible()
-        binding.tvOk.setOnClickListener {
-            val waitDialog = WaitDialog.from(requireActivity())
-            waitDialog.show(requireActivity().supportFragmentManager)
-            viewModel.importSelect {
-                waitDialog.dismissSafe()
-                dismissAllowingStateLoss()
-            }
-        }
-        binding.tvFooterLeft.visible()
-        binding.tvFooterLeft.setOnClickListener {
-            val selectAll = viewModel.isSelectAll
-            viewModel.selectStatus.forEachIndexed { index, b ->
-                if (b != !selectAll) {
-                    viewModel.selectStatus[index] = !selectAll
-                }
-            }
-            adapter.notifyDataSetChanged()
-            upSelectText()
-        }
-        viewModel.errorLiveData.observe(this) {
-            binding.rotateLoading.hide()
-            binding.tvMsg.apply {
-                text = it
-                visible()
-            }
-        }
-        viewModel.successLiveData.observe(this) {
-            binding.rotateLoading.hide()
-            if (it > 0) {
-                adapter.setItems(viewModel.allSources)
-                upSelectText()
-            } else {
-                binding.tvMsg.apply {
-                    setText(R.string.wrong_format)
-                    visible()
-                }
-            }
-        }
-        val source = arguments?.getString("source")
-        if (source.isNullOrEmpty()) {
-            dismiss()
-            return
-        }
-        viewModel.importSource(source)
     }
 
-    private fun upSelectText() {
-        if (viewModel.isSelectAll) {
-            binding.tvFooterLeft.text = getString(
-                R.string.select_cancel_count,
-                viewModel.selectCount,
-                viewModel.allSources.size
-            )
-        } else {
-            binding.tvFooterLeft.text = getString(
-                R.string.select_all_count,
-                viewModel.selectCount,
-                viewModel.allSources.size
-            )
+    @Composable
+    private fun RowScope.TitleMenu() {
+        val colors = AppTheme.colors
+        var showOverflow by remember { mutableStateOf(false) }
+        // menu_new_group：原为常显文本项，文案随分组选择变化
+        Text(
+            text = groupTitle,
+            color = colors.primaryText,
+            modifier = Modifier
+                .align(Alignment.CenterVertically)
+                .clickable { alertCustomGroup() }
+                .padding(horizontal = 8.dp),
+        )
+        Box {
+            IconButton(onClick = { showOverflow = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = null,
+                    tint = colors.primaryText,
+                )
+            }
+            AppDropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
+                DropdownMenuItem(
+                    text = { Text(getString(R.string.select_new_source)) },
+                    onClick = {
+                        showOverflow = false
+                        selectNew()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(getString(R.string.select_update_source)) },
+                    onClick = {
+                        showOverflow = false
+                        selectUpdate()
+                    },
+                )
+                CheckableMenuItem(getString(R.string.keep_original_name), AppConfig.importKeepName) {
+                    AppConfig.importKeepName = it
+                    version++
+                }
+                CheckableMenuItem(getString(R.string.keep_group), AppConfig.importKeepGroup) {
+                    AppConfig.importKeepGroup = it
+                    version++
+                }
+                CheckableMenuItem(getString(R.string.keep_enable), AppConfig.importKeepEnable) {
+                    AppConfig.importKeepEnable = it
+                    version++
+                }
+            }
         }
     }
 
-    @SuppressLint("InflateParams", "NotifyDataSetChanged")
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_new_group -> alertCustomGroup(item)
-            R.id.menu_select_new_source -> {
-                val selectAllNew = viewModel.isSelectAllNew
-                viewModel.newSourceStatus.forEachIndexed { index, b ->
-                    if (b) {
-                        viewModel.selectStatus[index] = !selectAllNew
-                    }
-                }
-                adapter.notifyDataSetChanged()
-                upSelectText()
-            }
-
-            R.id.menu_select_update_source -> {
-                val selectAllUpdate = viewModel.isSelectAllUpdate
-                viewModel.updateSourceStatus.forEachIndexed { index, b ->
-                    if (b) {
-                        viewModel.selectStatus[index] = !selectAllUpdate
-                    }
-                }
-                adapter.notifyDataSetChanged()
-                upSelectText()
-            }
-
-            R.id.menu_keep_original_name -> {
-                item.isChecked = !item.isChecked
-                putPrefBoolean(PreferKey.importKeepName, item.isChecked)
-            }
-
-            R.id.menu_keep_group -> {
-                item.isChecked = !item.isChecked
-                putPrefBoolean(PreferKey.importKeepGroup, item.isChecked)
-            }
-
-            R.id.menu_keep_enable -> {
-                item.isChecked = !item.isChecked
-                AppConfig.importKeepEnable = item.isChecked
-            }
-        }
-        return false
+    @Composable
+    private fun CheckableMenuItem(text: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+        DropdownMenuItem(
+            text = { Text(text) },
+            trailingIcon = { AppMenuCheckbox(checked = checked) },
+            onClick = { onToggle(!checked) },
+        )
     }
 
-    private fun alertCustomGroup(item: MenuItem) {
+    private fun alertCustomGroup() {
         alert(R.string.diy_edit_source_group) {
-            val alertBinding = DialogImportCustomGroupBinding.inflate(layoutInflater).apply {
-                val groups = appDb.bookSourceDao.allGroups()
-                textInputLayout.setHint(R.string.group_name)
-                editView.setFilterValues(groups.toList())
-                editView.dropDownHeight = 180.dpToPx()
-            }
+            val groups = runBlocking { appDb.bookSourceDao.allGroups() }.toList()
+            val addGroup = mutableStateOf(false)
+            val name = mutableStateOf("")
             customView {
-                alertBinding.root
+                Column(Modifier.padding(horizontal = 24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(getString(R.string.add_group), color = AppTheme.colors.primaryText)
+                            Text(
+                                getString(R.string.custom_group_summary),
+                                color = AppTheme.colors.secondaryText,
+                            )
+                        }
+                        AppSwitch(checked = addGroup.value, onCheckedChange = { addGroup.value = it })
+                    }
+                    AppAutoCompleteField(
+                        value = name.value,
+                        onValueChange = { name.value = it },
+                        label = getString(R.string.group_name),
+                        values = groups,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             okButton {
-                viewModel.isAddGroup = alertBinding.swAddGroup.isChecked
-                viewModel.groupName = alertBinding.editView.text?.toString()
-                if (viewModel.groupName.isNullOrBlank()) {
-                    item.title = getString(R.string.diy_source_group)
+                viewModel.isAddGroup = addGroup.value
+                viewModel.groupName = name.value
+                groupTitle = if (viewModel.groupName.isNullOrBlank()) {
+                    getString(R.string.diy_source_group)
                 } else {
                     val group = getString(R.string.diy_edit_source_group_title, viewModel.groupName)
-                    if (viewModel.isAddGroup) {
-                        item.title = "+$group"
-                    } else {
-                        item.title = group
-                    }
+                    if (viewModel.isAddGroup) "+$group" else group
                 }
             }
             cancelButton()
         }
     }
 
+    private fun selectNew() {
+        val selectAllNew = viewModel.isSelectAllNew
+        viewModel.newSourceStatus.forEachIndexed { index, b ->
+            if (b) viewModel.selectStatus[index] = !selectAllNew
+        }
+        version++
+    }
+
+    private fun selectUpdate() {
+        val selectAllUpdate = viewModel.isSelectAllUpdate
+        viewModel.updateSourceStatus.forEachIndexed { index, b ->
+            if (b) viewModel.selectStatus[index] = !selectAllUpdate
+        }
+        version++
+    }
+
+    private fun toggleAll() {
+        val selectAll = viewModel.isSelectAll
+        viewModel.selectStatus.forEachIndexed { index, b ->
+            if (b != !selectAll) viewModel.selectStatus[index] = !selectAll
+        }
+        version++
+    }
+
+    private fun onImport() {
+        val waitDialog = WaitDialog.from(requireActivity())
+        waitDialog.show(requireActivity().supportFragmentManager)
+        viewModel.importSelect {
+            waitDialog.dismissSafe()
+            dismissAllowingStateLoss()
+        }
+    }
+
+    private fun openCode(index: Int) {
+        showDialogFragment(
+            CodeDialog(
+                GSON.toJson(viewModel.allSources[index]),
+                disableEdit = false,
+                requestId = index.toString()
+            )
+        )
+    }
+
     override fun onCodeSave(code: String, requestId: String?) {
         requestId?.toInt()?.let {
             GSON.fromJsonObject<BookSource>(code).getOrNull()?.let { source ->
                 viewModel.allSources[it] = source
-                adapter.setItem(it, source)
+                version++
             }
         }
     }
-
-    inner class SourcesAdapter(context: Context) :
-        RecyclerAdapter<BookSource, ItemSourceImportBinding>(context) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemSourceImportBinding {
-            return ItemSourceImportBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemSourceImportBinding,
-            item: BookSource,
-            payloads: MutableList<Any>
-        ) {
-            binding.apply {
-                cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
-                cbSourceName.text = item.bookSourceName
-                val localSource = viewModel.checkSources[holder.layoutPosition]
-                tvSourceState.text = when {
-                    localSource == null -> "新增"
-                    item.lastUpdateTime > localSource.lastUpdateTime -> "更新"
-                    else -> "已有"
-                }
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
-            binding.apply {
-                cbSourceName.setOnUserCheckedChangeListener { isChecked ->
-                    viewModel.selectStatus[holder.layoutPosition] = isChecked
-                    upSelectText()
-                }
-                root.onClick {
-                    cbSourceName.isChecked = !cbSourceName.isChecked
-                    viewModel.selectStatus[holder.layoutPosition] = cbSourceName.isChecked
-                    upSelectText()
-                }
-                tvOpen.setOnClickListener {
-                    val source = viewModel.allSources[holder.layoutPosition]
-                    showDialogFragment(
-                        CodeDialog(
-                            GSON.toJson(source),
-                            disableEdit = false,
-                            requestId = holder.layoutPosition.toString()
-                        )
-                    )
-                }
-            }
-        }
-
-    }
-
 }

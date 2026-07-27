@@ -78,32 +78,22 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
         }
 
     val isFirstOpenApp: Boolean
-        get() {
-            val value = getBoolean("firstOpen", true)
-            if (value) {
-                edit { putBoolean("firstOpen", false) }
-            }
-            return value
-        }
+        get() = LocalConfigShared.isFirstOpen(
+            getBoolean = { k, d -> getBoolean(k, d) },
+            putBoolean = { k, v -> edit { putBoolean(k, v) } }
+        )
 
     @Suppress("SameParameterValue")
     private fun isLastVersion(
         lastVersion: Int,
         versionKey: String,
         firstOpenKey: String? = null
-    ): Boolean {
-        var version = getInt(versionKey, 0)
-        if (version == 0 && firstOpenKey != null) {
-            if (!getBoolean(firstOpenKey, true)) {
-                version = 1
-            }
-        }
-        if (version < lastVersion) {
-            edit { putInt(versionKey, lastVersion) }
-            return false
-        }
-        return true
-    }
+    ): Boolean = LocalConfigShared.isLastVersion(
+        lastVersion, versionKey, firstOpenKey,
+        getInt = { k, d -> getInt(k, d) },
+        getBoolean = { k, d -> getBoolean(k, d) },
+        putInt = { k, v -> edit { putInt(k, v) } }
+    )
 
     var deleteBookOriginal: Boolean
         get() = getBoolean("deleteBookOriginal")

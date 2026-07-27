@@ -1,48 +1,46 @@
 package io.legado.app.ui.book.import
 
-import android.os.Bundle
-import android.view.View
 import androidx.activity.addCallback
-import androidx.appcompat.widget.SearchView
-import androidx.lifecycle.ViewModel
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
-import io.legado.app.databinding.ActivityRecyclerWithActionBarBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.cancelButton
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.dialogs.onCancelled
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.importFromArchive
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-abstract class BaseImportBookActivity<VM : ViewModel> :
-    VMBaseActivity<ActivityRecyclerWithActionBarBinding, VM>(),
-    SelectActionBar.CallBack {
-
-    final override val binding by viewBinding(ActivityRecyclerWithActionBarBinding::inflate)
+/**
+ * 本地/远程导入界面共用骨架(纯 Compose)：面包屑/加载条/搜索关键字状态 + 书籍保存位置 + 压缩包处理。
+ */
+abstract class BaseImportBookActivity : BaseComposeActivity() {
 
     private var localBookTreeSelectListener: ((Boolean) -> Unit)? = null
-    protected val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
+
+    /** 面包屑路径，null 时不显示 */
+    var path by mutableStateOf<String?>(null)
+        private set
+
+    /** 顶部 2dp 加载条 */
+    var loading by mutableStateOf(false)
+        protected set
+
+    /** 标题栏搜索框关键字 */
+    var searchKey by mutableStateOf("")
+        private set
 
     val localBookTreeSelect = registerHandleFile {
         it.uri?.let { treeUri ->
@@ -51,21 +49,9 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         } ?: localBookTreeSelectListener?.invoke(false)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding.refreshProgressBar.visibility = View.VISIBLE
-        initSearchView()
-    }
-
-    /**
-     * 初始化RecyclerView和SelectActionBar
-     * @param adapter RecyclerView的适配器
-     */
-    protected fun initRecyclerView(adapter: androidx.recyclerview.widget.RecyclerView.Adapter<*>) {
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.selectActionBar.setMainActionText(R.string.add_to_bookshelf)
-        binding.selectActionBar.setCallBack(this)
+    fun upSearchKey(key: String) {
+        searchKey = key
+        onSearchTextChange(key)
     }
 
     /**
@@ -83,8 +69,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
      * 显示面包屑路径
      */
     protected fun showBreadcrumb(path: String) {
-        binding.tvPath.text = path
-        binding.tvPath.visible()
+        this.path = path
     }
 
     /**
@@ -135,7 +120,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         }
         if (fileNames.size == 1) {
             val name = fileNames[0]
-            appDb.bookDao.getBookByFileName(name)?.let {
+            runBlocking { appDb.bookDao.getBookByFileName(name) }?.let {
                 startReadBook(it)
             } ?: showImportAlert(fileDoc, name)
         } else {
@@ -152,7 +137,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
             R.string.start_read,
             fileNames
         ) { _, name, _ ->
-            appDb.bookDao.getBookByFileName(name)?.let {
+            runBlocking { appDb.bookDao.getBookByFileName(name) }?.let {
                 startReadBook(it)
             } ?: showImportAlert(fileDoc, name)
         }
@@ -184,20 +169,6 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
             }
             noButton()
         }
-    }
-
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                onSearchTextChange(newText)
-                return false
-            }
-        })
     }
 
 }

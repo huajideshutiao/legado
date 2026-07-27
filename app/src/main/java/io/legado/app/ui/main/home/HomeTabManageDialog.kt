@@ -1,84 +1,134 @@
 package io.legado.app.ui.main.home
 
-import android.os.Bundle
-import android.view.View
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeTab
-import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.help.HomeTabHelp
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
- * 主页分组管理：item 点击进入该分组的展示项管理；编辑按钮改标题/删除；+ 添加分组；拖动排序。
- * 复用 dialog_recycler_view 的 layout（同构）。
+ * 主页分组管理(Compose)：item 点击进入该分组的展示项管理；编辑改标题/删除；+ 添加分组；长按拖动排序。
  */
-class HomeTabManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view) {
+class HomeTabManageDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
+    private var tabList by mutableStateOf<List<HomeTab>>(emptyList())
 
-    private val adapter by lazy {
-        HomeTabManageAdapter(requireContext(), object : HomeTabManageAdapter.Callback {
-            override fun onOpenSections(tab: HomeTab) {
-                showDialogFragment(HomeSectionManageDialog.newInstance(tab.title))
+    @Composable
+    override fun Content() {
+        LaunchedEffect(Unit) {
+            upData()
+            observeEvent<HomeTabEvent>(EventBus.HOME_TAB) { event ->
+                if (event.action != HomeTabEvent.REORDER) upData()
             }
-
-            override fun onEdit(tab: HomeTab) {
-                showHomeTabEditDialog(requireContext(), tab.title)
-            }
-        })
+        }
+        RuleManageScaffold(
+            items = tabList,
+            itemKey = { it.title },
+            onMove = { from, to ->
+                tabList = tabList.toMutableList().apply { add(to, removeAt(from)) }
+            },
+            titleBar = {
+                DialogTitleBar(
+                    title = getString(R.string.home_tab_manage),
+                    onBack = { dismissAllowingStateLoss() },
+                    actions = {
+                        IconButton(onClick = { showHomeTabEditDialog(requireContext()) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = getString(R.string.home_tab_add),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+        ) { item ->
+            TabItem(item)
+        }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.home_tab_manage),
-            menuRes = R.menu.dialog_add
+    @Composable
+    private fun ReorderableCollectionItemScope.TabItem(item: HomeTab) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .longPressDraggableHandle(onDragStopped = { persistOrder() })
+                .clickable {
+                    showDialogFragment(HomeSectionManageDialog.newInstance(item.title))
+                }
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (it?.itemId == R.id.menu_add) {
-                showHomeTabEditDialog(requireContext())
+            Icon(
+                painter = painterResource(R.drawable.ic_baseline_sort_24),
+                contentDescription = stringResource(R.string.sort),
+                tint = colors.secondaryText,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(
+                    text = item.title,
+                    color = colors.primaryText,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(R.string.home_tab_section_count, item.sections.size),
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
-            true
+            Spacer(Modifier.width(8.dp))
+            AppTextButton(text = stringResource(R.string.edit)) {
+                showHomeTabEditDialog(requireContext(), item.title)
+            }
         }
-        titleBar!!.menu.findItem(R.id.menu_add)?.setTitle(R.string.home_tab_add)
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        initDragSort()
-        upData()
-        observeEvent<HomeTabEvent>(EventBus.HOME_TAB) { event ->
-            if (event.action != HomeTabEvent.REORDER) upData()
-        }
-    }
-
-    private fun initDragSort() {
-        val touchCallback = ItemTouchCallback(object : ItemTouchCallback.Callback {
-            override fun swap(srcPosition: Int, targetPosition: Int): Boolean {
-                adapter.swap(srcPosition, targetPosition)
-                return true
-            }
-
-            override fun onClearView(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ) {
-                HomeTabHelp.saveTabsOrder(adapter.getItems())
-                postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
-            }
-        })
-        touchCallback.isCanDrag = true
-        ItemTouchHelper(touchCallback).attachToRecyclerView(binding.recyclerView)
     }
 
     private fun upData() {
-        adapter.setItems(HomeTabHelp.getTabs())
+        tabList = HomeTabHelp.getTabs()
+    }
+
+    private fun persistOrder() {
+        HomeTabHelp.saveTabsOrder(tabList)
+        postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
     }
 }

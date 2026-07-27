@@ -1,150 +1,148 @@
 package io.legado.app.ui.book.group
 
-import android.content.Context
-import android.os.Bundle
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemBookGroupManageBinding
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.setOnUserCheckedChangeListener
+import io.legado.app.ui.book.getManageName
+import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书籍分组管理
  */
-class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener {
+class GroupManageDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
     private val viewModel: GroupViewModel by viewModels()
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy { GroupAdapter(requireContext()) }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.group_manage),
-            menuRes = R.menu.book_group_manage,
-            onMenuClick = ::onMenuItemClick
-        )
-        initView()
-        initData()
-    }
+    // 拖拽期间以本地副本为准，flow 落库回推后再同步
+    private var groups by mutableStateOf<List<BookGroup>>(emptyList())
 
-    private fun initView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
-        binding.tvOk.setTextColor(requireContext().accentColor)
-        binding.tvOk.visible()
-        binding.tvOk.setOnClickListener {
-            dismissAllowingStateLoss()
-        }
-    }
-
-    private fun initData() {
-        lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        LaunchedEffect(Unit) {
             appDb.bookGroupDao.flowAll().catch {
                 AppLog.put("书籍分组管理界面获取分组数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect {
-                adapter.setItems(it)
+                groups = it
             }
         }
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_add -> {
-                if (appDb.bookGroupDao.canAddGroup) {
-                    showDialogFragment(GroupEditDialog())
-                } else {
-                    toastOnUi("分组已达上限(64个)")
+        RuleManageScaffold(
+            items = groups,
+            itemKey = { it.groupId },
+            onMove = { from, to ->
+                groups = groups.toMutableList().apply { add(to, removeAt(from)) }
+            },
+            titleBar = {
+                DialogTitleBar(
+                    title = getString(R.string.group_manage),
+                    onBack = { dismissAllowingStateLoss() },
+                    actions = {
+                        IconButton(onClick = { addGroup() }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = getString(R.string.add_group),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                    },
+                )
+            },
+            actionBar = {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(text = stringResource(R.string.ok)) {
+                        dismissAllowingStateLoss()
+                    }
                 }
-            }
+            },
+        ) { item ->
+            GroupItem(item)
         }
-        return true
     }
 
-    private inner class GroupAdapter(context: Context) :
-        RecyclerAdapter<BookGroup, ItemBookGroupManageBinding>(context),
-        ItemTouchCallback.Callback {
-
-        private var isMoved = false
-
-        override fun getViewBinding(parent: ViewGroup): ItemBookGroupManageBinding {
-            return ItemBookGroupManageBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemBookGroupManageBinding,
-            item: BookGroup,
-            payloads: MutableList<Any>
+    @Composable
+    private fun ReorderableCollectionItemScope.GroupItem(item: BookGroup) {
+        val colors = AppTheme.colors
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .longPressDraggableHandle(onDragStopped = { persistOrder() })
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            binding.run {
-                tvGroup.text = item.getManageName(context)
-                swShow.isChecked = item.show
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemBookGroupManageBinding) {
-            binding.run {
-                tvEdit.setOnClickListener {
-                    getItem(holder.layoutPosition)?.let { bookGroup ->
-                        showDialogFragment(
-                            GroupEditDialog(bookGroup)
-                        )
-                    }
-                }
-                swShow.setOnUserCheckedChangeListener { isChecked ->
-                    getItem(holder.layoutPosition)?.let {
-                        viewModel.upGroup(it.copy(show = isChecked))
-                    }
-                }
-            }
-        }
-
-        override fun swap(srcPosition: Int, targetPosition: Int): Boolean {
-            swapItem(srcPosition, targetPosition)
-            isMoved = true
-            return true
-        }
-
-        override fun onClearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-            if (isMoved) {
-                for ((index, item) in getItems().withIndex()) {
-                    item.order = index + 1
-                }
-                viewModel.upGroup(*getItems().toTypedArray())
-            }
-            isMoved = false
+            Text(
+                text = item.getManageName(requireContext()),
+                color = colors.secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            AppSwitch(
+                checked = item.show,
+                onCheckedChange = { viewModel.upGroup(item.copy(show = it)) },
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.edit),
+                color = colors.secondaryText,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable { showDialogFragment(GroupEditDialog(item)) }
+                    .padding(8.dp),
+            )
         }
     }
 
+    private fun persistOrder() {
+        groups.forEachIndexed { index, item -> item.order = index + 1 }
+        viewModel.upGroup(*groups.toTypedArray())
+    }
+
+    private fun addGroup() {
+        if (runBlocking { appDb.bookGroupDao.canAddGroup() }) {
+            showDialogFragment(GroupEditDialog())
+        } else {
+            toastOnUi("分组已达上限(64个)")
+        }
+    }
 }

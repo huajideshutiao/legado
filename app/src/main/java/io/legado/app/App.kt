@@ -14,30 +14,66 @@ import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.constant.PreferKey
+import io.legado.app.constant.registerAndroidAppLogHost
 import io.legado.app.data.appDb
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
+import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.LifecycleHelp
+import io.legado.app.help.book.AndroidBookImageStorage
+import io.legado.app.help.book.AndroidBookStorage
+import io.legado.app.help.book.AndroidLocalBookLocator
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BookImageStorageProviders
+import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.registerAndroidPreferenceProvider
+import io.legado.app.help.i18n.registerAndroidAppStringProvider
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.file.registerAndroidAppFilesDir
+import io.legado.app.help.http.CookieJarBridgeHolder
+import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.http.registerAndroidBackstageWebView
+import io.legado.app.help.http.registerAndroidCookieStoreProvider
+import io.legado.app.help.registerAndroidDirectLinkUploadProviders
+import io.legado.app.help.registerAndroidFileCacheProvider
+import io.legado.app.help.service.registerAndroidServiceLauncher
+import io.legado.app.service.WebService
+import io.legado.app.web.registerAndroidWebServerPlatform
+import io.legado.app.web.utils.registerAndroidWebAssetSource
+import io.legado.app.web.utils.registerAndroidWebStrings
 import io.legado.app.help.source.SourceHelp
+import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.model.BookCover
+import io.legado.app.model.CacheBook
+import io.legado.app.model.fileBook.registerAndroidFileBookProviders
+import io.legado.app.model.registerAndroidAudioPlayProviders
 import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.registerAndroidJsEngines
+import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
+import io.legado.app.model.webBook.registerAndroidWebBookProviders
+import io.legado.app.model.fileBook.registerEpubApplicationContext
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
+import io.legado.app.utils.registerAndroidACacheDirProvider
+import io.legado.app.utils.registerAndroidRegexErrorHandler
+import io.legado.app.utils.registerAndroidScreenInfoProvider
 import io.legado.app.utils.removePref
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
@@ -49,13 +85,82 @@ class App : Application() {
 
     private lateinit var oldConfig: Configuration
 
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate() {
         super.onCreate()
+        // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
+        registerSharedAppContext(this)
+        // 注册 EpubFile androidMain 的 ApplicationContext, 供 LocalEpubResource android actual
+        // 打开 content scheme 本地书籍 (contentResolver.openFileDescriptor); 未注册时
+        // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
+        registerEpubApplicationContext(this)
+        // 1.11+: textToolbarState(Cursor/Selection) is set in addBasicTextFieldTextContextMenuComponents,
+        // only when isNewContextMenuEnabled=true. Legacy route never sets it -> long-press menu broken.
+        // Enable new route; SelectionContainer still uses LocalTextToolbar (ComposeTextToolbar).
+        androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = true
+        registerAndroidAppFilesDir(appCtx)
+        registerAndroidAppStringProvider()
+        registerAndroidAppLogHost()
+        // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
+        // 须在任何 SystemUtils 屏幕尺寸访问之前 (PdfFile 渲染等)
+        registerAndroidScreenInfoProvider()
+        registerAndroidJsEngines()
+        // 注册 ACache 的 cacheDir/filesDir 注入 (供 ACache.get(cacheName) 获取目录),
+        // 必须在 registerAndroidFileCacheProvider 之前 (FileCacheProvider 委托 ACache)
+        registerAndroidACacheDirProvider()
+        // 注册 FileCacheProvider (委托 ACache), 供 commonMain 的 CacheManager
+        // getFile/putFile/getByteArray/put(ByteArray)/delete 文件操作调用;
+        // 必须在任何 CacheManager 文件操作之前完成 (JsEngines 注册后 JS 即可能触发)
+        registerAndroidFileCacheProvider()
+        registerAndroidBackstageWebView()
+        registerAndroidBookInfoRefresher()
+        // 注册 BookHelp 章节缓存 / 图片缓存 / 本地书定位三个平台 provider
+        // (commonMain 下沉的业务编排层经 BookStorageProviders/BookImageStorageProviders/
+        // LocalBookLocators 间接调用 app 端 BookHelp, 须在任何 commonMain 业务调用前完成注册)
+        BookStorageProviders.register(AndroidBookStorage)
+        BookImageStorageProviders.register(AndroidBookImageStorage)
+        LocalBookLocators.register(AndroidLocalBookLocator())
+        // 注册 RegexErrorHandler (longToastOnUi/saveCrashInfo2File/restart),
+        // 供 shared jvmAndAndroidMain 的 RegexReplacerImpl 在替换超时分支调用;
+        // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)
+        registerAndroidRegexErrorHandler()
+        registerAndroidWebBookProviders()
+        // 注册 FileBook 平台 provider (commonMain FileBook object 经
+        // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /
+        // importLocalFile / saveBookFile / downloadRemoteBook / mergeBook 等重 Android 逻辑)
+        registerAndroidFileBookProviders()
+        registerAndroidPasswordProvider()
+        // 注册 ServiceLaunchers (commonMain Download/CacheBook/UpdateBook 启动入口)
+        registerAndroidServiceLauncher(appCtx)
+        // 注册 Web 服务 provider (commonMain WebServerManager 调用 WebServerPlatform/WebAssetSource/WebStrings)
+        // - WebServerPlatform: HttpServer+WebSocketServer 起停 + serve 回调拉起 WebService 续命 wakelock
+        // - WebAssetSource: appCtx.assets 读 web 静态资源 (Android AssetManager)
+        // - WebStrings: R.string.cannot_empty 文案注入 WebSocketServer
+        // 须在任何 WebServerManager.start()/stop() 之前注册 (用户触发 Web 服务开关时)
+        registerAndroidWebServerPlatform { WebService.serve() }
+        registerAndroidWebAssetSource(appCtx)
+        registerAndroidWebStrings(appCtx, R.string.cannot_empty)
+        // 注册 AudioPlay 平台 provider (commonMain AudioPlayShared 调用
+        // AudioPlayCommanders/AudioPlayBookBridges 派发 Service 命令与 Book 操作,
+        // 须在 registerAndroidWebBookProviders 之后, 因 AudioPlayShared 依赖 AppDbProviders)
+        registerAndroidAudioPlayProviders()
+        // 注册 CacheBookCallback 桥接 ReadBook 单例 (CacheBookShared 调度核心下沉到 commonMain 后,
+        // app 端通过 callback 把下载完成事件回放到 ReadBook.contentLoadFinish / downloadedChapters /
+        // downloadFailChapters, 行为与下沉前一致)
+        CacheBook.registerCallback()
+        registerAndroidPreferenceProvider()
+        registerAndroidDirectLinkUploadProviders()
         CrashHandler(this)
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
+        SourceUiEventBridge.init()
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        // 注入 HomeTabHelpShared 的 SP provider (commonMain 下沉的主页分组持久化,
+        // 包装 defaultSharedPreferences, 行为与原 appCtx.getPrefString/putPrefString 等价)
+        HomeTabHelpShared.prefs = AndroidPreferenceStoreProvider()
+        // jsoup-compat 复用宿主共享 OkHttpClient,继承 CookieJar/限流/Cronet 拦截器
+        org.jsoup.Jsoup.clientFactory = { okHttpClient }
         Coroutine.async {
             LogUtils.init(this@App)
             LogUtils.d("App", "onCreate")
@@ -80,6 +185,10 @@ class App : Application() {
                     LogUtils.d("App", "GMS Cronet not available: ${it.message}")
                 }
             }
+            // 注册 CookieJarBridge, 让 shared 端 ObsoleteUrlFactory 能调用 app 端 CookieManager
+            CookieJarBridgeHolder.register(CookieManager)
+            // 注册 CookieStoreProvider, 让 shared 端业务层能跨平台调用 app 端 CookieStore/CookieManager
+            registerAndroidCookieStoreProvider()
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }
             initQuickJs()

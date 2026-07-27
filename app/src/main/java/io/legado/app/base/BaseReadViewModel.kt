@@ -4,7 +4,6 @@ import android.app.Application
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
-import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -17,22 +16,27 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.getBookSource as getBookSourcePart
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.delete
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isWebFile
+import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.save
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
@@ -119,7 +123,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
      * 获取自动换源用的书源列表, 子类按需覆写
      * 默认返回 allTextEnabledPart, 不需要自动换源的子类返回空列表即可
      */
-    protected open fun getTextEnabledSources() = appDb.bookSourceDao.allTextEnabledPart
+    protected open suspend fun getTextEnabledSources() = appDb.bookSourceDao.allTextEnabledPart()
 
     protected suspend fun upBook(book: BaseBook) {
         var book = if (book is SearchBook) {
@@ -296,7 +300,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             val sources = getTextEnabledSources()
             flow {
                 for (source in sources) {
-                    source.getBookSource()?.let {
+                    source.getBookSourcePart()?.let {
                         emit(it)
                     }
                 }
@@ -486,7 +490,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         execute {
             curBook?.let { book ->
                 if (book.order == 0) {
-                    book.order = appDb.bookDao.minOrder - 1
+                    book.order = appDb.bookDao.minOrder() - 1
                 }
                 appDb.bookDao.getBook(book.name, book.author)?.let {
                     book.durChapterIndex = it.durChapterIndex
@@ -510,7 +514,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 appDb.bookChapterDao.delByBook(it.bookUrl)
                 it.delete()
                 try {
-                    Glide.with(context).asFile().load(it.coverUrl).signature(ObjectKey("covers"))
+                    ImageLoader.with(context).asFile().load(it.coverUrl).signature(ObjectKey("covers"))
                         .onlyRetrieveFromCache(true).submit().get()?.delete()
                 } catch (_: Exception) {
                 }
@@ -534,7 +538,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     it, source = curBookSource,
                     coroutineContext = currentCoroutineContext()
                 )
-                val mFileName = UrlUtil.getFileName(analyzeUrl)
+                val mFileName = UrlUtil.getFileName(analyzeUrl.url, analyzeUrl.headerMap)
                     ?: "$fileNameNoExtension.${analyzeUrl.type}"
                 FileBook.WebFile(it, mFileName)
             }

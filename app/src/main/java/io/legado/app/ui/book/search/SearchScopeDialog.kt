@@ -1,284 +1,260 @@
 package io.legado.app.ui.book.search
 
-import android.annotation.SuppressLint
-import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup
-import android.widget.CheckBox
-import android.widget.FrameLayout
-import android.widget.RadioButton
-import androidx.appcompat.widget.SearchView
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.RecyclerView
-import androidx.viewbinding.ViewBinding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.databinding.DialogSearchScopeBinding
-import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.RadioChip
+import io.legado.app.ui.compose.theme.AppColors
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
-import io.legado.app.utils.setOnUserCheckedChangeListener
-import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class SearchScopeDialog : BaseDialogFragment(R.layout.dialog_search_scope) {
+class SearchScopeDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
 
-    private val binding by viewBinding(DialogSearchScopeBinding::bind)
-    private var sourceFlowJob: Job? = null
     val callback: Callback get() = parentFragment as? Callback ?: activity as Callback
-    var groups: List<String> = emptyList()
-    val screenSources = arrayListOf<BookSourcePart>()
-    var screenText: String? = null
 
-    val adapter by lazy {
-        RecyclerAdapter()
-    }
+    // scope tab：true=分组 / false=书源（对齐原 rb_group 默认选中）
+    private var groupMode by mutableStateOf(true)
+    private var screenText by mutableStateOf("")
+    private var showScreen by mutableStateOf(false)
+    private var groups by mutableStateOf<List<String>>(emptyList())
+    private var screenSources by mutableStateOf<List<BookSourcePart>>(emptyList())
+    private var selectGroups by mutableStateOf<List<String>>(emptyList())
+    private var selectSource by mutableStateOf<BookSourcePart?>(null)
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.recyclerView.adapter = adapter
-        initMenu()
-        initSearchView()
-        initOtherView()
-        initData()
-    }
-
-    private fun initMenu() {
-        setupTitleBar(
-            title = getString(R.string.search_scope),
-            backNavigation = false,
-            menuRes = R.menu.book_search_scope
-        )
-    }
-
-    private fun initSearchView() {
-        val searchView = titleBar!!.menu.findItem(R.id.menu_screen).actionView as SearchView
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                screenText = newText
-                upData()
-                return false
-            }
-
-        })
-    }
-
-    private fun initOtherView() {
-        binding.rgScope.setOnCheckedChangeListener { _, checkedId ->
-            titleBar!!.menu.findItem(R.id.menu_screen)?.isVisible = checkedId == R.id.rb_source
-            upData()
-        }
-        binding.tvCancel.setOnClickListener {
-            dismiss()
-        }
-        binding.tvAllSource.setOnClickListener {
-            callback.onSearchScopeOk(SearchScope(""))
-            dismiss()
-        }
-        binding.tvOk.setOnClickListener {
-            if (binding.rbGroup.isChecked) {
-                callback.onSearchScopeOk(SearchScope(adapter.selectGroups))
-            } else {
-                val selected = adapter.selectSource
-                if (selected != null) {
-                    callback.onSearchScopeOk(SearchScope(selected))
-                } else {
-                    callback.onSearchScopeOk(SearchScope(""))
-                }
-            }
-            dismiss()
-        }
-    }
-
-    private fun initData() {
-        lifecycleScope.launch {
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        LaunchedEffect(Unit) {
             groups = withContext(IO) {
                 appDb.bookSourceDao.allEnabledGroups()
             }
-            upData()
         }
-    }
-
-    @SuppressLint("NotifyDataSetChanged")
-    private fun upData() {
-        if (binding.rbSource.isChecked) {
-            upBookSource(screenText)
-        } else {
-            adapter.notifyDataSetChanged()
-        }
-    }
-
-    @SuppressLint("NotifyDataSetChanged")
-    private fun upBookSource(searchKey: String? = null) {
-        sourceFlowJob?.cancel()
-        sourceFlowJob = lifecycleScope.launch {
+        LaunchedEffect(screenText) {
             when {
-                searchKey.isNullOrEmpty() -> appDb.bookSourceDao.flowAll()
-                else -> appDb.bookSourceDao.flowSearch(searchKey)
+                screenText.isEmpty() -> appDb.bookSourceDao.flowAll()
+                else -> appDb.bookSourceDao.flowSearch(screenText)
             }.flowWithLifecycleAndDatabaseChange(
                 lifecycle,
                 table = AppDatabase.BOOK_SOURCE_TABLE_NAME
             ).catch {
                 AppLog.put("多分组/书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
-                screenSources.clear()
-                screenSources.addAll(data)
-                adapter.notifyDataSetChanged()
-                delay(500)
+                screenSources = data
             }
         }
-    }
-
-    inner class RecyclerAdapter : RecyclerView.Adapter<ItemViewHolder>() {
-
-        val selectGroups = arrayListOf<String>()
-        var selectSource: BookSourcePart? = null
-
-        override fun getItemViewType(position: Int): Int {
-            return if (binding.rbSource.isChecked) 1 else 0
-        }
-
-        override fun getItemCount(): Int {
-            return if (binding.rbSource.isChecked) screenSources.size else groups.size
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemViewHolder {
-            return if (viewType == 1) {
-                val ctx = parent.context
-                val hPad = parent.context.space.lg
-                val vPad =
-                    parent.context.space.default
-                val root = FrameLayout(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    setPadding(hPad, vPad, hPad, vPad)
-                }
-                val radioButton = RadioButton(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                }
-                root.addView(radioButton)
-                ItemViewHolder(RadioButtonWrapper(root, radioButton))
-            } else {
-                val ctx = parent.context
-                val hPad = parent.context.space.lg
-                val vPad =
-                    parent.context.space.default
-                val root = FrameLayout(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    setPadding(hPad, vPad, hPad, vPad)
-                }
-                val checkBox = CheckBox(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                }
-                root.addView(checkBox)
-                ItemViewHolder(CheckBoxWrapper(root, checkBox))
+        Column(Modifier.fillMaxWidth()) {
+            ScopeTitleBar(colors)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RadioChip(
+                    text = stringResource(R.string.group),
+                    checked = groupMode,
+                    modifier = Modifier.weight(1f),
+                ) { groupMode = true; showScreen = false; screenText = "" }
+                RadioChip(
+                    text = stringResource(R.string.book_source),
+                    checked = !groupMode,
+                    modifier = Modifier.weight(1f),
+                ) { groupMode = false }
             }
-        }
-
-        override fun onBindViewHolder(
-            holder: ItemViewHolder,
-            position: Int,
-            payloads: MutableList<Any>
-        ) {
-            if (payloads.isEmpty()) {
-                super.onBindViewHolder(holder, position, payloads)
-                return
-            }
-            when (val itemBinding = holder.binding) {
-                is CheckBoxWrapper -> {
-                    groups.getOrNull(position)?.let {
-                        itemBinding.checkBox.isChecked = selectGroups.contains(it)
-                        itemBinding.checkBox.text = it
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                if (groupMode) {
+                    LazyColumn {
+                        items(groups, key = { it }) { group ->
+                            GroupItem(group)
+                        }
                     }
-                }
-
-                is RadioButtonWrapper -> {
-                    screenSources.getOrNull(position)?.let { src ->
-                        itemBinding.radio.isChecked =
-                            selectSource?.bookSourceUrl == src.bookSourceUrl
-                        itemBinding.radio.text = src.bookSourceName
+                } else {
+                    LazyColumn {
+                        items(screenSources, key = { it.bookSourceUrl }) { source ->
+                            SourceItem(source)
+                        }
                     }
                 }
             }
-        }
-
-        override fun onBindViewHolder(holder: ItemViewHolder, position: Int) {
-            when (val itemBinding = holder.binding) {
-                is CheckBoxWrapper -> {
-                    val group = groups.getOrNull(position) ?: return
-                    itemBinding.checkBox.isChecked = selectGroups.contains(group)
-                    itemBinding.checkBox.text = group
-                    itemBinding.checkBox.setOnUserCheckedChangeListener { isChecked ->
-                        if (isChecked) {
-                            selectGroups.add(group)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppTextButton(text = stringResource(R.string.all_source)) {
+                    callback.onSearchScopeOk(SearchScope(""))
+                    dismiss()
+                }
+                Spacer(Modifier.weight(1f))
+                AppTextButton(
+                    text = stringResource(R.string.cancel),
+                    color = colors.secondaryText,
+                ) { dismiss() }
+                AppTextButton(text = stringResource(R.string.ok)) {
+                    if (groupMode) {
+                        // 对齐原实现：分组按勾选顺序输出
+                        callback.onSearchScopeOk(SearchScope(selectGroups))
+                    } else {
+                        val selected = selectSource
+                        if (selected != null) {
+                            callback.onSearchScopeOk(SearchScope(selected))
                         } else {
-                            selectGroups.remove(group)
-                        }
-                        holder.itemView.post {
-                            notifyItemRangeChanged(0, itemCount, "up")
+                            callback.onSearchScopeOk(SearchScope(""))
                         }
                     }
+                    dismiss()
                 }
+            }
+        }
+    }
 
-                is RadioButtonWrapper -> {
-                    val src = screenSources.getOrNull(position) ?: return
-                    itemBinding.radio.isChecked =
-                        selectSource?.bookSourceUrl == src.bookSourceUrl
-                    itemBinding.radio.text = src.bookSourceName
-                    itemBinding.radio.setOnUserCheckedChangeListener { isChecked ->
-                        if (isChecked) {
-                            selectSource = src
-                            holder.itemView.post {
-                                notifyItemRangeChanged(0, itemCount, "up")
-                            }
-                        }
+    /**
+     * 复刻原 dialog_title_bar + book_search_scope 菜单：SearchView 展开时占据标题位置。
+     * 仅书源模式露出漏斗入口；展开后左侧返回箭头收起并清空筛选。
+     */
+    @Composable
+    private fun ScopeTitleBar(colors: AppColors) {
+        val focusRequester = remember { FocusRequester() }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(colors.bottomBackground)
+                .heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!groupMode && showScreen) {
+                IconButton(onClick = { showScreen = false; screenText = "" }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_back),
+                        contentDescription = null,
+                        tint = colors.primaryText,
+                    )
+                }
+                AppSearchField(
+                    value = screenText,
+                    onValueChange = { screenText = it },
+                    hint = stringResource(R.string.screen),
+                    modifier = Modifier.weight(1f),
+                    textFieldModifier = Modifier.focusRequester(focusRequester),
+                )
+                LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            } else {
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    text = stringResource(R.string.search_scope),
+                    color = colors.primaryText,
+                    fontSize = 20.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // 原 menu_screen：仅书源模式可见的筛选入口
+                if (!groupMode) {
+                    IconButton(onClick = { showScreen = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.outline_filter_alt_24),
+                            contentDescription = stringResource(R.string.screen),
+                            tint = colors.primaryText,
+                        )
                     }
                 }
             }
         }
-
     }
 
-    private class CheckBoxWrapper(private val rootView: View, val checkBox: CheckBox) :
-        ViewBinding {
-        override fun getRoot(): View = rootView
-        init {
-            rootView.tag = this
+    @Composable
+    private fun GroupItem(group: String) {
+        val colors = AppTheme.colors
+        val checked = group in selectGroups
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = checked, role = Role.Checkbox) { isChecked ->
+                    selectGroups = if (isChecked) selectGroups + group else selectGroups - group
+                }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppCheckbox(checked = checked, onCheckedChange = null)
+            Text(
+                text = group,
+                color = colors.primaryText,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 
-    private class RadioButtonWrapper(private val rootView: View, val radio: RadioButton) :
-        ViewBinding {
-        override fun getRoot(): View = rootView
-        init {
-            rootView.tag = this
+    @Composable
+    private fun SourceItem(source: BookSourcePart) {
+        val colors = AppTheme.colors
+        val selected = selectSource?.bookSourceUrl == source.bookSourceUrl
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .selectable(selected = selected, role = Role.RadioButton) {
+                    selectSource = source
+                }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppRadioButton(selected = selected, onClick = null)
+            Text(
+                text = source.bookSourceName,
+                color = colors.primaryText,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 

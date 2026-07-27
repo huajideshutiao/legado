@@ -1,29 +1,19 @@
 package io.legado.app.ui.book.audio
 
-import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.TransitionDrawable
-import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
-import android.widget.ImageView
-import android.widget.SeekBar
 import androidx.activity.viewModels
-import androidx.core.graphics.drawable.toBitmapOrNull
-import androidx.core.view.isGone
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.CustomViewTarget
-import com.bumptech.glide.request.transition.Transition
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
@@ -33,73 +23,68 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.delete
 import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.okButton
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.BookCover
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
-import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.ui.login.showLoginDialog
+import io.legado.app.ui.widget.dialog.showBookVariableDialog
+import io.legado.app.ui.widget.dialog.showSourceVariableDialog
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.StartActivityContract
-import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getRepresentativeColor
-import io.legado.app.utils.invisible
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
  * 音频播放
  */
-@SuppressLint("ObsoleteSdkInt")
-class AudioPlayActivity :
-    VMBaseActivity<ActivityAudioPlayBinding, AudioPlayViewModel>(toolBarTheme = Theme.Dark),
+class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
     ChangeBookSourceDialog.CallBack {
 
-    override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
-    override val viewModel by viewModels<AudioPlayViewModel>()
-    private val timerSliderPopup by lazy {
-        SliderPopup(
-            context = this,
-            max = 180,
-            getProgress = { AudioPlayService.timeMinute },
-            onProgressChanged = { AudioPlay.setTimer(it) },
-            formatText = { getString(R.string.timer_m, it) }
-        )
-    }
-    private val speedSliderPopup by lazy {
-        SliderPopup(
-            context = this,
-            max = 30,
-            getProgress = { (AudioPlayService.playSpeed * 10).toInt() },
-            onProgressChanged = { AudioPlay.adjustSpeed(it / 10.0f) },
-            formatText = { String.format(java.util.Locale.ROOT, "%.1fX", it / 10.0f) }
-        )
-    }
-    private var adjustProgress = false
-    private var playMode = AudioPlay.PlayMode.LIST_END_STOP
+    val viewModel by viewModels<AudioPlayViewModel>()
+
+    // ---- 事件桥回显状态(observeLiveBus 写入, AudioPlayScreen 读取) ----
+    var titleText by mutableStateOf("")
+    var subTitle by mutableStateOf("")
+    var isPlaying by mutableStateOf(false)
+    var durationMs by mutableIntStateOf(0)
+    var progressMs by mutableIntStateOf(0)
+    var bufferMs by mutableIntStateOf(0)
+    var speedText by mutableStateOf<String?>(null)
+    var timerMinute by mutableIntStateOf(0)
+    var loading by mutableStateOf(false)
+    var lrcData by mutableStateOf<List<Pair<Int, String>>?>(null)
+    var lrcProgress by mutableIntStateOf(-1)
+
+    /** 模糊背景代表色推导出的 主色 to 次色，驱动歌词与进度条着色 */
+    var lrcColors by mutableStateOf<Pair<Int, Int>?>(null)
+    var coverUrl by mutableStateOf<String?>(null)
+    var coverVisible by mutableStateOf(true)
+    var playMode by mutableStateOf(AudioPlayShared.PlayMode.LIST_END_STOP)
+    var prevEnabled by mutableStateOf(true)
+    var nextEnabled by mutableStateOf(true)
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -121,18 +106,25 @@ class AudioPlayActivity :
             }
         }
 
+    @Composable
+    override fun Content() {
+        AudioPlayScreen(this)
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.setBackgroundResource(R.color.transparent)
         viewModel.titleData.observe(this) {
-            binding.titleBar.title = it
+            titleText = it
         }
         viewModel.initData(intent) { applyBookmarkPosition(intent) }
-        initView()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        applyBookmarkPosition(intent)
+        setIntent(intent)
+        // 切书场景下 Activity 已在栈中 (singleTask) 会走 onNewIntent,
+        // 必须调用 initData 才能加载新书数据, 否则首次切书 UI 仍显示旧书状态,
+        // 用户需退出后从详情页二次进入才能正常 (对齐 ReadBookActivity.onNewIntent)
+        viewModel.initData(intent) { applyBookmarkPosition(intent) }
     }
 
     private fun applyBookmarkPosition(intent: Intent) {
@@ -147,57 +139,52 @@ class AudioPlayActivity :
         }
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.audio_play, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
+    // ---- 菜单/控制动作(原 onCompatOptionsItemSelected 与 initView 各点击项) ----
 
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible = AudioPlay.bookSource?.hasLogin() == true
-        menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
-        menu.findItem(R.id.menu_review)?.isVisible =
-            AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_change_source -> AudioPlay.book?.let {
-                showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
-            }
-
-            R.id.menu_login -> AudioPlay.bookSource?.let {
-                IntentData.book = AudioPlay.book
-                IntentData.chapter = AudioPlay.durChapter
-                it.showLoginDialog(this)
-            }
-
-            R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
-            R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
-            R.id.menu_set_source_variable -> AudioPlay.bookSource?.showSourceVariableDialog(this)
-            R.id.menu_set_book_variable -> AudioPlay.book?.showBookVariableDialog(
-                this, AudioPlay.bookSource
-            )
-
-            R.id.menu_edit_source -> AudioPlay.bookSource?.let {
-                IntentData.source = it
-                sourceEditResult.launch {}
-            }
-
-            R.id.menu_review -> viewModel.openCommentDialog(this)
-
-            R.id.menu_add_bookmark -> addBookmark()
-
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
+    fun showChangeSource() {
+        AudioPlay.book?.let {
+            showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
         }
-        return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun addBookmark() {
+    fun showLogin() {
+        AudioPlay.bookSource?.let {
+            IntentData.book = AudioPlay.book
+            IntentData.chapter = AudioPlay.durChapter
+            it.showLoginDialog(this)
+        }
+    }
+
+    fun toggleWakeLock() {
+        AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
+    }
+
+    fun copyAudioUrl() = sendToClip(AudioPlayService.url)
+
+    fun showSourceVariable() {
+        AudioPlay.bookSource?.showSourceVariableDialog(this)
+    }
+
+    fun showBookVariable() {
+        AudioPlay.book?.showBookVariableDialog(this, AudioPlay.bookSource)
+    }
+
+    fun editSource() {
+        AudioPlay.bookSource?.let {
+            IntentData.source = it
+            sourceEditResult.launch {}
+        }
+    }
+
+    fun openReview() = viewModel.openCommentDialog(this)
+
+    fun showAppLog() = showDialogFragment<AppLogDialog>()
+
+    fun addBookmark() {
         val book = AudioPlay.book ?: return
         val chapter = AudioPlay.durChapter
         val pos = AudioPlay.durChapterPos
-        val total = binding.playerProgress.max
+        val total = durationMs
         val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
             chapterIndex = AudioPlay.durChapterIndex
             chapterPos = pos
@@ -208,65 +195,19 @@ class AudioPlayActivity :
         showDialogFragment(BookmarkDialog(bookmark))
     }
 
-    private fun initView() {
-        // 封面圆形描边使用主题强调色（原 XML 的 app:strokeColor="@color/accent" 改为代码动态设置，以响应主题切换）
-        binding.ivCover.strokeColor = ColorStateList.valueOf(accentColor)
-        binding.ivPlayMode.setOnClickListener {
-            viewModel.changePlayMode()
-        }
-        binding.ivCover.setOnClickListener {
-            it.isGone = true
-        }
-
-        observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
-            playMode = it
-            updatePlayModeIcon()
-        }
-
-        binding.fabPlayStop.setOnClickListener { playButton() }
-        binding.ivSkipNext.setOnClickListener { viewModel.next() }
-        binding.ivSkipPrevious.setOnClickListener { viewModel.prev() }
-        binding.playerProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                binding.tvDurTime.text = progress.toDurationTime()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar) {
-                adjustProgress = true
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                adjustProgress = false
-                viewModel.adjustProgress(seekBar.progress)
-            }
-        })
-        binding.ivChapter.setOnClickListener {
-            IntentData.book = AudioPlay.book
-            IntentData.chapterList = AudioPlay.chapterList
-            tocActivityResult.launch("")
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            binding.ivFastForward.invisible()
-        }
-        binding.ivFastForward.setOnClickListener {
-            speedSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
-        }
-        binding.ivTimer.setOnClickListener {
-            timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
-        }
-        binding.llPlayMenu.applyNavigationBarPadding()
-        binding.ivLrc.setOnPlayClickListener {
-            viewModel.adjustProgress(it)
-            binding.ivLrc.updateProgress(it)
-            if (AudioPlay.status == Status.PAUSE) viewModel.resume()
-        }
+    fun openChapterList() {
+        IntentData.book = AudioPlay.book
+        IntentData.chapterList = AudioPlay.chapterList
+        tocActivityResult.launch("")
     }
 
-    private fun updatePlayModeIcon() {
-        binding.ivPlayMode.setImageResource(playMode.iconRes)
-    }
+    fun playButton() = viewModel.togglePlay()
 
-    private fun playButton() = viewModel.togglePlay()
+    /** 点击歌词行跳播(原 ivLrc.setOnPlayClickListener) */
+    fun onLrcClick(time: Int) {
+        viewModel.adjustProgress(time)
+        if (AudioPlay.status == Status.PAUSE) viewModel.resume()
+    }
 
     override val oldBook: Book?
         get() = AudioPlay.book
@@ -307,7 +248,7 @@ class AudioPlayActivity :
                 okButton {
                     AudioPlay.book?.save()
                     AudioPlay.inBookshelf = true
-                    appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray())
+                    runBlocking { appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray()) }
                     setResult(RESULT_OK)
                 }
                 noButton {
@@ -331,35 +272,30 @@ class AudioPlayActivity :
         }
     }
 
-    @SuppressLint("SetTextI18n")
+    // 刻意不调 super(与原 View 版一致): RECREATE 不触发本页重建
     override fun observeLiveBus() {
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) {
             if (it) {
                 playButton()
             }
         }
+        observeEventSticky<AudioPlayShared.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
+            playMode = it
+        }
         observeEventSticky<Int>(EventBus.AUDIO_STATE) {
             AudioPlay.status = it
-            if (it == Status.PLAY) {
-                binding.fabPlayStop.setImageResource(R.drawable.ic_pause_24dp)
-            } else {
-                binding.fabPlayStop.setImageResource(R.drawable.ic_play_24dp)
-            }
+            isPlaying = it == Status.PLAY
         }
         observeEventSticky<String>(EventBus.AUDIO_SUB_TITLE) {
-//            viewModel.refreshData()
-            binding.tvSubTitle.text = it
-            binding.ivSkipPrevious.isEnabled = AudioPlay.durChapterIndex > 0
-            binding.ivSkipNext.isEnabled =
-                AudioPlay.durChapterIndex < AudioPlay.simulatedChapterSize - 1
+            subTitle = it
+            prevEnabled = AudioPlay.durChapterIndex > 0
+            nextEnabled = AudioPlay.durChapterIndex < AudioPlay.simulatedChapterSize - 1
         }
         observeEventSticky<Int>(EventBus.AUDIO_SIZE) {
-            binding.playerProgress.max = it
-            binding.tvAllTime.text = it.toDurationTime()
+            durationMs = it
         }
         observeEventSticky<Int>(EventBus.AUDIO_PROGRESS) {
-            if (!adjustProgress) binding.playerProgress.progress = it
-            binding.tvDurTime.text = it.toDurationTime()
+            progressMs = it
         }
         // AUDIO_LRCPROGRESS 单独走 STARTED 级订阅: Activity 不可见时取消订阅,
         // Service 端通过 subscriptionCount 感知到无人收看后挂起 lrc 推进协程,
@@ -367,65 +303,32 @@ class AudioPlayActivity :
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).collect {
-                    if (it is Int) binding.ivLrc.updateProgress(it)
+                    if (it is Int) lrcProgress = it
                 }
             }
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
-            binding.playerProgress.secondaryProgress = it
-
+            bufferMs = it
         }
         observeEventSticky<Float>(EventBus.AUDIO_SPEED) {
-            binding.tvSpeed.text = String.format(Locale.ROOT, "%.1fX", it)
-            binding.tvSpeed.visible()
+            speedText = String.format(Locale.ROOT, "%.1fX", it)
         }
         observeEventSticky<Int>(EventBus.AUDIO_DS) {
-            binding.tvTimer.text = "${it}m"
-            binding.tvTimer.visible(it > 0)
+            timerMinute = it
         }
         observeEventSticky<Boolean>(EventBus.AUDIO_LOADING) {
-            binding.progressLoading.visible(it)
+            loading = it
         }
         observeEventSticky<List<Pair<Int, String>>>(EventBus.AUDIO_LRC) {
-            binding.ivLrc.setLrcData(it)
+            lrcData = it
         }
         observeEventSticky<String>(EventBus.AUDIO_COVER) {
-            updateCover(it)
+            coverUrl = it
         }
     }
 
-    private fun updateCover(url: String) {
-        val glide = Glide.with(this)
-        // 前景圆形封面与背景模糊封面共用同一 seed,失败回退到默认图集时会挑同一张。
-        val seed = AudioPlay.book?.name
-        BookCover.load(
-            glide, url,
-            sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
-            seed = seed,
-        ).placeholder(binding.ivCover.drawable).into(binding.ivCover)
-        BookCover.loadBlur(
-            glide, url,
-            sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
-            seed = seed,
-        ).into(object : CustomViewTarget<ImageView, Drawable>(binding.ivBg) {
-                override fun onResourceCleared(p0: Drawable?) {}
-                override fun onLoadFailed(p0: Drawable?) {}
-                override fun onResourceReady(p0: Drawable, p1: Transition<in Drawable>?) {
-                    if (binding.ivBg.drawable != null) {
-                        val transitionDrawable =
-                            TransitionDrawable(arrayOf(binding.ivBg.drawable, p0))
-                        transitionDrawable.isCrossFadeEnabled = true
-                        view.setImageDrawable(transitionDrawable)
-                        transitionDrawable.startTransition(300)
-                    } else {
-                        view.setImageDrawable(p0)
-                    }
-                    p0.toBitmapOrNull()?.let { updateLrcColor(it) }
-                }
-            })
-    }
-
-    private fun updateLrcColor(bitmap: Bitmap) {
+    /** 模糊背景就绪后取代表色，衍生歌词/进度条颜色(原 updateLrcColor) */
+    fun onBlurCoverLoaded(bitmap: Bitmap) {
         val meanColor = try {
             bitmap.getRepresentativeColor()
         } catch (_: Exception) {
@@ -450,10 +353,6 @@ class AudioPlayActivity :
         }
         val primaryColor = androidx.core.graphics.ColorUtils.HSLToColor(primaryHsl)
 
-        binding.ivLrc.setColors(primaryColor, secondaryColor)
-        binding.playerProgress.progressTintList = ColorStateList.valueOf(primaryColor)
-        binding.playerProgress.thumbTintList = ColorStateList.valueOf(primaryColor)
-        binding.playerProgress.secondaryProgressTintList = ColorStateList.valueOf(secondaryColor)
+        lrcColors = primaryColor to secondaryColor
     }
-
 }

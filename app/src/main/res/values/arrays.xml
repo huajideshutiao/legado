@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-	<string-array name="server_type">
-		<item>WEBDAV</item>
-	</string-array>
-
 	<string-array name="book_type">
 		<item>Text</item>
 		<item>Audio</item>
@@ -173,15 +169,6 @@
         <item>en</item>
     </string-array>
 
-    <!-- JS 引擎开关: QuickJS 在前(默认值,对齐 AppConfig.jsEngine 默认 "quickjs"); Rhino 在后 -->
-    <string-array name="js_engine">
-        <item>QuickJS</item>
-        <item>Rhino</item>
-    </string-array>
-    <string-array name="js_engine_value">
-        <item>quickjs</item>
-        <item>rhino</item>
-    </string-array>
 
     <string-array name="rule_type">
 		<item>@string/book_source</item>

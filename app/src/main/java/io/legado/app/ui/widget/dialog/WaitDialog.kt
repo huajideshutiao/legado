@@ -1,69 +1,41 @@
 package io.legado.app.ui.widget.dialog
 
 import android.content.Context
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.utils.applyTint
+import io.legado.app.base.ComposeDialog
 
 class WaitDialog(context: Context) {
 
-    private val tvMsg: TextView
-    private val dialog: AlertDialog
+    // 文本用 Compose 状态承载，setText 可从任意线程写入（Snapshot 线程安全），读侧自动重组
+    private var message by mutableStateOf(context.getString(R.string.loading))
+    private val dialog = ComposeDialog(context, fullWidth = false)
 
     var onCancelListener: (() -> Unit)? = null
 
     init {
-        val dp30 = (30 * context.resources.displayMetrics.density).toInt()
-        val dp16 = (16 * context.resources.displayMetrics.density).toInt()
-        val dp8 = (8 * context.resources.displayMetrics.density).toInt()
-
-        val progressBar = ProgressBar(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp30, dp30)
+        dialog.setComposeContent {
+            // UI 下沉到 shared/sharedUiMain 的 WaitDialogContent (app/desktop/iOS 共用, 样式逐项对齐)
+            WaitDialogContent(message)
         }
-
-        tvMsg = TextView(context).apply {
-            val pad = dp8
-            setPadding(pad, pad, pad, pad)
-            setTextColor(ContextCompat.getColor(context, R.color.primaryText))
-            text = context.getString(R.string.loading)
-            gravity = android.view.Gravity.CENTER
-        }
-
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(dp16, dp16, dp16, dp16)
-            addView(progressBar)
-            addView(tvMsg)
-        }
-
-        dialog = AlertDialog.Builder(context).apply {
-            customView { container }
-        }.create()
-        dialog.applyTint()
         dialog.setCanceledOnTouchOutside(false)
-        dialog.setOnCancelListener {
-            onCancelListener?.invoke()
-        }
+        dialog.setOnCancelListener { onCancelListener?.invoke() }
     }
 
     fun setText(text: String): WaitDialog {
-        tvMsg.text = text
+        message = text
         return this
     }
 
     fun setText(@StringRes res: Int): WaitDialog {
-        tvMsg.text = dialog.context.getString(res)
+        message = dialog.context.getString(res)
         return this
     }
 

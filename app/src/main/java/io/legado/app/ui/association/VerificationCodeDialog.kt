@@ -2,7 +2,32 @@ package io.legado.app.ui.association
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatImageView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
@@ -10,26 +35,23 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import io.legado.app.R
-import io.legado.app.databinding.DialogVerificationCodeViewBinding
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.noButton
-import io.legado.app.lib.dialogs.onDismiss
-import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.ImageProvider
+import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
 /**
  * 图片验证码对话框
- * 重构为使用 alert DSL 实现，菜单保持在右上角
+ * Compose 化：正文全 Compose，验证码图片经 AndroidView 承载 ImageView 供 Glide 加载。
  */
 object VerificationCodeDialog {
 
@@ -45,61 +67,108 @@ object VerificationCodeDialog {
             return
         }
 
-        val binding = DialogVerificationCodeViewBinding.inflate(activity.layoutInflater)
-
-        // 配置 Toolbar 以保持右上角菜单
-        binding.toolBar.setTitle(R.string.verification_code)
-        binding.toolBar.subtitle = sourceName
-        binding.toolBar.inflateMenu(R.menu.verification_code)
-        binding.toolBar.menu.applyTint(activity)
-
-        val dialog = activity.alert {
-            customView { binding.root }
-
+        lateinit var dialog: io.legado.app.base.ComposeDialog
+        dialog = activity.alert {
+            customView {
+                var code by remember { mutableStateOf("") }
+                Column(Modifier.fillMaxWidth()) {
+                    // Toolbar：标题 + 副标题(源名) + ok/禁用/删除菜单
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.verification_code),
+                                color = AppTheme.colors.primaryText,
+                                fontSize = 18.sp,
+                            )
+                            sourceName?.let {
+                                Text(it, color = AppTheme.colors.secondaryText, fontSize = 13.sp)
+                            }
+                        }
+                        IconButton(onClick = {
+                            SourceVerificationHelp.setResult(sourceOrigin!!, code)
+                            dialog.dismiss()
+                        }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = stringResource(R.string.ok),
+                                tint = AppTheme.colors.primaryText,
+                            )
+                        }
+                        var showMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_more_vert),
+                                    contentDescription = stringResource(R.string.more_menu),
+                                    tint = AppTheme.colors.primaryText,
+                                )
+                            }
+                            AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.disable_source)) },
+                                    onClick = {
+                                        showMenu = false
+                                        sourceOrigin?.let { Coroutine.async { SourceHelp.enableSource(it, sourceType, false) } }
+                                        dialog.dismiss()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.delete_source)) },
+                                    onClick = {
+                                        showMenu = false
+                                        activity.alert(R.string.draw) {
+                                            setMessage(activity.getString(R.string.sure_del) + "\n" + sourceName)
+                                            noButton()
+                                            yesButton {
+                                                sourceOrigin?.let { Coroutine.async { SourceHelp.deleteSource(it, sourceType) } }
+                                                dialog.dismiss()
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    AndroidView(
+                        factory = { ctx ->
+                            AppCompatImageView(ctx).apply {
+                                scaleType = ImageView.ScaleType.FIT_CENTER
+                                setOnClickListener {
+                                    activity.showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
+                                }
+                                loadImage(activity, this, imageUrl, sourceOrigin)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                    )
+                    AppOutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        label = stringResource(R.string.verification_code),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
             onDismiss {
                 SourceVerificationHelp.checkResult(sourceOrigin!!)
             }
-        }
-
-        // 菜单点击事件
-        binding.toolBar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.menu_ok -> {
-                    val verificationCode = binding.verificationCode.text.toString()
-                    SourceVerificationHelp.setResult(sourceOrigin!!, verificationCode)
-                    dialog.dismiss()
-                }
-
-                R.id.menu_disable_source -> {
-                    sourceOrigin?.let { SourceHelp.enableSource(it, sourceType, false) }
-                    dialog.dismiss()
-                }
-
-                R.id.menu_delete_source -> {
-                    activity.alert(R.string.draw) {
-                        setMessage(activity.getString(R.string.sure_del) + "\n" + sourceName)
-                        noButton()
-                        yesButton {
-                            sourceOrigin?.let { SourceHelp.deleteSource(it, sourceType) }
-                            dialog.dismiss()
-                        }
-                    }
-                }
-            }
-            true
-        }
-
-        loadImage(activity, binding, imageUrl, sourceOrigin)
-
-        binding.verificationCodeImageView.setOnClickListener {
-            activity.showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
         }
     }
 
     @SuppressLint("CheckResult")
     private fun loadImage(
         activity: AppCompatActivity,
-        binding: DialogVerificationCodeViewBinding,
+        imageView: ImageView,
         url: String,
         sourceUrl: String?
     ) {
@@ -133,7 +202,7 @@ object VerificationCodeDialog {
                     return false
                 }
             })
-            .into(binding.verificationCodeImageView)
+            .into(imageView)
     }
 
 }

@@ -1,56 +1,72 @@
 package io.legado.app.ui.font
 
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.ScrollView
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.items
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
-import io.legado.app.lib.theme.space
+import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.list
 import io.legado.app.utils.listFileDocs
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLDecoder
 
-class FontSelectDialog : BaseDialogFragment(0),
-    Toolbar.OnMenuItemClickListener {
+class FontSelectDialog : BaseComposeDialogFragment() {
 
     override val isFullHeight: Boolean = true
     private val fontRegex = Regex("(?i).*\\.[ot]tf")
-    private lateinit var rgFonts: RadioGroup
     private var curName: String? = null
+    private var fontItems by mutableStateOf(listOf<FileDoc>())
     private val selectFontDir by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
                 if (uri.isContentScheme()) {
-                    putPrefString(PreferKey.fontFolder, uri.toString())
+                    AppConfig.fontFolder = uri.toString()
                     val doc = DocumentFile.fromTreeUri(requireContext(), uri)
                     if (doc != null) {
                         loadFontFiles(FileDoc.fromDocumentFile(doc))
@@ -61,7 +77,7 @@ class FontSelectDialog : BaseDialogFragment(0),
                     }
                 } else {
                     uri.path?.let { path ->
-                        putPrefString(PreferKey.fontFolder, path)
+                        AppConfig.fontFolder = path
                         loadFontFilesByPermission(path)
                     }
                 }
@@ -69,53 +85,13 @@ class FontSelectDialog : BaseDialogFragment(0),
         }
     }
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        val ctx = requireContext()
-        val dp16 = ctx.space.lg
-        return LinearLayout(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            orientation = LinearLayout.VERTICAL
-            // 复用 dialog_title_bar 模板: attachToActivity=false / displayHomeAsUp=false / fitStatusBar=false,
-            // 避免 TitleBar 污染宿主 Activity ActionBar 导致返回箭头关闭宿主界面(如阅读界面)
-            addView(inflater.inflate(R.layout.dialog_title_bar, this, false))
-            addView(ScrollView(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0
-                ).apply { weight = 1f }
-                clipToPadding = false
-                addView(RadioGroup(ctx).apply {
-                    rgFonts = this
-                    id = View.generateViewId()
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    orientation = RadioGroup.VERTICAL
-                    setPadding(dp16, 0, dp16, 0)
-                })
-            })
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        setupTitleBar(
-            title = getString(R.string.select_font),
-            menuRes = R.menu.font_select,
-            onMenuClick = ::onMenuItemClick
-        )
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         curName = kotlin.runCatching {
             URLDecoder.decode(callBack?.curFontPath ?: "", "utf-8")
         }.getOrNull()?.substringAfterLast(File.separator)
 
-        val fontPath = getPrefString(PreferKey.fontFolder)
+        val fontPath = AppConfig.fontFolder
         if (fontPath.isNullOrEmpty()) {
             openFolder()
         } else {
@@ -132,25 +108,103 @@ class FontSelectDialog : BaseDialogFragment(0),
         }
     }
 
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_default -> {
-                val requireContext = requireContext()
-                alert(titleResource = R.string.system_typeface) {
-                    items(
-                        requireContext.resources.getStringArray(R.array.system_typefaces).toList()
-                    ) { _, i ->
-                        AppConfig.systemTypefaces = i
-                        onDefaultFontChange()
-                        dismissAllowingStateLoss()
+    @Composable
+    override fun Content() {
+        val colors = AppTheme.colors
+        var showTypefaceDialog by remember { mutableStateOf(false) }
+        var showOverflow by remember { mutableStateOf(false) }
+        Column(Modifier.fillMaxSize()) {
+            // 标题栏对齐 dialog_title_bar + font_select 菜单(默认字体 ifRoom / 其他文件夹 overflow)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .padding(start = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.select_font),
+                    color = colors.primaryText,
+                    fontSize = 18.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = stringResource(R.string.default_font),
+                    color = colors.primaryText,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable { showTypefaceDialog = true }
+                        .padding(12.dp)
+                )
+                Box {
+                    IconButton(onClick = { showOverflow = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_more_vert),
+                            contentDescription = null,
+                            tint = colors.primaryText
+                        )
+                    }
+                    AppDropdownMenu(
+                        expanded = showOverflow,
+                        onDismissRequest = { showOverflow = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.other_folder),
+                                    color = colors.primaryText
+                                )
+                            },
+                            onClick = {
+                                showOverflow = false
+                                openFolder()
+                            }
+                        )
                     }
                 }
             }
-            R.id.menu_other -> {
-                openFolder()
+            LazyColumn(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                items(fontItems, key = { it.toString() }) { item ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onFontSelect(item) }
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = item.name == curName,
+                            onClick = { onFontSelect(item) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = colors.accent,
+                                unselectedColor = colors.secondaryText
+                            )
+                        )
+                        Text(
+                            text = item.name,
+                            color = colors.primaryText,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
             }
         }
-        return true
+        if (showTypefaceDialog) {
+            AppSelectorDialog(
+                onDismissRequest = { showTypefaceDialog = false },
+                title = stringResource(R.string.system_typeface),
+                items = stringArrayResource(R.array.system_typefaces).toList(),
+                onItemSelected = { i ->
+                    AppConfig.systemTypefaces = i
+                    onDefaultFontChange()
+                    dismissAllowingStateLoss()
+                },
+            )
+        }
     }
 
     private fun openFolder() {
@@ -183,37 +237,15 @@ class FontSelectDialog : BaseDialogFragment(0),
 
     private fun loadFontFiles(fileDoc: FileDoc) {
         execute {
-            val fontItems = fileDoc.list {
+            val items = fileDoc.list {
                 it.name.matches(fontRegex)
             } ?: ArrayList()
-            mergeFontItems(fontItems, getLocalFonts())
+            mergeFontItems(items, getLocalFonts())
         }.onSuccess {
-            showFontList(it)
+            fontItems = it
         }.onError {
             AppLog.put("加载字体文件失败\n${it.localizedMessage}", it)
             toastOnUi("getFontFiles:${it.localizedMessage}")
-        }
-    }
-
-    private fun showFontList(items: List<FileDoc>) {
-        val ctx = requireContext()
-        val vPad = ctx.space.xs
-        items.forEachIndexed { index, item ->
-            val rb = RadioButton(ctx).apply {
-                layoutParams = RadioGroup.LayoutParams(
-                    RadioGroup.LayoutParams.MATCH_PARENT,
-                    RadioGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(0, vPad, 0, vPad)
-                text = item.name
-                tag = item
-                setTextColor(ctx.getColor(R.color.primaryText))
-            }
-            rgFonts.addView(rb)
-            if (item.name == curName) rgFonts.check(rb.id)
-        }
-        rgFonts.setOnCheckedChangeListener { _, checkedId ->
-            (rgFonts.findViewById<View>(checkedId)?.tag as? FileDoc)?.let(::onFontSelect)
         }
     }
 

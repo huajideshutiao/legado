@@ -1,0 +1,176 @@
+package io.legado.app.ui.widget.dialog
+
+// I18N KEYS (need to register in ResourceProvider.jvm.kt / Localizable.strings):
+//   "code_view" to "code view"
+//   "action_save" to "保存" (已注册)
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
+
+/** Arco Design arco_radius_lg = 16dp。 */
+private val ArcoRadiusLg = 16.dp
+
+/**
+ * 代码查看/编辑对话框内容 (KMP 共享, desktop / iOS 复用)。
+ *
+ * 对应 app 端 `io.legado.app.ui.widget.dialog.CodeDialog` 的 UI 结构, 去掉对 Android
+ * CodeView (语法高亮 EditText) / BaseComposeDialogFragment / IntentData 的依赖, 改为
+ * 纯 @Composable + 回调形式:
+ * - 标题栏: [DialogTitleBar] (disableEdit=true 时标题 "code view", 否则空串), 右侧保存按钮
+ *   (仅可编辑模式显示, 图标 ic_save + contentDescription action_save)
+ * - 代码区: 可编辑模式用 [TextField] (等宽字体 + 垂直滚动); 只读模式用 [SelectionContainer]
+ *   + [Text] (等宽字体 + 垂直滚动, 支持文本选择复制)
+ *
+ * 与 app 端差异 (平台限制, 严禁改变可编辑/只读的交互语义):
+ * - app 端用 CodeView 自带语法高亮 (addLegadoPattern/addJsonPattern/addJsPattern);
+ *   KMP 版无等价跨平台语法高亮组件, 暂用纯文本 + 等宽字体呈现 (功能完整性优先, 高亮待后续)。
+ * - app 端通过 Fragment arguments + IntentData 传 code; KMP 版由调用方直接传参。
+ * - app 端 onSave 通过 parentFragment/activity 的 Callback 回调; KMP 版用 [onSave] lambda。
+ *
+ * UI 结构对齐 app 端 (严禁改变样式):
+ * - Column fillMaxWidth
+ * - DialogTitleBar: onBack=onDismiss, actions=保存按钮 (仅 !disableEdit)
+ * - 代码区: fillMaxWidth + weight(1f) + 垂直滚动
+ *
+ * @param code 初始代码文本
+ * @param disableEdit true=只读查看, false=可编辑
+ * @param onDismiss 用户点返回键/标题栏返回按钮
+ * @param onSave 用户点保存按钮, 参数为当前编辑区文本 (仅 !disableEdit 时触发)
+ */
+@Composable
+fun CodeDialogContent(
+    code: String,
+    disableEdit: Boolean,
+    onDismiss: () -> Unit,
+    onSave: ((String) -> Unit)? = null,
+) {
+    val colors = AppTheme.colors
+    // 标题: disableEdit=true → "code view", 否则空串 (对齐 app 端逻辑)
+    val title = if (disableEdit) rememberString("code_view") else ""
+    val saveDesc = rememberString("action_save")
+    // 可编辑模式持有本地编辑状态 (初始化自 code)
+    var editCode by remember(code) { mutableStateOf(code) }
+
+    Column(Modifier.fillMaxWidth()) {
+        DialogTitleBar(
+            title = title,
+            onBack = onDismiss,
+        ) {
+            if (!disableEdit && onSave != null) {
+                IconButton(onClick = { onSave(editCode) }) {
+                    Icon(
+                        painter = rememberPainter("ic_save"),
+                        contentDescription = saveDesc,
+                        tint = colors.primaryText,
+                    )
+                }
+            }
+        }
+        // 代码区: 等宽字体 + 垂直滚动, 高度上限 480dp (避免超长内容撑爆 Dialog)
+        if (disableEdit) {
+            SelectionContainer {
+                Text(
+                    text = code,
+                    color = colors.primaryText,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
+        } else {
+            TextField(
+                value = editCode,
+                onValueChange = { editCode = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                textStyle = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                ),
+                // 无边框无背景, 对齐 app 端 CodeView 内嵌呈现
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = colors.primaryText,
+                    unfocusedTextColor = colors.primaryText,
+                    cursorColor = colors.accent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * 代码查看/编辑对话框 (KMP 共享, desktop / iOS 直接复用)。
+ *
+ * 用 [androidx.compose.ui.window.Dialog] 包裹 [CodeDialogContent], 提供声明式 API。
+ * app 端不使用本函数 (app 端用 CodeView 版 CodeDialog 保留语法高亮); desktop / iOS 端可直接调用。
+ *
+ * @param code 初始代码文本
+ * @param disableEdit true=只读查看, false=可编辑
+ * @param onDismiss 用户关闭对话框 (返回键 / 点击外部 / 标题栏返回)
+ * @param onSave 保存回调 (仅 !disableEdit 时有效)
+ */
+@Composable
+fun CodeDialog(
+    code: String,
+    disableEdit: Boolean,
+    onDismiss: () -> Unit,
+    onSave: ((String) -> Unit)? = null,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(ArcoRadiusLg),
+            color = AppTheme.colors.background,
+        ) {
+            CodeDialogContent(
+                code = code,
+                disableEdit = disableEdit,
+                onDismiss = onDismiss,
+                onSave = onSave,
+            )
+        }
+    }
+}

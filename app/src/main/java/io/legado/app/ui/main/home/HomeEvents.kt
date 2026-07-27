@@ -18,7 +18,7 @@ data class HomeTabEvent(
     }
 }
 
-/** 主页展示项变更事件，所属 HomeTabFragment 按 tabTitle 过滤后做增量更新。 */
+/** 主页展示项变更事件，HomeFragment 按 tabTitle 过滤后做增量更新。 */
 data class HomeSectionEvent(
     val action: String,
     val tabTitle: String,

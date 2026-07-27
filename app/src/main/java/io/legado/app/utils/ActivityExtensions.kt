@@ -20,9 +20,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.customView
-import io.legado.app.lib.dialogs.okButton
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.widget.dialog.TextDialog
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
@@ -200,11 +198,7 @@ fun Activity.showExportSuccess(uri: Uri) {
         if (uri.toString().isAbsUrl()) {
             setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
         }
-        val alertBinding = io.legado.app.databinding.DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.path)
-            editView.setText(uri.toString())
-        }
-        customView { alertBinding.root }
+        editTextView(hint = getString(R.string.path), text = uri.toString())
         okButton {
             sendToClip(uri.toString())
         }
@@ -219,11 +213,7 @@ fun androidx.fragment.app.Fragment.showExportSuccess(uri: Uri) {
         if (uri.toString().isAbsUrl()) {
             setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
         }
-        val alertBinding = io.legado.app.databinding.DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.path)
-            editView.setText(uri.toString())
-        }
-        customView { alertBinding.root }
+        editTextView(hint = getString(R.string.path), text = uri.toString())
         okButton {
             requireContext().sendToClip(uri.toString())
         }

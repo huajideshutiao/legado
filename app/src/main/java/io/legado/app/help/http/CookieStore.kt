@@ -1,145 +1,87 @@
 package io.legado.app.help.http
 
 import androidx.annotation.Keep
-import io.legado.app.constant.AppLog
+import com.script.jsdispatch.JsApi
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Cookie
-import io.legado.app.help.CacheManager
-import io.legado.app.help.http.CookieManager.getCookieNoSession
-import io.legado.app.help.http.CookieManager.mergeCookiesToMap
-import io.legado.app.help.http.api.CookieManagerInterface
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.removeCookie
+import kotlinx.coroutines.runBlocking
 
+/**
+ * app 端 CookieStore 薄壳 (Android 专属逻辑)。
+ *
+ * 主体 cookie CRUD 逻辑 (setCookie/replaceCookie/getCookie/removeCookie/
+ * cookieToMap/mapToCookie/getKey/clear) 已下沉到 commonMain [CookieStoreBase],
+ * 本 object 继承基类并 override 平台钩子, 保留 Android 专属逻辑:
+ * - **数据库持久化**: [onInsertCookieToDb] / [onDeleteCookieFromDb] / [onClearOkHttpCookie]
+ *   委托 `appDb.cookieDao` (Room + appCtx, 留 app 端)。
+ * - **WebView 同步**: [onSyncCookieToWebView] / [onRemoveWebViewCookie]
+ *   委托 `android.webkit.CookieManager` (Android 专属)。
+ * - **CookieManager 委托**: [getCookieNoSession] / [getSessionCookie] /
+ *   [removeCookie] (url, key) 委托 app 端 [CookieManager] object
+ *   (依赖 appDb.cookieDao + CacheManager 内存缓存)。
+ *
+ * # 行为一致性
+ * 所有 override 方法严格保留原 app 端 CookieStore 的实现逻辑 (runBlocking + appDb /
+ * WebkitCookieManager / CookieManager 委托), 仅通过 protected 钩子注入到基类流程中,
+ * 外部调用方 `CookieStore.setCookie(...)` 等签名/行为完全不变。
+ *
+ * # 注解
+ * `@Keep` (androidx.annotation.Keep, Android 专属) / `@JsApi` (com.script.jsdispatch)
+ * 保留在 app 端 object 上 (与 CacheManager 下沉时 @Keep 处理一致: commonMain base 不加)。
+ */
 @Keep
-object CookieStore : CookieManagerInterface {
+@JsApi
+object CookieStore : CookieStoreBase() {
 
-    /**
-     * 保存cookie到数据库，并同步到内置浏览器
-     */
-    override fun setCookie(url: String, cookie: String?) {
-        if (!url.startsWith("http")) return
-        try {
-            val domain = NetworkUtils.getSubDomain(url)
-            val cookieStr = cookie ?: ""
+    // ===== 数据库持久化钩子 (appDb.cookieDao) =====
 
-            val cacheKey = domain + "_cookie"
-            val oldCache = CacheManager.getFromMemory(cacheKey) as? String
-            if (oldCache == cookieStr && cookieStr.isNotEmpty()) return
-
-            // 内存缓存同步更新，保证 getCookie 能立即拿到新值
-            CacheManager.putMemory(cacheKey, cookieStr)
-            appDb.cookieDao.insert(Cookie(domain, cookieStr))
-            // 同步到内置浏览器
-            val baseUrl = NetworkUtils.getBaseUrl(url) ?: return
-            if (cookieStr.isNotBlank()) {
-                val cookieManager = android.webkit.CookieManager.getInstance()
-                // 性能优化：使用 split 迭代避免创建多余的 List
-                cookieStr.split(';').forEach {
-                    val c = it.trim()
-                    if (c.isNotEmpty()) {
-                        cookieManager.setCookie(baseUrl, c)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            AppLog.put("保存Cookie失败\n$url\n$e", e)
-        }
+    /** 持久化 cookie 到数据库 (原 setCookie 中 `appDb.cookieDao.insert`)。 */
+    override fun onInsertCookieToDb(domain: String, cookieStr: String) {
+        runBlocking { appDb.cookieDao.insert(Cookie(domain, cookieStr)) }
     }
 
-    override fun replaceCookie(url: String, cookie: String) {
-        if (url.isBlank() || cookie.isBlank()) return
+    /** 从数据库删除 domain 对应 cookie (原 removeCookie 中 `appDb.cookieDao.delete`)。 */
+    override fun onDeleteCookieFromDb(domain: String) {
+        runBlocking { appDb.cookieDao.delete(domain) }
+    }
 
-        val oldCookie = getCookieNoSession(url)
-        if (oldCookie.isEmpty()) {
-            setCookie(url, cookie)
-        } else {
-            val cookieMap = cookieToMap(oldCookie)
-            cookieMap.putAll(cookieToMap(cookie))
-            mapToCookie(cookieMap)?.let {
-                setCookie(url, it)
+    /** 清除 OkHttp cookie (原 clear 中 `appDb.cookieDao.deleteOkHttp`)。 */
+    override fun onClearOkHttpCookie() {
+        runBlocking { appDb.cookieDao.deleteOkHttp() }
+    }
+
+    // ===== WebView 同步钩子 (android.webkit.CookieManager) =====
+
+    /** 同步 cookie 到内置浏览器 (原 setCookie 中 `WebkitCookieManager.setCookie`)。 */
+    override fun onSyncCookieToWebView(baseUrl: String, cookieStr: String) {
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        // 性能优化：使用 split 迭代避免创建多余的 List
+        cookieStr.split(';').forEach {
+            val c = it.trim()
+            if (c.isNotEmpty()) {
+                cookieManager.setCookie(baseUrl, c)
             }
         }
     }
 
-    /**
-     * 获取url所属的二级域名的cookie
-     */
-    override fun getCookie(url: String): String {
-        val domain = NetworkUtils.getSubDomain(url)
-        val cookie = getCookieNoSession(url)
-        val sessionCookie = CookieManager.getSessionCookie(domain)
-
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
-
-        var ck = mapToCookie(cookieMap) ?: ""
-        if (ck.length > 4096) {
-            val keys = cookieMap.keys.toList()
-            for (key in keys.shuffled()) {
-                cookieMap.remove(key)
-                CookieManager.removeCookie(url, key)
-                ck = mapToCookie(cookieMap) ?: ""
-                if (ck.length <= 4096) break
-            }
-        }
-        return ck
+    /** 从 WebView 移除 url 对应 cookie (原 removeCookie 中 `WebkitCookieManager.removeCookie`)。 */
+    override fun onRemoveWebViewCookie(url: String) {
+        android.webkit.CookieManager.getInstance().removeCookie(url)
     }
 
-    fun getKey(url: String, key: String): String {
-        val cookie = getCookie(url)
-        // 性能优化：直接解析不转换成 Map
-        if (cookie.isBlank()) return ""
-        cookie.split(';').forEach { pair ->
-            val index = pair.indexOf('=')
-            if (index > 0 && pair.take(index).trim() == key) {
-                return pair.substring(index + 1).trim()
-            }
-        }
-        return ""
-    }
+    // ===== CookieManager 委托钩子 (app 端 CookieManager object) =====
 
-    override fun removeCookie(url: String) {
-        try {
-            val domain = NetworkUtils.getSubDomain(url)
-            appDb.cookieDao.delete(domain)
-            CacheManager.deleteMemory(domain + "_cookie")
-            CacheManager.deleteMemory("${domain}_session_cookie")
+    /** 获取不含 session 的持久 cookie, 委托 [CookieManager.getCookieNoSession]。 */
+    override fun getCookieNoSession(url: String): String =
+        CookieManager.getCookieNoSession(url)
 
-            android.webkit.CookieManager.getInstance().removeCookie(url)
-//
-//            // 清理 WebStorage (Local Storage / Session Storage)
-//            val baseUrl = NetworkUtils.getBaseUrl(url)
-//            if (baseUrl != null) {
-//                WebStorage.getInstance().deleteOrigin(baseUrl)
-//            }
-        } catch (e: Exception) {
-            AppLog.put("删除Cookie失败\n$url\n$e", e)
-        }
-    }
+    /** 获取会话期 cookie, 委托 [CookieManager.getSessionCookie]。 */
+    override fun getSessionCookie(domain: String): String? =
+        CookieManager.getSessionCookie(domain)
 
-    override fun cookieToMap(cookie: String): MutableMap<String, String> {
-        val cookieMap = mutableMapOf<String, String>()
-        if (cookie.isBlank()) return cookieMap
-
-        cookie.split(';').forEach { pair ->
-            val index = pair.indexOf('=')
-            if (index > 0) {
-                val key = pair.take(index).trim()
-                val value = pair.substring(index + 1).trim()
-                if (value.isNotEmpty() && value != "null") {
-                    cookieMap[key] = value
-                }
-            }
-        }
-        return cookieMap
-    }
-
-    override fun mapToCookie(cookieMap: Map<String, String>?): String? {
-        if (cookieMap.isNullOrEmpty()) return null
-        return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
-    }
-
-    fun clear() {
-        appDb.cookieDao.deleteOkHttp()
+    /** 移除 url 所属域名中指定 key 的 cookie, 委托 [CookieManager.removeCookie]。 */
+    override fun removeCookie(url: String, key: String) {
+        CookieManager.removeCookie(url, key)
     }
 }

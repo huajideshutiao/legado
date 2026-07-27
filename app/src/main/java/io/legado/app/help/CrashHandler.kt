@@ -9,6 +9,7 @@ import android.webkit.WebSettings
 import androidx.core.net.toUri
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.appInfo
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig

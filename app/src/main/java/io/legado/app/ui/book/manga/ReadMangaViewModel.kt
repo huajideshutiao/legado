@@ -11,14 +11,17 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.ConcurrentRateLimiter
+import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.getDisplayTitle
+import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
+import io.legado.app.help.book.saveRead
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -32,6 +35,7 @@ import io.legado.app.ui.book.manga.entities.ReaderLoading
 import io.legado.app.utils.mapIndexed
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -41,7 +45,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import kotlin.math.min
 
@@ -81,13 +87,19 @@ class ReadMangaViewModel(application: Application) :
         onChapterListUpdated(book, true)
     }
 
-    fun initMangaData(book: Book, isDiffBook: Boolean = curBook?.bookUrl != book.bookUrl) {
+    fun initMangaData(
+        book: Book,
+        isDiffBook: Boolean = curBook?.bookUrl != book.bookUrl,
+        // 调用方可在主线程预先读取 chapterListData.value 传入, 规避 LiveData.postValue 异步未生效问题
+        // (未加书架时章节列表不入库, 不能依赖 DB 兜底; 参考 ReadBookViewModel.initBook 的 withContext(Main) 写法)
+        prefetchedList: List<BookChapter>? = null
+    ) {
         curBook = book
         if (isDiffBook) {
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.MANGA, book.name)
         }
-        val chapterList = chapterListData.value
-        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        val chapterList = prefetchedList ?: chapterListData.value
+        chapterSize = chapterList?.size ?: runBlocking { appDb.bookChapterDao.getChapterCount(book.bookUrl) }
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         if (isDiffBook || durChapterIndex != book.durChapterIndex) {
@@ -555,7 +567,8 @@ class ReadMangaViewModel(application: Application) :
 
     override fun onSourceChanged(book: Book, toc: List<BookChapter>) {
         chapterListData.postValue(toc)
-        initMangaData(book)
+        // toc 已在手中, 直接传入避免依赖 postValue 异步时序, 与 initManga 修复同类问题
+        initMangaData(book, prefetchedList = toc)
         loadContent()
     }
 
@@ -599,8 +612,12 @@ class ReadMangaViewModel(application: Application) :
         }
     }
 
-    private fun initManga(book: Book, isSameBook: Boolean) {
-        initMangaData(book, isDiffBook = !isSameBook)
+    private suspend fun initManga(book: Book, isSameBook: Boolean) {
+        // upBook 中 chapterListData.postValue(tmp) 是异步的, IO 线程立即读取会拿到旧值(null)
+        // 未加书架时章节列表又未入库, runBlocking 查 DB 返回 0, 导致 chapterSize/simulatedChapterSize = 0
+        // 这里切换到主线程等待 postValue 生效后再取值, 与 ReadBookViewModel.initBook 保持一致
+        val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
+        initMangaData(book, isDiffBook = !isSameBook, prefetchedList = chapterList)
         //开始加载内容
         if (!isSameBook) loadContent()
         else loadOrUpContent()
