@@ -73,6 +73,7 @@ class AudioPlayViewModel(application: Application) : BaseReadViewModel(applicati
         when (AudioPlay.status) {
             Status.PLAY -> AudioPlay.pause()
             Status.PAUSE -> AudioPlay.resume()
+            // STOP / LOADING 都走这里, 与原版一致 (加载中重复触发由 addLoading + triggerPlay 早退守卫)
             else -> AudioPlay.loadOrUpPlayUrl()
         }
     }

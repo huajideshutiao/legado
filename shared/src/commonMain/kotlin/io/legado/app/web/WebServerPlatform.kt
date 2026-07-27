@@ -18,14 +18,13 @@ package io.legado.app.web
  * 模式参考 [io.legado.app.help.service.ServiceLaunchers]。
  */
 interface WebServerPlatform {
-
     /**
      * 起 HttpServer + WebSocketServer。
      *
      * @param port HttpServer 端口; WebSocketServer 用 port+1 (对齐 app 端 [WebService.upWebServer])
-     * @return 本机可访问 URL 列表 (空列表=无可用 IP, 调用方据此判定失败)
+     * @return 起服务结果; [WebServerStartResult.addresses] 为空表示失败, 失败原因见 errorMsg
      */
-    fun startServers(port: Int): List<String>
+    fun startServers(port: Int): WebServerStartResult
 
     /** 停 HttpServer + WebSocketServer (对齐 app 端 [WebService.onDestroy] / [WebService.upWebServer] 首段)。 */
     fun stopServers()
@@ -33,6 +32,20 @@ interface WebServerPlatform {
     /** app 端 Service 续命 (wakelock); 非 Android 端 no-op (对齐 app 端 WebService.serve)。 */
     fun serve()
 }
+
+/**
+ * 起 Web 服务的结果。
+ *
+ * 原 app 端 WebService.upWebServer 在 catch(IOException) 里直接 toast 异常信息;
+ * 下沉后 shared 不能 toast, 故把失败原因回传给平台壳 (Android WebService) 提示用户。
+ *
+ * @param addresses 本机可访问 URL 列表 (空=启动失败或无可用 IP)
+ * @param errorMsg 启动异常信息 (对齐原版 e.localizedMessage); null 表示非异常失败 (如无 IP)
+ */
+data class WebServerStartResult(
+    val addresses: List<String> = emptyList(),
+    val errorMsg: String? = null,
+)
 
 /**
  * [WebServerPlatform] 容器 (provider 注入模式)。

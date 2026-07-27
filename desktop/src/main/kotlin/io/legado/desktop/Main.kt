@@ -60,6 +60,7 @@ import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopFileCacheProvider
+import io.legado.desktop.help.registerDesktopAndroidId
 import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
@@ -70,6 +71,7 @@ import io.legado.desktop.help.ui.registerDesktopToastProvider
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
+import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
 import io.legado.desktop.model.DesktopCacheBook
@@ -134,6 +136,10 @@ fun main() = application {
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
     // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
     registerDesktopScreenInfoProvider()
+    // 注入机器标识到 AndroidIdHolder (对照 app 端 JsEnginesAndroid 注入 ANDROID_ID)。
+    // 默认值 "null" 只有 4 字符, BaseSource 登录信息 AES 密钥取前 16 字节会越界被吞,
+    // 表现为桌面端书源登录信息无法持久化; 必须在任何 getLoginInfo/putLoginInfo 之前注入
+    registerDesktopAndroidId()
     // 注册桌面端 Toaster + NotificationProgress provider (shared jvmMain 已实现)
     // - Toasters: SystemTray + TrayIcon 显示通知 (forceRefresh 提示 / 错误反馈用)
     // - NotificationProgresses: SystemTray 进度通知 (已弃用: 桌面端进度改走 UI 内 StateFlow, 见 DesktopMainViewModel)
@@ -293,6 +299,10 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopToastProvider()
         registerDesktopOpenUrlProvider()
         registerDesktopUserAgentProvider()
+        // 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
+        //      依赖 OkHttpClientProviders (第2步, 拉验证码图片) + ToastProviders (上一行);
+        //      未注册时 JS 触发验证会 IllegalStateException 裸抛
+        registerDesktopVerificationUiProvider()
         // 12. JS 引擎 (native 库在首次 eval 时加载, 注册本身不耗时)
         registerDesktopJsEngines()
         // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders

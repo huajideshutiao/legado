@@ -8,7 +8,10 @@ import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
+@Serializable
 @Entity(
     tableName = "chapters",
     primaryKeys = ["bookUrl", "url"],
@@ -37,13 +40,14 @@ data class BookChapter(
     var variable: String? = null        //变量
 ) : RuleDataInterface, BookChapterLike {
 
-    @delegate:Transient
+    @Transient
     @delegate:Ignore
     override val variableMap: HashMap<String, String> by lazy {
         decodeStringMapOrNull(variable) ?: hashMapOf()
     }
 
     @Ignore
+    @Transient
     var titleMD5: String? = null
 
     override fun putVariable(key: String, value: String?): Boolean {

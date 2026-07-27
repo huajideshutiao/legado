@@ -264,7 +264,9 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
 
     override fun onDestroy() {
         super.onDestroy()
-        if (AudioPlay.status != Status.PLAY) {
+        // LOADING(拉链接+缓冲中) 也算"在播", 退出界面不该停掉, 否则后台播放起不来
+        val status = AudioPlay.status
+        if (status == Status.STOP || status == Status.PAUSE) {
             viewModel.stop()
         }
         if (viewModel.inBookshelf) {

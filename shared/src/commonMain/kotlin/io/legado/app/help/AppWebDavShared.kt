@@ -10,6 +10,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.lib.webdav.Authorization
@@ -22,6 +24,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
+import io.legado.app.utils.replaceReservedChar
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.currentCoroutineContext
@@ -117,18 +120,18 @@ object AppWebDavShared {
      *
      * 与 app 端 [io.legado.app.help.AppWebDav.upConfig] 行为一致:
      * - account / password 任一为空直接跳过 (authorization = null)
-     * - 校验失败抛 [WebDavException] (由调用方决定是否 toast)
+     * - 校验失败抛 [WebDavException] (由调用方 toast, 与原版 checkAuthorization 内 toast 等价)
      * - 校验成功创建 root / bookProgress / exports / bg 4 个子目录
      */
     @Throws(WebDavException::class)
     suspend fun upConfig() {
+        authorization = null
+        val account = AppConfigProviders.get().webDavAccount
+        val password = AppConfigProviders.get().webDavPassword
+        if (account.isEmpty() || password.isEmpty()) return
+        val mAuthorization = Authorization(account, password)
+        checkAuthorization(mAuthorization)
         kotlin.runCatching {
-            authorization = null
-            val account = AppConfigProviders.get().webDavAccount
-            val password = AppConfigProviders.get().webDavPassword
-            if (account.isEmpty() || password.isEmpty()) return@runCatching
-            val mAuthorization = Authorization(account, password)
-            checkAuthorization(mAuthorization)
             WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
             WebDav(bookProgressUrl, mAuthorization).makeAsDir()
             WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
@@ -143,13 +146,14 @@ object AppWebDavShared {
     /**
      * 校验用户名密码是否有效。
      *
-     * 校验失败会清空 webDavPassword (避免持续使用错误密码), 并抛 [WebDavException]。
+     * 校验失败会清空 webDavPassword (避免持续使用错误密码), 并抛 [WebDavException],
+     * 文案走 [appString] 与 app 端 R.string.webdav_application_authorization_error 一致。
      */
     @Throws(WebDavException::class)
     private suspend fun checkAuthorization(authorization: Authorization) {
         if (!WebDav(rootWebDavUrl, authorization).check()) {
-            PreferenceProviders.get().putString(PreferKey.webDavPassword, null)
-            throw WebDavException("WebDav 认证失败")
+            PreferenceProviders.get().remove(PreferKey.webDavPassword)
+            throw WebDavException(appString(AppStringKey.webdav_application_authorization_error))
         }
     }
 
@@ -299,9 +303,9 @@ object AppWebDavShared {
         return "$bookProgressUrl${getProgressFileName(name, author)}"
     }
 
-    /** 书籍进度文件名: `${name}_${author}.json` (与 app 端一致)。 */
+    /** 书籍进度文件名: `${name}_${author}.json`, 保留字符转义 (与 app 端原版一致)。 */
     private fun getProgressFileName(name: String, author: String): String {
-        return "${name}_${author}".normalizeFileName() + ".json"
+        return replaceReservedChar("${name}_${author}".normalizeFileName()) + ".json"
     }
 
     /**

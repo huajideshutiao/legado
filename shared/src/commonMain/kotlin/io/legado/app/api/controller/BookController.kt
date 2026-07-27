@@ -111,13 +111,20 @@ object BookController {
      * 依赖 android.graphics.Bitmap + ImageProvider, 通过 [ImageControllerProvider]
      * 注入由 app 端 actual 实现 (内部缓存 book/bookSource 状态, 与原 app 端 getImg 一致)。
      */
-    fun getImg(parameters: Map<String, List<String>>): ReturnData {
+    suspend fun getImg(parameters: Map<String, List<String>>): ReturnData {
         val returnData = ReturnData()
         val bookUrl = parameters["url"]?.firstOrNull()
             ?: return returnData.setErrorMsg("bookUrl为空")
         val src = parameters["path"]?.firstOrNull()
             ?: return returnData.setErrorMsg("图片链接为空")
         val width = parameters["width"]?.firstOrNull()?.toInt() ?: 640
+        // provider 接口无法区分"查无此书"与"取图失败", 这里按原版口径先校验一次;
+        // 与原版一样只在 bookUrl 变化时查库, 稳态无额外查询。
+        if (lastImgBookUrl != bookUrl) {
+            AppDbProviders.get().bookDao.getBook(bookUrl)
+                ?: return returnData.setErrorMsg("bookUrl不对")
+            lastImgBookUrl = bookUrl
+        }
         val bytes = ImageControllerProviders.get().getImg(bookUrl, src, width)
         return if (bytes != null) {
             returnData.setData(bytes)
@@ -125,6 +132,9 @@ object BookController {
             returnData.setErrorMsg("getImg error")
         }
     }
+
+    /** [getImg] 上次校验通过的 bookUrl (对齐原版 BookController 的 bookUrl 缓存, 避免每张图查库)。 */
+    private var lastImgBookUrl: String = ""
 
     /**
      * 更新目录

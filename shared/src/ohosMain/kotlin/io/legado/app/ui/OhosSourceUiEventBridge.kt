@@ -1,0 +1,73 @@
+package io.legado.app.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import io.legado.app.constant.EventBus
+import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.SourceUiRequest
+import io.legado.app.help.ui.OpenUrlProviders
+import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.widget.dialog.VariableDialog
+import io.legado.app.utils.FlowBus
+import io.legado.app.utils.decodeStringMapOrNull
+import io.legado.app.utils.encodeStringMap
+import kotlinx.coroutines.launch
+
+/**
+ * 鸿蒙端书源 UI 事件桥 (对照 desktop SourceUiEventBridgeDesktop / iOS IosSourceUiEventBridge)。
+ *
+ * 订阅 FlowBus(SOURCE_UI_REQUEST), 承接 JS 的 source.showLoginDialog()/
+ * showSourceVariableDialog(), 按请求类型弹 SourceLoginDialog/VariableDialog;
+ * onOpenUrl 走 OpenUrlProviders (desktop 的 browseUrl 为 JVM 专属)。
+ */
+object OhosSourceUiEventBridge {
+    val currentRequest = mutableStateOf<SourceUiRequest?>(null)
+}
+
+/** 由 MainOhos Compose 根调用, 与各 Provider 平级, 生命周期跟随 Composable。 */
+@Composable
+fun SourceUiEventBridgeHost() {
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.SOURCE_UI_REQUEST).collect { event ->
+            if (event is SourceUiRequest) {
+                OhosSourceUiEventBridge.currentRequest.value = event
+            }
+        }
+    }
+
+    val request = OhosSourceUiEventBridge.currentRequest.value ?: return
+    // BaseSource 抽象, 实例恒为 BookSource; 转换失败清空请求避免卡死
+    val src = request.source as? BookSource ?: run {
+        OhosSourceUiEventBridge.currentRequest.value = null
+        return
+    }
+
+    when (request) {
+        is SourceUiRequest.Login -> {
+            SourceLoginDialog(
+                source = src,
+                onDismiss = { OhosSourceUiEventBridge.currentRequest.value = null },
+                onOpenUrl = { url -> OpenUrlProviders.get().openUrl(url) },
+            )
+        }
+        is SourceUiRequest.SourceVariable -> {
+            // 与 desktop 一致: bookVariables 传空 Map (无具体书籍), 确认后 setVariable 写回
+            VariableDialog(
+                sourceVariables = decodeStringMapOrNull(src.getVariable()) ?: emptyMap(),
+                bookVariables = emptyMap(),
+                onConfirm = { newSourceVars, _ ->
+                    scope.launch {
+                        src.setVariable(encodeStringMap(newSourceVars))
+                    }
+                    OhosSourceUiEventBridge.currentRequest.value = null
+                },
+                onDismiss = {
+                    OhosSourceUiEventBridge.currentRequest.value = null
+                },
+            )
+        }
+    }
+}

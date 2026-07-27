@@ -30,6 +30,8 @@ import io.legado.app.help.http.getProxyClient
 import io.legado.app.model.Debug
 import io.legado.app.help.image.BitmapImageOps
 import io.legado.app.model.SharedJsScope
+import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.script.quickjs.QuickJsJsEngine
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider
 import io.legado.app.utils.ACache
@@ -81,6 +83,11 @@ fun registerAndroidJsEngines() {
         override fun replaceCookie(tag: String, cookie: String) = CookieStore.replaceCookie(tag, cookie)
         override fun removeCookie(tag: String) = CookieStore.removeCookie(tag)
         override fun asBinding(): Any = CookieStore
+    }
+    // shared webBook 编排层创建 AnalyzeRule 走此工厂: 返回 app 端 AnalyzeRule 子类,
+    // 补全 JsExtensions 面 (md5Encode/createSymmetricCrypto/get/post 等) 并命中 KSP @JsApi 分派表。
+    AnalyzeRuleFactories.register { ruleData, source, preUpdateJs ->
+        AnalyzeRule(ruleData, source, preUpdateJs)
     }
     SourceDebugLoggers.impl = object : SourceDebugLogger {
         override fun log(key: String, msg: String, print: Boolean, state: Int) =

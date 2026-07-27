@@ -409,23 +409,22 @@ object CacheBookShared {
          * 从待下载列表内取第一条下载 (对照 app 端 CacheBookModel.download)。
          *
          * 流程:
-         * 1. 取 waitDownloadSet 第一条; 空则 return
-         * 2. 防重复: onDownloadSet 已含则跳过
-         * 3. 从 DB 查 chapter (入队后可能已被刷新目录覆盖); 查不到则移除跳过
-         * 4. isVolume 章节发 SAVE_CONTENT 事件跳过 (无正文)
-         * 5. hasImageContent 检查: 已含图片但未下载完整则跳过 (app 端真实检查,
-         *    桌面端 BookHelpAccessor 默认 false 不跳过)
-         * 6. 移入 onDownloadSet
-         * 7. 已缓存 (BookStorage.hasContent): 重新加载内容并 saveImages 刷新图片缓存
+         * 1. 锁内取 waitDownloadSet 第一条并直接预占进 onDownloadSet, 保证任意时刻 index
+         *    至少在一个集合中 (等价原版单 @Synchronized 块语义, isRun/isStop/onFinally 不会误判)
+         * 2. 锁外查 DB chapter (suspend 不能进锁); 查不到/被 stop/isVolume/hasImageContent
+         *    则加锁回滚预占
+         * 3. 已缓存 (BookStorage.hasContent): 重新加载内容并 saveImages 刷新图片缓存
          *    (app 端行为, 桌面端 saveImages no-op, 等价于仅 onSuccess)
-         * 8. 未缓存: Coroutine.async (LAZY) 启动 getContentAwait + saveImages + saveContent,
-         *    成功后通过 [CacheBookCallback.onContentLoadFinish] 通知阅读流
+         * 4. 未缓存: getContentAwait + saveImages, 成功后通过
+         *    [CacheBookCallback.onContentLoadFinish] 通知阅读流
+         * 5. 任务一律 LAZY 构造 (锁内构造不执行), start() 在锁外: atomicfu 锁非重入,
+         *    持锁 start 时快速完成的任务会同步回调 onSuccess/onFinally 重入自死锁
          *
          * @param scope 协程作用域 (Coroutine.async 用)
          * @param context 协程上下文 (Coroutine.async 用, 与 app 端一致)
          */
         suspend fun download(scope: CoroutineScope, context: CoroutineContext) {
-            // 锁内: 取 chapterIndex + 初步检查 + 预占移除 (避免持锁等待 IO)
+            // 锁内: 取 chapterIndex 并直接预占进 onDownloadSet (中间窗口 index 不落空)
             val chapterIndex = synchronized(lock) {
                 val idx = waitDownloadSet.firstOrNull()
                 if (idx == null) {
@@ -439,27 +438,40 @@ object CacheBookShared {
                     return
                 }
                 waitDownloadSet.remove(idx)
+                onDownloadSet.add(idx)
                 idx
             }
             // 锁外: chapter DAO 查询 (suspend, 不能在 synchronized 块内调用)
             val chapter = AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, chapterIndex)
             if (chapter == null) {
+                synchronized(lock) { onDownloadSet.remove(chapterIndex) }
                 return
             }
-            // 锁内: 后续共享状态访问 + 启动下载任务
-            synchronized(lock) {
+            // 锁内: 状态检查 + LAZY 任务构造; start() 必须在锁外 (见 KDoc 第 5 条)
+            val task: Coroutine<*> = synchronized(lock) {
+                if (isStopped) {
+                    // DB 查询窗口内被 stop(): 回滚预占, 不启动任务 (等价原版 stop 先于 download)
+                    onDownloadSet.remove(chapterIndex)
+                    return
+                }
                 if (chapter.isVolume) {
                     /** 修正下载计数 */
                     postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
+                    onDownloadSet.remove(chapterIndex)
                     return
                 }
                 val bookHelp = BookHelpProviders.get()
                 if (bookHelp.hasImageContent(book, chapter)) {
+                    onDownloadSet.remove(chapterIndex)
                     return
                 }
-                onDownloadSet.add(chapterIndex)
                 if (BookStorageProviders.get().hasContent(book, chapter)) {
-                    Coroutine.async(scope, context, executeContext = context) {
+                    Coroutine.async(
+                        scope,
+                        context,
+                        start = CoroutineStart.LAZY,
+                        executeContext = context
+                    ) {
                         bookHelp.getContent(book, chapter)?.let {
                             bookHelp.saveImages(bookSource, book, chapter, it, 1)
                         }
@@ -474,40 +486,42 @@ object CacheBookShared {
                         onCancel(chapterIndex)
                     }.onFinally {
                         onFinally()
-                    }.let {
+                    }.also {
                         tasks.add(it)
                     }
-                    return
+                } else {
+                    val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
+                    Coroutine.async(
+                        scope,
+                        context,
+                        start = CoroutineStart.LAZY,
+                    ) {
+                        val content = getContentAwait(bookSource, book, chapter, nextChapterUrl)
+                        bookHelp.saveImages(bookSource, book, chapter, content, 2)
+                        //正文落盘由 getContentAwait 内部完成 (WebBook.getContentAwait needSave=true
+                        //默认调 BookHelpProviders.get().saveContent), 与 app 端原版一致,
+                        //此处不再重复 saveContent (避免双重落盘)
+                        content
+                    }.onSuccess { content ->
+                        onSuccess(chapter)
+                        downloadFinish(chapter, content)
+                    }.onError {
+                        onPreError(chapter, it)
+                        //出现错误等待一秒后重新加入待下载列表
+                        delay(1000)
+                        onPostError(chapter, it)
+                        downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}")
+                    }.onCancel {
+                        onCancel(chapterIndex)
+                    }.onFinally {
+                        onFinally()
+                    }.also {
+                        tasks.add(it)
+                    }
                 }
-                val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
-                Coroutine.async(
-                    scope,
-                    context,
-                    start = CoroutineStart.LAZY,
-                ) {
-                    val content = getContentAwait(bookSource, book, chapter, nextChapterUrl)
-                    bookHelp.saveImages(bookSource, book, chapter, content, 2)
-                    //正文落盘由 getContentAwait 内部完成 (WebBook.getContentAwait needSave=true
-                    //默认调 BookHelpProviders.get().saveContent), 与 app 端原版一致,
-                    //此处不再重复 saveContent (避免双重落盘)
-                    content
-                }.onSuccess { content ->
-                    onSuccess(chapter)
-                    downloadFinish(chapter, content)
-                }.onError {
-                    onPreError(chapter, it)
-                    //出现错误等待一秒后重新加入待下载列表
-                    delay(1000)
-                    onPostError(chapter, it)
-                    downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}")
-                }.onCancel {
-                    onCancel(chapterIndex)
-                }.onFinally {
-                    onFinally()
-                }.apply {
-                    tasks.add(this)
-                }.start()
             }
+            // 锁外启动; 若 stop() 在窗口内 tasks.clear() 已取消该 LAZY 任务, start() 为 no-op
+            task.start()
         }
 
         /**
@@ -558,35 +572,40 @@ object CacheBookShared {
             chapter: BookChapter,
             semaphore: Semaphore?,
             resetPageOffset: Boolean = false
-        ) = synchronized(lock) {
-            if (onDownloadSet.contains(chapter.index)) {
-                return
+        ) {
+            // 锁内只做集合状态变更 + LAZY 任务构造; start() 在锁外, 避免任务快速完成时
+            // 同步回调 onSuccess/onError 重入非重入锁自死锁 (atomicfu Native 端非重入)
+            val task = synchronized(lock) {
+                if (onDownloadSet.contains(chapter.index)) {
+                    return
+                }
+                onDownloadSet.add(chapter.index)
+                waitDownloadSet.remove(chapter.index)
+                val callback = CacheBookCallbacks.get()
+                val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
+                Coroutine.async(
+                    scope,
+                    start = CoroutineStart.LAZY,
+                    semaphore = semaphore
+                ) {
+                    getContentAwait(bookSource, book, chapter, nextChapterUrl)
+                }.onSuccess { content ->
+                    onSuccess(chapter)
+                    callback.markDownloaded(chapter.index)
+                    callback.markDownloadSuccess(chapter.index)
+                    downloadFinish(chapter, content, resetPageOffset)
+                }.onError {
+                    onError(chapter, it)
+                    callback.markDownloadFailed(chapter.index)
+                    downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
+                }.onCancel {
+                    onCancel(chapter.index)
+                    downloadFinish(chapter, "download canceled", resetPageOffset, true)
+                }.onFinally {
+                    postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
+                }
             }
-            onDownloadSet.add(chapter.index)
-            waitDownloadSet.remove(chapter.index)
-            val callback = CacheBookCallbacks.get()
-            val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
-            Coroutine.async(
-                scope,
-                start = CoroutineStart.LAZY,
-                semaphore = semaphore
-            ) {
-                getContentAwait(bookSource, book, chapter, nextChapterUrl)
-            }.onSuccess { content ->
-                onSuccess(chapter)
-                callback.markDownloaded(chapter.index)
-                callback.markDownloadSuccess(chapter.index)
-                downloadFinish(chapter, content, resetPageOffset)
-            }.onError {
-                onError(chapter, it)
-                callback.markDownloadFailed(chapter.index)
-                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
-            }.onCancel {
-                onCancel(chapter.index)
-                downloadFinish(chapter, "download canceled", resetPageOffset, true)
-            }.onFinally {
-                postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
-            }.start()
+            task.start()
         }
 
         /**

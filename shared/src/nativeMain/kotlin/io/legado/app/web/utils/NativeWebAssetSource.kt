@@ -1,7 +1,7 @@
 package io.legado.app.web.utils
 
+import legado.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.Res
 
 /**
  * [WebAssetSource] 的 iOS / 鸿蒙 (nativeMain) 共用 actual 实现。

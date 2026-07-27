@@ -2,6 +2,7 @@ package io.legado.app.model.audio
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -81,6 +82,11 @@ class AudioPlayManager(
     /** 歌词同步补偿偏移量 (毫秒)。 */
     private val lrcOffsetMs = 60L
 
+    /** seek 后重置歌词位置, 使下次推进从真实位置重算 (对标 app 端 adjustProgress 的 lastLrcPosition = -1)。 */
+    fun resetLrcPosition() {
+        lastLrcPosition = -1
+    }
+
     // region 进度上报
 
     /**
@@ -128,11 +134,6 @@ class AudioPlayManager(
         upPlayProgressForLrcJob = scope.launch {
             while (isActive) {
                 subCount.first { it > 0 }
-                // 订阅者回归(Activity 从后台回到前台): 挂起期间可能错过切章事件,
-                // Sticky 缓存里可能是 loadLrcData.onSuccess 发出的过期 0,
-                // 这里把 lastLrcPosition 失效, 强制续推重算并立即补发真实位置覆盖掉,
-                // 避免 Activity 先显示章节开头、再等协程调度跳到真实位置造成"延迟一句"
-                lastLrcPosition = -1
                 val curLrc = AudioPlayShared.durLrcData ?: break
                 val curMs = controller.currentPosition + lrcOffsetMs
                 // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上, 否则从 0 起重新单向扫
@@ -251,6 +252,9 @@ class AudioPlayManager(
                 return@launch
             }
             postEvent(EventBus.AUDIO_LOADING, true)
+            // 拉链接窗口置 LOADING, 让 UI 能区分"没在播"和"正在启动"(否则退出界面会被误判为停播)
+            AudioPlayShared.status = Status.LOADING
+            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
             AudioPlayShared.durCoverUrl = null
             AudioPlayShared.durLrcData = null
             lastLrcPosition = -1
@@ -262,7 +266,11 @@ class AudioPlayManager(
                     ?: getContentAwait(bookSource, book, chapter, needSave = false)
             }.onSuccess { content ->
                 if (content.isEmpty()) {
+                    // 拿不到链接也要收掉 loading 并回落 STOP, 否则转圈一直挂着
                     listener.onToast("未获取到资源链接")
+                    postEvent(EventBus.AUDIO_LOADING, false)
+                    AudioPlayShared.status = Status.STOP
+                    postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 } else {
                     if (chapter.resourceUrl != content) {
                         chapter.resourceUrl = content
@@ -275,6 +283,8 @@ class AudioPlayManager(
             }.onError {
                 AppLog.put("获取资源链接出错\n$it", it, true)
                 postEvent(EventBus.AUDIO_LOADING, false)
+                AudioPlayShared.status = Status.STOP
+                postEvent(EventBus.AUDIO_STATE, Status.STOP)
             }.onCancel {
                 removeLoading(index)
             }.onFinally {

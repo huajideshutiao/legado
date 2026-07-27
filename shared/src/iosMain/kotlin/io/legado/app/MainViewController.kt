@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.ui.IosNavHost
+import io.legado.app.ui.SourceUiEventBridgeHost
 import io.legado.app.ui.compose.platform.IosAppConfigProvider
 import io.legado.app.ui.compose.platform.IosEventBusProvider
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
@@ -110,6 +111,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
                 // 5 个子路由, 详见 io.legado.app.ui.IosNavHost
                 IosNavHost()
             }
+            // 5. 书源 UI 事件桥: 订阅 SOURCE_UI_REQUEST, 承接 JS 的 showLoginDialog/
+            // showSourceVariableDialog 弹窗 (对照 desktop DesktopApp 的 SourceUiEventBridgeHost)
+            SourceUiEventBridgeHost()
         }
     }
 }

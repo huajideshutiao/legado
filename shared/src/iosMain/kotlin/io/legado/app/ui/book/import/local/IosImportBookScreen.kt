@@ -16,10 +16,9 @@ import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
-import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.entities.Book
 import io.legado.app.help.file.pickDirectory
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
@@ -62,11 +61,8 @@ import kotlin.io.File
  *
  * # 简化项 (依赖未下沉功能, 用 TODO 注释 + no-op)
  *
- * - **epub/cbz 解析**: app/desktop 端 `EpubFile.upBookInfo` / `CbzFile.upBookInfo` 依赖
- *  epublib + javax.imageio (jvmAndAndroidMain), iOS 端 [LocalEpubResource] 是 nativeMain stub,
- *  CbzFile 未下沉到 nativeMain, 故 iOS 端仅创建 Book 入库 (不解析元数据/章节列表)
- * - **加入书架**: iOS 端不调 `FileBook.importLocalFile` (FileBookProviders 未注册),
- *  直接构造 [Book] 入库 (bookUrl = file:// URL, 与 IosBookshelfScreen.onAddLocalBook 一致)
+ * - **加入书架**: 走 `FileBook.importLocalFile` 门面 (FileBookProviders 已注册);
+ *  epub 走 nativeMain EpubFile 真实解析, txt/pdf/cbz 未下沉抛明确异常记日志跳过
  * - **打开书籍**: app 端 `startReadBook` / `onArchiveFileClick` 依赖
  *  `startActivityForBook` + `ArchiveUtils`, 未下沉, onItemClick/onItemLongClick no-op
  * - **文件名导入 js**: app 端 `alert` 弹窗, iOS 端用 [AlertDialog] + [Md2TextField] 替代
@@ -406,41 +402,23 @@ private fun IosImportBookContent(onBack: () -> Unit) {
             }
 
             override fun onAddSelectionToBookshelf() {
-                // 导入本地书籍: iOS 端 EpubFile/CbzFile 是 stub, 仅创建 Book 入库
-                // (与 IosBookshelfScreen.onAddLocalBook 一致, 不调 FileBook.importLocalFile
-                //  因 FileBookProviders 未注册)
+                // 导入本地书籍: 走 FileBook.importLocalFile 门面 (FileBookProviders 已注册,
+                // epub 走 nativeMain EpubFile 真实解析; txt/pdf/cbz 未下沉, 抛明确异常记日志跳过该项)
                 val books = selected.toHashSet()
                 scope.launch {
                     withContext(Dispatchers.Default) {
-                        val dao = AppDbProviders.get().bookDao
                         books.forEach { item ->
                             if (item.file.length() == 0L) return@forEach
-                            val fileName = item.file.name
-                            val name = fileName.substringBeforeLast(".")
                             // bookUrl 用 file:// URL 形式 (与 IosBookshelfScreen.onAddLocalBook 一致,
                             // NativeLocalBookLocator.parseLocalPath 会剥离 file:// 前缀取 POSIX 路径)
                             val bookUrl = "file://" + item.file.absolutePath
-                            if (dao.getBook(bookUrl) == null) {
-                                // cbz/zip 漫画: BookType.image 标记 (CbzFile 解析在 iOS 端是 stub,
-                                // 仅标记类型, 不解析元数据/章节, 后续阅读时由阅读流处理)
-                                val isCbz = fileName.endsWith(".cbz", ignoreCase = true) ||
-                                    fileName.endsWith(".zip", ignoreCase = true)
-                                val book = Book(
-                                    bookUrl = bookUrl,
-                                    name = name,
-                                    author = "",
-                                    originName = fileName,
-                                    latestChapterTime = item.file.lastModified(),
-                                    order = dao.minOrder() - 1,
-                                    origin = bookUrl,
-                                    type = if (isCbz) BookType.image or BookType.local
-                                           else BookType.text or BookType.local
-                                )
-                                // TODO: iOS 端 EpubFile/CbzFile 是 nativeMain stub, 无法解析元数据/章节列表;
-                                //  后续接入跨平台 epub/cbz 库后补全 (参考 desktop 端 EpubFile.upBookInfo 调用)
-                                dao.insert(book)
+                            runCatching {
+                                FileBook.importLocalFile(bookUrl)
+                            }.onSuccess {
+                                item.isOnBookShelf = true
+                            }.onFailure { e ->
+                                AppLog.put("导入本地书籍失败: ${item.file.name}\n${e.localizedMessage}", e)
                             }
-                            item.isOnBookShelf = true
                         }
                     }
                     selected = emptySet()

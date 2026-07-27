@@ -2,11 +2,14 @@ package io.legado.app.web.utils
 
 import android.content.Context
 
+/** composeResources 打进 assets 的目录前缀 (含模块限定名, 由插件按模块生成)。 */
+private const val ASSET_PREFIX = "composeResources/legado.shared.generated.resources/files/"
+
 /**
  * [WebAssetSource] 的 Android actual 实现。
  *
- * 直接用 [android.content.res.AssetManager] 读 `assets/composeResources/files/web/` 下的资源
- * (Compose Multiplatform 插件自动把 `commonMain/composeResources/` 打包到 Android assets/composeResources/)。
+ * 直接用 [android.content.res.AssetManager] 读 composeResources 打进 assets 的 `files/web/` 资源。
+ * 插件产物带模块限定目录名 (legado.shared.generated.resources), 前缀不能省。
  * 与 iOS/鸿蒙 NativeWebAssetSource / 桌面 ClasspathWebAssetSource 行为一致 (单一数据源)。
  *
  * Context 通过 [registerAndroidWebAssetSource] 注入 (shared androidMain 不依赖 splitties)。
@@ -14,7 +17,7 @@ import android.content.Context
 class AndroidWebAssetSource(private val context: Context) : WebAssetSource {
 
     override suspend fun read(path: String): ByteArray =
-        context.assets.open("composeResources/files/$path").use { it.readBytes() }
+        context.assets.open("$ASSET_PREFIX$path").use { it.readBytes() }
 }
 
 /**

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.help.config.ThemeConfigData
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportThemeViewModelShared
 import io.legado.app.ui.compose.component.Md2TextField
@@ -43,7 +44,9 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.launch
@@ -69,17 +72,20 @@ import java.awt.datatransfer.StringSelection
  * 浅色: bg=#FFFFFF / bbg=#F7F8FA; 深色: bg=#121212 / bbg=#1F1F1F
  * (与 [DesktopThemeStoreProvider] toggleDark 浅深色派生色一致)
  *
- * # 自定义主题 (持久化在 prefs `desktop.theme.customList`)
+ * # 自定义主题 (经 [ThemeConfigProviders] 持久化到 themeConfig.json)
  *
- * - 由 [ThemeCustomizeDialog] 新建/编辑, 序列化为 JSON 数组;
+ * - 增删/应用/导入统一走 [ThemeConfigProviders] (对照 app 端 ThemeConfig.configList);
+ * - [ThemeCustomizeDialog] 新建/编辑仍读写 prefs `desktop.theme.customList`,
+ *   本 Dialog 在打开前播种 (provider 列表 → prefs)、关闭后回收 (prefs → provider) 桥接;
  * - 点击应用 / 长按编辑 / 分享 / 删除 与 app 端行为对齐。
  *
  * # 平台适配 (与 app 端差异)
  *
- * - **持久化**: app 端 `ThemeConfig.configList` (走 themeConfig.json) → 桌面端
- *   [LocalPreferenceStoreProvider] 内存 Map (`desktop.theme.customList` 数组 JSON)
+ * - **持久化**: app 端 `ThemeConfig.configList` (走 themeConfig.json) → 桌面端同格式,
+ *   经 [ThemeConfigProviders] (FileThemeConfigProvider) 读写
  * - **应用主题**: app 端 `ThemeConfig.applyBuiltin/applyConfig + postEvent(RECREATE)` →
- *   桌面端 [applyThemeToStore] (调 [DesktopThemeStoreProvider.applyColors] + emit recreate)
+ *   桌面端 [ThemeConfigProviders.get().applyConfig] 落盘 + [applyThemeToStore] 即时刷新
+ *   (桌面内置项自带完整三色, applyConfig 即覆盖 applyBuiltin 的净效果)
  * - **剪贴板**: app 端 `getClipText/share` (Android ClipboardManager) → 桌面端
  *   [Toolkit.getDefaultToolkit].systemClipboard (AWT Clipboard)
  * - **结果弹窗**: app 端 `alert { ... }` DSL → 桌面端 [AppAlertDialog]
@@ -89,8 +95,7 @@ import java.awt.datatransfer.StringSelection
  *   [BuiltinThemes] 常量 (代码内定义, 不读 assets)
  * - **URL 导入** (P2-3 任务4, 桌面端补充): app 端无主题 URL 导入, 桌面端新增第三个 IconButton
  *   (ic_download_line) → AlertDialog 输入 URL → [ImportThemeViewModelShared.importSource]
- *   下载+解析+比对 → 直接读 vm.allSources 合并到 prefStore (不调 vm.importSelect, 因
- *   [InMemoryThemeConfigProvider] 是内存版不持久化, 走 importSelect 会与 prefStore 数据源不一致)
+ *   下载+解析+比对 → 读 vm.allSources 逐条 [ThemeConfigProviders] addConfig (同名覆盖, 不弹勾选)
  *
  * # UI 结构 (对照 app 端, padding 值原样保留)
  *
@@ -131,9 +136,8 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     // app 端 ThemeListDialog 仅支持剪贴板导入, 桌面端补充 URL 导入:
     //   1. URL 输入 AlertDialog (showUrlImportDialog=true 显示)
     //   2. 用户确认后新建 ImportThemeViewModelShared.importSource(url) 触发下载+解析+比对
-    //   3. 收集 successState: 成功后直接读 vm.allSources 合并到 prefStore (与 importFromClip
-    //      一致的去重逻辑), 不调 vm.importSelect (因 InMemoryThemeConfigProvider 是内存版不持久化,
-    //      走 importSelect 会写到内存 Provider 与 prefStore 数据源不一致; 主题通常单条, 简化处理)
+    //   3. 收集 successState: 成功后读 vm.allSources 逐条 ThemeConfigProviders.addConfig
+    //      (同名覆盖, 与 app 端 addConfig 去重逻辑一致; 主题通常单条, 不弹勾选简化处理)
     val scope = rememberCoroutineScope()
     var showUrlImportDialog by remember { mutableStateOf(false) }
     var urlImportText by remember { mutableStateOf("") }
@@ -145,7 +149,11 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     dataVersion
 
     // 列表 = 内置主题 + 自定义主题 (对照 app 端 builtins + ThemeConfig.configList)
-    val items = remember(dataVersion) { BuiltinThemes + readCustomList(pref) }
+    // 先做旧版 prefs desktop.theme.customList → provider 的一次性迁移, 再读 provider
+    val items = remember(dataVersion) {
+        migrateLegacyCustomList(pref)
+        BuiltinThemes + ThemeConfigProviders.get().getConfigList()
+    }
     val builtinCount = BuiltinThemes.size
 
     Dialog(onDismissRequest = onDismiss) {
@@ -159,8 +167,9 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                     title = titleText,
                     onBack = onDismiss,
                     actions = {
-                        // 新建主题 (对照 app 端 alertNewTheme)
+                        // 新建主题 (对照 app 端 alertNewTheme); 先播种 prefs 供 ThemeCustomizeDialog 读写
                         IconButton(onClick = {
+                            seedCustomListForEdit(pref)
                             editConfigIndex = -2 // -2 表示 newConfig, -1 表示无, >=0 表示 editConfig
                         }) {
                             Icon(
@@ -170,7 +179,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                             )
                         }
                         // 剪贴板导入 (对照 app 端 importFromClip)
-                        IconButton(onClick = { importFromClip(pref) { dataVersion++ } }) {
+                        IconButton(onClick = { importFromClip { dataVersion++ } }) {
                             Icon(
                                 painter = rememberPainter("ic_import"),
                                 contentDescription = addLabel,
@@ -204,19 +213,24 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                             item = item,
                             configIndex = configIndex,
                             onClick = {
-                                // 应用主题 (对照 app 端 applyBuiltin/applyConfig)
+                                // 应用主题 (对照 app 端 applyBuiltin/applyConfig):
+                                // provider 落盘 (PreferKey 色值 + themeMode + ThemeStore 键),
+                                // applyThemeToStore 即时刷新 mutableStateOf 主题态
+                                ThemeConfigProviders.get().applyConfig(item)
                                 applyThemeToStore(themeStore, eventBus, item)
-                                // 持久化当前主题 (与 ThemeCustomizeDialog EDIT_PREFS 一致)
-                                pref.putString(ThemePrefKeys.CURRENT, GSON.toJson(item))
                                 onDismiss()
                             },
                             onLongClick = {
-                                // 长按编辑 (仅自定义, 对照 app 端 onLongClick)
-                                if (!item.isBuiltin && configIndex in 0 until readCustomList(pref).size) {
+                                // 长按编辑 (仅自定义, 对照 app 端 onLongClick);
+                                // 先播种 prefs 供 ThemeCustomizeDialog 按索引读写
+                                if (!item.isBuiltin &&
+                                    configIndex in ThemeConfigProviders.get().getConfigList().indices
+                                ) {
+                                    seedCustomListForEdit(pref)
                                     editConfigIndex = configIndex
                                 }
                             },
-                            onShare = { share(pref, configIndex) },
+                            onShare = { share(configIndex) },
                             onDelete = { deleteIndex = configIndex },
                         )
                     }
@@ -226,11 +240,13 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     }
 
     // 新建/编辑自定义主题对话框 (对照 app 端 alertNewTheme / ThemeCustomizeDialog.editConfig.show)
+    // 关闭后把播种的 prefs 列表 (含新建/改名/替换结果) 全量回收进 provider 并清掉 prefs 键
     if (editConfigIndex == -2) {
         ThemeCustomizeDialog(
             mode = ModeNewConfig,
             isNight = false,
             onDismiss = {
+                syncCustomListFromPrefs(pref)
                 editConfigIndex = -1
                 dataVersion++ // 新建可能产生变更, 触发列表刷新
             },
@@ -240,6 +256,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
             mode = ModeEditConfig,
             configIndex = editConfigIndex,
             onDismiss = {
+                syncCustomListFromPrefs(pref)
                 editConfigIndex = -1
                 dataVersion++ // 编辑可能产生变更, 触发列表刷新
             },
@@ -253,7 +270,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
             title = deleteLabel,
             message = sureDelLabel,
             okButton = AlertButton(text = rememberString("ok")) {
-                deleteCustom(pref, deleteIndex)
+                deleteCustom(deleteIndex)
                 deleteIndex = -1
                 dataVersion++
             },
@@ -283,7 +300,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                     showUrlImportDialog = false
                     if (url.isNotBlank()) {
                         // 新建 ImportThemeViewModelShared, 调 importSource(url) 触发下载+解析+比对,
-                        // LaunchedEffect(urlImportVm) 收集 successState/errorState 后合并到 prefStore
+                        // LaunchedEffect(urlImportVm) 收集 successState/errorState 后写入 ThemeConfigProviders
                         val vm = ImportThemeViewModelShared(scope)
                         urlImportVm = vm
                         vm.importSource(url)
@@ -299,9 +316,8 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     }
 
     // ---- URL 导入 VM 状态收集 (successState/errorState) ----
-    // 成功后直接读 vm.allSources 合并到 prefStore (与 importFromClip 去重逻辑一致),
-    // 不调 vm.importSelect (InMemoryThemeConfigProvider 内存版不持久化, 走 importSelect 会与
-    // prefStore 数据源不一致; 主题通常单条, 简化处理不弹 DesktopImportDialog 让用户勾选)
+    // 成功后读 vm.allSources 逐条 ThemeConfigProviders.addConfig (同名覆盖 + 落盘,
+    // 与 app 端 ThemeConfig.addConfig 一致; 主题通常单条, 不弹 DesktopImportDialog 勾选)
     urlImportVm?.let { vm ->
         LaunchedEffect(vm) {
             launch {
@@ -317,17 +333,11 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                 vm.successState.collect { size ->
                     if (size != null) {
                         if (size > 0) {
-                            // 解析成功, 读 vm.allSources 合并到 prefStore (按 themeName 去重: 同名覆盖, 否则追加)
-                            val list = readCustomList(pref).toMutableList()
+                            // 解析成功, 逐条写入 provider (addConfig 内部按 themeName 同名覆盖 + 落盘)
+                            val provider = ThemeConfigProviders.get()
                             vm.allSources.forEach { newConfig ->
-                                val existingIndex = list.indexOfFirst { it.themeName == newConfig.themeName }
-                                if (existingIndex >= 0) {
-                                    list[existingIndex] = newConfig
-                                } else {
-                                    list.add(newConfig)
-                                }
+                                provider.addConfig(newConfig)
                             }
-                            pref.putString(ThemePrefKeys.CUSTOM_LIST, GSON.toJson(list))
                             Toasters.get().toast(jvmGetString("import_theme_success", vm.allSources.size))
                             dataVersion++ // 触发列表刷新
                         } else {
@@ -391,8 +401,8 @@ private fun ThemeItem(
     }
 }
 
-/** 从剪贴板导入主题 (对照 app 端 importFromClip) */
-private fun importFromClip(pref: PreferenceStoreProvider, onDataChange: () -> Unit) {
+/** 从剪贴板导入主题 (对照 app 端 importFromClip: ThemeConfig.addConfig(json), 失败 toast) */
+private fun importFromClip(onDataChange: () -> Unit) {
     val text = runCatching {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
         clipboard.getData(DataFlavor.stringFlavor) as? String
@@ -401,28 +411,29 @@ private fun importFromClip(pref: PreferenceStoreProvider, onDataChange: () -> Un
         Toasters.get().toast(jvmGetString("clipboard_empty_or_invalid"))
         return
     }
+    // 对照 app 端 addConfig(json): trim 控制字符 + 解析 + 4 色值校验, 任一失败 toast
     val newConfig = runCatching {
-        GSON.fromJsonObject<ThemeConfigData>(text).getOrThrow()
-    }.getOrNull()
+        GSON.fromJsonObject<ThemeConfigData>(text.trim { it < ' ' }).getOrThrow()
+    }.getOrNull()?.takeIf { config ->
+        runCatching {
+            ColorUtils.parseColor(config.primaryColor)
+            ColorUtils.parseColor(config.accentColor)
+            ColorUtils.parseColor(config.backgroundColor)
+            ColorUtils.parseColor(config.bottomBackground)
+        }.isSuccess
+    }
     if (newConfig == null) {
         Toasters.get().toast(jvmGetString("format_invalid_add_failed"))
         return
     }
-    // 按 themeName 去重: 同名覆盖, 否则追加 (对照 app 端 ThemeConfig.addConfig 行为)
-    val list = readCustomList(pref).toMutableList()
-    val existingIndex = list.indexOfFirst { it.themeName == newConfig.themeName }
-    if (existingIndex >= 0) {
-        list[existingIndex] = newConfig
-    } else {
-        list.add(newConfig)
-    }
-    pref.putString(ThemePrefKeys.CUSTOM_LIST, GSON.toJson(list))
+    // addConfig 内部按 themeName 同名覆盖/追加 + 落盘 (对照 app 端 ThemeConfig.addConfig)
+    ThemeConfigProviders.get().addConfig(newConfig)
     onDataChange()
 }
 
-/** 分享自定义主题到剪贴板 (对照 app 端 share: GSON.toJson + requireContext().share) */
-private fun share(pref: PreferenceStoreProvider, index: Int) {
-    val list = readCustomList(pref)
+/** 分享自定义主题到剪贴板 (对照 app 端 share: GSON.toJson(configList[index]) + share) */
+private fun share(index: Int) {
+    val list = ThemeConfigProviders.get().getConfigList()
     if (index !in list.indices) return
     val json = GSON.toJson(list[index])
     runCatching {
@@ -434,12 +445,48 @@ private fun share(pref: PreferenceStoreProvider, index: Int) {
     }
 }
 
-/** 删除自定义主题 (对照 app 端 ThemeConfig.delConfig) */
-private fun deleteCustom(pref: PreferenceStoreProvider, index: Int) {
-    val list = readCustomList(pref).toMutableList()
-    if (index !in list.indices) return
-    list.removeAt(index)
-    pref.putString(ThemePrefKeys.CUSTOM_LIST, GSON.toJson(list))
+/** 删除自定义主题 (对照 app 端 ThemeConfig.delConfig: removeAt + save) */
+private fun deleteCustom(index: Int) {
+    ThemeConfigProviders.get().delConfig(index)
+}
+
+/**
+ * 旧版 prefs `desktop.theme.customList` → provider 的一次性迁移。
+ * 也兜底回收 ThemeCustomizeDialog 会话异常中断残留的播种数据 (同名覆盖合并, 无损)。
+ */
+private fun migrateLegacyCustomList(pref: PreferenceStoreProvider) {
+    val legacy = pref.getString(ThemePrefKeys.CUSTOM_LIST) ?: return
+    val provider = ThemeConfigProviders.get()
+    runCatching {
+        GSON.fromJsonArray<ThemeConfigData>(legacy).getOrThrow()
+    }.getOrDefault(emptyList()).forEach { provider.addConfig(it) }
+    pref.putString(ThemePrefKeys.CUSTOM_LIST, null)
+}
+
+/**
+ * 打开 ThemeCustomizeDialog (新建/编辑) 前, 把 provider 列表播种到 prefs
+ * `desktop.theme.customList` —— 该 Dialog (另行迁移) 仍按索引读写 prefs 列表。
+ */
+private fun seedCustomListForEdit(pref: PreferenceStoreProvider) {
+    pref.putString(
+        ThemePrefKeys.CUSTOM_LIST,
+        GSON.toJson(ThemeConfigProviders.get().getConfigList()),
+    )
+}
+
+/**
+ * ThemeCustomizeDialog 关闭后, 用播种+编辑后的 prefs 列表全量替换 provider 列表
+ * (支持改名/替换/新建), 再清掉 prefs 键, 保持 provider 为唯一持久数据源。
+ */
+private fun syncCustomListFromPrefs(pref: PreferenceStoreProvider) {
+    val json = pref.getString(ThemePrefKeys.CUSTOM_LIST) ?: return
+    val list = runCatching {
+        GSON.fromJsonArray<ThemeConfigData>(json).getOrThrow()
+    }.getOrNull() ?: return
+    val provider = ThemeConfigProviders.get()
+    repeat(provider.getConfigList().size) { provider.delConfig(0) }
+    list.forEach { provider.addConfig(it) }
+    pref.putString(ThemePrefKeys.CUSTOM_LIST, null)
 }
 
 // ---- 内置主题 (Arco Design 调色板) ----

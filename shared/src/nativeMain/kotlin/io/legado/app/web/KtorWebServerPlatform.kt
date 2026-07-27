@@ -5,9 +5,23 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.websockets.WebSockets
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.web.utils.AssetsWeb
 import io.legado.app.web.utils.WebStringsProviders
+import kotlinx.cinterop.CPointerVar
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.value
+import platform.posix.AF_INET
+import platform.posix.freeifaddrs
+import platform.posix.getifaddrs
+import platform.posix.ifaddrs
+import platform.posix.sockaddr_in
 
 /**
  * [WebServerPlatform] 的 iOS / 鸿蒙 (nativeMain) 共用基类 (Ktor server CIO 壳)。
@@ -35,7 +49,7 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
     @Volatile
     private var wsEngine: ApplicationEngine? = null
 
-    override fun startServers(port: Int): List<String> {
+    override fun startServers(port: Int): WebServerStartResult {
         // 先停旧实例 (对齐 JvmWebServerPlatform.startServers)
         stopServers()
         val cannotEmptyMsg = WebStringsProviders.get().cannotEmpty
@@ -43,7 +57,11 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
             configureHttpRouting(assetsWeb)
         }
         val wsEngine = embeddedServer(CIO, port = port + 1, host = "0.0.0.0") {
-            install(WebSockets)
+            install(WebSockets) {
+                // 对齐 app 端 webSocketServer.start(AppConst.timeLimit) 的通信超时语义
+                pingPeriodMillis = AppConst.timeLimit
+                timeoutMillis = AppConst.timeLimit
+            }
             configureWsRouting(cannotEmptyMsg)
         }
         return try {
@@ -51,16 +69,16 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
             wsEngine.start(wait = false)
             this.httpEngine = httpEngine
             this.wsEngine = wsEngine
-            // Native 端无 java.net.InetAddress, 返回 localhost (LAN IP 枚举需平台 API)
-            listOf("http://127.0.0.1:$port")
+            // URL 格式 "http://host:port" 对齐 R.string.http_ip
+            WebServerStartResult(getLocalIPv4Addresses().map { "http://$it:$port" })
         } catch (e: Exception) {
-            // 对齐 JvmWebServerPlatform catch(IOException): AppLog + 清理半启动状态
+            // 对齐 JvmWebServerPlatform catch: AppLog + 清理半启动状态 + 异常信息回传
             AppLog.put("startServers failed: ${e.localizedMessage}", e)
             runCatching { httpEngine.stop(1000, 2000) }
             runCatching { wsEngine.stop(1000, 2000) }
             this.httpEngine = null
             this.wsEngine = null
-            emptyList()
+            WebServerStartResult(errorMsg = e.localizedMessage ?: "")
         }
     }
 
@@ -72,3 +90,40 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
         wsEngine = null
     }
 }
+
+/**
+ * 枚举本机 IPv4 非回环地址 (对齐 app 端 NetworkUtils.getLocalIPAddress 的筛选口径)。
+ *
+ * Native 端无 java.net.NetworkInterface, 改用 posix getifaddrs; 失败或无网卡时回落 127.0.0.1,
+ * 保证本机仍可访问。
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun getLocalIPv4Addresses(): List<String> = memScoped {
+    val addresses = mutableListOf<String>()
+    val ifap = alloc<CPointerVar<ifaddrs>>()
+    if (getifaddrs(ifap.ptr) != 0) return listOf(LOOPBACK)
+    try {
+        var cur = ifap.value
+        while (cur != null) {
+            val ifa = cur.pointed
+            val addr = ifa.ifa_addr
+            if (addr != null && addr.pointed.sa_family.toInt() == AF_INET) {
+                val ip = addr.reinterpret<sockaddr_in>().pointed.sin_addr.s_addr.toIPv4String()
+                // 排除回环 (对齐原版 !address.isLoopbackAddress)
+                if (ip != LOOPBACK && !ip.startsWith("127.")) {
+                    addresses.add(ip)
+                }
+            }
+            cur = ifa.ifa_next
+        }
+    } finally {
+        freeifaddrs(ifap.value)
+    }
+    addresses.ifEmpty { listOf(LOOPBACK) }
+}
+
+private const val LOOPBACK = "127.0.0.1"
+
+/** in_addr.s_addr (网络字节序 32 位) 转点分十进制。 */
+private fun UInt.toIPv4String(): String =
+    "${this and 0xFFu}.${(this shr 8) and 0xFFu}.${(this shr 16) and 0xFFu}.${(this shr 24) and 0xFFu}"

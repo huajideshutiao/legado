@@ -29,6 +29,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.help.book.BookHelpChapterLocator
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
@@ -605,7 +606,7 @@ fun OhosChangeChapterSourceScreen(
  *
  * # 简化项 (与 iOS/桌面端一致, 依赖未下沉的 app 端组件)
  *
- * - **getDurChapter**: 取末章索引 (BookHelp.getDurChapter 依赖 Android 专属字符串处理, 未下沉);
+ * - **getDurChapter**: 走 [BookHelpChapterLocator.getDurChapter] (已下沉 commonMain, 与 app 端同算法);
  * - **processContent**: 直接返回 content (ContentProcessor 依赖未下沉, 但默认配置不触发此方法);
  * - **toastOnUi**: 用 [Toasters.get().toast] (鸿蒙端已注册 OhosToaster)。
  *
@@ -654,9 +655,9 @@ class OhosChangeBookSourcePlatform : ChangeBookSourcePlatform {
 
     // ---- BookHelp 相关 ----
 
-    // 鸿蒙端简化: 取末章索引 (与 iOS/桌面端一致, BookHelp.getDurChapter 未下沉)
+    // 委托 BookHelpChapterLocator (已下沉 commonMain), 与 app 端同一份章节名相似度匹配算法
     override fun getDurChapter(oldBook: Book, chapters: List<BookChapter>): Int {
-        return chapters.lastIndex
+        return BookHelpChapterLocator.getDurChapter(oldBook, chapters)
     }
 
     // ---- ContentProcessor 相关 ----

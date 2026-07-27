@@ -1,20 +1,28 @@
 package io.legado.app.help
 
 import android.net.Uri
+import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.storage.Backup
+import io.legado.app.help.storage.Restore
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.lib.webdav.upload
 import io.legado.app.model.remote.RemoteBookWebDav
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.isNetworkAvailable
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
+import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -97,13 +105,21 @@ object AppWebDav {
      * 刷新配置: 委托 [AppWebDavShared.upConfig] 完成 WebDav 认证 + 子目录创建,
      * 额外初始化 Android 专属的 [defaultBookWebDav]。
      *
-     * shared 内部已用 runCatching 包裹, 认证失败不会抛异常, 仅通过 AppLog.put 输出。
+     * 认证失败 shared 抛 [WebDavException], 这里 toast 提示 (与原版 checkAuthorization 内 toast 一致)。
      */
     suspend fun upConfig() {
         // 先清空 Android 专属状态 (与原实现一致)
         defaultBookWebDav = null
-        // 委托 shared 完成 WebDav 认证 + 目录创建
-        AppWebDavShared.upConfig()
+        kotlin.runCatching {
+            // 委托 shared 完成 WebDav 认证 + 目录创建
+            AppWebDavShared.upConfig()
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            if (it is WebDavException) {
+                appCtx.toastOnUi(R.string.webdav_application_authorization_error)
+            }
+            AppLog.put("WebDav upConfig 失败\n${it.localizedMessage}", it)
+        }
         // shared 成功后, 若有认证信息则初始化 RemoteBookWebDav (Android 专属)
         AppWebDavShared.authorization?.let { auth ->
             val rootBooksUrl = "${rootWebDavUrl}books/"
@@ -115,7 +131,20 @@ object AppWebDav {
 
     suspend fun getBackupNames(): ArrayList<String> = AppWebDavShared.getBackupNames()
 
-    suspend fun restoreWebDav(name: String) = AppWebDavShared.restoreWebDav(name)
+    /**
+     * WebDav 恢复: 下载解压后走 app 端 [Restore] 完整路径 (含书架 upType/本地书封面修正、
+     * config.xml 旧格式兼容、恢复后 ReadBookConfig 刷新 / 图标 / 日夜间等钩子)。
+     */
+    @Throws(WebDavException::class)
+    suspend fun restoreWebDav(name: String) {
+        AppWebDavShared.authorization?.let {
+            val webDav = WebDav(rootWebDavUrl + name, it)
+            webDav.downloadTo(Backup.zipFilePath, true)
+            FileUtils.delete(Backup.backupPath)
+            ZipUtils.unZipToPath(File(Backup.zipFilePath), Backup.backupPath)
+            Restore.restoreLocked(Backup.backupPath)
+        }
+    }
 
     suspend fun hasBackUp(backUpName: String): Boolean = AppWebDavShared.hasBackUp(backUpName)
 

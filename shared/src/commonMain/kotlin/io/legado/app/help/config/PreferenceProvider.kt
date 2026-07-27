@@ -18,11 +18,13 @@ interface PreferenceProvider {
     fun getInt(key: String, default: Int = 0): Int
     fun getBoolean(key: String, default: Boolean = false): Boolean
     fun getLong(key: String, default: Long = 0L): Long
+    fun getFloat(key: String, default: Float = 0f): Float
 
     fun putString(key: String, value: String?)
     fun putInt(key: String, value: Int)
     fun putBoolean(key: String, value: Boolean)
     fun putLong(key: String, value: Long)
+    fun putFloat(key: String, value: Float)
 
     fun remove(key: String)
     fun contains(key: String): Boolean

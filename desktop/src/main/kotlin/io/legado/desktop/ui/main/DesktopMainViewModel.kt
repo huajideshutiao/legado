@@ -5,7 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DefaultDataShared
-import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -162,9 +162,8 @@ class DesktopMainViewModel {
      * # 平台差异 (缓存清理项可用性)
      *
      * - **cacheDao.clearDeadline**: shared CacheDao 已下沉, 直接调用 [appDb.cacheDao]
-     * - **BookHelp.clearInvalidCache**: shared `BookHelpAccessor` 未暴露此方法,
-     *   改用 [BookStorageProviders.get].clearInvalidCache(512MB) 等价实现
-     *   (512MB 与 app 端漫画图片缓存管理上限一致)
+     * - **BookHelp.clearInvalidCache**: shared [BookHelpShared.clearInvalidCache] 已下沉,
+     *   直接调用 (四步编排: 删失效书目录 → 漫画缓存超限淘汰 → 大变量清理 → clearCacheExtra)
      * - **Backup.clearCache**: shared [BackupShared.clearCache] 已下沉, 直接调用
      * - **ReadBookConfig.clearBgAndCache**: shared `ReadBookConfigShared.clearBgAndCache`
      *   已下沉 (基于 AppFilesDirs + BackupFileOps), 经 [ReadBookConfigProviders.get] 调用
@@ -292,12 +291,9 @@ object DesktopStartupTasks {
                 val appDb = AppDbProviders.get()
                 // cacheDao.clearDeadline: 清理 cache 表中过期记录 (对照 app 端 appDb.cacheDao.clearDeadline)
                 runCatching { appDb.cacheDao.clearDeadline(System.currentTimeMillis()) }
-                // BookHelp.clearInvalidCache: 清理无效书缓存目录
-                // shared BookHelpAccessor 未暴露此方法, 改用 BookStorageProviders 等价实现
-                // (512MB 与 app 端漫画图片缓存管理上限一致)
-                runCatching {
-                    BookStorageProviders.get().clearInvalidCache(512L * 1024 * 1024)
-                }
+                // BookHelp.clearInvalidCache: 清理无效书缓存目录 (shared BookHelpShared 已下沉,
+                // 四步编排与 app 端一致, 不再直调 BookStorageProviders 单步)
+                runCatching { BookHelpShared.clearInvalidCache() }
                 // Backup.clearCache: 清理备份临时文件 (shared BackupShared.clearCache 已下沉)
                 runCatching { BackupShared.clearCache() }
                 // ReadBookConfig.clearBgAndCache: 清理阅读背景缓存图片 + readConfig 临时缓存

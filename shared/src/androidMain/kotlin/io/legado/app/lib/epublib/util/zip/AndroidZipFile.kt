@@ -27,12 +27,12 @@ import kotlin.math.max
  * @author Jochen Hoenicke
  * @author Artur Biesiadowski
  */
-class AndroidZipFile : ZipConstants {
+class AndroidZipFile : ZipConstants, AndroidZipFileReader {
     /**
      * Returns the (path) name of this zip file.
      */
     // Name of this zip file.
-    val name: String?
+    override val name: String?
 
     // File from which zip entries are read.
     //private final RandomAccessFile raf;
@@ -270,7 +270,7 @@ class AndroidZipFile : ZipConstants {
      * @throws IOException if a i/o error occured.
      */
     @Throws(IOException::class)
-    fun close() {
+    override fun close() {
         synchronized(pfd) {
             closed = true
             entries = null
@@ -290,7 +290,7 @@ class AndroidZipFile : ZipConstants {
     /**
      * Returns an enumeration of all Zip entries in this Zip file.
      */
-    fun entries(): Enumeration<AndroidZipEntry?>? {
+    override fun entries(): Enumeration<AndroidZipEntry?>? {
         try {
             return ZipEntryEnumeration(getEntries().values.iterator())
         } catch (ioe: IOException) {
@@ -320,7 +320,7 @@ class AndroidZipFile : ZipConstants {
      * slashes ('/').
      * @return the zip entry, or null if no entry with that name exists.
      */
-    fun getEntry(name: String?): AndroidZipEntry? {
+    override fun getEntry(name: String?): AndroidZipEntry? {
         try {
             val entries = getEntries()
             val entry = entries.get(name)
@@ -384,7 +384,7 @@ class AndroidZipFile : ZipConstants {
      * @throws ZipException if the Zip archive is malformed.
      */
     @Throws(IOException::class)
-    fun getInputStream(entry: AndroidZipEntry): InputStream {
+    override fun getInputStream(entry: AndroidZipEntry): InputStream {
         val entries = getEntries()
         val name = entry.name
         val zipEntry = entries.get(name)

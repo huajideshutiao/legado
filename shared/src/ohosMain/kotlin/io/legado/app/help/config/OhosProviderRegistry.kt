@@ -1,8 +1,11 @@
 package io.legado.app.help.config
 
+import io.legado.app.api.controller.registerNativeBookControllerProviders
+import io.legado.app.constant.registerNativeAndroidId
 import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.OhosDatabaseDriver
 import io.legado.app.data.registerNativeAppDb
+import io.legado.app.help.archive.registerNativeArchiveProvider
 import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.book.registerNativeBookImageStorage
@@ -14,18 +17,27 @@ import io.legado.app.help.image.OhosBitmapProvider
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
 import io.legado.app.help.http.registerOhosHttpProvider
 import io.legado.app.help.notification.registerOhosNotificationProgress
+import io.legado.app.help.registerNativeDefaultDataResourceProvider
+import io.legado.app.help.registerNativeDirectLinkUploadProviders
+import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
 import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.service.registerOhosServiceLauncher
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
+import io.legado.app.help.source.registerNativeSourceProviders
+import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.toast.registerOhosToaster
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerOhosToastProvider
 import io.legado.app.help.ui.registerOhosUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.registerNativeFileBookAccessor
+import io.legado.app.model.registerNativeCacheBookCallback
+import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.script.registerOhosJsEngines
+import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -89,8 +101,22 @@ fun registerOhosProviders() {
     registerOhosPreferenceProvider()
     registerNativeAppConfigAccessor()
 
-    // 2.3 主题配置 provider (内存版, 供 BackupShared 备份 themeConfig.json / ImportThemeViewModelShared 用)
-    ThemeConfigProviders.register(InMemoryThemeConfigProvider())
+    // 2.1 设备标识注入 (鸿蒙无现成设备 id 桥, 用首启生成后经 PreferenceProviders 落盘的 UUID;
+    // BaseSource 登录信息加密依赖 ≥16 字符, 默认 "null" 必越界)
+    registerNativeAndroidId()
+
+    // 2.2 备份密码 provider (读 PreferenceProviders "password", 与 app 端 LocalConfig.password 同 key)
+    registerNativePasswordProvider()
+
+    // 2.3 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
+    ThemeConfigProviders.register(FileThemeConfigProvider())
+
+    // 2.4 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
+    registerNativeDefaultDataResourceProvider()
+
+    // 2.4.5 直链上传配置 provider (Store 落 {filesDir}/directLinkUploadRule.json + Defaults 读默认数据,
+    // 须在 AppFilesDirs + DefaultDataResourceProvider 之后; 供备份/恢复与直链上传配置用)
+    registerNativeDirectLinkUploadProviders()
 
     // 2.5 HTTP provider (napi 桥接 @ohos.net.http, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader 取 OkHttpClient,
@@ -126,14 +152,31 @@ fun registerOhosProviders() {
     // 以及 JS bindings["cache"] 绑定不为 null
     registerNativeSourceCacheProvider()
     registerNativeFileCacheProvider()
+    // 发现规则缓存 (对应 app 端 ACache.get("explore"), 让 @js: 发现规则解析结果落盘复用)
+    registerNativeExploreKindsCacheProvider()
 
-    // 6. JS 引擎 provider (OhosJsEngine + OhosImageOps), 必须在任何 JS eval 之前
+    // 5.6 source 扩展 provider (SourceDebugLoggers/RuleBigData/help.UserAgent/SourceNetwork cookie 桥)
+    // 依赖 AppFilesDirs + PreferenceProviders 已就绪 (cookie 桥运行期才取 CookieStoreProviders), 须在 JS eval 之前
+    registerNativeSourceProviders()
+
+    // 5.7 压缩包 provider (zip/cbz, NativeZipCodec + RemoteZipCore; rar/7z 明确抛异常)
+    registerNativeArchiveProvider()
+
+    // 6. JS 引擎 provider (OhosJsEngine + OhosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
     // (解除 KP4 P0 阻塞: 鸿蒙端 JS 引擎缺失导致书源规则解析全失效)
     registerOhosJsEngines()
+
+    // 6.2 webBook 编排 provider (BookInfoRefresher/IntentData/RegexReplacer), 须在 JsEngines 之后
+    // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
+    registerNativeWebBookProviders()
 
     // 6.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 OhosImageOps 的 PixelMap 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
     BitmapProviders.register(OhosBitmapProvider)
+
+    // 6.6 本地书 accessor (FileBookProviders: epub 走 nativeMain EpubFile, txt/pdf/cbz 明确抛异常)
+    // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
+    registerNativeFileBookAccessor()
 
     // 7. TTS 引擎 provider (OhosSystemTtsEngine 占位), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
@@ -151,6 +194,8 @@ fun registerOhosProviders() {
     // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
     // KP8+: 已下沉到 nativeMain (NativeUpdateBookCallback 真实化, 桥接 NotificationProgresses + Toasters)
     registerNativeUpdateBookCallback()
+    // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
+    registerNativeCacheBookCallback()
     registerOhosServiceLauncher()
     // 注册业务层 CookieStoreProvider (stub, 后续接入 @ohos.net.http CookieManager 后替换)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider
@@ -162,10 +207,18 @@ fun registerOhosProviders() {
     registerOhosToastProvider()
     registerOhosOpenUrlProvider()
     registerOhosUserAgentProvider()
+    // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
+    // 未注册时 JS 验证入口裸抛 IllegalStateException)
+    registerNativeVerificationUiProvider()
+    // 音频播控 Commander (OhosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
+    registerOhosAudioPlayCommanders()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)
     registerNativeWebAssetSource()
     registerNativeWebStrings()
+    // BookController 图片/阅读状态 provider (/cover /image 直出缓存字节, /deleteBook /saveBookProgress
+    // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)
+    registerNativeBookControllerProviders()
     registerNativeWebServerPlatform()
 }

@@ -40,7 +40,7 @@ import java.nio.charset.Charset
  * - **Bitmap 编解码**: 拆分为 expect/actual ([LocalEpubResource] / [decodeBitmap] / [compressBitmap]),
  *   android actual 用 BitmapFactory, jvm actual 用 ImageIO
  * - **本地文件打开**: 封装到 [LocalEpubResource] expect class, android actual 用
- *   `contentResolver.openInputStream` + 临时文件 + `java.util.zip.ZipFile`, jvm actual 直接用 `ZipFile`
+ *   ParcelFileDescriptor + `AndroidZipFile` (零拷贝随机访问), jvm actual 直接用 `java.util.zip.ZipFile`
  * - **远程文件**: 走跨平台的 [RemoteZipWrapper] (jvmAndAndroidMain), 无需 expect/actual
  * - **AppWebDav.authorization**: 替换为 [AppWebDavShared.authorization] (commonMain 等价物)
  *
@@ -127,7 +127,7 @@ class EpubFile(var book: Book) {
             if (book.bookUrl.startsWith(BookType.webDavTag) || book.bookUrl.startsWith("http")) {
                 readEpubRemote()
             } else {
-                // 本地路径走平台 actual: android 用 contentResolver + 临时文件 + ZipFile,
+                // 本地路径走平台 actual: android 用 PFD + AndroidZipFile (零拷贝),
                 // jvm 用 java.util.zip.ZipFile (经 LocalEpubResource 封装)
                 // res.epubBook 返回 Any? (commonMain expect 不见 EpubBook), cast 回 EpubBook?
                 LocalEpubResource(book).let { res ->

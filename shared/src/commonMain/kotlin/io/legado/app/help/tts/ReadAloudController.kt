@@ -1,5 +1,9 @@
 package io.legado.app.help.tts
 
+import io.legado.app.constant.AppPattern
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+
 /**
  * 朗读控制器（KMP 版,替代 app 端 `BaseReadAloudService` 的协调层职责）。
  *
@@ -9,7 +13,8 @@ package io.legado.app.help.tts
  * 设计原则:
  * - 本类只做"段级"协调（队列推进 + 选择哪路 TTS + 状态广播）, 不做页/章跟踪
  * - 章节切换由调用方在 [ReadAloudCallback.onComplete] / onParagraphChanged 后驱动
- * - HttpTTS 走在线流时, URL 拼装由调用方注入（依赖具体 HttpTTS 配置, 留 actual 补充）
+ * - HttpTTS 路径由本类经 [AnalyzeUrlCore] 求值 [httpTtsConfig] 的 url 模板得到 url+headers,
+ *   再 setUrl → prepare → (onReady) → play, 对标原版 HttpReadAloudService 请求语义
  *
  * @param systemTts 系统 TTS 引擎, 为 null 表示该平台无系统 TTS
  * @param httpTts 在线 HttpTTS 播放器, 为 null 表示不支持在线 TTS
@@ -27,11 +32,38 @@ class ReadAloudController(
     /** 朗读状态回调。 */
     var callback: ReadAloudCallback? = null
 
+    /** HttpTTS 源配置, useHttpTts=true 时必须注入（对标原版 ReadAloud.httpTTS）。 */
+    var httpTtsConfig: HttpTTS? = null
+
+    /** 朗读语速, 注入 url 模板 speakSpeed 变量（对标原版 AppConfig.speechRatePlay + 5）。 */
+    var speechRate: Int = 0
+
     /** true = 用 HttpTTS, false = 用系统 TTS。 */
     private var useHttpTts: Boolean = false
 
-    /** 当前是否暂停中（用于 resume 判断）。 */
+    /** 当前是否暂停中（用于 resume 判断; 平台播放器回调线程可见性靠 Volatile）。 */
+    @Volatile
     private var paused: Boolean = false
+
+    init {
+        // 对标原版 ExoPlayer 事件桥: STATE_READY→play / STATE_ENDED→推进 / onPlayerError→上报
+        val player = httpTts
+        if (player != null) {
+            player.listener = object : HttpTtsPlayerListener {
+                override fun onReady() {
+                    if (!paused) player.play()
+                }
+
+                override fun onEndOfMedia() = onMediaEnded()
+
+                override fun onError(message: String) {
+                    this@ReadAloudController.onError(message)
+                }
+
+                override fun onBufferingUpdate(percent: Int) = Unit
+            }
+        }
+    }
 
     /**
      * 开始朗读一组段落。
@@ -94,22 +126,58 @@ class ReadAloudController(
     }
 
     /**
-     * 播放当前段落。
-     *
-     * 任务伪代码原写 `queue.nowSpeak` 当文本用是错的: nowSpeak 是 Int 下标。
-     * 正确做法: 从 contentList 取当前段。
+     * 播放当前段落: 应用起始段偏移 → 跳过不可读段 → 按路由分发。
      */
     private fun playCurrent() {
-        val text = queue.contentList.getOrNull(queue.nowSpeak) ?: return
+        var text = queue.contentList.getOrNull(queue.nowSpeak) ?: return
+        // 起始段偏移: 仅当前段生效, stepNext 会清零（对标原版 substring(paragraphStartPos)）
+        if (queue.paragraphStartPos > 0 && queue.paragraphStartPos < text.length) {
+            text = text.substring(queue.paragraphStartPos)
+        }
+        // 纯空白/标点段跳过, 复用队列推进逻辑（对标原版 notReadAloudRegex 过滤）
+        if (text.matches(AppPattern.notReadAloudRegex)) {
+            if (queue.advanceToNextSpeakable()) {
+                playCurrent()
+            } else {
+                callback?.onComplete()
+            }
+            return
+        }
         callback?.onParagraphChanged(queue.nowSpeak)
         callback?.onSpeakStart(text)
         if (useHttpTts && httpTts != null) {
-            // 走 HttpTTS: 需先通过 HttpTtsRequest 拼装 URL（依赖具体 HttpTTS 配置, 留 actual 补充）
-            // 实际拼装由调用方在 setUrl 之前完成, 这里只触发播放
-            httpTts.play()
+            playHttpTts(httpTts, text)
         } else {
             // 走系统 TTS: utteranceId 用段下标的字符串形式
             systemTts?.speak(text, queue.nowSpeak.toString())
+        }
+    }
+
+    /**
+     * HttpTTS 路径: [AnalyzeUrlCore] 求值源 url 模板（注入 speakText/speakSpeed 变量, 含源级
+     * headers/cookie）得到 url+headers → setUrl → prepare, onReady 后经 listener 触发 play。
+     *
+     * 与原版差异: 原版先经 getSpeakStream 下载音频文件再播（POST/body 源也支持）,
+     * 这里把求值后的 url 直连平台播放器, POST 型源由各平台下载路径自行兜底。
+     */
+    private fun playHttpTts(player: HttpTtsPlayer, text: String) {
+        val config = httpTtsConfig ?: run {
+            onError("未设置 HttpTTS 源配置")
+            return
+        }
+        val speakText = text.replace(AppPattern.notReadAloudRegex, "")
+        runCatching {
+            AnalyzeUrlCore(
+                config.url,
+                source = config,
+                readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,
+                variables = HttpTtsRequest.speakVariables(speakText, speechRate),
+            )
+        }.onSuccess { analyzeUrl ->
+            player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
+            player.prepare()
+        }.onFailure {
+            onError("HttpTTS url 求值失败: ${it.message}")
         }
     }
 

@@ -259,8 +259,9 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
         upAudioPlayNotification()
         if (!requestFocus()) return
         execute(context = Main) {
-            AudioPlay.status = Status.STOP
-            postEvent(EventBus.AUDIO_STATE, Status.STOP)
+            // 拉链接+缓冲窗口置 LOADING, 不再置 STOP: 后者会让 Activity.onDestroy 误判"没在播"而 stopSelf
+            AudioPlay.status = Status.LOADING
+            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
             audioPlayManager.cancelProgressJobs()
             val analyzeUrl = AnalyzeUrl(
                 url,
@@ -327,7 +328,8 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
         upMediaSessionPlaybackState(
             if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
         )
-        // lastLrcPosition 重置由 manager.upPlayProgressForLrc 内部新协程首帧完成
+        // seek 后歌词位置失效, 重算 (对标原版 adjustProgress 的 lastLrcPosition = -1)
+        audioPlayManager.resetLrcPosition()
         audioPlayManager.upPlayProgressForLrc()
     }
 

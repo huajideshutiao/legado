@@ -54,6 +54,11 @@ class IosPreferenceProvider(
         return if (value == 0L && !defaults.objectHasKey(key)) default else value
     }
 
+    override fun getFloat(key: String, default: Float): Float {
+        if (!defaults.objectHasKey(key)) return default
+        return defaults.floatForKey(key)
+    }
+
     override fun putString(key: String, value: String?) {
         if (value == null) {
             // null 等价于移除 (与 SharedPreferences.Editor.remove 行为一致)
@@ -78,6 +83,11 @@ class IosPreferenceProvider(
 
     override fun putLong(key: String, value: Long) {
         defaults.setObject(value, forKey = key)
+        defaults.synchronize()
+    }
+
+    override fun putFloat(key: String, value: Float) {
+        defaults.setFloat(value, forKey = key)
         defaults.synchronize()
     }
 

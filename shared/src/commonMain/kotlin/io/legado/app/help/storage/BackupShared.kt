@@ -6,6 +6,7 @@ import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
@@ -248,12 +249,13 @@ object BackupShared {
         }
         BackupFileOps.delete(zipFilePath)
         BackupFileOps.delete(zipFilePath.replace("tmp_", ""))
-        val backupFileName = getNowZipFileName()
+        // WebDav 始终传带日期的文件名 (与 app 端一致); onlyLatestBackup 仅影响本地副本, 本 KMP 版无本地副本
+        val zipFileName = getNowZipFileName()
         if (BackupFileOps.zipFiles(paths, zipFilePath)) {
             // 5. 上传到 WebDav
             if (uploadToWebDav) {
                 try {
-                    AppWebDavShared.backUpWebDav(backupFileName)
+                    AppWebDavShared.backUpWebDav(zipFileName)
                 } catch (e: Exception) {
                     AppLog.put("BackupShared 上传至 WebDav 失败\n${e.localizedMessage}", e)
                 }
@@ -277,24 +279,19 @@ object BackupShared {
     }
 
     /**
-     * 生成当前备份 zip 文件名。
+     * 生成当前备份 zip 文件名 (与 app 端 [io.legado.app.help.storage.Backup.getNowZipFileName] 一致)。
      *
-     * 与 app 端 [io.legado.app.help.storage.Backup.getNowZipFileName] 同语义:
-     * - 默认格式: `backup{yyyy-MM-dd}.zip`
-     * - 配置了 webDavDeviceName 时: `backup{yyyy-MM-dd}-{deviceName}.zip`
-     * - AppConfig.onlyLatestBackup = true 时返回固定 `backup.zip` (由 [backup] 调用方决定)
+     * 始终为带日期的文件名: `backup{yyyy-MM-dd}.zip` / `backup{yyyy-MM-dd}-{deviceName}.zip`;
+     * onlyLatestBackup 只影响本地副本命名, 不影响 WebDav 上传名 (云端保留历史备份)。
      */
     private fun getNowZipFileName(): String {
         val backupDate = datePattern.format(systemCurrentTimeMillis())
-        val deviceName = PreferenceProviders.get().getString(PreferKey.webDavDeviceName, "")
-        val name = if (deviceName.isNotBlank()) {
+        val deviceName = AppConfigProviders.get().webDavDeviceName
+        return if (deviceName.isNotBlank()) {
             "backup${backupDate}-${deviceName}.zip"
         } else {
             "backup${backupDate}.zip"
-        }
-        // AppConfig.onlyLatestBackup 时只保留 backup.zip (与 app 端逻辑一致)
-        val onlyLatest = PreferenceProviders.get().getBoolean(PreferKey.onlyLatestBackup, true)
-        return if (onlyLatest) "backup.zip" else name.normalizeFileName()
+        }.normalizeFileName()
     }
 
     /** 清理备份工作目录与 zip 临时文件 (与 app 端 [io.legado.app.help.storage.Backup.clearCache] 同语义)。 */

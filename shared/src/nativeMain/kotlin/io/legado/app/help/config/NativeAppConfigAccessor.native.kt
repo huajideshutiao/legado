@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import io.legado.app.constant.PreferKey
+
 /**
  * nativeMain: [AppConfigAccessor] 的 iOS / 鸿蒙 两端共用实现。
  *
@@ -11,6 +13,9 @@ package io.legado.app.help.config
  * - 复杂计算属性 (isNightTheme/isEInkMode) 基于 themeMode 计算
  *
  * 两端实现逻辑完全一致 (仅类名 Ios/Ohos 前缀与注释平台描述不同), 下沉到 nativeMain 共用。
+ *
+ * 存储 key 一律引用 [PreferKey] 常量: 部分 key 的字面量与属性名不同
+ * (如 ttsEngine="appTtsEngine"、webDavUrl="web_dav_url"), 裸字符串会与 Android 端错位。
  *
  * 注册入口 (iOS/鸿蒙共用): [registerNativeAppConfigAccessor]
  *
@@ -24,127 +29,127 @@ class NativeAppConfigAccessor(
 
     // ---- 并发 / 目录 ----
     override val threadCount: Int
-        get() = prefs.getInt("threadCount", 16)
+        get() = prefs.getInt(PreferKey.threadCount, 16)
 
     override val tocCountWords: Boolean
-        get() = prefs.getBoolean("tocCountWords", false)
+        get() = prefs.getBoolean(PreferKey.tocCountWords, true)
 
     override var chineseConverterType: Int
-        get() = prefs.getInt("chineseConverterType", 0)
-        set(value) = prefs.putInt("chineseConverterType", value)
+        get() = prefs.getInt(PreferKey.chineseConverterType, 0)
+        set(value) = prefs.putInt(PreferKey.chineseConverterType, value)
 
     override val replaceEnableDefault: Boolean
-        get() = prefs.getBoolean("replaceEnableDefault", true)
+        get() = prefs.getBoolean(PreferKey.replaceEnableDefault, true)
 
     override val enableReadRecord: Boolean
-        get() = prefs.getBoolean("enableReadRecord", true)
+        get() = prefs.getBoolean(PreferKey.enableReadRecord, true)
 
     // ---- 书架业务 ----
     override val bookshelfSort: Int
-        get() = prefs.getInt("bookshelfSort", 0)
+        get() = prefs.getInt(PreferKey.bookshelfSort, 0)
 
     override val bookshelfLayout: Int
-        get() = prefs.getInt("bookshelfLayout", 0)
+        get() = prefs.getInt(PreferKey.bookshelfLayout, 0)
 
     override val bookshelfCoverHeight: Int
-        get() = prefs.getInt("bookshelfCoverHeight", 120).coerceIn(90, 220)
+        get() = prefs.getInt(PreferKey.bookshelfCoverHeight, 120).coerceIn(90, 220)
 
     override val bookshelfGridWidth: Int
-        get() = prefs.getInt("bookshelfGridWidth", 120)
+        get() = prefs.getInt(PreferKey.bookshelfGridWidth, 120)
 
     override val showUnread: Boolean
-        get() = prefs.getBoolean("showUnread", true)
+        get() = prefs.getBoolean(PreferKey.showUnread, true)
 
     override val bookshelfListShowKind: Boolean
-        get() = prefs.getBoolean("bookshelfListShowKind", false)
+        get() = prefs.getBoolean(PreferKey.bookshelfListShowKind, false)
 
     override val bookshelfListShowIntro: Boolean
-        get() = prefs.getBoolean("bookshelfListShowIntro", false)
+        get() = prefs.getBoolean(PreferKey.bookshelfListShowIntro, false)
 
     override val bookshelfListIntroLines: Int
-        get() = prefs.getInt("bookshelfListIntroLines", 2).coerceIn(1, 3)
+        get() = prefs.getInt(PreferKey.bookshelfListIntroLines, 2).coerceIn(1, 3)
 
     override val bookshelfShowGroupCount: Boolean
-        get() = prefs.getBoolean("bookshelfShowGroupCount", true)
+        get() = prefs.getBoolean(PreferKey.bookshelfShowGroupCount, true)
 
     override val bookshelfFixedWidthMode: Boolean
-        get() = prefs.getBoolean("bookshelfFixedWidthMode", false)
+        get() = prefs.getBoolean(PreferKey.bookshelfFixedWidthMode, false)
 
     override val showLastUpdateTime: Boolean
-        get() = prefs.getBoolean("showLastUpdateTime", false)
+        get() = prefs.getBoolean(PreferKey.showLastUpdateTime, false)
 
     override val saveTabPosition: Int
-        get() = prefs.getInt("saveTabPosition", 0)
+        get() = prefs.getInt(PreferKey.saveTabPosition, 0)
 
     override val bookExportFileName: String
-        get() = prefs.getString("bookExportFileName", "")
+        get() = prefs.getString(PreferKey.bookExportFileName, "")
 
     override val episodeExportFileName: String
-        get() = prefs.getString("episodeExportFileName", "")
+        get() = prefs.getString(PreferKey.episodeExportFileName, "")
 
     override val bookGroupStyle: Int
-        get() = prefs.getInt("bookGroupStyle", 0)
+        get() = prefs.getInt(PreferKey.bookGroupStyle, 0)
 
     override val autoRefreshBook: Boolean
-        get() = prefs.getBoolean("autoRefreshBook", false)
+        get() = prefs.getBoolean(PreferKey.autoRefresh, false)
 
     override val preDownloadNum: Int
-        get() = prefs.getInt("preDownloadNum", 10)
+        get() = prefs.getInt(PreferKey.preDownloadNum, 10)
 
     // ---- 搜索业务 ----
     override var searchScope: String
-        get() = prefs.getString("searchScope", "")
-        set(value) = prefs.putString("searchScope", value)
+        get() = prefs.getString(PreferKey.searchScope, "")
+        set(value) = prefs.putString(PreferKey.searchScope, value)
 
     override var searchGroup: String
-        get() = prefs.getString("searchGroup", "")
-        set(value) = prefs.putString("searchGroup", value)
+        get() = prefs.getString(PreferKey.searchGroup, "")
+        set(value) = prefs.putString(PreferKey.searchGroup, value)
 
     override val searchLayout: Int
-        get() = prefs.getInt("searchLayout", 1)
+        get() = prefs.getInt(PreferKey.searchLayout, 1)
 
     override val precisionSearch: Boolean
-        get() = prefs.getBoolean("precisionSearch", false)
+        get() = prefs.getBoolean(PreferKey.precisionSearch, false)
 
     // ---- 缓存业务 ----
     override val exportCharset: String
-        get() = prefs.getString("exportCharset", "UTF-8")
+        get() = prefs.getString(PreferKey.exportCharset, "UTF-8")
 
     // ---- WebDav ----
     override val webDavUrl: String
-        get() = prefs.getString("webDavUrl", "")
+        get() = prefs.getString(PreferKey.webDavUrl, "")
 
     override val webDavAccount: String
-        get() = prefs.getString("webDavAccount", "")
+        get() = prefs.getString(PreferKey.webDavAccount, "")
 
     override val webDavPassword: String
-        get() = prefs.getString("webDavPassword", "")
+        get() = prefs.getString(PreferKey.webDavPassword, "")
 
     override val syncBookProgress: Boolean
-        get() = prefs.getBoolean("syncBookProgress", true)
+        get() = prefs.getBoolean(PreferKey.syncBookProgress, true)
 
     // webDavDir 默认 "legado" (与 app 端 AppConfig.webDavDir stringPref 默认值对齐)
     override val webDavDir: String
-        get() = prefs.getString("webDavDir", "legado")
+        get() = prefs.getString(PreferKey.webDavDir, "legado")
 
     // webDavDeviceName 默认空串 (app 端默认 Build.MODEL, iOS/鸿蒙端暂用空串,
     // 后续可替换为 UIDevice.name / ohos deviceInfo)
     override val webDavDeviceName: String
-        get() = prefs.getString("webDavDeviceName", "")
+        get() = prefs.getString(PreferKey.webDavDeviceName, "")
 
     // ---- 朗读业务 ----
     override val ttsEngine: String
-        get() = prefs.getString("ttsEngine", "")
+        get() = prefs.getString(PreferKey.ttsEngine, "")
 
     override val ttsSpeechRate: Int
-        get() = prefs.getInt("ttsSpeechRate", 5)
+        get() = prefs.getInt(PreferKey.ttsSpeechRate, 5)
 
     override val ttsTimer: Int
-        get() = prefs.getInt("ttsTimer", 0)
+        get() = prefs.getInt(PreferKey.ttsTimer, 0)
 
     // ---- 主题 ----
     override val themeMode: String
-        get() = prefs.getString("themeMode", "0")
+        get() = prefs.getString(PreferKey.themeMode, "0")
 
     override val isNightTheme: Boolean
         get() = themeMode == "2"
@@ -153,50 +158,50 @@ class NativeAppConfigAccessor(
         get() = themeMode == "3"
 
     override val useDefaultCover: Boolean
-        get() = prefs.getBoolean("useDefaultCover", false)
+        get() = prefs.getBoolean(PreferKey.useDefaultCover, false)
 
     // ---- 底栏配置 (桌面端侧栏竖版复用, 底栏高度视为侧栏宽度) ----
     // 默认值与 app 端 AppConfig.BOTTOM_BAR_* 常量一致
     override val bottomBarHeight: Int
-        get() = prefs.getInt("bottomBarHeight", 50)
+        get() = prefs.getInt(PreferKey.bottomBarHeight, 50)
 
     override val bottomBarIconSize: Int
-        get() = prefs.getInt("bottomBarIconSize", 24)
+        get() = prefs.getInt(PreferKey.bottomBarIconSize, 24)
 
     override val bottomBarLabelMode: Int
-        get() = prefs.getInt("bottomBarLabelMode", 0)
+        get() = prefs.getInt(PreferKey.bottomBarLabelMode, 0)
 
     override val showHome: Boolean
-        get() = prefs.getBoolean("showHome", true)
+        get() = prefs.getBoolean(PreferKey.showHome, true)
 
     override val showDiscovery: Boolean
-        get() = prefs.getBoolean("showDiscovery", true)
+        get() = prefs.getBoolean(PreferKey.showDiscovery, true)
 
     override val bottomNavItemOrder: String
-        get() = prefs.getString("bottomNavItemOrder", "")
+        get() = prefs.getString(PreferKey.bottomNavItemOrder, "")
 
     override val defaultHomePage: String
-        get() = prefs.getString("defaultHomePage", "bookshelf")
+        get() = prefs.getString(PreferKey.defaultHomePage, "bookshelf")
 
     // ---- 导入业务 (ImportBookSourceViewModelShared / ImportBookViewModelShared 用) ----
     override val importKeepName: Boolean
-        get() = prefs.getBoolean("importKeepName", false)
+        get() = prefs.getBoolean(PreferKey.importKeepName, false)
 
     override val importKeepGroup: Boolean
-        get() = prefs.getBoolean("importKeepGroup", false)
+        get() = prefs.getBoolean(PreferKey.importKeepGroup, false)
 
     override val importKeepEnable: Boolean
-        get() = prefs.getBoolean("importKeepEnable", false)
+        get() = prefs.getBoolean(PreferKey.importKeepEnable, false)
 
     override val localBookImportSort: Int
-        get() = prefs.getInt("localBookImportSort", 0)
+        get() = prefs.getInt(PreferKey.localBookImportSort, 0)
 
     // ---- 远程服务 / 批量管理 ----
     override val remoteServerId: Long
-        get() = prefs.getLong("remoteServerId", 0L)
+        get() = prefs.getLong(PreferKey.remoteServerId, 0L)
 
     override val batchChangeSourceDelay: Int
-        get() = prefs.getInt("batchChangeSourceDelay", 0)
+        get() = prefs.getInt(PreferKey.batchChangeSourceDelay, 0)
 }
 
 /**

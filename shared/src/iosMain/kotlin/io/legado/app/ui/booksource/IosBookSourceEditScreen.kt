@@ -525,7 +525,8 @@ private fun BookSourceEditContent(
                         oldSource.clearExploreKindsCache()
                     }
                     if (oldSource.jsLib != source.jsLib) {
-                        SharedJsScope.remove(oldSource.jsLib)
+                        // 清缓存失败不应伪装成"保存失败" (provider 未注册时 remove 会抛), 单独兜住
+                        runCatching { SharedJsScope.remove(oldSource.jsLib) }
                     }
                 }
                 val oldKey = oldSource.bookSourceUrl.takeIf { it.isNotBlank() }

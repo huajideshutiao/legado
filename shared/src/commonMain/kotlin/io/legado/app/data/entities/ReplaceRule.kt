@@ -10,7 +10,9 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(
     tableName = "replace_rules",
     indices = [(Index(value = ["id"]))]

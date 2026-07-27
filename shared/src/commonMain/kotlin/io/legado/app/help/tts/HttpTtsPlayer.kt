@@ -13,6 +13,7 @@ import io.legado.app.help.http.header
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.isRetryableNetworkError
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -301,7 +302,7 @@ class HttpTtsDownloadScheduler(
                         e.printOnDebug()
                         throw e
                     }
-                    isTimeoutOrConnect(e) -> {
+                    isRetryableNetworkError(e) -> {
                         if (downloadErrorBreaker.record()) {
                             AppLog.put("tts超时或连接错误超过5次\n${e.localizedMessage}", e, true)
                             throw e
@@ -323,12 +324,6 @@ class HttpTtsDownloadScheduler(
             }
         }
         return null
-    }
-
-    /** 判断是否为超时/连接异常（JVM 专属类型用类名检查,避免 commonMain 引用 java.net）。 */
-    private fun isTimeoutOrConnect(e: Throwable): Boolean {
-        val name = e::class.qualifiedName ?: e::class.simpleName ?: return false
-        return name == "java.net.SocketTimeoutException" || name == "java.net.ConnectException"
     }
 
     /** 重置下载错误熔断器。 */

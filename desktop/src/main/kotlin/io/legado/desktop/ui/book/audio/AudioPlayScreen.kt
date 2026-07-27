@@ -96,10 +96,11 @@ fun AudioPlayScreen(
             AudioPlayShared.loadOrUpPlayUrl()
         }
     }
-    // 退出时若非 PLAY 状态则停止播放, 释放 jlayer 播放器资源
+    // 退出时若已停/已暂停才停止播放, 释放 jlayer 播放器资源; LOADING(拉链接+缓冲中) 算"在播", 留给后台继续
     DisposableEffect(book.bookUrl) {
         onDispose {
-            if (AudioPlayShared.status != Status.PLAY) {
+            val cur = AudioPlayShared.status
+            if (cur == Status.STOP || cur == Status.PAUSE) {
                 AudioPlayShared.stop()
             }
         }

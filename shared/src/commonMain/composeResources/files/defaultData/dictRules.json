@@ -1,0 +1,23 @@
+[
+  {
+    "name": "百度汉语",
+    "urlRule": "https://dict.baidu.com/s?wd={{key}}",
+    "showRule": "@js:var jsoup = org.jsoup.Jsoup.parse(result)\njsoup.select(\"script,#search-bar,#right-panel,#copyright\").remove()\njsoup.select(\"#poem-list-items\").html()",
+    "enabled": true,
+    "sortNumber": 2
+  },
+  {
+    "name": "海词英文",
+    "urlRule": "https://apii.dict.cn/mini.php?q={{key}}",
+    "showRule": "tag.body@all",
+    "enabled": true,
+    "sortNumber": 1
+  },
+  {
+  "name": "海词中文",
+  "urlRule": "https://hanyu.dict.cn/{{key}}",
+  "showRule": "@js:var jsoup = org.jsoup.Jsoup.parse(result)\njsoup.select(\"script,#header,#footer,#page-share,.mslide,.title,#dictHcBtn,#dictHcBtnTop,#dictHc,#dictHc,#dictHcSettingArea,#dictHcClosetip\").remove()\njsoup.select(\"#cy\").html()",
+  "enabled": true,
+  "sortNumber": 0
+  }
+]

@@ -17,23 +17,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.rule.ExploreKind
-import io.legado.app.exception.ContentEmptyException
-import io.legado.app.exception.NoStackTraceException
-import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
-import io.legado.app.model.script.ScriptException
-import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.association.ImportBookSourceViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.source.BookSourceListCallbacks
@@ -56,8 +48,6 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
@@ -67,11 +57,8 @@ import io.legado.desktop.ui.association.ImportListScaffoldVm
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -82,7 +69,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Toolkit
@@ -277,11 +263,9 @@ private fun BookSourceListContent(
     var showCheckSourceDialog by remember { mutableStateOf(false) }
     var checkKeywordText by remember { mutableStateOf(CheckSourceShared.keyword) }
 
-    // ---- 书源校验编排器 (提取为顶层 BookSourceChecker 类, 避免 @Composable 函数内
-    // suspend 局部函数互相引用报 Unresolved reference; Compose 编译器变换 @Composable
-    // 函数后破坏 suspend 局部函数作用域, checkSourceImpl/doCheckSourceImpl 等互相调用
-    // 时编译器找不到对方。BookSourceChecker 持有 scope + onMsg/onVisible/onTick 回调,
-    // 内部管理 checkJob/checkRefreshJob, onCancelCheckSource 调 checker.cancel()) ----
+    // ---- 书源校验编排器 (提取为顶层 BookSourceChecker 类, 持有 scope + onMsg/onVisible/onTick
+    // 回调, 内部管理 checkJob/checkRefreshJob, onCancelCheckSource 调 checker.cancel();
+    // 单源校验业务走 CheckSourceShared.checkSource) ----
     val checker = remember(scope) {
         BookSourceChecker(
             scope = scope,
@@ -683,17 +667,12 @@ private fun BookSourceListContent(
  * 书源校验编排器 (desktop 端无 Android Service, 用协程模拟 CheckSourceService)。
  *
  * 从 BookSourceListContent 提取为顶层类, 避免 @Composable 函数内 suspend 局部函数
- * 互相引用报 Unresolved reference (Compose 编译器变换 @Composable 函数后, suspend
- * 局部函数的作用域被破坏, checkSourceImpl/doCheckSourceImpl/checkBookImpl/firstExploreUrl
- * 互相调用时编译器找不到对方)。
+ * 互相引用报 Unresolved reference。
  *
- * 职责对照 app 端 CheckSourceService:
- * - [startCheckSource] = check + checkSource + doCheckSource + checkBook 编排
+ * 职责对照 app 端 CheckSourceService (单源校验业务已下沉 [CheckSourceShared.checkSource],
+ * 本类只负责并发调度 + 进度提示, 与 app 端 CheckSourceService 分工一致):
+ * - [startCheckSource] = check + 并发调度
  * - [cancel] = stop + finishChecking
- * - [checkSourceImpl] = checkSource (单源校验 + 超时/异常分类)
- * - [doCheckSourceImpl] = doCheckSource (搜索/发现/详情/目录/正文校验)
- * - [checkBookImpl] = checkBook (详情/目录/正文校验)
- * - [firstExploreUrl] = exploreKinds 简化版 (取第一个发现分类 URL)
  *
  * @param scope 主线程 CoroutineScope (rememberCoroutineScope), 用于切回主线程更新 Compose state
  * @param onMsg 更新 checkSourceMsg (BookSourceListContent 的 mutableStateOf)
@@ -739,7 +718,7 @@ private class BookSourceChecker(
                 scope.launch { onMsg(msg); onVisible(true) }
                 postEvent(EventBus.CHECK_SOURCE, msg)
             }.onEachParallel(threadCount) { source ->
-                checkSourceImpl(source)
+                CheckSourceShared.checkSource(source)
             }.onEach {
                 val count = finishCount.incrementAndGet()
                 val msg = jvmGetString("check_source_progress_msg", count, total, it.bookSourceName)
@@ -779,159 +758,6 @@ private class BookSourceChecker(
         checkRefreshJob?.cancel()
         checkRefreshJob = null
         Debug.finishChecking()
-    }
-
-    /**
-     * 校验单个书源 (对照 app 端 CheckSourceService.checkSource)。
-     *
-     * 流程: withTimeout(timeout) 包装 doCheckSource, 成功 updateFinalMessage("校验成功"),
-     * 失败按异常类型 addGroup("校验超时"/"js失效"/"网站失效") + addErrorComment + updateFinalMessage("校验失败:...");
-     * 最后记录 respondTime (Debug.getRespondTime, 成功用耗时, 失败用 timeout+耗时惩罚)。
-     */
-    private suspend fun checkSourceImpl(source: BookSource) {
-        kotlin.runCatching {
-            withTimeout(CheckSourceShared.timeout) {
-                doCheckSourceImpl(source)
-            }
-        }.onSuccess {
-            Debug.updateFinalMessage(source.bookSourceUrl, "校验成功")
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            when (it) {
-                is TimeoutCancellationException -> source.addGroup("校验超时")
-                is ScriptException -> source.addGroup("js失效")
-                !is NoStackTraceException -> source.addGroup("网站失效")
-            }
-            source.addErrorComment(it)
-            Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.localizedMessage}")
-        }
-        source.respondTime = Debug.getRespondTime(source.bookSourceUrl)
-    }
-
-    /**
-     * 执行书源校验 (对照 app 端 CheckSourceService.doCheckSource)。
-     *
-     * 流程: Debug.startChecking → removeInvalidGroups/removeErrorComment 清理旧标记 →
-     * 校验搜索 (checkSearch + getCheckKeyword + WebBook.getBookListAwait) →
-     * 校验发现 (checkDiscovery + firstExploreUrl + WebBook.getBookListAwait) →
-     * 检查 getInvalidGroupNames 非空则抛 NoStackTraceException (汇总失效分组)。
-     */
-    private suspend fun doCheckSourceImpl(source: BookSource) {
-        Debug.startChecking(source)
-        source.removeInvalidGroups()
-        source.removeErrorComment()
-        // 校验搜索书籍
-        if (CheckSourceShared.checkSearch) {
-            val searchWord = source.getCheckKeyword(CheckSourceShared.keyword)
-            if (!source.searchUrl.isNullOrBlank()) {
-                source.removeGroup("搜索链接规则为空")
-                val searchBooks = WebBook.getBookListAwait(source, searchWord).books
-                if (searchBooks.isEmpty()) {
-                    source.addGroup("搜索失效")
-                } else {
-                    source.removeGroup("搜索失效")
-                    checkBookImpl(searchBooks.first().toBook(), source)
-                }
-            } else {
-                source.addGroup("搜索链接规则为空")
-            }
-        }
-        // 校验发现书籍
-        if (CheckSourceShared.checkDiscovery && !source.exploreUrl.isNullOrBlank()) {
-            val url = firstExploreUrl(source)
-            if (url.isNullOrBlank()) {
-                source.addGroup("发现规则为空")
-            } else {
-                source.removeGroup("发现规则为空")
-                val exploreBooks = WebBook.getBookListAwait(source, url, isSearch = false).books
-                if (exploreBooks.isEmpty()) {
-                    source.addGroup("发现失效")
-                } else {
-                    source.removeGroup("发现失效")
-                    checkBookImpl(exploreBooks.first().toBook(), source, false)
-                }
-            }
-        }
-        val finalCheckMessage = source.getInvalidGroupNames()
-        if (finalCheckMessage.isNotBlank()) {
-            throw NoStackTraceException(finalCheckMessage)
-        }
-    }
-
-    /**
-     * 校验书源的详情/目录/正文 (对照 app 端 CheckSourceService.checkBook)。
-     *
-     * @param isSearchBook true=来自搜索, false=来自发现 (用于 addGroup 区分"搜索正文失效"/"发现正文失效")
-     */
-    private suspend fun checkBookImpl(book: Book, source: BookSource, isSearchBook: Boolean = true) {
-        kotlin.runCatching {
-            if (!CheckSourceShared.checkInfo) {
-                return
-            }
-            // 校验详情
-            if (book.tocUrl.isBlank()) {
-                WebBook.getBookInfoAwait(source, book)
-            }
-            if (!CheckSourceShared.checkCategory || source.bookSourceType == BookSourceType.file) {
-                return
-            }
-            // 校验目录 (取前 2 章用于正文 nextChapterUrl)
-            val toc = WebBook.getChapterListAwait(source, book).getOrThrow().asSequence()
-                .filter { !(it.isVolume && it.url.startsWith(it.title)) }
-                .take(2)
-                .toList()
-            val nextChapterUrl = toc.getOrNull(1)?.url ?: toc.first().url
-            if (!CheckSourceShared.checkContent) {
-                return
-            }
-            // 校验正文
-            WebBook.getContentAwait(
-                bookSource = source,
-                book = book,
-                bookChapter = toc.first(),
-                nextChapterUrl = nextChapterUrl,
-                needSave = false
-            )
-        }.onFailure {
-            val bookType = if (isSearchBook) "搜索" else "发现"
-            when (it) {
-                is ContentEmptyException -> source.addGroup("${bookType}正文失效")
-                is TocEmptyException -> source.addGroup("${bookType}目录失效")
-                else -> throw it
-            }
-        }.onSuccess {
-            val bookType = if (isSearchBook) "搜索" else "发现"
-            source.removeGroup("${bookType}目录失效")
-            source.removeGroup("${bookType}正文失效")
-        }
-    }
-
-    /**
-     * 取第一个发现分类 URL (简化版 exploreKinds, 对照 app 端 BookSource.exploreKinds() 扩展)。
-     *
-     * app 端 exploreKinds 依赖 ACache + runScriptWithContext (JS 执行), desktop 端未注册
-     * ExploreKindsCacheProvider, 对 JS 开头的 exploreUrl 无法执行; 此处仅做文本/JSON 解析:
-     * - JSON 数组: 用 GSON.fromJsonArray<ExploreKind> 解析取第一个非空 url
-     * - 文本格式 (title::url 多行, && 或 \n 分隔): split 后取第二段 url
-     *
-     * 不执行 JS 是 desktop 端固有限制 (与 ExploreScreen.exploreKindsDesktop 一致),
-     * JS 发现规则的书源会跳过发现校验 (返回 null → addGroup("发现规则为空"))。
-     */
-    private fun firstExploreUrl(source: BookSource): String? {
-        val exploreUrl = source.exploreUrl ?: return null
-        return runCatching {
-            if (exploreUrl.isJsonArray()) {
-                GSON.fromJsonArray<ExploreKind>(exploreUrl).getOrDefault(emptyList())
-                    .firstOrNull { !it.url.isNullOrBlank() }?.url
-            } else {
-                exploreUrl.split("(&&|\n)+".toRegex())
-                    .mapNotNull { kindStr ->
-                        val parts = kindStr.split("::")
-                        parts.getOrNull(1)?.takeIf { it.isNotBlank() }
-                    }
-                    .firstOrNull()
-            }
-        }.getOrNull()
     }
 }
 

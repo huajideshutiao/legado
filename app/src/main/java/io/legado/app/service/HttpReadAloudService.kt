@@ -459,7 +459,10 @@ class HttpReadAloudService : BaseReadAloudService(),
     // ExoPlayer 桥接回调: 调度器通过本回调通知播放器加入/清空媒体项
     private val downloadCallback = object : HttpTtsDownloadCallback {
         override fun onClearMediaItems() {
-            exoPlayer.clearMediaItems()
+            // 调度器在 IO 线程回调, ExoPlayer 只能主线程操作 (同 onSpeakFileReady)
+            lifecycleScope.launch(Main) {
+                exoPlayer.clearMediaItems()
+            }
         }
 
         override fun onSpeakFileReady(fileName: String, filePath: String) {

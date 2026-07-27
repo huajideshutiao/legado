@@ -29,38 +29,34 @@ import kotlin.concurrent.Volatile
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * EpubFile epub 解析 (ohosMain, 纯 Kotlin 实现)。
+ * EpubFile epub 解析 (nativeMain, iOS/鸿蒙共用, 纯 Kotlin 实现)。
  *
  * # 背景
  * jvmAndAndroidMain 端 [EpubFile] 依赖 `io.legado.app.lib.epublib.*` (JVM-only,
- * 内部用 java.xml.parsers / java.util.zip), 鸿蒙 (Kotlin/Native linuxArm64) 不可见。
+ * 内部用 java.xml.parsers / java.util.zip), iOS/鸿蒙 (Kotlin/Native) 不可见。
  * 本文件用 commonMain 下沉的 [EpubParser] (纯 Kotlin + Ksoup + [unzipEpubEntries] expect/actual)
- * 实现 EPUB 2.0 / 3.0 解析, 解除鸿蒙端 epub 本地书支持 stub 限制。
+ * 实现 EPUB 2.0 / 3.0 解析 (原 ohosMain EpubFile.ohos.kt 上移到 nativeMain, iOS 端同时受益)。
  *
  * # 设计
  * - 本地文件: [LocalBookLocators] 解析 bookUrl → 本地路径 → [kotlin.io.File.readBytes]
  *   → [EpubParser.parse] → [EpubBook] (内存模型)
  * - 远程文件 (webDav/http): 复用 nativeMain WebDav actual (Ktor CIO) 下载到本地缓存文件,
- *   再走 [EpubParser.parse] 解析 (与 jvm 端 RemoteZipWrapper 按需加载不同, 鸿蒙端全量下载)
- * - 封面图片: [BitmapProviders] (已注册 [io.legado.app.help.image.OhosBitmapProvider])
- *   委托 OhosImageOps PixelMap 解码/编码
+ *   再走 [EpubParser.parse] 解析 (与 jvm 端 RemoteZipWrapper 按需加载不同, native 端全量下载)
+ * - 封面图片: [BitmapProviders] (iOS/鸿蒙已注册各自实现) 解码压缩为 JPEG 写入文件;
+ *   封面路径统一走 [FileBook.getCoverPath] 门面 (md5Encode16, 与全端一致)
  * - 章节/正文: 逻辑与 jvmAndAndroidMain [EpubFile] 对齐 (parseFirstPage / parseMenu /
  *   getContent / getBody), 数据模型从 epublib EpubBook/Resource/TOCReference 替换为
  *   [EpubBook] / [EpubResource] / [EpubChapter]
  *
  * # 与 jvmAndAndroidMain [EpubFile] 的差异
  * - 无 epublib 依赖 (改用 [EpubParser] commonMain 纯 Kotlin 解析器)
- * - 无 [LocalEpubResource] / [decodeBitmap] / [compressBitmap] expect/actual
- *   (那些为 epublib 路径设计; 本文件直接用 [EpubParser] + [BitmapProviders])
- * - 无 RemoteZipWrapper 按需加载 (鸿蒙端用 WebDav 全量下载到缓存文件, 详见 [readEpubRemote])
+ * - 无 RemoteZipWrapper 按需加载 (native 端用 WebDav 全量下载到缓存文件, 详见 [readEpubRemote])
  * - 图片 src 路径解析用 [EpubParser.resolvePath] (纯路径规范化) 替代 java.net.URI.resolve
  * - charset 固定 UTF-8 (EPUB 标准要求 XHTML 为 UTF-8; jvm 端 mCharset 仅为兼容异常文件)
  *
  * # 接口契约
  * 实现 [BaseFileBook] 五方法: [upBookInfo] / [getChapterList] / [getContent] / [getImage] / [clear]。
  * 与 jvm 端 companion object 单例缓存模式一致 (按 bookUrl 复用 [EpubFile] 实例)。
- *
- * 模式参考 jvmAndAndroidMain [EpubFile] (epublib 路径) + commonMain [EpubParser] (纯 Kotlin 路径)。
  */
 class EpubFile(var book: Book) {
 
@@ -151,7 +147,7 @@ class EpubFile(var book: Book) {
      * 后续打开复用缓存避免重复下载; 解析仍走 commonMain [EpubParser]。
      *
      * 与 jvmAndAndroidMain 差异: jvm 端用 RemoteZipWrapper 按需 Range 读取 (不全量下载),
-     * 鸿蒙端暂未下沉 RemoteZipWrapper (依赖 epublib), 此处全量下载到缓存文件。
+     * native 端未下沉 RemoteZipWrapper (依赖 epublib), 此处全量下载到缓存文件。
      *
      * 注: WebDav.downloadTo 为 suspend, readEpub 走同步路径 (epubBook 懒加载 getter),
      * 用 [runBlockingInScope] 阻塞调用 (与 nativeMain WebDav.readRange 同模式, 须在后台线程调用)。
@@ -306,7 +302,8 @@ class EpubFile(var book: Book) {
         try {
             epubBook?.let { epub ->
                 if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = getCoverPath(book.bookUrl)
+                    // 封面路径统一走 FileBook 门面 (md5Encode16, 与 app/desktop 端一致)
+                    book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
                 if (fastCheck && kotlin.io.File(book.coverUrl!!).exists()) {
                     return
@@ -318,6 +315,8 @@ class EpubFile(var book: Book) {
                         return
                     }
                     val input = bytes.toInputStream()
+                    val coverFile = kotlin.io.File(book.coverUrl!!)
+                    coverFile.parentFile?.mkdirs()
                     val outFile = File(book.coverUrl!!)
                     BitmapProviders.get().decodeStreamAndCompressToJpeg(input, outFile, 90)
                 } ?: AppLog.putDebug("Epub: 封面获取为空. path: ${book.bookUrl}")
@@ -466,23 +465,11 @@ class EpubFile(var book: Book) {
     /**
      * 构造远程 epub 缓存路径: `{BookStorage.rootPath}/epubCache/{md5(bookUrl)}.epub`。
      *
-     * 路径派生规则与 [getCoverPath] 对齐 (md5(bookUrl) 做文件名, 避免特殊字符)。
+     * md5(bookUrl) 做文件名, 避免特殊字符。
      */
     private fun getEpubCachePath(bookUrl: String): String {
         val rootPath = BookStorageProviders.get().rootPath
         val cacheDir = if (rootPath.endsWith("/")) "${rootPath}epubCache" else "$rootPath/epubCache"
         return "$cacheDir/${MD5Utils.md5Encode(bookUrl)}.epub"
-    }
-
-    /**
-     * 构造封面文件路径: `{BookStorage.rootPath}/covers/{md5(bookUrl)}.jpg`。
-     *
-     * 与 app 端 FileBook.getCoverPath 路径派生规则对齐 (鸿蒙端 FileBookProviders 未注册,
-     * 直接从 BookStorageProviders.rootPath 派生)。
-     */
-    private fun getCoverPath(bookUrl: String): String {
-        val rootPath = BookStorageProviders.get().rootPath
-        val coversDir = if (rootPath.endsWith("/")) "${rootPath}covers" else "$rootPath/covers"
-        return "$coversDir/${MD5Utils.md5Encode(bookUrl)}.jpg"
     }
 }

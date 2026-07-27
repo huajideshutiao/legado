@@ -2,8 +2,17 @@ package io.legado.app.model.analyzeRule
 
 import io.legado.app.constant.AppPattern
 import io.legado.app.utils.AnyMapSerializer
-import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.decodeAnyMapOrNull
+import kotlinx.serialization.json.Json
+
+/**
+ * 与原 GSON(setPrettyPrinting + disableHtmlEscaping) 字节级一致的输出格式: 2 空格缩进 + `": "` 分隔。
+ * [CustomUrl.toString] 结果会写入 Book.origin 并参与字节等值查询, 格式变化会导致老库书籍查不中而重复建书。
+ */
+private val CUSTOM_URL_JSON = Json {
+    prettyPrint = true
+    prettyPrintIndent = "  "
+}
 
 @Suppress("unused")
 class CustomUrl(url: String) {
@@ -52,7 +61,7 @@ class CustomUrl(url: String) {
         // AnyMapSerializer 期望 Map<String, Any?>, attribute 是 Map<String, Any> (Any 是 Any? 子类型)
         @Suppress("UNCHECKED_CAST")
         val anyMap = attribute as Map<String, Any?>
-        return mUrl + "," + KS_JSON.encodeToString(AnyMapSerializer, anyMap)
+        return mUrl + "," + CUSTOM_URL_JSON.encodeToString(AnyMapSerializer, anyMap)
     }
 
 }

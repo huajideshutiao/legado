@@ -30,11 +30,11 @@ abstract class JvmWebServerPlatform : WebServerPlatform {
     @Volatile
     private var webSocketServer: WebSocketServer? = null
 
-    override fun startServers(port: Int): List<String> {
+    override fun startServers(port: Int): WebServerStartResult {
         // 先停旧实例 (原 upWebServer 首段: httpServer?.isAlive==true → stop; webSocketServer 同理)
         stopServers()
         val addressList = NetworkUtils.getLocalIPAddress()
-        if (addressList.isEmpty()) return emptyList()
+        if (addressList.isEmpty()) return WebServerStartResult()
         val httpServer = HttpServer(port)
         val webSocketServer = WebSocketServer(port + 1)
         return try {
@@ -44,17 +44,16 @@ abstract class JvmWebServerPlatform : WebServerPlatform {
             this.httpServer = httpServer
             this.webSocketServer = webSocketServer
             // URL 格式 "http://host:port" 对齐 R.string.http_ip
-            addressList.map { "http://${it.hostAddress}:$port" }
+            WebServerStartResult(addressList.map { "http://${it.hostAddress}:$port" })
         } catch (e: IOException) {
-            // 对齐 app 端 upWebServer catch(IOException): toast + printOnDebug + stopSelf
-            // 此处不 toast (toast 是 Android 平台行为, 由上层 WebServerManager.start() 返回空列表后调用方处理)
+            // 对齐 app 端 upWebServer catch(IOException): 异常信息回传给平台壳 toast
             AppLog.put("startServers failed: ${e.localizedMessage}", e)
             // 清理半启动状态
             runCatching { httpServer.stop() }
             runCatching { webSocketServer.stop() }
             this.httpServer = null
             this.webSocketServer = null
-            emptyList()
+            WebServerStartResult(errorMsg = e.localizedMessage ?: "")
         }
     }
 

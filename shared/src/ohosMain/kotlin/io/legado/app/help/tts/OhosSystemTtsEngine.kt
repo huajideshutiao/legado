@@ -20,9 +20,10 @@ import kotlinx.serialization.Serializable
  * - onStop(utteranceId) → speaking=false; [TtsProgressListener.onDone]
  * - onError(utteranceId) → speaking=false; [TtsProgressListener.onError]
  *
- * # 降级策略 (桥接未就绪时, 与原占位行为一致)
- * [OhosNativeBridge.isTtsBridgeReady] 返回 false (tsfn 未注入) 时, 保留占位行为
- * (println + 立即 onDone), 让 [ReadAloudControllerShared] 状态机能正常推进。
+ * # 降级策略 (桥接未就绪时)
+ * [OhosNativeBridge.isTtsBridgeReady] 返回 false (tsfn 未注入) 时, speak 直接回调
+ * [TtsProgressListener.onError] 置 ERROR 停止推进, 让用户可感知 "TTS 不可用"
+ * (不再立即 onDone: 那会让整章被秒速静默"读完")。
  *
  * # 参考
  * - napi 桥接模式参考 [OhosHttpTtsPlayer] (media tsfn + MediaEventListener)
@@ -30,7 +31,7 @@ import kotlinx.serialization.Serializable
  */
 class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
 
-    /** 引擎是否就绪 (占位引擎始终 true; 真实引擎 createEngine 异步, 但不影响 isReady 语义)。 */
+    /** 引擎是否就绪 (桥接未就绪时 false, 如实上报; 真实引擎 createEngine 异步不影响该语义)。 */
     @Volatile private var ready: Boolean = true
 
     /** 是否正在朗读 (speak 后置 true, onComplete/onStop/onError 后置 false)。 */
@@ -58,7 +59,8 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
             OhosNativeBridge.sendTtsCommand(action = "createEngine", lang = "zh-CN", rate = rateMultiplier)
             println("[ohos-stts] init: bridge ready, createEngine sent")
         } else {
-            println("[ohos-stts] init: bridge not ready, fallback to placeholder")
+            ready = false
+            println("[ohos-stts] init: bridge not ready, speak will report error")
         }
     }
 
@@ -92,7 +94,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
      * 立即播放 (清空已有队列)。
      *
      * 桥接就绪: 发 "speak" 命令, 设 speaking=true, 等 ArkTS onComplete/onStop 回调再触发 onDone。
-     * 降级: 占位朗读 (println + 立即 onDone, 让状态机推进)。
+     * 降级: 上报 onError 置 ERROR 停止推进 (不 onDone, 避免整章被秒速静默"读完")。
      */
     override fun speak(text: String, utteranceId: String) {
         if (shutdown) return
@@ -107,13 +109,11 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
             )
             // onDone 由 ArkTS onComplete/onStop 回调触发, 不在此处立即触发
         } else {
-            // 降级: 占位朗读
-            speaking = true
-            paused = false
-            println("[ohos-stts] speak (placeholder): utteranceId=$utteranceId text.len=${text.length}")
-            listenerField?.onStart(utteranceId)
+            // 降级: napi 桥未就绪无法出声, 走错误上报通道让用户可感知
             speaking = false
-            listenerField?.onDone(utteranceId)
+            paused = false
+            println("[ohos-stts] speak: tts bridge not ready, report error. utteranceId=$utteranceId")
+            listenerField?.onError(utteranceId, ERROR_BRIDGE_NOT_READY)
         }
     }
 
@@ -217,6 +217,11 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
         val message: String? = null,
         val errorCode: Int? = null,
     )
+
+    companion object {
+        /** 降级模式错误码: napi 桥未就绪 (对齐 Android TextToSpeech.ERROR = -1 语义)。 */
+        private const val ERROR_BRIDGE_NOT_READY = -1
+    }
 }
 
 /**

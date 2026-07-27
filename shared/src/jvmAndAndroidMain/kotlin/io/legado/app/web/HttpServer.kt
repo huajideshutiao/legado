@@ -5,14 +5,17 @@ import io.legado.app.api.ReturnData
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.toJsonElement
 import io.legado.app.web.api.WebApi
 import io.legado.app.web.api.WebApiRequest
 import io.legado.app.web.api.WebApiResponse
 import io.legado.app.web.utils.AssetsWeb
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
 import okio.Pipe
 import okio.buffer
 import java.io.ByteArrayInputStream
+import java.io.Writer
 
 /**
  * nanohttpd 薄壳: IHTTPSession -> WebApiRequest -> WebApi.handle -> WebApiResponse -> Response。
@@ -35,7 +38,7 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
         val origin = session.headers["origin"]
 
         val startAt = System.currentTimeMillis()
-        AppLog.put("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Start($startAt)")
+        AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Start($startAt)")
 
         // OPTIONS 预检: 直接回, 不进路由层
         if (session.method == Method.OPTIONS) {
@@ -92,8 +95,7 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                         val pipe = Pipe(16 * 1024)
                         Coroutine.async {
                             pipe.sink.buffer().outputStream().bufferedWriter(Charsets.UTF_8).use {
-                                // Phase D: GSON.toJson(returnData, it) 流式写入 → toJsonString() 一次性写入
-                                it.write(returnData.toJsonString())
+                                returnData.writeJsonTo(it, data)
                             }
                         }
                         newChunkedResponse(
@@ -108,10 +110,10 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
             }
             response.addHeader("Access-Control-Allow-Methods", "GET, POST")
             response.addHeader("Access-Control-Allow-Origin", origin)
-            AppLog.put("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+            AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
             return response
         } catch (e: Exception) {
-            AppLog.put(
+            AppLog.putDebug(
                 "$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Error End($startAt)\n$e\n${e.stackTraceStr}",
                 e
             )
@@ -123,4 +125,20 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
         private const val TAG = "HttpServer"
     }
 
+}
+
+/**
+ * 大列表 JSON 逐元素写入 [Writer], 避免整串驻留内存 (对齐原版 GSON.toJson(returnData, writer) 的流式语义)。
+ *
+ * 外层 {isSuccess,errorMsg,data} 结构与 [ReturnData.toJsonString] 保持一致, 仅 data 数组逐项序列化后写出。
+ */
+private fun ReturnData.writeJsonTo(writer: Writer, data: List<*>) {
+    writer.write("{\"isSuccess\":$isSuccess,\"errorMsg\":")
+    writer.write(JsonPrimitive(errorMsg).toString())
+    writer.write(",\"data\":[")
+    data.forEachIndexed { index, item ->
+        if (index > 0) writer.write(",")
+        writer.write(item.toJsonElement().toString())
+    }
+    writer.write("]}")
 }

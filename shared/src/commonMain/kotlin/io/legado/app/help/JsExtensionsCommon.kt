@@ -13,7 +13,6 @@ import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.SourceVerificationHelpShared
-import io.legado.app.help.source.VerificationUiProviders
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.help.ui.ToastProviders
 import io.legado.app.help.ui.UserAgentProviders
@@ -92,12 +91,13 @@ interface JsExtensionsCommon {
     /**
      * js实现base64解码,不能删
      */
-    fun base64Decode(str: String?): String? {
-        return Base64Lenient.decodeStr(str)
+    fun base64Decode(str: String?): String {
+        // 原版返回非空 String, 保持签名; str 为 null 时给空串 (原版 hutool Base64.decodeStr 不会返回 null)
+        return Base64Lenient.decodeStr(str) ?: ""
     }
 
-    fun base64Decode(str: String?, charset: String): String? {
-        return JsExtensionsPlatform.base64DecodeStr(str, charset)
+    fun base64Decode(str: String?, charset: String): String {
+        return JsExtensionsPlatform.base64DecodeStr(str, charset) ?: ""
     }
 
     /* HexString 解码为字节数组 */
@@ -424,9 +424,9 @@ interface JsExtensionsCommon {
      * 输出对象类型
      */
     fun logType(any: Any?) {
-        // commonMain 无 javaClass, 用 KClass.simpleName 替代 (与原 javaClass.name 略有差异, 仅类型名)
+        // 对应原 javaClass.name (FQN); native 端 qualifiedName 可能为 null, 兜底 simpleName
         if (any == null) log("null")
-        else log(any::class.simpleName ?: "Unknown")
+        else log(any::class.qualifiedName ?: any::class.simpleName ?: "Unknown")
     }
 
     /**
@@ -736,12 +736,8 @@ interface JsExtensionsCommon {
      */
     fun startBrowser(url: String, title: String) {
         jsContext.ensureActive()
-        val source = getSource()
-            ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
-        require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
         // saveResult=false/refetchAfterSuccess=false 对齐原 app 端 SourceVerificationHelp.startBrowser 默认
-        VerificationUiProviders.get().startBrowser(source, url, title, false, false)
-        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
+        SourceVerificationHelpShared.startBrowser(getSource(), url, title, false, false)
     }
 
     /**
@@ -749,16 +745,9 @@ interface JsExtensionsCommon {
      */
     fun startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean): StrResponse {
         jsContext.ensureActive()
-        val source = getSource()
-            ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
-        require(url.length < 64 * 1024) { "getVerificationResult parameter url too long" }
-        check(!JsExtensionsPlatform.isMainThread()) { "getVerificationResult must be called on a background thread" }
-        // 对齐原 SourceVerificationHelp.getVerificationResult(useBrowser=true) 流程:
-        // clearResult → startBrowser(saveResult=true) → registerWaitingThread → waitVerificationResult
-        SourceVerificationHelpShared.clearResult(source.getKey())
-        VerificationUiProviders.get().startBrowser(source, url, title, true, refetchAfterSuccess)
-        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
-        val body = SourceVerificationHelpShared.waitVerificationResult(source.getKey())
+        val body = SourceVerificationHelpShared.getVerificationResult(
+            getSource(), url, title, true, refetchAfterSuccess
+        )
         return StrResponse(url, body)
     }
 
@@ -771,15 +760,7 @@ interface JsExtensionsCommon {
      */
     fun getVerificationCode(imageUrl: String): String {
         jsContext.ensureActive()
-        val source = getSource()
-            ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
-        require(imageUrl.length < 64 * 1024) { "getVerificationResult parameter url too long" }
-        check(!JsExtensionsPlatform.isMainThread()) { "getVerificationResult must be called on a background thread" }
-        // 对齐原 SourceVerificationHelp.getVerificationResult(useBrowser=false) 流程
-        SourceVerificationHelpShared.clearResult(source.getKey())
-        VerificationUiProviders.get().showVerificationCodeDialog(imageUrl, source)
-        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
-        return SourceVerificationHelpShared.waitVerificationResult(source.getKey())
+        return SourceVerificationHelpShared.getVerificationResult(getSource(), imageUrl, "", false)
     }
 
     //****************** P1: 文件操作 (从 app JsExtensions 下沉, 走 FileUtilsCommon) ******************

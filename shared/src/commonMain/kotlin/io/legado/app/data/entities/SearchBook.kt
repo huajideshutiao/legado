@@ -3,7 +3,9 @@ package io.legado.app.data.entities
 import io.legado.app.constant.BookType
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class SearchBook(
     override var bookUrl: String = "",
     /** 书源 */

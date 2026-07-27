@@ -56,11 +56,17 @@ object WebServerManager {
      *
      * @return 本机可访问 URL 列表 (空=无可用 IP, 调用方据此报错/stopSelf)
      */
-    fun start(): List<String> = synchronized(lock) {
+    fun start(): List<String> = startWithResult().addresses
+
+    /**
+     * 同 [start], 但额外回传启动异常信息, 供平台壳 toast (原 WebService.upWebServer 的 catch 分支)。
+     */
+    fun startWithResult(): WebServerStartResult = synchronized(lock) {
         // 先停旧实例 (原 upWebServer 首段: httpServer?.isAlive==true → stop; webSocketServer 同理)
         WebServerPlatforms.get().stopServers()
         val port = getPort()
-        val addresses = WebServerPlatforms.get().startServers(port)
+        val result = WebServerPlatforms.get().startServers(port)
+        val addresses = result.addresses
         if (addresses.isNotEmpty()) {
             isRun = true
             hostAddresses = addresses
@@ -72,7 +78,7 @@ object WebServerManager {
         }
         // 对齐 app 端 postEvent(EventBus.WEB_SERVICE, hostAddress)
         postEvent(EventBus.WEB_SERVICE, hostAddress)
-        addresses
+        result
     }
 
     /**
@@ -86,6 +92,14 @@ object WebServerManager {
         hostAddresses = emptyList()
         // 对齐 app 端 onDestroy: postEvent(EventBus.WEB_SERVICE, "")
         postEvent(EventBus.WEB_SERVICE, "")
+    }
+
+    /**
+     * 平台 Service 壳创建时置运行态 (原 WebService.onCreate 的 `isRun = true`)。
+     * 原版在 onCreate 就置位, 使 Service 已创建但服务器尚未起时 UI 也显示"运行中"。
+     */
+    fun markRunning(): Unit = synchronized(lock) {
+        isRun = true
     }
 
     /**
@@ -103,14 +117,16 @@ object WebServerManager {
      *
      * @param addresses 平台端枚举的本机可访问 URL 列表 (形如 "http://192.168.1.2:1122"),
      *   空列表表示无可用网络 (调用方据此显示"网络不可用")
+     * @param unavailableText 无可用地址时 [hostAddress] 的占位文案 (原版 R.string.network_connection_unavailable);
+     *   由平台壳传入本地化字符串, 空串则沿用原空值语义
      */
-    fun updateAddresses(addresses: List<String>) = synchronized(lock) {
+    fun updateAddresses(addresses: List<String>, unavailableText: String = "") = synchronized(lock) {
         if (addresses.isNotEmpty()) {
             hostAddresses = addresses
             hostAddress = addresses.first()
         } else {
             hostAddresses = emptyList()
-            hostAddress = ""
+            hostAddress = unavailableText
         }
         postEvent(EventBus.WEB_SERVICE, hostAddress)
     }

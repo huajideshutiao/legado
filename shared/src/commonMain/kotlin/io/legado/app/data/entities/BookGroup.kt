@@ -3,8 +3,10 @@ package io.legado.app.data.entities
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 @Suppress("ConstPropertyName")
+@Serializable
 @Entity(tableName = "book_groups")
 data class BookGroup(
     @PrimaryKey

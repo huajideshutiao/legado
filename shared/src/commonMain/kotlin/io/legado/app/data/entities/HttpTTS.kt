@@ -26,6 +26,8 @@ data class HttpTTS(
     @ColumnInfo(defaultValue = "0")
     override var concurrentRate: String? = "0",
     override var loginUrl: String? = null,
+    // loginUi 的 JSON 值可能是数组/对象, 需原样转字符串 (复刻原 GSON 全局 StringJsonDeserializer)
+    @Serializable(with = RawJsonStringSerializer::class)
     override var loginUi: String? = null,
     override var header: String? = null,
     override var jsLib: String? = null,

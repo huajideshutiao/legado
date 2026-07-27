@@ -33,7 +33,7 @@ import io.legado.app.help.ui.OpenUrlProviders
 /**
  * 鸿蒙端"关于"页 Screen (对照 iOS `IosAboutScreen`, 复刻 sharedUiMain `AboutScreen` 偏好列表)。
  *
- * ohosMain 不继承 sharedUiMain, 故不复用 AboutScreen/PreferenceScreen/preference 等 sharedUiMain 组件,
+ * 历史上 ohosMain 曾不继承 sharedUiMain, 本 Screen 未复用 AboutScreen/PreferenceScreen 等 sharedUiMain 组件,
  * 用标准 Compose 实现等价偏好列表 UI, 行为与 app/desktop/iOS 端一致。
  *
  * 平台适配:
@@ -173,7 +173,7 @@ private fun AboutCategoryHeader(title: String) {
 }
 
 /**
- * 鸿蒙端 About 顶栏 (ohosMain 不继承 sharedUiMain, 故不复用 AppTitleBar)。
+ * 鸿蒙端 About 顶栏 (历史遗留自绘实现, 未复用 sharedUiMain AppTitleBar)。
  * 标准 Compose 实现: 返回箭头 + 标题 + 右侧 actions 区。
  */
 @Composable

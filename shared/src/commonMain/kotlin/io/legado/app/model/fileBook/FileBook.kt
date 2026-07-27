@@ -121,8 +121,8 @@ object FileBook : BaseFileBook {
     /**
      * 从文件分析书籍必要信息（书名 作者等）。
      *
-     * 原 private 方法, 依赖 AppConfig.bookImportFileName / JsEngines / GSON /
-     * BookHelp.formatBookAuthor (未下沉), 委托 [FileBookAccessor.analyzeNameAuthor]。
+     * 纯逻辑已下沉 [BookNameAuthorAnalyzer], 各端 accessor 仅负责传入
+     * 平台配置 (app: `AppConfig.bookImportFileName`; 其他端暂无该配置)。
      */
     fun analyzeNameAuthor(fileName: String): Pair<String, String> =
         accessor.analyzeNameAuthor(fileName)
@@ -133,7 +133,8 @@ object FileBook : BaseFileBook {
     ) {
         override fun toString(): String = name
 
-        val suffix: String get() = FileBookProviders.get().getUrlSuffix(name)
+        // 原 app 端为构造期赋值 (val suffix = UrlUtil.getSuffix(name)), 保持一次性计算语义
+        val suffix: String = FileBookProviders.get().getUrlSuffix(name)
 
         val isSupported: Boolean = AppPattern.bookFileRegex.matches(name)
 

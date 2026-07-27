@@ -1,7 +1,10 @@
 package io.legado.app.help.config
 
+import io.legado.app.api.controller.registerNativeBookControllerProviders
+import io.legado.app.constant.registerNativeAndroidId
 import io.legado.app.data.registerIosAppDbAccessor
 import io.legado.app.data.registerIosDatabaseDriver
+import io.legado.app.help.archive.registerNativeArchiveProvider
 import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeBookStorage
@@ -13,21 +16,31 @@ import io.legado.app.help.image.IosBitmapProvider
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerIosHttpProvider
 import io.legado.app.help.notification.registerIosNotificationProgress
+import io.legado.app.help.registerNativeDefaultDataResourceProvider
+import io.legado.app.help.registerNativeDirectLinkUploadProviders
+import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
 import io.legado.app.help.service.registerIosServiceLauncher
 import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
+import io.legado.app.help.source.registerNativeSourceProviders
+import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.registerIosSystemTtsEngine
 import io.legado.app.help.ui.registerIosOpenUrlProvider
 import io.legado.app.help.ui.registerIosToastProvider
 import io.legado.app.help.ui.registerIosUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.registerNativeFileBookAccessor
+import io.legado.app.model.registerIosAudioPlayCommanders
+import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerIosJsEngines
+import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
+import platform.UIKit.UIDevice
 
 /**
  * iOS 宿主启动早期的统一 provider 注册入口。
@@ -105,8 +118,21 @@ fun registerIosProviders() {
     registerIosPreferenceProvider()
     registerNativeAppConfigAccessor()
 
-    // 2.5 主题配置 provider (内存版, 供 BackupShared 备份 themeConfig.json / ImportThemeViewModelShared 用)
-    ThemeConfigProviders.register(InMemoryThemeConfigProvider())
+    // 2.3 设备标识注入 (identifierForVendor, 取不到回退落盘 UUID; BaseSource 登录信息加密依赖 ≥16 字符)
+    registerNativeAndroidId(UIDevice.currentDevice.identifierForVendor?.UUIDString)
+
+    // 2.4 备份密码 provider (读 PreferenceProviders "password", 与 app 端 LocalConfig.password 同 key)
+    registerNativePasswordProvider()
+
+    // 2.5 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
+    ThemeConfigProviders.register(FileThemeConfigProvider())
+
+    // 2.6 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
+    registerNativeDefaultDataResourceProvider()
+
+    // 2.7 直链上传配置 provider (Store 落 {filesDir}/directLinkUploadRule.json + Defaults 读默认数据,
+    // 须在 AppFilesDirs + DefaultDataResourceProvider 之后; 供备份/恢复与直链上传配置用)
+    registerNativeDirectLinkUploadProviders()
 
     // 3. HTTP provider (Ktor CIO 包装, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader/IosBookCover 取 OkHttpClient,
@@ -144,14 +170,31 @@ fun registerIosProviders() {
     //   put(ByteArray) 丢弃); 亦经 @JsApi 暴露给 JS, 须在 JS 引擎之前注册
     registerNativeSourceCacheProvider()
     registerNativeFileCacheProvider()
+    // 发现规则缓存 (对应 app 端 ACache.get("explore"), 让 @js: 发现规则解析结果落盘复用)
+    registerNativeExploreKindsCacheProvider()
 
-    // 7. JS 引擎 provider (IosJsEngine + IosImageOps), 必须在任何 JS eval 之前
+    // 6.6 source 扩展 provider (SourceDebugLoggers/RuleBigData/help.UserAgent/SourceNetwork cookie 桥)
+    // 依赖 AppFilesDirs + PreferenceProviders + CookieStoreProviders 已就绪, 须在 JS eval 之前
+    registerNativeSourceProviders()
+
+    // 6.7 压缩包 provider (zip/cbz, NativeZipCodec + RemoteZipCore; rar/7z 明确抛异常)
+    registerNativeArchiveProvider()
+
+    // 7. JS 引擎 provider (IosJsEngine + IosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
     // (解除 KP3 P0 阻塞: iOS 端 JS 引擎缺失导致书源规则解析全失效)
     registerIosJsEngines()
+
+    // 7.2 webBook 编排 provider (BookInfoRefresher/IntentData/RegexReplacer), 须在 JsEngines 之后
+    // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
+    registerNativeWebBookProviders()
 
     // 7.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 IosImageOps 的 UIImage 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
     BitmapProviders.register(IosBitmapProvider)
+
+    // 7.6 本地书 accessor (FileBookProviders: epub 走 nativeMain EpubFile, txt/pdf/cbz 明确抛异常)
+    // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
+    registerNativeFileBookAccessor()
 
     // 8. TTS 引擎 provider (AVSpeechSynthesizer), 供 ReadAloudControllerShared 用
     // (对齐 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后)
@@ -165,14 +208,24 @@ fun registerIosProviders() {
     registerIosToastProvider()
     registerIosOpenUrlProvider()
     registerIosUserAgentProvider()
+    // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
+    // 未注册时 JS 验证入口裸抛 IllegalStateException)
+    registerNativeVerificationUiProvider()
     // UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider)、
     // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
     registerNativeUpdateBookCallback()
+    // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
+    registerNativeCacheBookCallback()
     registerIosServiceLauncher()
+    // 音频播控 Commander (IosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
+    registerIosAudioPlayCommanders()
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)
     registerNativeWebAssetSource()
     registerNativeWebStrings()
+    // BookController 图片/阅读状态 provider (/cover /image 直出缓存字节, /deleteBook /saveBookProgress
+    // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)
+    registerNativeBookControllerProviders()
     registerNativeWebServerPlatform()
 }

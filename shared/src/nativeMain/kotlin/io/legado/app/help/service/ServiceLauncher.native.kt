@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * [ServiceLauncher] 的 Native (iOS / 鸿蒙) 共用 actual 实现。
@@ -122,7 +121,8 @@ class NativeServiceLauncher(
         // scheduleAutoUpdate 内部按 canUpdate + lastCheckTime 时间窗过滤, 自动跳过本地书 /
         // 不可更新书 / 最近 10 分钟已检查的书, 与 app 端 MainViewModel.scheduleAutoUpdate 行为一致。
         scope.launch {
-            val books = runBlocking { AppDbProviders.get().bookDao.all() }
+            // 协程内直接 suspend 调用 (原 runBlocking 嵌套有死锁风险)
+            val books = AppDbProviders.get().bookDao.all()
             updateBookShared.scheduleAutoUpdate(books)
         }
     }

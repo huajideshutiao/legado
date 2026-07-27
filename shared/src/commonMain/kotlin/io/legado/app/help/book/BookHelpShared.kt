@@ -110,4 +110,16 @@ object BookHelpShared {
     /** updateCacheFolder 前置比较: getFolderNameNoCache 相同则无需重命名 (对照 app 端 BookHelp.updateCacheFolder)。 */
     fun shouldUpdateCacheFolder(oldBook: Book, newBook: Book): Boolean =
         oldBook.getFolderNameNoCache() != newBook.getFolderNameNoCache()
+
+    /**
+     * 格式化作者 (对照 app 端 `BookHelp.formatBookAuthor`)。
+     *
+     * 原实现在 [BookHelpLogic] (jvmAndAndroidMain), 因 [BookNameAuthorAnalyzer] 下沉
+     * commonMain 需复用, 移到本类; BookHelpLogic 同名方法改为委托。
+     */
+    fun formatBookAuthor(author: String): String {
+        return author
+            .replace(AppPattern.authorRegex, "")
+            .trim()
+    }
 }

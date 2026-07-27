@@ -1,23 +1,27 @@
 package io.legado.app.help.config
 
 import android.content.Context
+import android.content.SharedPreferences
+import io.legado.app.utils.defaultSharedPreferences
 import splitties.init.appCtx
 
 /**
  * [PreferenceProvider] 安卓端实现（KP1.4）。
  *
- * 内部委托 `appCtx.getSharedPreferences("legado_config", Context.MODE_PRIVATE)`。
+ * 委托 [defaultSharedPreferences]（`<packageName>_preferences`）, 与 [AppConfig] / 设置界面
+ * 同一份 SP 文件: shared 侧读 webPort / webDav* 等配置时必须看到用户在设置界面改的值,
+ * 且 config.json 备份（app 端 dump default SP）与本 provider 的 [getAll] 需一致。
  *
- * 与 [AppConfig] 用的 `defaultSharedPreferences`（`<packageName>_preferences`）不同:
- * 本实现只给桌面端配置对称接口用, 不复用 AppConfig 的 SP 文件, 避免影响 AppConfig
- * 主体（保真红线, 不动 AppConfig.kt）。Android 端可选用, 通常仅用于测试 / 桌面端对称调用。
+ * 早期实现用独立的 `legado_config` 文件, 造成设置界面写、shared 读不到的割裂,
+ * 由 [migrateLegacyConfigOnce] 一次性迁移旧值。
  *
  * 模式参考 [io.legado.app.model.webBook.WebBookProvidersImpl]。
  */
 class AndroidPreferenceProvider : PreferenceProvider {
 
-    private val prefs =
-        appCtx.getSharedPreferences("legado_config", Context.MODE_PRIVATE)
+    private val prefs = appCtx.defaultSharedPreferences.also {
+        migrateLegacyConfigOnce(it)
+    }
 
     override fun getString(key: String, default: String): String =
         prefs.getString(key, default) ?: default
@@ -30,6 +34,9 @@ class AndroidPreferenceProvider : PreferenceProvider {
 
     override fun getLong(key: String, default: Long): Long =
         prefs.getLong(key, default)
+
+    override fun getFloat(key: String, default: Float): Float =
+        prefs.getFloat(key, default)
 
     override fun putString(key: String, value: String?) {
         prefs.edit().apply {
@@ -49,6 +56,10 @@ class AndroidPreferenceProvider : PreferenceProvider {
         prefs.edit().putLong(key, value).apply()
     }
 
+    override fun putFloat(key: String, value: Float) {
+        prefs.edit().putFloat(key, value).apply()
+    }
+
     override fun remove(key: String) {
         prefs.edit().remove(key).apply()
     }
@@ -58,6 +69,35 @@ class AndroidPreferenceProvider : PreferenceProvider {
 
     override fun getAll(): Map<String, *> =
         prefs.all
+}
+
+/** 迁移完成标记, 放在 default SP 里, 避免每次启动都去加载旧文件。 */
+private const val LEGACY_MIGRATED_KEY = "legadoConfigSpMigrated"
+
+/**
+ * 把旧 `legado_config` SP 文件中的配置一次性并入 default SP。
+ *
+ * default SP 已有的 key 一律保留（那才是用户在设置界面改的值）, 只补旧文件独有的 key。
+ * 旧文件不删, 留作回滚保险。
+ */
+@Suppress("UNCHECKED_CAST")
+private fun migrateLegacyConfigOnce(target: SharedPreferences) {
+    if (target.getBoolean(LEGACY_MIGRATED_KEY, false)) return
+    val legacy = appCtx.getSharedPreferences("legado_config", Context.MODE_PRIVATE)
+    target.edit().apply {
+        legacy.all.forEach { (key, value) ->
+            if (value == null || target.contains(key)) return@forEach
+            when (value) {
+                is String -> putString(key, value)
+                is Int -> putInt(key, value)
+                is Boolean -> putBoolean(key, value)
+                is Long -> putLong(key, value)
+                is Float -> putFloat(key, value)
+                is Set<*> -> putStringSet(key, value as Set<String>)
+            }
+        }
+        putBoolean(LEGACY_MIGRATED_KEY, true)
+    }.apply()
 }
 
 /**

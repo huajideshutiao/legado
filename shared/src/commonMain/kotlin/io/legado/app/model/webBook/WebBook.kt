@@ -13,7 +13,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentDataProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.http.StrResponse
-import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
@@ -30,7 +30,7 @@ import kotlinx.coroutines.ensureActive
  * W3-f: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
  * - appDb (app 端单例) → AppDbProviders.get() provider 间接
  * - IntentData.source = ... → IntentDataProviders.get().setSource(...) provider 间接
- * - AnalyzeRule → AnalyzeRuleCore (app 端 AnalyzeRule 子类对应 KSP @JsApi 分派表生成, shared 内部用 Core)
+ * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
  * - parseBoolean/parseRulePrefix → 已抽到 WebBookRuleUtils (BookList/BookReview 已迁移)
@@ -366,7 +366,7 @@ object WebBook {
         val reviewRule = bookSource.reviewRule
         val countRule = reviewRule.reviewCountRule
             ?: return@runCatching emptyMap<Int, Int>()
-        val analyzeRule = AnalyzeRuleCore(book, bookSource).apply {
+        val analyzeRule = AnalyzeRuleFactories.create(book, bookSource).apply {
             chapter = bookChapter
             setBaseUrl(bookChapter.getAbsoluteURL(book))
             coroutineContext = currentCoroutineContext()
@@ -397,7 +397,7 @@ object WebBook {
             mutableMapOf<AppConst.JsVarName, Any>(AppConst.JsVarName.PARAGRAPH_INDEX to paragraphIndex)
         reviewId?.let { variables[AppConst.JsVarName.REVIEW_ID] = it }
         selected?.let { variables[AppConst.JsVarName.SELECTED] = it }
-        val analyzeRule = AnalyzeRuleCore(book, bookSource).apply {
+        val analyzeRule = AnalyzeRuleFactories.create(book, bookSource).apply {
             chapter = bookChapter
             setBaseUrl(bookChapter?.getAbsoluteURL(book) ?: book.bookUrl)
             coroutineContext = currentCoroutineContext()
@@ -436,7 +436,7 @@ object WebBook {
         return runCatching {
             val preUpdateJs = bookSource.tocRule.preUpdateJs
             if (!preUpdateJs.isNullOrBlank()) {
-                AnalyzeRuleCore(book, bookSource, true).apply {
+                AnalyzeRuleFactories.create(book, bookSource, true).apply {
                     coroutineContext = currentCoroutineContext()
                 }.evalJS(preUpdateJs)
             }

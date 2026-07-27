@@ -2,7 +2,6 @@ package io.legado.app.model.fileBook
 
 import android.net.Uri
 import androidx.core.net.toUri
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
@@ -30,18 +29,14 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.CustomUrl
-import io.legado.app.model.script.JsBindings
-import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.isContentScheme
@@ -55,14 +50,13 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.Locale
-import java.util.regex.Pattern
 
 /**
  * [FileBookAccessor] 的 Android 实现。
  *
  * 原 app 端 `object FileBook` / `interface BaseFileBook` 的重 Android 依赖逻辑
  * (android.net.Uri / DocumentFile / FileDoc / ArchiveUtils / AnalyzeUrl / WebDav /
- * RemoteBook / GSON / BookHelp.formatBookAuthor / appCtx / FileUtils / JsEngines 等)
+ * RemoteBook / appCtx / FileUtils 等)
  * 全部集中在本文件, 由 [FileBookAccessor] 接口暴露给 shared/commonMain 调用。
  *
  * # 与 shared/commonMain 的关系
@@ -88,14 +82,6 @@ import java.util.regex.Pattern
  * [io.legado.app.model.AudioPlayProvidersImpl]。
  */
 object FileBookAccessorImpl : FileBookAccessor {
-
-    // 原 FileBook.nameAuthorPatterns, analyzeNameAuthor 用
-    private val nameAuthorPatterns = arrayOf(
-        Pattern.compile("(.*?)《([^《》]+)》.*?作者：(.*)"),
-        Pattern.compile("(.*?)《([^《》]+)》(.*)"),
-        Pattern.compile("(^)(.+) 作者：(.+)$"),
-        Pattern.compile("(^)(.+) by (.+)$")
-    )
 
     // ---------- BaseFileBook 默认实现 ----------
 
@@ -348,43 +334,9 @@ object FileBookAccessorImpl : FileBookAccessor {
         return localBook
     }
 
-    /** 从文件名分析书名与作者 (原 `FileBook.analyzeNameAuthor`, 原 private 方法)。 */
-    override fun analyzeNameAuthor(fileName: String): Pair<String, String> {
-        val tempFileName = fileName.substringBeforeLast(".")
-        var name = ""
-        var author = ""
-        AppConfig.bookImportFileName?.takeIf { it.isNotBlank() }?.let { jsCode ->
-            try {
-                //在用户脚本后添加捕获author、name的代码，只要脚本中author、name有值就会被捕获
-                val js = "$jsCode\nJSON.stringify({author:author,name:name})"
-                //在脚本中定义如何分解文件名成书名、作者名
-                val jsonStr = JsEngines.get().run {
-                    val bindings = JsBindings().apply { put("src", tempFileName) }
-                    eval(js, bindings)
-                }.toString()
-                val bookMess = GSON.fromJsonObject<Map<String, String>>(jsonStr).getOrNull()
-                name = bookMess?.get("name") ?: ""
-                author = bookMess?.get("author")?.takeIf { it.length != tempFileName.length } ?: ""
-            } catch (e: Exception) {
-                AppLog.put("执行导入文件名规则出错\n${e.localizedMessage}", e)
-            }
-        }
-        if (name.isBlank()) {
-            for (pattern in nameAuthorPatterns) {
-                pattern.matcher(tempFileName).takeIf { it.find() }?.run {
-                    name = group(2)!!
-                    author = BookHelp.formatBookAuthor((group(1) ?: "") + (group(3) ?: ""))
-                    return Pair(name, author)
-                }
-            }
-            name = tempFileName
-                .replace(AppPattern.nameRegex, "")
-                .trim()
-            author = BookHelp.formatBookAuthor(tempFileName.replace(name, ""))
-                .takeIf { it.length != tempFileName.length } ?: ""
-        }
-        return Pair(name, author)
-    }
+    /** 从文件名分析书名与作者 (原 `FileBook.analyzeNameAuthor`, 纯逻辑已下沉 [BookNameAuthorAnalyzer])。 */
+    override fun analyzeNameAuthor(fileName: String): Pair<String, String> =
+        BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, AppConfig.bookImportFileName)
 
     /**
      * 导入远程书籍 (原 `FileBook.importRemoteBook`)。
@@ -527,8 +479,8 @@ object FileBookAccessorImpl : FileBookAccessor {
  * 安卓宿主启动早期注册 FileBook 平台 provider。
  *
  * 调用时机: App.onCreate, 在 [registerAndroidWebBookProviders] 之后
- * (FileBookAccessorImpl 依赖 BookHelp.formatBookAuthor / appDb / JsEngines 等,
- * 这些在 WebBookProviders 注册后可用)。注册后 shared/commonMain 的 [FileBook]
+ * (FileBookAccessorImpl 依赖 appDb / BookHelp 等, 这些在 WebBookProviders
+ * 注册后可用)。注册后 shared/commonMain 的 [FileBook]
  * object 才能经 [FileBookProviders.get] 调到本实现。
  *
  * 模式参考 [registerAndroidWebBookProviders] / [registerAndroidAudioPlayProviders]。

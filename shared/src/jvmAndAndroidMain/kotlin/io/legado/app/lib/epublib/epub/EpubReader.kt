@@ -8,6 +8,7 @@ import io.legado.app.lib.epublib.domain.MediaTypes
 import io.legado.app.lib.epublib.domain.Resource
 import io.legado.app.lib.epublib.domain.Resources
 import io.legado.app.lib.epublib.util.ResourceUtil
+import io.legado.app.lib.epublib.util.zip.AndroidZipFileReader
 import io.legado.app.lib.epublib.util.zip.ZipFileWrapper
 import org.w3c.dom.Document
 import org.w3c.dom.Element
@@ -71,6 +72,15 @@ class EpubReader {
     }
 
     @Throws(IOException::class)
+    fun readEpubLazy(zipFile: AndroidZipFileReader, encoding: String): EpubBook? {
+        return readEpubLazy(
+            zipFile,
+            encoding,
+            MediaTypes.mediaTypes.toMutableList()
+        )
+    }
+
+    @Throws(IOException::class)
     fun readEpub(`in`: ZipInputStream, encoding: String): EpubBook? {
         return readEpub(ResourcesLoader.loadResources(`in`, encoding))
     }
@@ -92,6 +102,16 @@ class EpubReader {
     @Throws(IOException::class)
     fun readEpubLazy(
         zipFile: ZipFile, encoding: String,
+        lazyLoadedTypes: MutableList<MediaType?>
+    ): EpubBook? {
+        val resources: Resources =
+            ResourcesLoader.loadResources(ZipFileWrapper(zipFile), encoding, lazyLoadedTypes)
+        return readEpub(resources)
+    }
+
+    @Throws(IOException::class)
+    fun readEpubLazy(
+        zipFile: AndroidZipFileReader, encoding: String,
         lazyLoadedTypes: MutableList<MediaType?>
     ): EpubBook? {
         val resources: Resources =

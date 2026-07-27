@@ -75,28 +75,27 @@ object AndroidBookStorage : BookStorage {
     }
 
     /**
-     * 清除已删除书 / 超量缓存。
+     * 漫画缓存超量淘汰, 委托 [BookHelp.evictMangaCache] (不删失效书目录)。
      *
-     * [BookHelp.clearInvalidCache] 内部已固定 512MB 上限 (与接口 [maxSize] 默认对齐),
-     * 此处忽略 [maxSize] 参数, 直接委托。该方法为 suspend, 用 [runBlocking] 适配
-     * 接口的同步签名 (注册时机在启动早期, 无协程上下文约束)。
+     * 该方法为 suspend, 用 [runBlocking] 适配接口的同步签名。
      */
     override fun clearInvalidCache(maxSize: Long) {
-        runBlocking { BookHelp.clearInvalidCache() }
+        runBlocking {
+            BookHelp.evictMangaCache(BookHelpShared.cacheImageFolderName, maxSize)
+        }
     }
 
     /**
-     * 清除无效缓存文件夹。
-     *
-     * 委托 [BookHelp.clearInvalidCache] 执行完整清理 (含删除无效书 + 大变量 + 临时文件),
-     * 与 [clearInvalidCache] 一致用 [runBlocking] 适配同步签名。参数 [validFolderNames]/
-     * [imageSubFolderName] 由 BookHelp 内部重新派生, 此处忽略 (行为与 [clearInvalidCache] 等价)。
+     * 删除不在书架的书籍缓存目录 + 漫画缓存超量淘汰,
+     * 参数透传给 [BookHelp.clearInvalidBookFolders] (与 [clearInvalidCache] 一致用 [runBlocking] 适配同步签名)。
      */
     override fun clearInvalidBookFolders(
         validFolderNames: Set<String>,
         imageSubFolderName: String,
         maxSize: Long
     ) {
-        runBlocking { BookHelp.clearInvalidCache() }
+        runBlocking {
+            BookHelp.clearInvalidBookFolders(validFolderNames, imageSubFolderName, maxSize)
+        }
     }
 }

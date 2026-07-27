@@ -12,6 +12,7 @@ import io.legado.app.help.book.ContentProcessorAccessor
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.ContentProcessorShared
 import io.legado.app.help.book.DefaultContentProcessorDeps
+import io.legado.app.model.analyzeRule.registerDesktopAnalyzeRuleFactory
 import io.legado.app.model.webBook.BookInfoRefresher
 import io.legado.app.model.webBook.BookInfoRefreshers
 import io.legado.app.model.webBook.WebBook
@@ -36,6 +37,9 @@ import java.util.concurrent.ConcurrentHashMap
  * (本文件 ContentProcessorAccessor 依赖 AppDbProviders 读 replaceRuleDao)。
  */
 fun registerDesktopWebBookProviders() {
+    // shared webBook 编排层创建 AnalyzeRule 走工厂: 返回 shared jvmMain 的 DesktopAnalyzeRule,
+    // 补全 JsEncodeUtils 面 (md5Encode/createSymmetricCrypto 等) 与 refreshTocUrl
+    registerDesktopAnalyzeRuleFactory()
     BookInfoRefreshers.register(DesktopBookInfoRefresher)
     IntentDataProviders.register(DesktopIntentDataAccessor)
     ContentProcessorProviders.register(DesktopContentProcessorAccessor)

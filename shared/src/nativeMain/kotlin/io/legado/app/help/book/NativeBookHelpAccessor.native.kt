@@ -3,6 +3,8 @@ package io.legado.app.help.book
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.utils.MD5Utils
 
 /**
  * iOS/鸿蒙 (Native target) 共用 [BookHelpAccessor] 实现:
@@ -48,6 +50,19 @@ class NativeBookHelpAccessor : BookHelpAccessor {
     ) {
         // bookSource 在 Native 端忽略: 不下载图片, 仅落盘文本
         BookStorageProviders.get().saveText(book, bookChapter, content)
+    }
+
+    /**
+     * 封面文件路径: `{AppFilesDirs.filesDir}/covers/{md5_16(bookUrl)}.jpg`。
+     *
+     * 与 desktop [io.legado.desktop.help.book.DesktopBookHelpAccessor.getCoverPath] /
+     * [io.legado.app.model.fileBook.NativeFileBookAccessor.getCoverPath] 同源派生,
+     * 供 CbzFile.upBookInfo 在 book.coverUrl 为空时设置封面落盘路径。
+     */
+    override fun getCoverPath(bookUrl: String): String {
+        val filesDir = AppFilesDirs.get().filesDir
+        val root = if (filesDir.endsWith("/")) filesDir.dropLast(1) else filesDir
+        return "$root/covers/${MD5Utils.md5Encode16(bookUrl)}.jpg"
     }
 
     // BookHelpShared 下沉新增: 平台专属临时文件清理 (Native 端无 ArchiveUtils.TEMP_PATH 等, no-op)

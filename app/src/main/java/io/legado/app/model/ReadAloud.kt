@@ -18,7 +18,11 @@ import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 
 object ReadAloud {
-    private var aloudClass: Class<*> = getReadAloudClass()
+    // 延迟到首次真正需要时再查 DAO, 避免类加载期 runBlocking 阻塞主线程
+    // (原版是同步 DAO 调用, 下沉后 DAO 仅剩 suspend, Room KMP 禁止 commonMain 声明非 suspend 查询)
+    private var aloudClassOrNull: Class<*>? = null
+    private val aloudClass: Class<*>
+        get() = aloudClassOrNull ?: getReadAloudClass().also { aloudClassOrNull = it }
     val ttsEngine get() = ReadBook.book?.config?.ttsEngine ?: AppConfig.ttsEngine
     var httpTTS: HttpTTS? = null
 
@@ -34,7 +38,7 @@ object ReadAloud {
 
     fun upReadAloudClass() {
         stop(appCtx)
-        aloudClass = getReadAloudClass()
+        aloudClassOrNull = getReadAloudClass()
     }
 
     fun play(

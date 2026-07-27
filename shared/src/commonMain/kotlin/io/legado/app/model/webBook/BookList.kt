@@ -12,6 +12,7 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.HtmlFormatter
@@ -27,7 +28,7 @@ import kotlinx.coroutines.ensureActive
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
  * - bookSource 参数类型 BookSource → IBookSource (BookSource 实现 IBookSource, 调用方无需改)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
- * - AnalyzeRule → AnalyzeRuleCore (app 端 AnalyzeRule 子类对应 KSP @JsApi 分派表生成, shared 内部用 Core)
+ * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - analyzeUrl 参数类型 AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
  * - WebBook.parseRulePrefix/parseBoolean → WebBookRuleUtils (解除对 WebBook object 的直接依赖)
  * - bookSource.getBookType()/exploreKindsJson() → IBookSource 成员方法 (BookSource 实现 IBookSource)
@@ -52,7 +53,7 @@ object BookList {
         val bookList = ArrayList<SearchBook>()
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.urlAfterJs}")
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 10)
-        val analyzeRule = AnalyzeRuleCore(ruleData, bookSource)
+        val analyzeRule = AnalyzeRuleFactories.create(ruleData, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)
         analyzeRule.coroutineContext = currentCoroutineContext()

@@ -2,19 +2,31 @@ package io.legado.desktop.model.fileBook
 
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.AppDbProviders
+import io.legado.app.exception.EmptyFileException
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isPdf
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.BaseFileBook
+import io.legado.app.model.fileBook.BookNameAuthorAnalyzer
+import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.EpubFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookAccessor
@@ -22,14 +34,16 @@ import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.fileBook.RangedSource
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.model.fileBook.TextFile
+import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.UrlUtil
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Paths
-import java.util.zip.ZipInputStream
+import java.util.Locale
+import java.util.zip.ZipFile
 
 /**
  * 桌面端 [FileBookAccessor] 最小化实现。
@@ -40,22 +54,17 @@ import java.util.zip.ZipInputStream
  * try-catch 捕获, 封面加载失败但不崩溃)。为了让 desktop 端 EpubFile 能正常加载封面,
  * 需注册本最小化实现。
  *
- * # 已实现方法
- * - [getCoverPath]: `{desktopAppRootDir}/covers/{md516(bookUrl)}.jpg` (对齐 app 端路径结构)
- * - [getHandler]: 依据 [Book.isEpub] 分派到 [EpubFile] / [TextFile]
- * - [getBookInputStream]: [java.io.FileInputStream] 打开本地文件
- * - [getLastModified]: [File.lastModified]
- * - [getUrlSuffix]: 取文件名后缀
- * - [analyzeNameAuthor]: 简单解析文件名 (与 app 端行为一致)
- *
- * # 未实现方法 (抛 UnsupportedOperationException)
- * - [importFromArchive] / [importLocalFile] / [deleteBook] / [saveBookFile] /
- *   [downloadRemoteBook] / [mergeBook] / [importRemoteBook]: 依赖 Android 专属组件
- *   (ArchiveUtils / DocumentFile / RemoteBook 等), 待后续子代理补全
+ * # 与 app 端行为差异
+ * - 压缩包: 无 libarchive, 仅支持 zip (JDK [ZipFile]); rar/7z/tar 等抛异常
+ * - PDF: [io.legado.app.model.fileBook.PdfFile] 未下沉, [getHandler] 对 .pdf 抛异常
+ * - 文件保存: 无 SAF, 落 `{desktopAppRootDir}/books`
  *
  * 模式参考 [io.legado.desktop.help.book.DesktopBookHelpAccessor]。
  */
 class DesktopFileBookAccessor : FileBookAccessor {
+
+    /** 解压临时目录名 (对齐 app 端 `ArchiveUtils.TEMP_FOLDER_NAME`)。 */
+    private val archiveTempFolderName = "ArchiveTemp"
 
     /** 封面缓存目录: `{desktopAppRootDir}/covers` (对齐 app 端 `externalFiles/covers`)。 */
     private val coversDir: String = Paths.get(desktopAppRootDir(), "covers").toString()
@@ -66,9 +75,12 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     override fun getHandler(book: Book): BaseFileBook {
-        // 依据 originName 后缀分派 (与 app 端 BookExtensions.getHandler 一致)
+        // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler; PdfFile 未下沉, .pdf 显式报错
+        val originName = book.originName.lowercase(Locale.getDefault())
         return when {
+            book.isPdf -> throw NoStackTraceException("PDF 桌面端暂不支持")
             book.isEpub -> EpubFile
+            book.isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && book.isImage) -> CbzFile
             else -> TextFile
         }
     }
@@ -91,59 +103,92 @@ class DesktopFileBookAccessor : FileBookAccessor {
         saveFileName: String?,
         filter: ((String) -> Boolean)?
     ): List<Book> {
-        // desktop 无 libarchive, 仅支持 zip/cbz (JDK ZipInputStream); rar/7z 抛异常
         val archiveFile = resolveLocalFile(archiveFileUri)
-        if (!archiveFile.name.endsWith(".zip", true) && !archiveFile.name.endsWith(".cbz", true)) {
-            throw UnsupportedOperationException("desktop 仅支持 zip/cbz 压缩包导入, 不支持 ${archiveFile.name}")
+        // 对齐 app 端 ArchiveUtils.deCompress: 按 filter 过滤条目, 解到目标目录, 返回文件列表
+        val files = deCompress(archiveFileUri, archiveFile, filter)
+        if (files.isEmpty()) {
+            throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
         }
-        val books = mutableListOf<Book>()
-        ZipInputStream(archiveFile.inputStream()).use { zis ->
-            val entries = generateSequence(zis::getNextEntry)
-                .filter { !it.isDirectory }
-                .filter { filter == null || filter!!(it.name) }
-                .toList()
-            for (entry in entries) {
-                val bytes = zis.readBytes()
-                val entryName = saveFileName ?: entry.name.substringAfterLast('/')
-                if (!FileBook.isBookFile(entryName) && !AppPattern.archiveFileRegex.matches(entryName)) continue
-                val savedUri = saveBookFile(ByteArrayInputStream(bytes), entryName)
-                val imported = importLocalFile(savedUri).apply {
+        return files.map { file ->
+            saveBookFile(file.inputStream(), saveFileName ?: file.name).let { uriStr ->
+                importLocalFile(uriStr).apply {
+                    //附加压缩包名称 以便解压文件被删后再解压
                     origin = "${BookType.localTag}::${archiveFile.name}"
                     addType(BookType.archive)
                     runBlocking { AppDbProviders.get().bookDao.update(this@apply) }
                 }
-                books.add(imported)
             }
         }
-        if (books.isEmpty()) {
-            throw UnsupportedOperationException("压缩包内未找到支持的书籍文件")
+    }
+
+    /**
+     * 解压到 `{desktopAppRootDir}/ArchiveTemp/{md5_16(uri)}` 并返回解出的文件。
+     *
+     * 对齐 app 端 `ArchiveUtils.deCompress` + `LibArchiveUtils.unArchive` 语义
+     * (md5(uri) 命名工作目录 / 路径穿越校验 / filter 过滤条目), 但用 JDK [ZipFile]
+     * 随机访问替代 libarchive (桌面端无 libarchive 绑定, 故仅支持 zip)。
+     */
+    private fun deCompress(
+        archiveUri: String,
+        archiveFile: File,
+        filter: ((String) -> Boolean)?
+    ): List<File> {
+        val name = archiveFile.name
+        checkArchive(name)
+        val destDir = Paths.get(
+            desktopAppRootDir(), archiveTempFolderName, MD5Utils.md5Encode16(archiveUri)
+        ).toFile().apply { mkdirs() }
+        val destCanonical = destDir.canonicalPath
+        val files = mutableListOf<File>()
+        ZipFile(archiveFile, Charsets.UTF_8).use { zip ->
+            for (entry in zip.entries()) {
+                val entryFile = File(destDir, entry.name)
+                if (!entryFile.canonicalPath.startsWith(destCanonical)) {
+                    throw SecurityException("压缩文件只能解压到指定路径")
+                }
+                if (entry.isDirectory) {
+                    entryFile.mkdirs()
+                    continue
+                }
+                entryFile.parentFile?.mkdirs()
+                if (filter != null && !filter(entry.name)) continue
+                zip.getInputStream(entry).use { input ->
+                    entryFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                files.add(entryFile)
+            }
         }
-        return books
+        return files
+    }
+
+    /** 压缩包格式校验 (对齐 app 端 `ArchiveUtils.checkArchive`, 附加 desktop 的 zip-only 限制)。 */
+    private fun checkArchive(name: String) {
+        if (!AppPattern.archiveFileRegex.matches(name)) {
+            throw IllegalArgumentException("Unexpected file suffix")
+        }
+        if (!name.endsWith(".zip", true)) {
+            throw NoStackTraceException("desktop 无 libarchive, 仅支持 zip 压缩包, 不支持 $name")
+        }
     }
 
     override fun importLocalFile(uriStr: String): Book {
         val file = resolveLocalFile(uriStr)
         val fileName = file.name
-        if (file.length() == 0L) throw UnsupportedOperationException("Unexpected empty File")
+        if (file.length() == 0L) throw EmptyFileException("Unexpected empty File")
         val (name, author) = analyzeNameAuthor(fileName)
         var type = BookType.text or BookType.local
         when {
             fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
             AppPattern.archiveFileRegex.matches(fileName) -> {
-                // zip/cbz 压缩包: 检查内含书籍文件, 有则解压导入第一个
-                if (fileName.endsWith(".zip", true) || fileName.endsWith(".cbz", true)) {
-                    ZipInputStream(file.inputStream()).use { zis ->
-                        val bookEntry = generateSequence(zis::getNextEntry)
-                            .firstOrNull { !it.isDirectory && FileBook.isBookFile(it.name) }
-                        if (bookEntry != null) {
-                            val bytes = zis.readBytes()
-                            val savedUri = saveBookFile(ByteArrayInputStream(bytes), bookEntry.name.substringAfterLast('/'))
-                            return importLocalFile(savedUri)
-                        }
-                    }
+                // 对齐 app 端: 压缩包内含书籍文件则解压导入, 否则按普通文件继续
+                val hasBookFile = getArchiveFilesName(file).any { FileBook.isBookFile(it) }
+                if (hasBookFile) {
+                    return importFromArchive(uriStr) { FileBook.isBookFile(it) }.firstOrNull()
+                        ?: throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
                 }
-                throw UnsupportedOperationException("desktop 仅支持 zip/cbz 压缩包, 不支持 $fileName")
             }
+
+            else -> {}
         }
         return importBook(
             Book(
@@ -157,6 +202,16 @@ class DesktopFileBookAccessor : FileBookAccessor {
                 type = type
             )
         )
+    }
+
+    /** 遍历压缩包获取条目名 (对齐 app 端 `ArchiveUtils.getArchiveFilesName`, 读取失败返回空列表)。 */
+    private fun getArchiveFilesName(archiveFile: File): List<String> {
+        checkArchive(archiveFile.name)
+        return runCatching {
+            ZipFile(archiveFile, Charsets.UTF_8).use { zip ->
+                zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
+            }
+        }.getOrElse { emptyList() }
     }
 
     /** 统一导入逻辑 (对齐 app 端 FileBookAccessorImpl.importBook, runBlocking 适配 suspend DAO)。 */
@@ -183,12 +238,14 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
-        // desktop 端 BookHelpAccessor 无 clearCache (接口未暴露), 仅删封面 + 原文件
-        // app 端 BookHelp.clearCache(book) 在 desktop 走 BookHelpProviders 但接口无该方法, 跳过
+        // 对齐 app 端 FileBook.deleteBook: 先清章节缓存, 再删封面 / 原文件 (无 SAF, 统一走 File)
         runCatching {
-            book.coverUrl?.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+            BookStorageProviders.get().clearCache(book)
+            if (!book.coverUrl.isNullOrEmpty()) {
+                FileUtilsBase.delete(book.coverUrl!!)
+            }
             if (deleteOriginal) {
-                resolveLocalFile(book.bookUrl).delete()
+                FileUtilsBase.delete(resolveLocalFile(book.bookUrl).absolutePath)
             }
         }
     }
@@ -223,13 +280,13 @@ class DesktopFileBookAccessor : FileBookAccessor {
     override fun downloadRemoteBook(book: Book): Boolean {
         // app 端走 SAF + FileDoc; desktop 走 saveBookFile(str) + importFromArchive + bookDao.update
         val webDavUrl = book.getRemoteUrl()
-            ?: throw UnsupportedOperationException("Book file is not webDav File")
+        if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
         val fileName = if (book.isArchive) book.archiveName else book.originName
         val fileUriStr = runBlocking { saveBookFile(webDavUrl, fileName, null) }
         if (book.isArchive) {
             val newBook = importFromArchive(fileUriStr, book.originName) { name ->
                 name.contains(book.originName)
-            }.firstOrNull() ?: throw UnsupportedOperationException("Archive contains no matching book file")
+            }.firstOrNull() ?: throw NoStackTraceException("Archive contains no matching book file")
             book.origin = newBook.origin
             book.bookUrl = newBook.bookUrl
         } else {
@@ -257,14 +314,12 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     override fun analyzeNameAuthor(fileName: String): Pair<String, String> {
-        // 简单解析: 去后缀, 按 " - " 或 " - " 分割书名与作者
-        val name = fileName.substringBeforeLast(".")
-        val parts = name.split(" - ", " - ", "——", "_")
-        return if (parts.size >= 2) {
-            parts[0].trim() to parts[1].trim()
-        } else {
-            name to ""
-        }
+        // 纯逻辑走下沉的 BookNameAuthorAnalyzer; app 端 AppConfig.bookImportFileName 是
+        // Android 扩展, 桌面端读同一 PreferKey (DesktopPreferenceProvider)
+        val importFileNameJs = runCatching {
+            PreferenceProviders.get().getString(PreferKey.bookImportFileName)
+        }.getOrNull()
+        return BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, importFileNameJs)
     }
 
     override suspend fun importRemoteBook(
@@ -328,7 +383,7 @@ class DesktopFileBookAccessor : FileBookAccessor {
                         hasBookFile -> {
                             val entry = entries.first { !it.isDirectory && FileBook.isBookFile(it.name) }
                             val uriStr = saveBookFile(
-                                remoteZip.getInputStream(entry) ?: throw UnsupportedOperationException("获取流失败"),
+                                remoteZip.getInputStream(entry) ?: throw NoStackTraceException("获取流失败"),
                                 entry.name
                             )
                             importLocalFile(uriStr).apply {
@@ -337,7 +392,7 @@ class DesktopFileBookAccessor : FileBookAccessor {
                                 runBlocking { bookDao.update(this@apply) }
                             }
                         }
-                        else -> throw UnsupportedOperationException("不支持的压缩包格式")
+                        else -> throw NoStackTraceException("不支持的压缩包格式")
                     }
                 } finally {
                     remoteZip.close()
@@ -350,10 +405,8 @@ class DesktopFileBookAccessor : FileBookAccessor {
         }
     }
 
-    override fun getUrlSuffix(name: String): String {
-        val idx = name.lastIndexOf('.')
-        return if (idx >= 0) name.substring(idx) else ""
-    }
+    /** 获取合法的文件后缀 (对齐 app 端: 复用 [UrlUtil.getSuffix], 含 fileSuffixRegex 校验 + "ext" 兜底)。 */
+    override fun getUrlSuffix(name: String): String = UrlUtil.getSuffix(name)
 
     /** 解析 bookUrl 为 [File] (与 LocalEpubResource.jvm.kt 的 resolveLocalFile 逻辑一致)。 */
     private fun resolveLocalFile(bookUrl: String): File {

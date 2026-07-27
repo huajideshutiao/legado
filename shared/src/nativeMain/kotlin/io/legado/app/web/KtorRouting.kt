@@ -22,6 +22,7 @@ import io.legado.app.web.api.WebApi
 import io.legado.app.web.api.WebApiRequest
 import io.legado.app.web.api.WebApiResponse
 import io.legado.app.web.utils.AssetsWeb
+import kotlin.io.File
 
 /**
  * Ktor HTTP routing 配置: ApplicationCall → [WebApiRequest] → [WebApi.handle] → [WebApiResponse] → 原生响应。
@@ -55,10 +56,16 @@ private suspend fun handleApiCall(call: ApplicationCall, assetsWeb: AssetsWeb) {
     val origin = call.request.headers["origin"]
     val startAt = kotlin.system.getTimeMillis()
     val uri = call.request.path()
+    var tempFiles: Collection<String> = emptyList()
 
     try {
         val request = call.toWebApiRequest()
+        tempFiles = request.files.values
         val apiResponse = WebApi.handle(request)
+
+        // CORS 头必须在 respond 之前写, 响应提交后追加无效
+        call.response.headers.append("Access-Control-Allow-Methods", "GET, POST")
+        call.response.headers.append("Access-Control-Allow-Origin", origin ?: "*")
 
         when (apiResponse) {
             is WebApiResponse.StaticAsset -> {
@@ -75,11 +82,10 @@ private suspend fun handleApiCall(call: ApplicationCall, assetsWeb: AssetsWeb) {
                 )
             }
         }
-        call.response.headers.append("Access-Control-Allow-Methods", "GET, POST")
-        call.response.headers.append("Access-Control-Allow-Origin", origin ?: "*")
-        AppLog.put("KtorHttp: ${request.method} - $uri - End($startAt)")
+        // 对齐原版 LogUtils.d(TAG){...} 的调试开关门控, 避免刷爆 AppLog 100 条环形队列
+        AppLog.putDebug("KtorHttp: ${request.method} - $uri - End($startAt)")
     } catch (e: Exception) {
-        AppLog.put(
+        AppLog.putDebug(
             "KtorHttp: - $uri - Error End($startAt)\n$e\n${e.stackTraceStr}",
             e
         )
@@ -88,6 +94,9 @@ private suspend fun handleApiCall(call: ApplicationCall, assetsWeb: AssetsWeb) {
             ContentType.Text.Plain,
             HttpStatusCode.InternalServerError
         )
+    } finally {
+        // 对齐 NanoHTTPD tempFileManager 请求结束即清理 multipart 临时文件
+        tempFiles.forEach { runCatching { File(it).delete() } }
     }
 }
 

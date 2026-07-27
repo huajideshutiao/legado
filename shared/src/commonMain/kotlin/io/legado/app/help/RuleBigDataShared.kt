@@ -79,7 +79,18 @@ class RuleBigDataShared(
     }
 
     override fun clearInvalidBookData(bookUrls: Set<String>) {
-        // 待后续实现: 遍历 bookDataDir 子目录, 读 bookUrl.txt, 不在 bookUrls 中则删除
+        // 对照 app 端原 BookHelp.clearInvalidCache 步骤 2: 子目录读 bookUrl.txt,
+        // 缺失/空白/不在书架则整目录删除 (listFiles 返回 null 即非目录, 跳过)
+        BackupFileOps.listFiles(bookDataDir)?.forEach { child ->
+            if (BackupFileOps.listFiles(child) == null) return@forEach
+            val bookUrlPath = joinPath(child, "bookUrl.txt")
+            val bookUrl = if (BackupFileOps.exists(bookUrlPath)) {
+                BackupFileOps.readText(bookUrlPath)
+            } else null
+            if (bookUrl.isNullOrBlank() || !bookUrls.contains(bookUrl)) {
+                BackupFileOps.delete(child)
+            }
+        }
     }
 
     /** 路径拼接 (对齐 FileUtils.getPath: 跳过空串, 仅在非分隔符结尾时补分隔符)。 */

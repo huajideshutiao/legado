@@ -80,6 +80,9 @@ class OhosPreferenceProvider(
     override fun getLong(key: String, default: Long): Long =
         getPrim(key)?.content?.toLongOrNull() ?: default
 
+    override fun getFloat(key: String, default: Float): Float =
+        getPrim(key)?.content?.toFloatOrNull() ?: default
+
     override fun putString(key: String, value: String?) {
         cache = buildJsonObject {
             cache.forEach { (k, v) -> put(k, v) }
@@ -108,6 +111,14 @@ class OhosPreferenceProvider(
     }
 
     override fun putLong(key: String, value: Long) {
+        cache = buildJsonObject {
+            cache.forEach { (k, v) -> put(k, v) }
+            put(key, value)
+        }
+        persist()
+    }
+
+    override fun putFloat(key: String, value: Float) {
         cache = buildJsonObject {
             cache.forEach { (k, v) -> put(k, v) }
             put(key, value)

@@ -9,6 +9,8 @@ import io.ktor.http.isSuccess
 import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.MD5Utils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -51,8 +53,10 @@ import kotlin.io.File
  * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志 + println, 不出声),
  * 让 [ReadAloudController] 状态机能正常推进 (onReady/onEndOfMedia 触发段落推进)。
  *
- * # 临时文件路径: `{NativeBookStorage.defaultRootPath}/tts_cache/{url.hashCode}.tmp`
- * (复用鸿蒙可写目录派生逻辑; release 时删除)
+ * # 缓存: `{NativeBookStorage.defaultRootPath}/httpTTS/{md5(url)}.mp3`
+ * url 已含 speakText+语速 (AnalyzeUrl 求值后), 去重粒度对齐原版 md5(url-|-rate-|-content);
+ * 命中直接复用 (跨会话缓存), 连续下载失败经 [HttpTtsRequest.DownloadErrorBreaker] 熔断 (>5 次放弃),
+ * release 时按 10 分钟老化清理 (近似原版 removeCacheFile, 无章节名分组靠新鲜度保护当前章节)
  *
  * # 参考
  * - iOS 端 [IosHttpTtsPlayer] (AVPlayer + NSNotificationCenter, Kotlin/Native 直接调 ObjC)
@@ -79,8 +83,11 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     /** 缓存的播放位置 (毫秒, ArkTS onPosition 事件更新; 降级模式 0)。 */
     @Volatile private var cachedPosition: Long = 0L
 
-    /** 下载完成的临时文件 (prepare 后台下载完成后赋值)。 */
+    /** 当前段音频缓存文件 (prepare 下载/命中缓存后赋值)。 */
     @Volatile private var cachedFile: File? = null
+
+    /** 连续下载失败熔断计数 (对标原版: 成功清零, 超过 5 次放弃)。 */
+    private val downloadErrorBreaker = HttpTtsRequest.DownloadErrorBreaker()
 
     /** 后台下载协程 scope (每次 prepare 创建, release/stop 时 cancel)。 */
     @Volatile private var scope: CoroutineScope? = null
@@ -111,9 +118,9 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     // ===== HttpTtsPlayer contract 方法 =====
 
     override fun setUrl(url: String, headers: Map<String, String>) {
-        // 释放旧下载任务与临时文件 + 释放旧 AVPlayer (如有)
+        // 释放旧下载任务 + 旧 AVPlayer (缓存文件保留, 供跨会话/重听复用)
         cancelDownload()
-        deleteCachedFile()
+        cachedFile = null
         releaseArkTsPlayer()
 
         // 重置状态
@@ -135,7 +142,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     }
 
     /**
-     * prepare: 启动后台下载到临时文件, 下载完成后:
+     * prepare: 命中缓存直接就绪, 否则后台下载到缓存文件, 完成后:
      * - 桥接就绪: 发 "setSource" 命令把文件路径推给 ArkTS, ArkTS 创建 AVPlayer 并 prepare,
      *   就绪后回推 "onReady" 事件 (真实播放)
      * - 桥接未就绪: 直接触发 [HttpTtsPlayerListener.onReady] (降级占位, 让状态机推进)
@@ -145,15 +152,14 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             println("[ohos-httts] prepare: url not set, skip")
             return
         }
-        println("[ohos-httts] prepare: start background download url=$currentUrl")
 
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = newScope
         downloadJob = newScope.launch {
             try {
-                val file = downloadToTempFile(currentUrl, headers)
+                val file = obtainCacheFile(currentUrl, headers)
                 cachedFile = file
-                println("[ohos-httts] prepare: download ok, cached=${file.path} size=${file.length()}")
+                println("[ohos-httts] prepare: ready, cached=${file.path} size=${file.length()}")
 
                 if (OhosNativeBridge.isMediaBridgeReady()) {
                     // 桥接就绪: 发 "setSource" 命令, ArkTS 创建 AVPlayer + prepare
@@ -166,6 +172,8 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
                     // 降级: 直接 onReady (占位播放, 让调用方状态机推进)
                     listener?.onReady()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 println("[ohos-httts] prepare: download failed: ${e.message}")
                 listener?.onError(e.message ?: "download failed")
@@ -227,7 +235,8 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         cachedDuration = -1L
         cachedPosition = 0L
         cancelDownload()
-        deleteCachedFile()
+        cachedFile = null
+        cleanupAgedCache()
         releaseArkTsPlayer()
         url = null
         headers = emptyMap()
@@ -288,12 +297,40 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     // ===== 内部实现 =====
 
     /**
-     * 用 Ktor HttpClient (CIO engine) 下载 url 到临时文件。
-     * - headers 逐个注入 (与 WebDav.ohos.kt 行为一致)
-     * - 整文件 bytes 一次性写入 (与 OhosFileDownloader 模式一致)
+     * 取缓存或下载: 文件名 md5(url) (url 经 AnalyzeUrl 求值已含 speakText+语速,
+     * 去重粒度对齐原版 md5(url-|-rate-|-content)); 命中且非空直接复用 (跨会话缓存);
+     * 未命中循环下载, 每次失败记入熔断器, 超过 5 次抛出放弃 (对标原版 getSpeakStream)。
+     */
+    private suspend fun obtainCacheFile(url: String, headers: Map<String, String>): File {
+        val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
+        if (!cacheDir.exists()) cacheDir.mkdirs()
+        val target = File(cacheDir, MD5Utils.md5Encode16(url) + ".mp3")
+        if (target.exists() && target.length() > 0L) {
+            downloadErrorBreaker.reset()
+            return target
+        }
+        while (true) {
+            try {
+                val bytes = downloadBytes(url, headers)
+                target.writeBytes(bytes)
+                downloadErrorBreaker.reset()
+                return target
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("[ohos-httts] download error: ${e.message}")
+                if (downloadErrorBreaker.record()) {
+                    throw IllegalStateException("TTS 下载连续失败超过 5 次: ${e.message}", e)
+                }
+            }
+        }
+    }
+
+    /**
+     * 用 Ktor HttpClient (CIO engine) 下载 url, headers 逐个注入。
      * 参考 [io.legado.app.help.file.OhosFileDownloader.download]。
      */
-    private suspend fun downloadToTempFile(url: String, headers: Map<String, String>): File {
+    private suspend fun downloadBytes(url: String, headers: Map<String, String>): ByteArray {
         val client = HttpClient(CIO)
         try {
             val response = client.get(url) {
@@ -302,14 +339,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             if (!response.status.isSuccess()) {
                 throw IllegalStateException("HTTP ${response.status.value}: $url")
             }
-            val bytes = response.bodyAsBytes()
-
-            // 临时文件: {book_cache}/tts_cache/{url.hashCode}.tmp
-            val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
-            if (!cacheDir.exists()) cacheDir.mkdirs()
-            val tmpFile = File(cacheDir, "${url.hashCode() and 0x7FFFFFFF}.tmp")
-            tmpFile.writeBytes(bytes)
-            return tmpFile
+            return response.bodyAsBytes()
         } finally {
             client.close()
         }
@@ -323,11 +353,20 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         scope = null
     }
 
-    /** 删除临时文件 (release/setUrl 时清理, 避免磁盘残留)。 */
-    private fun deleteCachedFile() {
-        cachedFile?.let { file ->
-            runCatching { if (file.exists()) file.delete() }
-            cachedFile = null
+    /**
+     * 老化清理: 删除超过 10 分钟未更新的缓存文件 (近似原版 removeCacheFile 的 600000ms 规则;
+     * 无章节名分组, 当前会话文件靠新鲜度豁免)。
+     */
+    private fun cleanupAgedCache() {
+        runCatching {
+            val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
+            if (!cacheDir.exists()) return
+            val now = System.currentTimeMillis()
+            cacheDir.listFiles()?.forEach { file ->
+                if (file.isFile && now - file.lastModified() > 600000L) {
+                    runCatching { file.delete() }
+                }
+            }
         }
     }
 
@@ -362,7 +401,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     )
 
     companion object {
-        /** TTS 临时文件子目录名 (位于 [NativeBookStorage.defaultRootPath] 下)。 */
-        private const val TTS_CACHE_DIR = "tts_cache"
+        /** TTS 缓存子目录名 (位于 [NativeBookStorage.defaultRootPath] 下, 与原版 httpTTS 目录名对齐)。 */
+        private const val TTS_CACHE_DIR = "httpTTS"
     }
 }

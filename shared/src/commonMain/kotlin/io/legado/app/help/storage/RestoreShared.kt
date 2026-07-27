@@ -20,9 +20,12 @@ import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.toBookSource
 import io.legado.app.help.DirectLinkUploadStoreProviders
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.parseDirectLinkUploadRule
 import io.legado.app.help.ruleFileName
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.decodeAnyMapOrNull
 import io.legado.app.utils.fromJsonArray
@@ -122,8 +125,16 @@ object RestoreShared {
 
         // 1. DAO 数据恢复 (与 app 端顺序一致)
         fileToListT<Book>(path, "bookshelf.json")?.let { books ->
+            // 与 app 端 Restore.kt 一致: 先刷 type, 本地书封面路径重算, 再按 ignoreLocalBook 过滤
+            books.forEach { book -> book.upType() }
+            books.filter { book -> book.isLocal }
+                .forEach { book -> book.coverUrl = FileBook.getCoverPath(book.bookUrl) }
             val newBooks = arrayListOf<Book>()
+            val ignoreLocalBook = BackupConfigShared.ignoreLocalBook
             books.forEach { book ->
+                if (ignoreLocalBook && book.isLocal) {
+                    return@forEach
+                }
                 if (appDb.bookDao.has(book.bookUrl)) {
                     runCatching { appDb.bookDao.update(book) }
                         .onFailure { appDb.bookDao.insert(book) }
@@ -197,27 +208,30 @@ object RestoreShared {
         // themeConfig.json: 解析 JSON → 通过 ThemeConfigProvider.addConfig 逐个写入
         // directLinkUploadRule.json: 桌面端无 DirectLinkUpload, 跳过
         runCatching {
-            val readConfigFile = path + sep + "readConfig.json"
-            if (BackupFileOps.exists(readConfigFile)) {
-                val json = BackupFileOps.readText(readConfigFile)
-                GSON.fromJsonArray<io.legado.app.help.config.ReadStyleConfig>(json)
-                    .getOrNull()?.let { configs ->
-                        val readBookConfig = io.legado.app.help.config.ReadBookConfigProviders.get()
-                        readBookConfig.configList.clear()
-                        if (configs.isNotEmpty()) {
-                            readBookConfig.configList.addAll(configs)
-                        } else {
-                            readBookConfig.configList.add(io.legado.app.help.config.ReadStyleConfig())
+            // 与 app 端 Restore.kt 一致: 备份忽略项勾选「阅读界面」时不恢复阅读界面配置
+            if (!BackupConfigShared.ignoreReadConfig) {
+                val readConfigFile = path + sep + "readConfig.json"
+                if (BackupFileOps.exists(readConfigFile)) {
+                    val json = BackupFileOps.readText(readConfigFile)
+                    GSON.fromJsonArray<io.legado.app.help.config.ReadStyleConfig>(json)
+                        .getOrNull()?.let { configs ->
+                            val readBookConfig = io.legado.app.help.config.ReadBookConfigProviders.get()
+                            readBookConfig.configList.clear()
+                            if (configs.isNotEmpty()) {
+                                readBookConfig.configList.addAll(configs)
+                            } else {
+                                readBookConfig.configList.add(io.legado.app.help.config.ReadStyleConfig())
+                            }
                         }
+                }
+                val shareConfigFile = path + sep + "shareReadConfig.json"
+                if (BackupFileOps.exists(shareConfigFile)) {
+                    val json = BackupFileOps.readText(shareConfigFile)
+                    runCatching {
+                        io.legado.app.utils.KS_JSON.decodeFromString<io.legado.app.help.config.ReadStyleConfig>(json)
+                    }.getOrNull()?.let { config ->
+                        io.legado.app.help.config.ReadBookConfigProviders.get().shareConfig = config
                     }
-            }
-            val shareConfigFile = path + sep + "shareReadConfig.json"
-            if (BackupFileOps.exists(shareConfigFile)) {
-                val json = BackupFileOps.readText(shareConfigFile)
-                runCatching {
-                    io.legado.app.utils.KS_JSON.decodeFromString<io.legado.app.help.config.ReadStyleConfig>(json)
-                }.getOrNull()?.let { config ->
-                    io.legado.app.help.config.ReadBookConfigProviders.get().shareConfig = config
                 }
             }
         }.onFailure {
@@ -400,7 +414,7 @@ object RestoreShared {
                     prefs.putLong(key, value)
                 }
             }
-            is Float -> prefs.putString(key, value.toString()) // PreferenceProvider 无 putFloat, 转 String
+            is Float -> prefs.putFloat(key, value)
             is Double -> {
                 if (value == value.toLong().toDouble()) {
                     val longValue = value.toLong()
@@ -410,7 +424,7 @@ object RestoreShared {
                         prefs.putLong(key, longValue)
                     }
                 } else {
-                    prefs.putString(key, value.toString())
+                    prefs.putFloat(key, value.toFloat())
                 }
             }
             is String -> prefs.putString(key, value)

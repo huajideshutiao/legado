@@ -76,6 +76,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
     private var sleepTimer: SleepTimer? = null
     private var progressJob: Job? = null
 
+    /** prepare 完成后要 seek 到的起始位置 (对应 app 端 play() 里的 exoPlayer.seekTo(position)) */
+    @Volatile private var pendingStartPos: Int = 0
+
     /** 正在加载的章节 index 集合, 防并发 (对应 app 端 loadingChapters) */
     private val loadingChapters = arrayListOf<Int>()
 
@@ -87,6 +90,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 postEvent(EventBus.AUDIO_SIZE, durationMs.toInt())
                 postEvent(EventBus.AUDIO_LOADING, false)
                 AudioPlayShared.saveDurChapter(durationMs)
+                // 对应 app 端 play() 的 exoPlayer.seekTo(position): 换章/恢复要跳到记录位置
+                val startPos = pendingStartPos
+                pendingStartPos = 0
+                if (startPos > 0) {
+                    player.seekTo(startPos.toLong())
+                }
                 // 真正开始播放
                 player.play()
                 player.setSpeed(playSpeed)
@@ -246,19 +255,13 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         paused = false
         val startPos = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
         currentUrl = playUrl
-        // 对应 app 端 play(): 先 STOP 再准备
+        // 对应 app 端 play(): 先置 LOADING 再准备, prepare 完成 (onReady) 后 seekTo 起始位置
         postEvent(EventBus.AUDIO_LOADING, true)
-        AudioPlayShared.status = Status.STOP
-        postEvent(EventBus.AUDIO_STATE, Status.STOP)
+        AudioPlayShared.status = Status.LOADING
+        postEvent(EventBus.AUDIO_STATE, Status.LOADING)
+        pendingStartPos = startPos
         player.setUrl(playUrl, emptyMap())
         player.prepare()
-        // onReady 回调里启动 player.play + startProgressReport
-        // 起始位置通过 seekTo 应用 (prepare 完成后才能 seek)
-        if (startPos > 0) {
-            // 注意: prepare 是异步, 这里仅记录, 真正 seek 在 onReady 后由 player 内部处理
-            // 当前简化: 直接从头播放, 起始位置由 startProgressReport 上报时 durChapterPos 已被覆盖
-            // (与 app 端 seekTo 起始位置语义略有差异, 但 seekTo 对 MP3 需重新拉流, 开销大)
-        }
     }
 
     /**
@@ -284,6 +287,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 return
             }
             postEvent(EventBus.AUDIO_LOADING, true)
+            // 拉链接窗口置 LOADING, 与 shared AudioPlayManager.loadPlayUrl 对齐
+            AudioPlayShared.status = Status.LOADING
+            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
             AudioPlayShared.durCoverUrl = null
             AudioPlayShared.durLrcData = null
             // 并行加载歌词 (对照 app 端 AudioPlayService.loadLrcData, 不阻塞播放 URL 加载)
@@ -294,6 +300,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             if (content.isEmpty()) {
                 AppLog.put(jvmGetString("desktop_audio_no_resource_url"), null, true)
                 postEvent(EventBus.AUDIO_LOADING, false)
+                AudioPlayShared.status = Status.STOP
+                postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 return
             }
             if (chapter.resourceUrl != content) {
@@ -307,6 +315,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         } catch (e: Exception) {
             AppLog.put(jvmGetString("desktop_audio_load_failed", e.message ?: ""), e, true)
             postEvent(EventBus.AUDIO_LOADING, false)
+            AudioPlayShared.status = Status.STOP
+            postEvent(EventBus.AUDIO_STATE, Status.STOP)
         } finally {
             removeLoading(index)
         }
@@ -356,9 +366,15 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 val pos = player.currentPosition.toInt()
                 AudioPlayShared.durChapterPos = pos
                 postEvent(EventBus.AUDIO_PROGRESS, pos)
-                // 同步推进歌词高亮 (对照 app 端 upPlayProgressForLrc, 简化为每秒直发当前位置)
-                if (AudioPlayShared.durLrcData?.isNotEmpty() == true) {
-                    postEvent(EventBus.AUDIO_LRCPROGRESS, pos)
+                // 同步推进歌词高亮 (AUDIO_LRCPROGRESS 约定发行下标, 不是毫秒)
+                val lrc = AudioPlayShared.durLrcData
+                if (!lrc.isNullOrEmpty()) {
+                    val curMs = pos + LRC_OFFSET_MS
+                    var line = 0
+                    while (line + 1 < lrc.size && lrc[line + 1].first <= curMs) {
+                        line++
+                    }
+                    postEvent(EventBus.AUDIO_LRCPROGRESS, line)
                 }
                 delay(1000)
             }
@@ -425,6 +441,11 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 null
             }
         }
+    }
+
+    private companion object {
+        /** 歌词同步补偿偏移量 (毫秒), 与 shared AudioPlayManager.lrcOffsetMs 一致 */
+        private const val LRC_OFFSET_MS = 60L
     }
 }
 

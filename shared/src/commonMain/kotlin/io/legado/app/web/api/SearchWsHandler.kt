@@ -8,6 +8,7 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
+import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
@@ -50,7 +51,7 @@ class SearchWsHandler(
                         session.close(searchFinish)
                         return@launch
                     }
-                    searchModel.search(System.currentTimeMillis(), key)
+                    searchModel.search(systemCurrentTimeMillis(), key)
                 }
             }
         }

@@ -31,9 +31,11 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.config.AndroidReadConfigProviders
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.i18n.registerAndroidAppStringProvider
 import io.legado.app.help.archive.ArchiveProviders
@@ -177,6 +179,11 @@ class App : Application() {
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
         registerAndroidDirectLinkUploadProviders()
+        // 注册 ReadBookConfigProviders 防 BackupShared/RestoreShared 走到 error() (Android 主路径
+        // 走 app 端 Backup/Restore, 此注册仅兜底; 非 app 端 ReadBookConfig 桥接, 桥接待 KP2-H)
+        ReadBookConfigProviders.register(
+            AndroidReadConfigProviders(AndroidPreferenceStoreProvider()).readBookConfig
+        )
         CrashHandler(this)
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)

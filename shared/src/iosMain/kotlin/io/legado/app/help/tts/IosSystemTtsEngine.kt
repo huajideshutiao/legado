@@ -2,16 +2,18 @@
 
 package io.legado.app.help.tts
 
+import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.AVFoundation.AVSpeechBoundary
-import platform.AVFoundation.AVSpeechSynthesizer
-import platform.AVFoundation.AVSpeechSynthesizerDelegateProtocol
-import platform.AVFoundation.AVSpeechUtterance
-import platform.AVFoundation.AVSpeechUtteranceDefaultSpeechRate
-import platform.AVFoundation.AVSpeechUtteranceMaximumSpeechRate
-import platform.AVFoundation.AVSpeechUtteranceMinimumSpeechRate
-import platform.AVFoundation.speakUtterance
-import platform.Foundation.NSObject
+import kotlinx.cinterop.useContents
+import platform.AVFAudio.AVSpeechBoundary
+import platform.AVFAudio.AVSpeechSynthesizer
+import platform.AVFAudio.AVSpeechSynthesizerDelegateProtocol
+import platform.AVFAudio.AVSpeechUtterance
+import platform.AVFAudio.AVSpeechUtteranceDefaultSpeechRate
+import platform.AVFAudio.AVSpeechUtteranceMaximumSpeechRate
+import platform.AVFAudio.AVSpeechUtteranceMinimumSpeechRate
+import platform.Foundation.NSRange
+import platform.darwin.NSObject
 
 /**
  * iOS 端 [SystemTtsEngine] 实现: 基于 AVFoundation [AVSpeechSynthesizer]。
@@ -19,7 +21,7 @@ import platform.Foundation.NSObject
  * # 选型理由 (KP3 补完)
  *
  * - **系统自带**: AVSpeechSynthesizer 是 iOS/macOS 系统自带 framework, 通过 Kotlin/Native
- *   `platform.AVFoundation.*` 直接访问, 不引入任何第三方库;
+ *   `platform.AVFAudio.*` 直接访问, 不引入任何第三方库;
  * - **官方维护**: Apple 维护, 性能稳定, 支持多语言/多声音;
  * - **对应 desktop**: desktop 用 Windows SAPI / Linux espeak / macOS say 命令行,
  *   iOS 用 AVSpeechSynthesizer API, 各平台用各自原生 TTS 能力。
@@ -92,11 +94,9 @@ class IosSystemTtsEngine : SystemTtsEngine {
      *
      * Kotlin/Native 中实现 ObjC 协议用 `NSObject() + Protocol` 形式,
      * 方法签名与 AVSpeechSynthesizerDelegate 协议方法一致 (Kotlin/Native 自动映射 ObjC 方法名)。
-     *
-     * 注: willSpeakRangeOfSpeechString 方法未实现 (optional 方法, 业务层 P0 阶段未用 onRangeStart,
-     * 后续如需可补)。
      */
-    private val delegate: NSObject = object : NSObject(), AVSpeechSynthesizerDelegateProtocol {
+    // 类型留给编译器推断 (NSObject ∩ 协议), 显式标 NSObject 会让 delegate 赋值不过协议类型检查
+    private val delegate = object : NSObject(), AVSpeechSynthesizerDelegateProtocol {
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didStartSpeechUtterance: AVSpeechUtterance
@@ -139,6 +139,23 @@ class IosSystemTtsEngine : SystemTtsEngine {
         ) {
             // 朗读恢复: 清暂停状态
             pausedState = false
+        }
+
+        override fun speechSynthesizer(
+            synthesizer: AVSpeechSynthesizer,
+            willSpeakRangeOfSpeechString: CValue<NSRange>,
+            utterance: AVSpeechUtterance
+        ) {
+            // 朗读进度高亮: NSRange → onRangeStart (对齐 Android onRangeStart; frame iOS 无对应, 传 0)
+            // 主线程回调, 与其余 delegate 方法线程约定一致
+            willSpeakRangeOfSpeechString.useContents {
+                listenerField?.onRangeStart(
+                    currentUtteranceId,
+                    location.toInt(),
+                    (location + length).toInt(),
+                    0
+                )
+            }
         }
     }
 
@@ -183,12 +200,12 @@ class IosSystemTtsEngine : SystemTtsEngine {
     override fun speak(text: String, utteranceId: String) {
         // 清空已有朗读 (与 desktop 行为一致)
         if (speakingState || pausedState) {
-            synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.Immediate)
+            synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         }
         currentUtteranceId = utteranceId
         pausedState = false
         speakingState = true
-        val utterance = AVSpeechUtterance(speechString = text).apply {
+        val utterance = AVSpeechUtterance(string = text).apply {
             // 语速映射: speechRate ∈ [0.5, 2.0] → avRate ∈ [0.25, 1.0]
             // 公式: avRate = speechRate * 0.5 (1.0x → 0.5 defaultRate, 2.0x → 1.0 maxRate)
             rate = (rateMultiplier * 0.5f).coerceIn(
@@ -221,7 +238,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      */
     override fun pause() {
         if (!speakingState) return
-        synthesizer.pauseSpeakingAtBoundary(AVSpeechBoundary.Immediate)
+        synthesizer.pauseSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         // pausedState 由 delegate.didPauseSpeechUtterance 回调设置 (主线程异步)
         // 此处先置 true, 让 isPaused 立即返回正确值 (避免 delegate 回调前的窗口期)
         pausedState = true
@@ -245,7 +262,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      * 在 delegate 中清 speakingState/pausedState (不触发 onError, 与 desktop 行为一致)。
      */
     override fun stop() {
-        synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.Immediate)
+        synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         speakingState = false
         pausedState = false
     }
@@ -256,7 +273,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      * shutdown 后所有操作 no-op (与 desktop 行为一致)。
      */
     override fun shutdown() {
-        synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.Immediate)
+        synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         synthesizer.delegate = null
         speakingState = false
         pausedState = false

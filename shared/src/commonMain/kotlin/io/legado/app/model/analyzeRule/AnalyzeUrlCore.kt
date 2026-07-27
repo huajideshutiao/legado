@@ -8,6 +8,7 @@ import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookLike
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.source.SourceCacheProviders
@@ -501,11 +502,13 @@ open class AnalyzeUrlCore(
     suspend fun upload(fileName: String, file: Any, contentType: String): StrResponse {
         return OkHttpProxyClientProviders.get().getProxyClient(proxy).newCallStrResponse(option?.retry ?: 0) {
             url(urlNoQuery)
-            // Phase D: GSON.fromJsonObject<HashMap<String, Any>>(option?.body).getOrNull()!! → decodeAnyMapOrNull
-            // AnyMapSerializer 返回 Map<String, Any?> (LinkedHashMap 保序, 与原 GSON LinkedTreeMap 等价);
-            // postMultipart 入参 Map<String, Any>, 泛型擦除下 cast 安全 (body 实际 value 不为 null)
+            // 对齐原版 GSON.fromJsonObject<HashMap<String, Any>>(option?.body).getOrNull()!! 的 fail-loud:
+            // body 缺失/格式错时直接抛，让书源作者立刻发现，不能静默丢参数发出空表单。
             @Suppress("UNCHECKED_CAST")
-            val bodyMap = (decodeAnyMapOrNull(option?.body) ?: emptyMap()) as MutableMap<String, Any>
+            val bodyMap = (decodeAnyMapOrNull(option?.body)
+                ?: throw NoStackTraceException(
+                    "上传规则 body 解析失败, 需为 JSON 对象: ${option?.body?.take(120) ?: "null"}"
+                )) as MutableMap<String, Any>
             bodyMap.forEach { (k, v) ->
                 if (v.toString() == "fileRequest") {
                     bodyMap[k] =

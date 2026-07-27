@@ -3,6 +3,7 @@ package io.legado.desktop.ui.book.changesource
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.BookHelpChapterLocator
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.ui.book.changesource.ChangeBookSourcePlatform
@@ -15,10 +16,7 @@ import io.legado.app.ui.book.changesource.ChangeBookSourcePlatform
  *
  * # 简化项 (依赖未下沉的 app 端组件)
  *
- * - **getDurChapter**: 取 `chapters.lastIndex` (与 fromReadBookActivity=false 路径一致),
- *   桌面端换源不从阅读页进入, 无需定位当前章节
- *   (BookHelp.getDurChapter 依赖 EscapeUtils.jaccardSimilarity / StringUtils.fullToHalf
- *   / Pattern 等 Android 专属字符串处理, 未下沉);
+ * - **getDurChapter**: 走 [BookHelpChapterLocator.getDurChapter] (已下沉 commonMain, 与 app 端同算法);
  * - **processContent**: 直接返回 content, 不走替换规则/简繁/重排段
  *   (ContentProcessor 依赖 appDb.replaceRuleDao / BookHelp / Pattern, 未下沉);
  * - **toastOnUi**: 用 println 替代 (桌面端无 Android Toast, 后续可接桌面通知系统)。
@@ -82,14 +80,9 @@ class DesktopChangeBookSourcePlatform : ChangeBookSourcePlatform {
 
     // ---- BookHelp 相关 ----
 
-    /**
-     * 桌面端简化: 取末章索引 (与 fromReadBookActivity=false 路径一致)。
-     *
-     * 桌面端换源不从阅读页进入, 无需定位当前章节。
-     * BookHelp.getDurChapter 依赖 Android 专属字符串处理, 未下沉。
-     */
+    /** 委托 [BookHelpChapterLocator.getDurChapter], 章节名相似度匹配定位当前章节 (与 app 端同一份算法)。 */
     override fun getDurChapter(oldBook: Book, chapters: List<BookChapter>): Int {
-        return chapters.lastIndex
+        return BookHelpChapterLocator.getDurChapter(oldBook, chapters)
     }
 
     // ---- ContentProcessor 相关 ----

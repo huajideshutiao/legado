@@ -1,5 +1,6 @@
 package io.legado.app.model.analyzeRule
 
+import androidx.annotation.Keep
 import com.fleeksoft.ksoup.nodes.Node
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern.JS_PATTERN
@@ -49,6 +50,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * - Pattern → kotlin.text.Regex (commonMain 原生), matcher 循环改 findAll/find, 行为等价。
  * - String.format(Locale.ROOT, "%.0f", value) → formatDoubleNoDecimal (expect/actual 包装)。
  */
+@Keep
 @Suppress("unused", "RegExpRedundantEscape")
 open class AnalyzeRuleCore(
     var ruleData: RuleDataInterface? = null,
@@ -114,6 +116,14 @@ open class AnalyzeRuleCore(
             SourceDebugLoggers.impl?.log("URL($url) error\n${e.localizedMessage}")
         }
         return redirectUrl
+    }
+
+    /**
+     * redirectUrl 转绝对地址。commonMain 只有 String 门面, 会 substringBefore(",") 截断含逗号的 URL;
+     * JVM 端子类 override 走 java.net.URL 重载, 与原版 AnalyzeRule 行为一致。
+     */
+    protected open fun getAbsoluteURL(redirectUrl: URL?, relativePath: String): String {
+        return NetworkUtils.getAbsoluteURL(redirectUrl?.toString(), relativePath)
     }
 
     /**
@@ -236,7 +246,7 @@ open class AnalyzeRuleCore(
             val urlList = ArrayList<String>()
             if (result is List<*>) {
                 for (url in result) {
-                    val absoluteURL = NetworkUtils.getAbsoluteURL(redirectUrl?.toString(), url.toString())
+                    val absoluteURL = getAbsoluteURL(redirectUrl, url.toString())
                     if (absoluteURL.isNotEmpty() && !urlList.contains(absoluteURL)) {
                         urlList.add(absoluteURL)
                     }
@@ -333,7 +343,7 @@ open class AnalyzeRuleCore(
                 baseUrl ?: ""
             } else {
                 if (str.isDataUrl()) str
-                else NetworkUtils.getAbsoluteURL(redirectUrl?.toString(), str)
+                else getAbsoluteURL(redirectUrl, str)
             }
         }
         return str

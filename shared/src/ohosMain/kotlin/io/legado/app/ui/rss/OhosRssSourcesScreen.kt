@@ -36,7 +36,7 @@ import io.legado.app.data.entities.Book
  * - 列表行显示源名称 (book.name) + URL (book.tocUrl 兜底 bookUrl)
  * - 点击触发 [onRssSourceClick] 切到 RSS_ARTICLES 路由 (携带 Book)
  *
- * ohosMain 不继承 sharedUiMain, 故不复用 AppTitleBar/rememberPainter 等 sharedUiMain 组件,
+ * 历史上 ohosMain 曾不继承 sharedUiMain, 本 Screen 未复用 AppTitleBar/rememberPainter 等 sharedUiMain 组件,
  * 用标准 Compose + material3 原生组件实现等价 UI。
  *
  * @param onBack 返回回调 (由 OhosNavHost 注入)
@@ -107,7 +107,7 @@ private fun RssSourceRow(book: Book, onClick: () -> Unit) {
 }
 
 /**
- * 鸿蒙端 RSS 顶栏 (ohosMain 不继承 sharedUiMain, 故不复用 AppTitleBar)。
+ * 鸿蒙端 RSS 顶栏 (历史遗留自绘实现, 未复用 sharedUiMain AppTitleBar)。
  * 标准 Compose 实现: 返回箭头 + 标题 + 右侧 actions 区。
  */
 @Composable

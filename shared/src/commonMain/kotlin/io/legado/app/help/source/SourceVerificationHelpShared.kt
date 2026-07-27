@@ -1,9 +1,13 @@
 package io.legado.app.help.source
 
 import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
+import io.legado.app.help.JsExtensionsPlatform
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -31,7 +35,63 @@ object SourceVerificationHelpShared {
     /** 等待用户输入验证结果的轮询间隔 (1 分钟, 对应原 waitTime)。 */
     private val waitTime = 1.minutes.inWholeNanoseconds
 
+    /** 对应原 app 端 `getVerificationResult` 的 `@Synchronized`: 同一时刻只允许一个验证流程。 */
+    private val verificationLock = SynchronizedObject()
+
     fun getVerificationResultKey(sourceKey: String): String = "${sourceKey}_verificationResult"
+
+    /**
+     * 获取书源验证结果 (图片验证码 / 防爬 / 滑动验证码等), 对应原
+     * `SourceVerificationHelp.getVerificationResult`。
+     *
+     * 整个"发起验证 + 等待结果"过程持 [verificationLock], 与原 `@Synchronized` 作用域一致:
+     * 并发书源同时触发验证时排队, 不会一次弹出多个验证窗。结果回填方
+     * ([setResult] / [notifyResultArrived]) 不持锁, 故等待期间可被正常唤醒。
+     */
+    fun getVerificationResult(
+        source: BaseSource?,
+        url: String,
+        title: String,
+        useBrowser: Boolean,
+        refetchAfterSuccess: Boolean = true
+    ): String {
+        source
+            ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
+        require(url.length < 64 * 1024) { "getVerificationResult parameter url too long" }
+        check(!JsExtensionsPlatform.isMainThread()) {
+            "getVerificationResult must be called on a background thread"
+        }
+        return synchronized(verificationLock) {
+            clearResult(source.getKey())
+
+            if (!useBrowser) {
+                VerificationUiProviders.get().showVerificationCodeDialog(url, source)
+                registerWaitingThread(source.getKey())
+            } else {
+                startBrowser(source, url, title, true, refetchAfterSuccess)
+            }
+
+            waitVerificationResult(source.getKey())
+        }
+    }
+
+    /**
+     * 启动内置浏览器 (对应原 `SourceVerificationHelp.startBrowser`, 原版未加 `@Synchronized`)。
+     * @param saveResult 保存网页源代码到数据库
+     */
+    fun startBrowser(
+        source: BaseSource?,
+        url: String,
+        title: String,
+        saveResult: Boolean? = false,
+        refetchAfterSuccess: Boolean? = true
+    ) {
+        source ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
+        require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
+        VerificationUiProviders.get()
+            .startBrowser(source, url, title, saveResult, refetchAfterSuccess)
+        registerWaitingThread(source.getKey())
+    }
 
     fun setResult(sourceKey: String, result: String?) {
         CacheManager.putMemory(getVerificationResultKey(sourceKey), result ?: "")

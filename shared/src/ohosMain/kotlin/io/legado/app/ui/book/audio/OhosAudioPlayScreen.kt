@@ -59,7 +59,7 @@ fun OhosAudioPlayScreen(
             bufferMs = 0,
             isPlaying = false,
             loading = false,
-            playMode = AudioPlayShared.PlayMode.LIST,
+            playMode = AudioPlayShared.PlayMode.LIST_END_STOP,
             prevEnabled = false,
             nextEnabled = false,
             accentColor = io.legado.app.ui.compose.theme.AppTheme.colors.accent,

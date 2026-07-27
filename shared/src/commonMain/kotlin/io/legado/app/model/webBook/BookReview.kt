@@ -9,7 +9,7 @@ import io.legado.app.data.entities.ReviewPage
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.source.SourceDebugLoggers
-import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.utils.decodeAnyMapOrNull
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,7 +20,7 @@ import kotlinx.coroutines.ensureActive
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
  * - bookSource 参数类型 BookSource → IBookSource (BookSource 实现 IBookSource, 调用方无需改)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
- * - AnalyzeRule → AnalyzeRuleCore (app 端 AnalyzeRule 子类对应 KSP @JsApi 分派表生成, shared 内部用 Core)
+ * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - WebBook.parseBoolean → WebBookRuleUtils.parseBoolean (解除对 WebBook object 的直接依赖)
  */
 object BookReview {
@@ -42,7 +42,7 @@ object BookReview {
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取段评成功:${redirectUrl}")
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 50)
         val list = arrayListOf<Review>()
-        val analyzeRule = AnalyzeRuleCore(book, bookSource)
+        val analyzeRule = AnalyzeRuleFactories.create(book, bookSource)
         analyzeRule.setContent(body)
         analyzeRule.setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)

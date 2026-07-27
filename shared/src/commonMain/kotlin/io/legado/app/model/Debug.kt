@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -27,12 +28,10 @@ import kotlinx.coroutines.currentCoroutineContext
  *
  * 原 app 端 Debug 依赖 `android.util.Log` / `BuildConfig.DEBUG` / `java.text.SimpleDateFormat`
  * / `CheckSource.timeout`, 下沉后替换:
- * - `android.util.Log.d` + `BuildConfig.DEBUG` → 删除 (调试日志由 [SourceDebugLoggers] provider
- *   在 app 端注册时转发回 Debug.log, 不需要 shared 内再 Log.d)
+ * - `android.util.Log.d` + `BuildConfig.DEBUG` → [AppLog.putDebug] (DEBUG 门控由 AppLogHost 保留)
  * - `SimpleDateFormat("[mm:ss.SSS]", Locale.getDefault())` + `Date(...)` → 自实现 [formatDuration]
  *   (commonMain 无 java.text, 用纯 Kotlin 拼接, 行为与原 mm:ss.SSS 格式一致)
- * - `CheckSource.timeout` (app 端单例, 用户可配置) → [CHECK_SOURCE_TIMEOUT_DEFAULT] 常量
- *   (默认 180000ms, 对应 CheckSource.timeout 默认值; 若需精确同步用户配置, app 端可额外扩展 provider)
+ * - `CheckSource.timeout` → [CheckSourceShared.timeout] (同已下沉 commonMain, 用户配置生效)
  *
  * 嵌套 [Callback] 接口与 `var callback: Callback?` 字段保留, app 端 DebugWsHandler /
  * BookSourceDebugModel 实现该接口并 `Debug.callback = this` 的代码零改动。
@@ -51,14 +50,6 @@ object Debug {
     private var startTime: Long = systemCurrentTimeMillis()
 
     private val lock = SynchronizedObject()
-
-    /**
-     * CheckSource 超时默认值 (毫秒), 对应原 `CheckSource.timeout` 默认 180000ms。
-     *
-     * 仅用于 [getRespondTime] 兜底与 [updateFinalMessage] 失败惩罚计时的默认值,
-     * 不影响书源校验主流程 (CheckSource 本身仍留 app 端)。
-     */
-    private const val CHECK_SOURCE_TIMEOUT_DEFAULT = 180000L
 
     /**
      * 格式化时间差为 `[mm:ss.SSS]` 字符串 (对应原 `SimpleDateFormat("[mm:ss.SSS]")`)。
@@ -85,6 +76,10 @@ object Debug {
         showTime: Boolean = true,
         state: Int = 1
     ) = synchronized(lock) {
+        // 对应原 app 端 `if (BuildConfig.DEBUG) Log.d("sourceDebug", msg)`。
+        // commonMain 无 BuildConfig, 走 AppLog.putDebug (安卓端 logcat 输出仍由 DEBUG 门控);
+        // 先查开关再拼串, 避免调试/校验热路径上无谓的字符串分配。
+        if (AppLog.isRecordLogEnabled) AppLog.putDebug("sourceDebug: $msg")
         //调试信息始终要执行
         callback?.let {
             if ((debugSource != sourceUrl || !print)) return@synchronized
@@ -137,14 +132,14 @@ object Debug {
     }
 
     fun getRespondTime(sourceUrl: String): Long {
-        return debugTimeMap[sourceUrl] ?: CHECK_SOURCE_TIMEOUT_DEFAULT
+        return debugTimeMap[sourceUrl] ?: CheckSourceShared.timeout
     }
 
     fun updateFinalMessage(sourceUrl: String, state: String) {
         if (debugTimeMap[sourceUrl] != null && debugMessageMap[sourceUrl] != null) {
             val spendingTime = systemCurrentTimeMillis() - debugTimeMap[sourceUrl]!!
             debugTimeMap[sourceUrl] =
-                if (state == "校验成功") spendingTime else CHECK_SOURCE_TIMEOUT_DEFAULT + spendingTime
+                if (state == "校验成功") spendingTime else CheckSourceShared.timeout + spendingTime
             val printTime = formatDuration(spendingTime)
             debugMessageMap[sourceUrl] = "$printTime $state"
         }

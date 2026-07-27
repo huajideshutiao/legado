@@ -7,7 +7,11 @@ import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.help.http.cookieJarHeader
+import io.legado.app.help.http.mergeCookies
 import io.legado.app.help.source.SourceHelp
+import io.legado.app.help.source.SourceNetworkProviders
+import io.legado.app.utils.NetworkUtils
 
 /**
  * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 [SourceOriginHeaderInterceptor] 解析防盗链 header。
@@ -20,13 +24,35 @@ val SourceOriginKey = Extras.Key<String?>(default = null)
 /**
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header, 转 Coil3 [NetworkHeaders]。
  *
+ * 对齐原版 `AnalyzeUrl.getGlideUrl()`: source header + [SourceNetworkProviders] 中的 cookie,
+ * 缺 cookie 会让需登录站点的封面 403/裂图。[imageUrl] 用于 source key 非 http 时的 domain 兜底,
+ * 与原版 `AnalyzeUrl.domain` 取值一致。
+ *
  * [SourceHelp.getSource] 为 suspend (调 DB/书源缓存), 调用方需在协程内。
- * 无书源/书源无 header 时返回 null。
+ * 无书源/最终无 header 时返回 null。
  */
-suspend fun resolveSourceHeaders(sourceOrigin: String?): NetworkHeaders? {
+suspend fun resolveSourceHeaders(
+    sourceOrigin: String?,
+    imageUrl: String? = null
+): NetworkHeaders? {
     if (sourceOrigin.isNullOrEmpty()) return null
     val source: BaseSource = SourceHelp.getSource(sourceOrigin) ?: return null
-    val headerMap = source.getHeaderMap().takeIf { it.isNotEmpty() } ?: return null
+    val headerMap = LinkedHashMap(source.getHeaderMap())
+    // 原版 AnalyzeUrl init 把 header 里的 proxy 抽出作代理配置, 不当请求头发出
+    headerMap.remove("proxy")
+
+    // 对齐原版 AnalyzeUrl.setCookie(): 数据库 cookie 与 header 中的临时 cookie 合并, 后者优先
+    val domain = NetworkUtils.getSubDomain(
+        source.getKey().takeIf { it.startsWith("http") } ?: imageUrl ?: sourceOrigin
+    )
+    val cookie = SourceNetworkProviders.impl?.getCookie(domain) ?: ""
+    if (cookie.isNotEmpty()) {
+        mergeCookies(cookie, headerMap["Cookie"])?.let { headerMap["Cookie"] = it }
+    }
+    if (source.enabledCookieJar == true) headerMap[cookieJarHeader] = "1"
+    else headerMap.remove(cookieJarHeader)
+
+    if (headerMap.isEmpty()) return null
     return NetworkHeaders.Builder().apply {
         headerMap.forEach { (k, v) -> add(k, v) }
     }.build()
@@ -48,7 +74,8 @@ class SourceOriginHeaderInterceptor : Interceptor {
         if (sourceOrigin.isNullOrEmpty()) {
             return chain.proceed()
         }
-        val headers = resolveSourceHeaders(sourceOrigin) ?: return chain.proceed()
+        val headers = resolveSourceHeaders(sourceOrigin, request.data as? String)
+            ?: return chain.proceed()
         val newRequest = request.newBuilder()
             .httpHeaders(headers)
             .build()

@@ -16,7 +16,7 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
-import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.flow
  * - appDb → AppDbProviders.get() provider 间接
  * - BookHelp.saveContent → BookHelpProviders.get().saveContent provider 间接
  * - AppConfig.threadCount → AppConfigProviders.get().threadCount
- * - AnalyzeRule → AnalyzeRuleCore (app 端 AnalyzeRule 子类对应 KSP @JsApi 分派表生成, shared 内部用 Core)
+ * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
  * - mapAsync 扩展已下沉到 shared FlowExtensionsShared.kt, 包名不变
@@ -66,7 +66,7 @@ object BookContent {
         val contentList = arrayListOf<String>()
         val nextUrlList = arrayListOf(redirectUrl)
         val contentRule = bookSource.contentRule
-        val analyzeRule = AnalyzeRuleCore(book, bookSource)
+        val analyzeRule = AnalyzeRuleFactories.create(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.coroutineContext = currentCoroutineContext()
@@ -192,7 +192,7 @@ object BookContent {
         getNextPageUrl: Boolean = true,
         printLog: Boolean = true
     ): Pair<String, List<String>> {
-        val analyzeRule = AnalyzeRuleCore(book, bookSource)
+        val analyzeRule = AnalyzeRuleFactories.create(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.coroutineContext = currentCoroutineContext()
         analyzeRule.nextChapterUrl = nextChapterUrl

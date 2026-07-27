@@ -52,14 +52,18 @@ object CacheBook {
     /** 失败章节主键 -> 累计错误次数 (对照 app 端原 CacheBook.errorDownloadMap) */
     val errorDownloadMap get() = CacheBookShared.errorDownloadMap
 
-    /** 对照 app 端原 CacheBook.getOrCreate(bookUrl) */
+    /**
+     * 对照 app 端原 CacheBook.getOrCreate(bookUrl)。
+     * 被包裹方是 suspend (DB 查询), 调用方 (CacheBookService) 为同步签名, 保留 runBlocking
+     * (原版就是 @Synchronized 内阻塞 DAO 查询, 语义一致)。
+     */
     @Synchronized
     fun getOrCreate(bookUrl: String): CacheBookModel? = runBlocking { CacheBookShared.getOrCreate(bookUrl) }
 
-    /** 对照 app 端原 CacheBook.getOrCreate(bookSource, book) */
+    /** 对照 app 端原 CacheBook.getOrCreate(bookSource, book); 被包裹方非 suspend, 直接透传 (阅读热路径, 免 runBlocking 开销) */
     @Synchronized
     fun getOrCreate(bookSource: BookSource, book: Book): CacheBookModel =
-        runBlocking { CacheBookShared.getOrCreate(bookSource, book) }
+        CacheBookShared.getOrCreate(bookSource, book)
 
     /** 对照 app 端原 CacheBook.close */
     fun close() = CacheBookShared.close()

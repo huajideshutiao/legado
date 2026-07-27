@@ -4,35 +4,58 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import androidx.compose.ui.graphics.toArgb
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProvider
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.lib.theme.ThemeStorePrefKeys
+import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
- * 桌面 JVM 端 Provider 实现。无 SharedPreferences / ThemeStore 等底座，用内存
- * mutableStateOf 持有主题色，初始为 arcoblue 浅色主题，桌面 UI 可通过
- * [toggleDark] / [setDark] 切换深浅。
- *
- * 颜色值与 ThemeStore 兜底保持一致（accentColor = #165DFF = arcoblue-6）。
- * 桌面端暂不支持背景图，bgImagePath 恒为 null。
+ * 桌面 JVM 端 Provider 实现。主题色用 mutableStateOf 持有触发重组，
+ * 读写经 [PreferenceProviders] 持久化 (对照 Android ThemeStore.saveTheme 语义)，
+ * 初始值从持久层恢复，无记录时回退 arcoblue 浅色主题 (accentColor = #165DFF)。
  */
 
 /** 桌面端主题状态：用 var 实现 ThemeStoreProvider 的 val 接口，触发重组 */
 class DesktopThemeStoreProvider : ThemeStoreProvider {
-    /** 是否深色主题（影响 background/bottomBackground/statusBar 等派生色） */
-    var isDark: Boolean by mutableStateOf(false)
+    /** 是否深色主题（影响 background/bottomBackground/statusBar 等派生色），初始从 themeMode 恢复 */
+    var isDark: Boolean by mutableStateOf(readInitDark())
 
-    override var accentColor: Color by mutableStateOf(Color(0xFF165DFF))
+    override var accentColor: Color by mutableStateOf(
+        readInitColor(ThemeStorePrefKeys.KEY_ACCENT_COLOR) ?: Color(0xFF165DFF)
+    )
         private set
-    override var backgroundColor: Color by mutableStateOf(Color(0xFFFFFFFF))
+    override var backgroundColor: Color by mutableStateOf(
+        readInitColor(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR)
+            ?: if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
+    )
         private set
-    override var bottomBackground: Color by mutableStateOf(Color(0xFFF7F8FA))
+    override var bottomBackground: Color by mutableStateOf(
+        readInitColor(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND)
+            ?: if (isDark) Color(0xFF1F1F1F) else Color(0xFFF7F8FA)
+    )
         private set
-    override var statusBarColor: Color by mutableStateOf(Color(0xFFFFFFFF))
+    override var statusBarColor: Color by mutableStateOf(
+        readInitColor(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR) ?: backgroundColor
+    )
         private set
-    override var navigationBarColor: Color by mutableStateOf(Color(0xFFF7F8FA))
+    override var navigationBarColor: Color by mutableStateOf(
+        readInitColor(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR) ?: bottomBackground
+    )
         private set
-    override val bgImagePath: String? get() = null
+
+    /** 对照 ThemeConfig.curBgImagePath：按日/夜模式读持久层背景图路径，空白视为无壁纸 */
+    override val bgImagePath: String?
+        get() = prefsOrNull()
+            ?.let { p ->
+                val key = if (isDark) PreferKey.bgImageN else PreferKey.bgImage
+                if (p.contains(key)) p.getString(key) else null
+            }
+            ?.takeUnless { it.isBlank() }
 
     /** 切换深/浅色主题；派生色同步刷新 */
     fun toggleDark() = updateDark(!isDark)
@@ -52,6 +75,7 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
             statusBarColor = Color(0xFFFFFFFF)
             navigationBarColor = Color(0xFFF7F8FA)
         }
+        persist()
     }
 
     /**
@@ -60,8 +84,7 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
      * - 与 [updateDark] 不同, 本方法允许外部传入完整三色 (accent/bg/bbg),
      *   用于主题定制/主题列表的应用主题操作;
      * - 派生色 (statusBar/navigationBar) 跟随 background/bottomBackground;
-     * - isNight 仅更新 isDark 标记, 不再走 [updateDark] 的默认深浅色覆盖
-     *   (因为外部已显式给出 bg/bbg, 不能被 updateDark 默认值覆盖)。
+     * - 更新内存状态后经 [persist] 落盘 (对照 Android ThemeConfig.applyConfig → ThemeStore.saveTheme)。
      */
     override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
         isDark = isNight
@@ -70,7 +93,30 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
         bottomBackground = bbg
         statusBarColor = bg
         navigationBarColor = bbg
+        persist()
     }
+
+    /** 当前主题色写入持久层 (键对齐 ThemeStore.saveTheme, themeMode 对齐 AppConfig.isNightTheme setter) */
+    private fun persist() {
+        val p = prefsOrNull() ?: return
+        p.putInt(ThemeStorePrefKeys.KEY_PRIMARY_COLOR, backgroundColor.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_ACCENT_COLOR, accentColor.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR, backgroundColor.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND, bottomBackground.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR, statusBarColor.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, navigationBarColor.toArgb())
+        p.putString(PreferKey.themeMode, if (isDark) "2" else "1")
+    }
+
+    private fun readInitDark(): Boolean =
+        prefsOrNull()?.getString(PreferKey.themeMode, "0") == "2"
+
+    private fun readInitColor(key: String): Color? =
+        prefsOrNull()?.let { p -> if (p.contains(key)) Color(p.getInt(key)) else null }
+
+    /** PreferenceProviders 未注册时返回 null (测试/预览场景), 主流程 Main.kt 已先注册 */
+    private fun prefsOrNull(): PreferenceProvider? =
+        runCatching { PreferenceProviders.get() }.getOrNull()
 }
 
 /** 桌面端 AppConfig stub：E-Ink 模式桌面端恒为 false */
@@ -84,54 +130,46 @@ class DesktopAppConfigProvider : AppConfigProvider {
     }
 }
 
-/** 桌面端事件总线：本地 MutableSharedFlow，recreateEvent 用于切换主题后触发 AppTheme 重组 */
+/**
+ * 桌面端事件总线：委托 commonMain [FlowBus]`[EventBus.RECREATE]` (与 AndroidEventBusProvider
+ * 同模式)。多处 new 的实例共享同一全局 bus, FileThemeConfigProvider 等非 UI 层
+ * 发出的 recreate 也能到达 AppTheme。
+ */
 class DesktopEventBusProvider : EventBusProvider {
-    private val recreateFlow = MutableSharedFlow<Unit>(
-        replay = 0,
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-
-    /** 桌面端无 FlowBus，主题切换后由调用方 emit 此流触发 AppTheme 重组 */
+    /** 对照 postEvent(EventBus.RECREATE, "") */
     override fun emitRecreate() {
-        recreateFlow.tryEmit(Unit)
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 
-    override val recreateEvent: Flow<Unit> = recreateFlow
+    override val recreateEvent: Flow<Unit> = FlowBus.with(EventBus.RECREATE).map { }
 }
 
 /**
- * 桌面端 Preferences provider：内存 Map 实现，无 SharedPreferences 底座。
- *
- * 与 [DesktopThemeStoreProvider] 一致用 var/mutableStateOf 持有状态，
- * Compose 读 prefs 时 (PreferenceRow 内部 remember state) 重组由各 Composable 自行管理，
- * Provider 仅负责持久化语义 (实际桌面端进程结束即丢失)。
- *
- * Boolean/Int/String 分别存独立 Map，避免类型混淆。
+ * 桌面端 Preferences provider：委托 [PreferenceProviders] 注册的持久后端
+ * (DesktopPreferenceProvider, java.util.prefs)。自身无状态，各处 new 的实例
+ * 共享同一后端，UI 写入与 BackupShared 等业务读取同源。
  */
 class DesktopPreferenceStoreProvider : PreferenceStoreProvider {
-    private val boolMap = mutableMapOf<String, Boolean>()
-    private val intMap = mutableMapOf<String, Int>()
-    private val stringMap = mutableMapOf<String, String?>()
+    private val prefs: PreferenceProvider get() = PreferenceProviders.get()
 
     override fun getBoolean(key: String, defValue: Boolean): Boolean =
-        boolMap[key] ?: defValue
+        prefs.getBoolean(key, defValue)
 
     override fun putBoolean(key: String, value: Boolean) {
-        boolMap[key] = value
+        prefs.putBoolean(key, value)
     }
 
     override fun getInt(key: String, defValue: Int): Int =
-        intMap[key] ?: defValue
+        prefs.getInt(key, defValue)
 
     override fun putInt(key: String, value: Int) {
-        intMap[key] = value
+        prefs.putInt(key, value)
     }
 
     override fun getString(key: String, defValue: String?): String? =
-        stringMap[key] ?: defValue
+        if (prefs.contains(key)) prefs.getString(key) else defValue
 
     override fun putString(key: String, value: String?) {
-        stringMap[key] = value
+        prefs.putString(key, value)
     }
 }

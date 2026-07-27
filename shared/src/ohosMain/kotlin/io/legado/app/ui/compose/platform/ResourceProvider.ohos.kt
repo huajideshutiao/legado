@@ -1,9 +1,11 @@
 package io.legado.app.ui.compose.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
+import io.legado.app.ui.compose.theme.LocalAppColors
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.ic_arrow_back
@@ -95,7 +97,7 @@ import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 // ohos actual: rememberPainter 加载 commonMain/composeResources/drawable/ 下 SVG (与 iOS/jvm 镜像);
-// rememberString 复用 commonMain sharedStringTable; 其余 stub 占位
+// rememberString/rememberStringArray/rememberColor 复用 iOS/jvm 的字面量表 (单一数据源镜像)
 // ohosMain 未继承 nonOhosUiMain, material-icons-extended 不可用, 兜底用 ColorPainter (与原 stub 行为一致)
 
 @Composable
@@ -222,8 +224,49 @@ actual fun rememberString(key: String, vararg formatArgs: Any): String {
 
 @Composable
 actual fun rememberStringArray(key: String): List<String> {
-    // stub: 后续接入 ohos ResourceManager 时替换
-    return emptyList()
+    // 复用 iOS/jvmMain 的 mapOf 字面量 (与 app 端 res/values-zh/strings.xml + res/values/arrays.xml 对齐)
+    val table = remember {
+        mapOf(
+            // arrays.xml 中 language 数组无 @string 引用, 直接取字面量
+            "language" to listOf("Auto", "Simplified_Chinese", "Traditional_Chinese", "English"),
+            "language_value" to listOf("auto", "zh", "tw", "en"),
+            // default_home_page 数组 item 引用 @string/home|bookshelf|discovery|my, 取 zh 翻译
+            "default_home_page" to listOf("主页", "书架", "发现", "我的"),
+            "default_home_page_value" to listOf("home", "bookshelf", "explore", "my"),
+            // default_app_variant 数组 item 引用 @string/default_version|official_version|beta_release_version|beta_releaseA_version, 取 zh 翻译
+            "default_app_variant" to listOf("当前", "正式版", "测试版", "共存版"),
+            "default_app_variant_value" to listOf(
+                "default_version",
+                "official_version",
+                "beta_release_version",
+                "beta_releaseA_version",
+            ),
+            // MoreConfigScreen 用到的数组 (与 app 端 res/values/arrays.xml + res/values-zh/arrays.xml 对齐)
+            "screen_direction_title" to listOf("跟随系统", "竖向", "横向", "跟随传感器", "反向竖屏"),
+            "screen_direction_value" to listOf("0", "1", "2", "3", "4"),
+            "screen_time_out" to listOf("默认", "1分钟", "5分钟", "10分钟", "常亮"),
+            "screen_time_out_value" to listOf("0", "60", "300", "600", "-1"),
+            "double_page_title" to listOf("全局单页", "全局双页", "横屏双页", "平板/横屏双页"),
+            "double_page_value" to listOf("0", "1", "2", "3"),
+            "progress_bar_behavior_title" to listOf("调整本章页数", "调整章节位置"),
+            "progress_bar_behavior_value" to listOf("page", "chapter"),
+            // TipConfigScreen 下沉带入 (与 app 端 values-zh/arrays.xml 对齐)
+            "read_tip" to listOf(
+                "无", "书名", "标题", "时间", "电量", "电量%", "页数",
+                "进度(%)", "进度(xx/yyy)", "页数及进度", "时间及电量", "时间及电量%"
+            ),
+            "tip_color" to listOf("跟随内容", "自定义"),
+            "tip_divider_color" to listOf("默认", "跟随内容", "自定义"),
+            // OtherConfigScreen / BookshelfManageScreen / ExploreScreen / ThemeConfigScreen 下沉带入
+            "book_type" to listOf("文本", "音频", "图片", "文件", "视频", "订阅"),
+            "explore_item_style" to listOf("普通", "视频"),
+            "icon_names" to listOf("iconMain", "icon1", "icon4", "icon5"),
+            "icons" to listOf("ic_launcher", "launcher1", "launcher4", "launcher5"),
+            "theme_mode" to listOf("跟随系统", "亮色主题", "暗色主题", "E-Ink(墨水屏)"),
+            "theme_mode_v" to listOf("0", "1", "2", "3"),
+        )
+    }
+    return table[key] ?: emptyList() // 未识别返回空 List, 与 expect KDoc 一致
 }
 
 @Composable
@@ -234,6 +277,29 @@ actual fun rememberLauncherIconPainters(iconValues: List<String>): List<Painter?
 
 @Composable
 actual fun rememberColor(key: String): Color {
-    // stub: 后续接入 ohos ResourceManager 时替换
-    return Color.Unspecified
+    // 复用 iOS/jvmMain 的 when 分支: Color/LocalAppColors 跨平台一致
+    // 对齐 Android values/values-night 资源限定符: dark 主题走 values-night, 否则走 values
+    val isDark = LocalAppColors.current.isDark
+    return when (key) {
+        // = @color/arco_text_1: light #FF212121 / dark #FFF8F8F8
+        "primaryText" -> if (isDark) Color(0xFFF8F8F8) else Color(0xFF212121)
+        // = @color/arco_text_3: light/dark 均 #FF909090
+        "tv_text_summary" -> Color(0xFF909090)
+        // = @color/btn_bg: light #100e0e0e / dark #14e0e0e0 (TocScreen 卷名背景)
+        "btn_bg" -> if (isDark) Color(0x14E0E0E0) else Color(0x100E0E0E)
+        // = @color/arco_fill_3: light #FFE6E6E6 / dark #FF2A2A2A (BookInfoScreen 等次级填充)
+        "arco_fill_3" -> if (isDark) Color(0xFF2A2A2A) else Color(0xFFE6E6E6)
+        // = @color/bg_divider_line 解引用后: light #FFF3F3F3 / dark #FF424242 (BookInfoScreen 分隔线)
+        "bg_divider_line" -> if (isDark) Color(0xFF424242) else Color(0xFFF3F3F3)
+        // = @color/divider: #66666666 (values-night 无定义, light/dark 共用)
+        "divider" -> Color(0x66666666)
+        // Material Design 颜色 (values/colors_material_design.xml, 无 night 变体, light/dark 共用)
+        "md_blue_100" -> Color(0xFFBBDEFB)
+        "md_blue_A200" -> Color(0xFF448AFF)
+        "md_red_100" -> Color(0xFFFFCDD2)
+        "md_red_A200" -> Color(0xFFFF5252)
+        "md_dark_primary_text" -> Color(0xFFFFFFFF)
+        "md_light_secondary" -> Color(0x8A000000)
+        else -> Color.Unspecified // 未识别返回 Unspecified, 与 expect KDoc 一致
+    }
 }

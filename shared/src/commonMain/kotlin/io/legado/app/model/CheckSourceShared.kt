@@ -1,6 +1,5 @@
 package io.legado.app.model
 
-import com.script.quickjs.ScriptException
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -12,6 +11,7 @@ import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.exploreKinds
+import io.legado.app.model.script.ScriptException
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -52,23 +52,58 @@ object CheckSourceShared {
     /** 校验关键词 (用户可改, 默认 "我的")。 */
     var keyword = "我的"
 
-    /** 校验超时时间 (毫秒, 默认 180000)。 */
-    var timeout: Long = cacheGetLong("checkSourceTimeout") ?: 180000L
+    /**
+     * 校验超时时间 (毫秒, 默认 180000)。
+     *
+     * getter 每次读 CacheManager: object 初始化早于 [SourceCacheProviders] 注册, 若在初始化时
+     * 求值会永久锁死默认值; 用户改过 (setter) 则以内存值为准。以下五个开关同理。
+     */
+    var timeout: Long
+        get() = timeoutOverride ?: cacheGetLong("checkSourceTimeout") ?: 180000L
+        set(value) {
+            timeoutOverride = value
+        }
+    private var timeoutOverride: Long? = null
 
     /** 是否校验搜索 (默认 true)。 */
-    var checkSearch: Boolean = cacheGetBoolean("checkSearch") ?: true
+    var checkSearch: Boolean
+        get() = checkSearchOverride ?: cacheGetBoolean("checkSearch") ?: true
+        set(value) {
+            checkSearchOverride = value
+        }
+    private var checkSearchOverride: Boolean? = null
 
     /** 是否校验发现 (默认 true)。 */
-    var checkDiscovery: Boolean = cacheGetBoolean("checkDiscovery") ?: true
+    var checkDiscovery: Boolean
+        get() = checkDiscoveryOverride ?: cacheGetBoolean("checkDiscovery") ?: true
+        set(value) {
+            checkDiscoveryOverride = value
+        }
+    private var checkDiscoveryOverride: Boolean? = null
 
     /** 是否校验详情 (默认 true)。 */
-    var checkInfo: Boolean = cacheGetBoolean("checkInfo") ?: true
+    var checkInfo: Boolean
+        get() = checkInfoOverride ?: cacheGetBoolean("checkInfo") ?: true
+        set(value) {
+            checkInfoOverride = value
+        }
+    private var checkInfoOverride: Boolean? = null
 
     /** 是否校验目录 (默认 true)。 */
-    var checkCategory: Boolean = cacheGetBoolean("checkCategory") ?: true
+    var checkCategory: Boolean
+        get() = checkCategoryOverride ?: cacheGetBoolean("checkCategory") ?: true
+        set(value) {
+            checkCategoryOverride = value
+        }
+    private var checkCategoryOverride: Boolean? = null
 
     /** 是否校验正文 (默认 true)。 */
-    var checkContent: Boolean = cacheGetBoolean("checkContent") ?: true
+    var checkContent: Boolean
+        get() = checkContentOverride ?: cacheGetBoolean("checkContent") ?: true
+        set(value) {
+            checkContentOverride = value
+        }
+    private var checkContentOverride: Boolean? = null
 
     /** 配置摘要 (供 OtherConfigHost 显示)。 */
     val summary: String get() = upSummary()

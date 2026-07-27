@@ -101,35 +101,9 @@ class JvmBookStorage(
     }
 
     override fun clearInvalidCache(maxSize: Long) {
-        if (!Files.isDirectory(rootDir)) return
-        // 列出所有书缓存目录, 按最后修改时间排序, 累计大小超 maxSize 时淘汰最旧的
-        // 对应 Android BookHelp.clearInvalidCache 中"漫画图片缓存管理 (512MB)"段
-        val bookDirs = Files.list(rootDir).use { stream ->
-            stream
-                .filter { Files.isDirectory(it) }
-                .collect(Collectors.toList())
-        }
-        if (bookDirs.isEmpty()) return
-
-        // 计算每个目录大小 + 最后修改时间 (按目录粒度淘汰, 与 Android 端行为一致)
-        val stats = bookDirs.map { dir ->
-            val size = dir.toFile().walkTopDown().filter { it.isFile }.sumOf { it.length() }
-            val mtime = try {
-                Files.getLastModifiedTime(dir).toMillis()
-            } catch (e: Exception) {
-                0L
-            }
-            DirStat(dir, size, mtime)
-        }
-
-        var total = stats.sumOf { it.size }
-        if (total <= maxSize) return
-        // 按修改时间升序淘汰最旧的, 直到总大小 <= maxSize (与 Android sortedBy { it.lastModified() } 行为对齐)
-        stats.sortedBy { it.mtime }.forEach { stat ->
-            if (total <= maxSize) return
-            stat.path.toFile().deleteRecursively()
-            total -= stat.size
-        }
+        // 对照 app 端 BookHelp.clearInvalidCache "漫画图片缓存管理 (512MB)"段:
+        // 仅淘汰含 images 子目录的漫画缓存, 正常文本缓存不参与淘汰
+        evictMangaCache(listBookDirs(), BookHelpShared.cacheImageFolderName, maxSize)
     }
 
     override fun clearInvalidBookFolders(
@@ -137,8 +111,50 @@ class JvmBookStorage(
         imageSubFolderName: String,
         maxSize: Long
     ) {
-        // 桌面端暂仅做超量淘汰 (复用 clearInvalidCache), 删除不在书架文件夹逻辑待后续实现
-        clearInvalidCache(maxSize)
+        val bookDirs = listBookDirs()
+        // 1. 删除不在书架的书籍缓存目录 (对照 app 端 clearInvalidCache 步骤 1)
+        val (valid, invalid) = bookDirs.partition {
+            validFolderNames.contains(it.fileName.toString())
+        }
+        invalid.forEach { it.toFile().deleteRecursively() }
+        // 2. 对剩余有效目录做漫画缓存超量淘汰
+        evictMangaCache(valid, imageSubFolderName, maxSize)
+    }
+
+    /** 列出缓存根目录下所有书籍缓存目录。 */
+    private fun listBookDirs(): List<Path> {
+        if (!Files.isDirectory(rootDir)) return emptyList()
+        return Files.list(rootDir).use { stream ->
+            stream.filter { Files.isDirectory(it) }.collect(Collectors.toList())
+        }
+    }
+
+    /**
+     * 漫画图片缓存超量淘汰 (对照 app 端 BookHelp.clearInvalidCache 第 3 段)。
+     *
+     * 总大小按全部 [bookDirs] 统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
+     * 参与淘汰, 按最后修改时间由旧到新删除直到总大小收敛到 [maxSize] 以内。
+     */
+    private fun evictMangaCache(bookDirs: List<Path>, imageSubFolderName: String, maxSize: Long) {
+        if (bookDirs.isEmpty()) return
+        val stats = bookDirs.map { dir ->
+            val size = dir.toFile().walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            val mtime = try {
+                Files.getLastModifiedTime(dir).toMillis()
+            } catch (e: Exception) {
+                0L
+            }
+            DirStat(dir, size, mtime, Files.isDirectory(dir.resolve(imageSubFolderName)))
+        }
+
+        var total = stats.sumOf { it.size }
+        if (total <= maxSize) return
+        stats.sortedBy { it.mtime }.forEach { stat ->
+            if (!stat.isManga) return@forEach
+            stat.path.toFile().deleteRecursively()
+            total -= stat.size
+            if (total <= maxSize) return
+        }
     }
 
     /**
@@ -163,9 +179,14 @@ class JvmBookStorage(
 }
 
 /**
- * [clearInvalidCache] 内部目录统计三元组 (路径 / 大小 / 最后修改时间)。
+ * 缓存目录统计 (路径 / 大小 / 最后修改时间 / 是否漫画缓存)。
  *
  * 单独提为顶层 private data class, 避免 local data class 在某些 Kotlin 版本 /
  * KSP 处理上的边界问题, 同时便于扩展。
  */
-private data class DirStat(val path: Path, val size: Long, val mtime: Long)
+private data class DirStat(
+    val path: Path,
+    val size: Long,
+    val mtime: Long,
+    val isManga: Boolean
+)

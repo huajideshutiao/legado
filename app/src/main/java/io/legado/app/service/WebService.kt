@@ -93,6 +93,8 @@ class WebService : BaseService() {
             wifiLock?.acquire()
         }
         upTile(true)
+        // 对齐原版 onCreate 的 isRun = true (服务器起之前 UI 即显示运行中)
+        WebServerManager.markRunning()
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = {
             // 网络变化: 重新枚举 IP → 更新 WebServerManager 地址 → 刷新前台通知
@@ -104,12 +106,14 @@ class WebService : BaseService() {
             } else {
                 emptyList()
             }
-            WebServerManager.updateAddresses(addresses)
+            // 无可用 IP 时 hostAddress 置本地化文案 (对齐原版, 供通知/复制/EventBus 消费方显示)
+            val unavailableText = getString(R.string.network_connection_unavailable)
+            WebServerManager.updateAddresses(addresses, unavailableText)
             notificationList.clear()
             if (addresses.isNotEmpty()) {
                 notificationList.addAll(addresses)
             } else {
-                notificationList.add(getString(R.string.network_connection_unavailable))
+                notificationList.add(unavailableText)
             }
             startForegroundNotification()
         }
@@ -144,9 +148,11 @@ class WebService : BaseService() {
 
     private fun upWebServer() {
         // 服务器起/停 + IP 枚举 + isRun/hostAddress 状态 + postEvent 委托 WebServerManager
-        val addresses = WebServerManager.start()
+        val result = WebServerManager.startWithResult()
+        val addresses = result.addresses
         if (addresses.isEmpty()) {
-            toastOnUi("web service cant start, no ip address")
+            // 对齐原版: 绑定异常 toast e.localizedMessage, 无可用 IP 才提示 no ip address
+            toastOnUi(result.errorMsg ?: "web service cant start, no ip address")
             stopSelf()
         } else {
             notificationList.clear()

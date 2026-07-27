@@ -33,6 +33,9 @@ class DesktopPreferenceProvider : PreferenceProvider {
     override fun getLong(key: String, default: Long): Long =
         prefs.getLong(key, default)
 
+    override fun getFloat(key: String, default: Float): Float =
+        prefs.getFloat(key, default)
+
     override fun putString(key: String, value: String?) {
         if (value == null) {
             prefs.remove(key)
@@ -51,6 +54,10 @@ class DesktopPreferenceProvider : PreferenceProvider {
 
     override fun putLong(key: String, value: Long) {
         prefs.putLong(key, value)
+    }
+
+    override fun putFloat(key: String, value: Float) {
+        prefs.putFloat(key, value)
     }
 
     override fun remove(key: String) {
