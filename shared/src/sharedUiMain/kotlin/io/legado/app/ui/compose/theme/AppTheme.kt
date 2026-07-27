@@ -1,12 +1,12 @@
 package io.legado.app.ui.compose.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material.Colors
+import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Shapes
+import androidx.compose.material.darkColors
+import androidx.compose.material.lightColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
@@ -47,6 +48,48 @@ object AppTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalAppColors.current
+
+    /**
+     * 主题静态设计变量集中地: 与主题色无关的全局常量。各端 (app/desktop/ios/ohos)
+     * 直接复用, 严禁在文件内重复 private val 定义同名常量。
+     *
+     * 取值对齐 Arco Design 规范 + app/res/values/dimens.xml (arco_radius_*)。
+     * 动态主题色走 [AppTheme.colors], 此处仅放静态兜底值。
+     */
+    object DesignTokens {
+        // Arco 圆角三档 (对齐 dimens.xml arco_radius_sm/default/lg)
+        val radiusSm: Dp = 4.dp
+        val radiusDefault: Dp = 8.dp
+        val radiusLg: Dp = 16.dp
+
+        // Arco arcoblue-6 主色 (#165DFF), 仅作无主题色场景的兜底强调色
+        val arcoBlue6: Color = Color(0xFF165DFF)
+
+        // 通用卡片圆角形状 (radiusDefault), 供文本工具栏卡片等共性场景复用
+        val cardShape: RoundedCornerShape = RoundedCornerShape(radiusDefault)
+
+        /**
+         * 默认文本对齐 View TextView: 14sp/零字距。压制 M3 bodyLarge 的隐式默认
+         * (16sp/24sp 行高/0.5 字距)——它会把所有只设 fontSize 的 Text 撑高。
+         * includeFontPadding=false 同原 XML 各处显式声明。
+         *
+         * platformStyle 走 [platformTextStyleNoFontPadding] expect/actual。
+         */
+        val defaultTextStyle: TextStyle = TextStyle(
+            fontSize = 14.sp,
+            platformStyle = platformTextStyleNoFontPadding(),
+        )
+
+        /**
+         * 风格锁定 MD2: 全档小圆角。普通控件 4dp 系, dialog/按钮对齐 filletBackground 实际半径 8dp。
+         * 调用方应使用 [AppTheme.DesignTokens.shapes] 而非自行 new Shapes。
+         */
+        val shapes: Shapes = Shapes(
+            small = RoundedCornerShape(radiusSm),
+            medium = RoundedCornerShape(radiusDefault),
+            large = RoundedCornerShape(radiusDefault),
+        )
+    }
 }
 
 /**
@@ -75,9 +118,9 @@ private fun readAppColors(themeStore: ThemeStoreProvider): AppColors {
     )
 }
 
-/** AppColors → M3 ColorScheme，供 material3 内置组件取色 */
-private fun AppColors.toColorScheme(): ColorScheme {
-    val base = if (isDark) darkColorScheme() else lightColorScheme()
+/** AppColors → M2 Colors，供 material 内置组件取色 */
+private fun AppColors.toColors(): Colors {
+    val base = if (isDark) darkColors() else lightColors()
     return base.copy(
         primary = accent,
         onPrimary = if (accent.luminance() >= 0.5f) Color(0xDE000000) else Color(0xFFFFFFFF),
@@ -86,39 +129,8 @@ private fun AppColors.toColorScheme(): ColorScheme {
         onBackground = primaryText,
         surface = background,
         onSurface = primaryText,
-        surfaceVariant = bottomBackground,
-        onSurfaceVariant = secondaryText,
-        // 风格锁定 MD2：禁 tonal elevation 染色；容器族(菜单/弹窗底)统一走底栏色
-        surfaceTint = Color.Transparent,
-        surfaceContainerLowest = bottomBackground,
-        surfaceContainerLow = bottomBackground,
-        surfaceContainer = bottomBackground,
-        surfaceContainerHigh = bottomBackground,
-        surfaceContainerHighest = bottomBackground,
     )
 }
-
-/**
- * 默认文本对齐 View TextView：14sp/自然行高/零字距。压制 M3 bodyLarge 的隐式默认
- * (16sp/24sp 行高/0.5 字距)——它会把所有只设 fontSize 的 Text 撑高。
- * includeFontPadding=false 同原 XML 各处显式声明；显式设 style/字号齐全的 M3 组件不受影响。
- *
- * platformStyle 走 [platformTextStyleNoFontPadding] expect/actual: Android actual
- * 返回 `PlatformTextStyle(includeFontPadding = false)`, 其他平台返回 null (无此概念)。
- */
-private val defaultTextStyle = TextStyle(
-    fontSize = 14.sp,
-    platformStyle = platformTextStyleNoFontPadding(),
-)
-
-/** 风格锁定 MD2：全档小圆角。普通控件 4dp 系，dialog/按钮对齐 filletBackground 实际半径 8dp */
-private val appShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(4.dp),
-    medium = RoundedCornerShape(8.dp),
-    large = RoundedCornerShape(8.dp),
-    extraLarge = RoundedCornerShape(8.dp),
-)
 
 /**
  * Compose 主题入口：提供 AppTheme.colors / LocalEInk，并映射 MaterialTheme。
@@ -150,7 +162,7 @@ fun AppTheme(content: @Composable () -> Unit) {
         LocalTextToolbar provides textToolbar,
     ) {
         MaterialTheme(
-            colorScheme = colors.toColorScheme(),
+            colors = colors.toColors(),
             shapes = appShapes,
         ) {
             // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉 bodyLarge 的行高/字距)

@@ -84,11 +84,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -105,6 +104,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberColor
@@ -463,15 +463,16 @@ private fun TopBarActionIcon(
             )
         }
         if (longPressMenu != null && onAction != null) {
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 longPressMenu.forEach { (textKey, action) ->
                     DropdownMenuItem(
-                        text = { Text(rememberString(textKey), color = AppTheme.colors.primaryText) },
                         onClick = {
                             expanded = false
                             onAction(action)
                         },
-                    )
+                    ) {
+                        Text(rememberString(textKey), color = AppTheme.colors.primaryText)
+                    }
                 }
             }
         }
@@ -502,7 +503,7 @@ private fun TopOverflowMenu(state: ReadMenuState, tint: Color) {
                 modifier = Modifier.size(24.dp),
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             val click: (ReadMenuAction) -> Unit = {
                 expanded = false
                 onAction(it)
@@ -545,18 +546,21 @@ private fun TopOverflowMenu(state: ReadMenuState, tint: Color) {
 @Composable
 private fun OverflowItem(textKey: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(rememberString(textKey), color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(rememberString(textKey), color = AppTheme.colors.primaryText)
+    }
 }
 
 @Composable
 private fun OverflowCheckItem(textKey: String, checked: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(rememberString(textKey), color = AppTheme.colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
         onClick = onClick,
-    )
+    ) {
+        // MD2 无 trailingIcon 槽，用 weight(1f) 占位 + 复选框复刻 MD3 text+trailingIcon 布局
+        Text(rememberString(textKey), color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 /** 书源操作按钮(原 ArcoButton Primary Small + book_read_source PopupMenu) */
@@ -589,7 +593,7 @@ private fun SourceActionButton(state: ReadMenuState) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             val click: (SourceAction) -> Unit = {
                 expanded = false
                 state.onSourceAction(it)

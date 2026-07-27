@@ -28,11 +28,11 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -254,9 +254,10 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
     }
     OverflowMenu { dismiss ->
         DropdownMenuItem(
-            text = { Text(rememberString("source_filter_rule"), color = colors.primaryText) },
             onClick = { dismiss(); actions.onShowSourceFilterRule() },
-        )
+        ) {
+            Text(rememberString("source_filter_rule"), color = colors.primaryText)
+        }
     }
 }
 

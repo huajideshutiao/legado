@@ -9,6 +9,7 @@ import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.ruleFileName
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.fromJsonArray
@@ -69,11 +70,11 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
     ): String {
         val url = rule.uploadUrl
         if (url.isBlank()) {
-            throw NoStackTraceException("上传url未配置")
+            throw NoStackTraceException(jvmGetString("upload_url_not_configured"))
         }
         val downloadUrlRule = rule.downloadUrlRule
         if (downloadUrlRule.isBlank()) {
-            throw NoStackTraceException("下载地址规则未配置")
+            throw NoStackTraceException(jvmGetString("download_url_rule_not_configured"))
         }
         var mFileName = fileName
         var mFile = file
@@ -111,7 +112,7 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
         return analyzeRule.use {
             val downloadUrl = it.getString(downloadUrlRule)
             if (downloadUrl.isBlank()) {
-                throw NoStackTraceException("上传失败,${res.body}")
+                throw NoStackTraceException(jvmGetString("upload_failed_with_body", res.body))
             }
             downloadUrl
         }

@@ -240,34 +240,36 @@ private fun GroupBooksPage(state: BookshelfState1, group: BookGroup) {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     ShelfBooksContent(
         items = books,
-        spec = rememberShelfLayoutSpec(state.configTick, screenWidthDp),
+        spec = rememberShelfLayoutSpec(state.layoutSpecTick, screenWidthDp),
         scroll = state.scrollState(group.groupId),
         refreshEnabled = group.enableRefresh && books.isNotEmpty(),
         onRefresh = { state.mainViewModel.upToc(books) },
-        configTick = state.configTick,
-        refreshingUrls = { state.refreshingUrls },
+        coverReloadTick = state.coverReloadTick,
+        refreshingUrls = state.refreshingUrls,
         onBookClick = state::open,
         onBookLongClick = state::openBookInfo,
         showLastUpdateTime = true,
         showKindIntro = true,
-        bookCoverSlot = { book ->
+        bookCoverSlot = { book, modifier, isVideoCover ->
             ShelfCover(
                 path = book.getDisplayCover(),
                 name = book.name,
                 author = book.author,
                 origin = book.origin,
-                ratio = CoverRatio.NOVEL,
-                reloadKey = state.configTick,
+                ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
+                reloadKey = state.coverReloadTick,
+                modifier = modifier,
             )
         },
-        groupCoverSlot = { groupItem ->
+        groupCoverSlot = { groupItem, modifier, isVideoCover ->
             ShelfCover(
                 path = groupItem.cover,
                 name = null,
                 author = null,
                 origin = null,
-                ratio = CoverRatio.NOVEL,
-                reloadKey = state.configTick,
+                ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
+                reloadKey = state.coverReloadTick,
+                modifier = modifier,
             )
         },
     )

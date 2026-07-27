@@ -87,6 +87,9 @@ fun IosChangeBookSourceScreen(
     val groupLabel = rememberString("group")
     val closeLabel = rememberString("close")
     val cancelLabel = rememberString("cancel")
+    // 文案模板 (onError lambda 非 @Composable, 预先 remember)
+    val changeSourceTocFailedTemplate = rememberString("change_source_toc_failed_log")
+    val loadTocFailedText = rememberString("load_toc_failed")
 
     // UI 状态
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
@@ -247,8 +250,8 @@ fun IosChangeBookSourceScreen(
                                         onError = { e ->
                                             waitDialogBookName = null
                                             tocCoroutine = null
-                                            AppLog.put("换源获取目录出错\n$e", e)
-                                            Toasters.get().toast(e.localizedMessage ?: "加载目录失败")
+                                            AppLog.put(String.format(changeSourceTocFailedTemplate, e), e)
+                                            Toasters.get().toast(e.localizedMessage ?: loadTocFailedText)
                                         },
                                     )
                                 }

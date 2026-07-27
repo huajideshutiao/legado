@@ -21,12 +21,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -155,19 +155,22 @@ fun ChangeSourceTitleBar(
 @Composable
 fun TextMenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 /** 对照 View 菜单 checkable 项：右侧勾选框 */
 @Composable
 fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = AppTheme.colors.primaryText)
+        Spacer(Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 /** 分组子菜单：全部书源 + 各分组单选，对照 menu_group 嵌套菜单 */
@@ -183,16 +186,16 @@ fun GroupMenuItem(
     var open by remember { mutableStateOf(false) }
     Box {
         DropdownMenuItem(
-            text = { Text(title, color = colors.primaryText) },
-            trailingIcon = {
-                Icon(
-                    painter = rememberPainter("ic_arrow_right"),
-                    contentDescription = null,
-                    tint = colors.secondaryText,
-                )
-            },
             onClick = { open = true },
-        )
+        ) {
+            Text(title, color = colors.primaryText)
+            Spacer(Modifier.weight(1f))
+            Icon(
+                painter = rememberPainter("ic_arrow_right"),
+                contentDescription = null,
+                tint = colors.secondaryText,
+            )
+        }
         AppDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             val hasSelected = selectedGroup.isNotEmpty() && groups.contains(selectedGroup)
             RadioMenuItem(rememberString("all_source"), !hasSelected) {
@@ -214,10 +217,11 @@ fun GroupMenuItem(
 @Composable
 private fun RadioMenuItem(text: String, selected: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        leadingIcon = { AppRadioButton(selected = selected, onClick = null) },
         onClick = onClick,
-    )
+    ) {
+        AppRadioButton(selected = selected, onClick = null)
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 /** 对照 RefreshProgressBar：标题栏下 2dp 搜索中指示，E-Ink 用静态色条 */
@@ -235,7 +239,7 @@ fun ChangeSourceRefreshBar(visible: Boolean) {
     } else {
         LinearProgressIndicator(
             color = colors.accent,
-            trackColor = Color.Transparent,
+            backgroundColor = Color.Transparent,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(2.dp),

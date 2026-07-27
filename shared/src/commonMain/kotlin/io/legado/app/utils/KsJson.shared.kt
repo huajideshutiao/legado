@@ -202,7 +202,7 @@ inline fun <reified T> decodeListOrNull(json: String?): List<T>? {
  * 先用 [KS_JSON_STRICT] 严格解析, 失败则降级到 [KS_JSON] 宽松解析,
  * 对齐原 AnalyzeUrlCore/BookList 中 `GSONStrict.fromJsonObject(...).getOrNull() ?: GSON.fromJsonObject(...).getOrNull()` 双栈调用模式。
  *
- * @param logFallbackToLenient 降级到宽松解析时的日志回调 (对应原 `SourceDebugLoggers.impl?.log("...JSON 格式不规范...")`)
+ * @param logFallbackToLenient 严格失败但宽松成功时的日志回调 (宽松也失败说明 JSON 根本无效, 不提示"格式不规范")
  */
 inline fun <reified T> decodeListWithFallbackOrNull(
     json: String?,
@@ -216,13 +216,14 @@ inline fun <reified T> decodeListWithFallbackOrNull(
         null
     }
     if (strict != null) return strict
-    // 降级到宽松解析
-    logFallbackToLenient?.invoke()
-    return try {
+    // 降级到宽松解析, 仅宽松成功才提示格式不规范
+    val lenient = try {
         KS_JSON.decodeFromString<List<T>>(json)
     } catch (_: Exception) {
         null
     }
+    if (lenient != null) logFallbackToLenient?.invoke()
+    return lenient
 }
 
 /**

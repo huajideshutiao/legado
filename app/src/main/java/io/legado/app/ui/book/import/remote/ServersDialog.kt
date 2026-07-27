@@ -21,7 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import io.legado.app.ui.compose.platform.rememberPainter
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,7 +74,7 @@ class ServersDialog : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { showDialogFragment(ServerConfigDialog()) }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_add),
+                            painter = rememberPainter("ic_add"),
                             contentDescription = stringResource(R.string.create),
                             tint = colors.primaryText,
                         )
@@ -141,14 +141,14 @@ class ServersDialog : BaseComposeDialogFragment() {
             }
             IconButton(onClick = { showDialogFragment(ServerConfigDialog(item.id)) }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_edit),
+                    painter = rememberPainter("ic_edit"),
                     contentDescription = stringResource(R.string.edit),
                     tint = colors.primaryText,
                 )
             }
             IconButton(onClick = { deleteServer(item) }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_clear_all),
+                    painter = rememberPainter("ic_clear_all"),
                     contentDescription = stringResource(R.string.delete),
                     tint = colors.primaryText,
                 )

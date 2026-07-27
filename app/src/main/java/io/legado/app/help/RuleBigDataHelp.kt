@@ -30,4 +30,7 @@ object RuleBigDataHelp : RuleBigDataProvider {
     override fun listBookDataDirs(): List<String> =
         shared.listBookDataDirs()
 
+    override fun clearInvalidBookData(bookUrls: Set<String>) =
+        shared.clearInvalidBookData(bookUrls)
+
 }

@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.rss.RssSourcesViewModelShared
 
@@ -90,6 +91,7 @@ private fun RssSourcesContent(
     // RSS 源以 Book 形式存在, type 含 BookType.rss 位)
     val viewModel = remember { RssSourcesViewModelShared() }
     val rssBooks by viewModel.flowRssSources().collectAsState(emptyList())
+    val rssSourcesEmptyLabel = rememberString("rss_sources_empty_hint")
 
     Column(modifier = Modifier.fillMaxSize()) {
         AppTitleBar(
@@ -103,7 +105,7 @@ private fun RssSourcesContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "暂无 RSS 源\n请在书架中添加 type 含 rss 位的书籍",
+                    text = rssSourcesEmptyLabel,
                     color = colors.secondaryText,
                     fontSize = 14.sp,
                 )

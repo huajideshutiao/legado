@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -34,6 +33,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -125,7 +125,7 @@ object OpenUrlConfirmDialog {
         Box {
             IconButton(onClick = { expanded = true }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_more_vert),
+                    painter = rememberPainter("ic_more_vert"),
                     contentDescription = null,
                     tint = AppTheme.colors.primaryText,
                 )

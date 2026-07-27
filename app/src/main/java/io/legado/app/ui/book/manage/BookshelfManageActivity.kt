@@ -24,7 +24,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -681,7 +680,7 @@ class BookshelfManageActivity : BaseComposeActivity(),
                                     }
                                 }) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_play_24dp),
+                                        painter = rememberPainter("ic_play_24dp"),
                                         contentDescription = "Execute script",
                                         tint = AppTheme.colors.primaryText,
                                     )

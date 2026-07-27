@@ -33,11 +33,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -225,11 +225,15 @@ fun ExploreScreen(
                 contentPadding = PaddingValues(horizontal = 12.dp), // space.md
             ) {
                 if (pinned.isNotEmpty()) {
-                    item(key = "__pinned__") {
+                    item(key = "__pinned__", contentType = "pinned") {
                         PinnedSection(pinned, actions)
                     }
                 }
-                items(sources, key = { it.bookSourceUrl }) { item ->
+                items(
+                    sources,
+                    key = { it.bookSourceUrl },
+                    contentType = { if (state.expandedUrl == it.bookSourceUrl) "expanded" else "collapsed" },
+                ) { item ->
                     ExploreSourceItem(state, actions, item, expanded = state.expandedUrl == item.bookSourceUrl)
                 }
             }
@@ -283,45 +287,47 @@ private fun ExploreSourceItem(
     // 对照 item_explore_source.xml: 外层 paddingTop=4dp (arco_spacing_xs)
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         // ll_title: bg_find_book_group (transparent10 填充+8dp 圆角) + padding 8dp
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(transparent10())
-                .combinedClickable(
-                    onClick = { actions.onToggleExpand(item) },
-                    onLongClick = { showMenu = true },
+        // 外层 Box 承载下拉菜单: DropdownMenu 锚点取本 Box 左上角, 复刻原 PopupMenu(view=llTitle) 左侧弹出
+        Box {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(transparent10())
+                    .combinedClickable(
+                        onClick = { actions.onToggleExpand(item) },
+                        onLongClick = { showMenu = true },
+                    )
+                    .padding(8.dp), // arco_spacing_default
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = item.bookSourceName,
+                    color = colors.primaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // 原 tv_name 是默认 14sp TextView; 显式 style 避开 M3 bodyLarge 16sp/24sp 行高
+                    style = TextStyle(fontSize = 14.sp),
+                    modifier = Modifier.weight(1f),
                 )
-                .padding(8.dp), // arco_spacing_default
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = item.bookSourceName,
-                color = colors.primaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                // 原 tv_name 是默认 14sp TextView; 显式 style 避开 M3 bodyLarge 16sp/24sp 行高
-                style = TextStyle(fontSize = 14.sp),
-                modifier = Modifier.weight(1f),
-            )
-            if (expanded && loading) {
-                // 原 rotate_loading: 20dp、trackThickness 1dp、marginEnd 4dp
-                CircularProgressIndicator(
-                    color = colors.accent,
-                    strokeWidth = 1.dp,
-                    modifier = Modifier.padding(end = 4.dp).size(20.dp),
+                if (expanded && loading) {
+                    // 原 rotate_loading: 20dp、trackThickness 1dp、marginEnd 4dp
+                    CircularProgressIndicator(
+                        color = colors.accent,
+                        strokeWidth = 1.dp,
+                        modifier = Modifier.padding(end = 4.dp).size(20.dp),
+                    )
+                }
+                // 原 iv_status: 20dp、tint secondaryText
+                Icon(
+                    painter = rememberPainter("ic_arrow_right"),
+                    contentDescription = null,
+                    tint = colors.secondaryText,
+                    modifier = Modifier.size(20.dp).rotate(arrowRotation),
                 )
             }
-            // 原 iv_status: 20dp、tint secondaryText
-            Icon(
-                painter = rememberPainter("ic_arrow_right"),
-                contentDescription = null,
-                tint = colors.secondaryText,
-                modifier = Modifier.size(20.dp).rotate(arrowRotation),
-            )
-            Box {
-                ExploreItemMenu(actions, item, showMenu) { showMenu = false }
-            }
+            // 锚点对齐 llTitle 左上角 (复刻原 PopupMenu(view=llTitle) 行为)
+            ExploreItemMenu(actions, item, showMenu) { showMenu = false }
         }
         // 分类区外框: 恒定 paddingTop=4dp (对照原 FrameLayout - GridLayout 收起仅 gone,
         // 外框始终占 4dp)。收起态相邻项间距 = 本项尾 4dp + 下项根 paddingTop 4dp = 8dp
@@ -394,31 +400,37 @@ private fun ExploreItemMenu(
     val colors = AppTheme.colors
     AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
-            text = { Text(rememberString("edit"), color = colors.primaryText) },
             onClick = { onDismiss(); actions.onEditSource(item.bookSourceUrl) },
-        )
-        DropdownMenuItem(
-            text = { Text(rememberString("to_top"), color = colors.primaryText) },
-            onClick = { onDismiss(); actions.onToTop(item) },
-        )
-        if (item.hasLoginUrl) {
-            DropdownMenuItem(
-                text = { Text(rememberString("login"), color = colors.primaryText) },
-                onClick = { onDismiss(); actions.onLogin(item) },
-            )
+        ) {
+            Text(rememberString("edit"), color = colors.primaryText)
         }
         DropdownMenuItem(
-            text = { Text(rememberString("search"), color = colors.primaryText) },
+            onClick = { onDismiss(); actions.onToTop(item) },
+        ) {
+            Text(rememberString("to_top"), color = colors.primaryText)
+        }
+        if (item.hasLoginUrl) {
+            DropdownMenuItem(
+                onClick = { onDismiss(); actions.onLogin(item) },
+            ) {
+                Text(rememberString("login"), color = colors.primaryText)
+            }
+        }
+        DropdownMenuItem(
             onClick = { onDismiss(); actions.onSearchBook(item) },
-        )
+        ) {
+            Text(rememberString("search"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("refresh"), color = colors.primaryText) },
             onClick = { onDismiss(); actions.onRefreshSource(item) },
-        )
+        ) {
+            Text(rememberString("refresh"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("delete"), color = colors.primaryText) },
             onClick = { onDismiss(); actions.onDeleteSource(item) },
-        )
+        ) {
+            Text(rememberString("delete"), color = colors.primaryText)
+        }
     }
 }
 
@@ -485,9 +497,10 @@ private fun GroupMenu(groups: List<String>, onGroup: (String) -> Unit) {
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             groups.forEach { group ->
                 DropdownMenuItem(
-                    text = { Text(group, color = colors.primaryText) },
                     onClick = { expanded = false; onGroup(group) },
-                )
+                ) {
+                    Text(group, color = colors.primaryText)
+                }
             }
         }
     }

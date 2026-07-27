@@ -3,9 +3,10 @@ package io.legado.app.ui.platform
 /**
  * [stringRes] 的 iOS/鸿蒙 actual 实现 (nativeMain 中间源集共用)。
  *
- * iOS/鸿蒙两端 actual 实现完全一致 (暂返回空串), 下沉到 nativeMain 共用。
- * - iOS 后续 KP3 接 LocalizedStringKey 时替换
- * - 鸿蒙后续 KP4 接 ohos ResourceTable 时替换
+ * iOS/鸿蒙两端均无 Int resId 调用方 (唯一调用点 EditEntity secondary constructor
+ * 在两端都走 String hint primary 重载; commonMain/sharedUiMain 无 EditEntity 调用),
+ * 真实字符串走 sharedStringTable + rememberString (key-based, 与 jvm/iOS 一致),
+ * 故保留空串 stub, 无需接入 LocalizedStringKey / ohos ResourceTable。
  *
  * 详见 commonMain/ui/platform/StringRes.kt expect 注释。
  * 注: expect 声明位于 commonMain (nativeMain dependsOn commonMain 可见),

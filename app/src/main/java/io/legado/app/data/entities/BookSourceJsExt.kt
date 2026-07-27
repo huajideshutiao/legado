@@ -1,5 +1,6 @@
 package io.legado.app.data.entities
 
+import com.script.jsdispatch.JsApi
 import io.legado.app.help.JsExtensions
 
 /**
@@ -13,14 +14,16 @@ import io.legado.app.help.JsExtensions
  * - [log] override 走 super<JsExtensions>.log, 与原 BookSource (override log = super<JsExtensions>.log)
  *   行为一致 (含 jsContextOrNull?.ensureActive() + Debug.log + AppLog.putDebug)。
  *
- * 包装器实例由 [io.legado.app.help.JsExtProviders] 在 [BaseSource.evalJS] 注入 bindings["java"]/["source"],
- * JS 调用 source.xxx(...) 时:
- * - BaseSource 方法 (getKey/getHeaderMap/evalJS 等) → BaseSourceJsDispatcher → 委托 source
- * - JsExtensions 方法 (ajax/connect/webView 等) → 反射 fallback (因 BaseSourceJsDispatcher 优先匹配)
- *   → BookSourceJsExt.ajax 默认实现 → getSource() = source → AnalyzeUrl(source = source)
+ * 包装器实例由 [io.legado.app.help.JsExtProviders] 在 [BaseSource.evalJS] 注入 bindings["java"]/["source"]。
  *
- * KSP 分派表零 diff: BaseSource/JsExtensions 接口本身未改, 生成的 dispatcher 方法集不变。
+ * @JsApi 标注: BookSourceJsExt 同时实现 BaseSource 和 JsExtensions 两个兄弟接口 (均标 @JsApi),
+ * JsDispatchRegistry.forClass 的"最具体"选择在兄弟接口间无法决出胜者, 会按注册顺序固定返回
+ * BaseSourceJsDispatcher, 其 methodNames 不含 post/get/head/ajax 等 JsExtensions 方法, 导致
+ * java.post(...) 走反射 fallback (参数 coercion 与 dispatcher 路径不一致, 触发 argument type
+ * mismatch)。标 @JsApi 后 KSP 生成 BookSourceJsExtJsDispatcher, 含 BaseSource + JsExtensions
+ * 全部方法, forClass 直接命中, java.post(...) 走 dispatcher 快速路径 (参数经 JsCoerce 正确转换)。
  */
+@JsApi
 class BookSourceJsExt(val source: BookSource) : BaseSource by source, JsExtensions {
 
     override fun getSource(): BaseSource? = source

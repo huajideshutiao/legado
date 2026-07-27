@@ -30,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +42,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemExploreVideoBinding
 import io.legado.app.model.CoverRatio
 import io.legado.app.ui.book.explore.bindVideoCard
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.bookshelf.ShelfCover
 import io.legado.app.ui.widget.setUpExploreOptions
@@ -432,7 +432,7 @@ internal fun SectionTitleRow(title: String, onMore: () -> Unit) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
         Icon(
-            painter = painterResource(R.drawable.ic_arrow_right),
+            painter = rememberPainter("ic_arrow_right"),
             contentDescription = stringResource(R.string.home_more),
             tint = colors.secondaryText,
             modifier = Modifier.size(16.dp),

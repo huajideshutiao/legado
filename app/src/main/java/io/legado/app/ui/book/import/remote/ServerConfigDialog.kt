@@ -16,7 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import io.legado.app.ui.compose.platform.rememberPainter
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -80,7 +80,7 @@ class ServerConfigDialog() : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { save() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_save),
+                            painter = rememberPainter("ic_save"),
                             contentDescription = stringResource(R.string.action_save),
                             tint = colors.primaryText,
                         )

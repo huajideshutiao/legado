@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -179,17 +179,17 @@ fun TxtTocRuleEditDialog(
                         // 复制规则: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
                         if (clipTextSink != null) {
                             DropdownMenuItem(
-                                text = { Text(copyRuleText, color = colors.primaryText) },
                                 onClick = {
                                     dismissMenu()
                                     val json = GSON.toJson(getRuleFromView())
                                     clipTextSink(json)
                                     Toasters.get().toast(copySuccessText)
                                 },
-                            )
+                            ) {
+                                Text(copyRuleText, color = colors.primaryText)
+                            }
                         }
                         DropdownMenuItem(
-                            text = { Text(pasteRuleText, color = colors.primaryText) },
                             onClick = {
                                 dismissMenu()
                                 shared.pasteRule { pasted ->
@@ -199,7 +199,9 @@ fun TxtTocRuleEditDialog(
                                     example = pasted.example.orEmpty()
                                 }
                             },
-                        )
+                        ) {
+                            Text(pasteRuleText, color = colors.primaryText)
+                        }
                     }
                 },
             )

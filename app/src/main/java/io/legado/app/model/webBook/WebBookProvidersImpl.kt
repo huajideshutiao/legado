@@ -45,6 +45,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.utils.RegexReplacer
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.replace
+import splitties.init.appCtx
 
 /**
  * webBook 编排层下沉 (W3-f) 配套 provider 安卓实现。
@@ -274,6 +275,11 @@ object WebBookProvidersImpl :
     override fun getCoverPath(bookUrl: String): String =
         io.legado.app.model.fileBook.FileBook.getCoverPath(bookUrl)
 
+    // BookHelpShared 下沉新增: 平台专属临时文件清理 (委托 BookHelp.clearCacheExtra)
+    override suspend fun clearCacheExtra() {
+        BookHelp.clearCacheExtra()
+    }
+
     // ---- IntentDataAccessor ----
     override fun setSource(source: Any?) {
         IntentData.source = source
@@ -316,6 +322,29 @@ object WebBookProvidersImpl :
 
     override fun addConfig(config: ThemeConfigData) {
         ThemeConfig.addConfig(config.toThemeConfig())
+    }
+
+    override fun delConfig(index: Int) {
+        ThemeConfig.delConfig(index)
+    }
+
+    /** 包装 ThemeConfig.applyBuiltin (清 pref + applyDayNight 含 postEvent) */
+    override fun applyBuiltin(isNight: Boolean) {
+        ThemeConfig.applyBuiltin(appCtx, isNight)
+    }
+
+    /** 包装 ThemeConfig.applyConfig (applyConfigToPrefs + applyDayNight 含 postEvent) */
+    override fun applyConfig(config: ThemeConfigData) {
+        ThemeConfig.applyConfig(appCtx, config.toThemeConfig())
+    }
+
+    /** 包装 ThemeConfig.getBuiltinConfigs (默认日间 + 默认夜间, isBuiltin=true) */
+    override fun getBuiltinConfigs(): List<ThemeConfigData> =
+        ThemeConfig.getBuiltinConfigs(appCtx).map { it.toThemeConfigData() }
+
+    /** 包装 ThemeConfig.save (configList → themeConfig.json) */
+    override fun save() {
+        ThemeConfig.save()
     }
 
     /** ThemeConfig.Config → ThemeConfigData (字段一一对应, 含 isBuiltin 运行时标记)。 */

@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -39,6 +38,7 @@ import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -237,7 +237,7 @@ class SourceFilterEditDialog() : BaseComposeDialogFragment(),
                 )
             }
             Icon(
-                painter = painterResource(R.drawable.ic_arrow_drop_down),
+                painter = rememberPainter("ic_arrow_drop_down"),
                 contentDescription = stringResource(R.string.source_filter_rule_scope_label),
                 tint = colors.secondaryText,
                 modifier = Modifier

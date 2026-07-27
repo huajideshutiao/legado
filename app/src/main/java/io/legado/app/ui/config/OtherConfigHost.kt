@@ -23,6 +23,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
 import io.legado.app.service.WebService
+import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
@@ -149,6 +150,12 @@ class OtherConfigHost(activity: ConfigActivity) : ConfigHost(activity),
                         ) {
                             AppConfig.threadCount = it
                         }
+                    },
+                    onCustomPageKey = {
+                        PageKeyDialog().show(
+                            activity.supportFragmentManager,
+                            "pageKey"
+                        )
                     },
                 )
             }

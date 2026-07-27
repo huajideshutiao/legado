@@ -11,7 +11,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -24,6 +23,7 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -123,7 +123,7 @@ class BackupConfigHost(activity: ConfigActivity) : ConfigHost(activity),
                 actions = {
                     IconButton(onClick = { activity.showHelp("webDavHelp") }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_help),
+                            painter = rememberPainter("ic_help"),
                             contentDescription = stringResource(R.string.help),
                             tint = AppTheme.colors.primaryText,
                         )

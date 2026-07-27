@@ -26,7 +26,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +49,7 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -204,7 +204,7 @@ class ReplaceRuleActivity : BaseComposeActivity() {
         Box {
             IconButton(onClick = { showGroup = true }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_groups),
+                    painter = rememberPainter("ic_groups"),
                     contentDescription = stringResource(R.string.menu_action_group),
                     tint = colors.primaryText,
                 )
@@ -289,7 +289,7 @@ class ReplaceRuleActivity : BaseComposeActivity() {
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { edit(item) }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_edit),
+                    painter = rememberPainter("ic_edit"),
                     contentDescription = stringResource(R.string.edit),
                     tint = colors.primaryText,
                 )
@@ -297,7 +297,7 @@ class ReplaceRuleActivity : BaseComposeActivity() {
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
+                        painter = rememberPainter("ic_more_vert"),
                         contentDescription = stringResource(R.string.more_menu),
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),

@@ -4,7 +4,7 @@ import android.os.Build
 import android.util.Log
 import androidx.room.Room
 import androidx.sqlite.SQLiteConnection
-import androidx.sqlite.driver.AndroidSQLiteDriver
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.sqlite.driver.SupportSQLiteConnection
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultData
@@ -15,7 +15,7 @@ import java.util.Locale
 /**
  * KP1.2: Android 端 [AppDatabaseProvider] 实现。
  *
- * 委托 app 端 [appDb] lazy 单例 (依赖 appCtx + AndroidSQLiteDriver + DefaultData + Locale.CHINESE),
+ * 委托 app 端 [appDb] lazy 单例 (依赖 appCtx + FrameworkSQLiteOpenHelperFactory + DefaultData + Locale.CHINESE),
  * 在 [io.legado.app.model.webBook.registerAndroidWebBookProviders] 中注册到 [AppDatabaseProviders]。
  *
  * 桌面端对应实现为 `DesktopAppDatabaseProvider` (用 Room.databaseBuilder + BundledSQLiteDriver)。
@@ -29,16 +29,15 @@ object AndroidAppDatabaseProvider : AppDatabaseProvider {
  * K5-c Phase 5: AppDatabase 主体 (含 @Database 注解) 已下沉 shared/commonMain。
  *
  * 本文件保留 app 端专属内容:
- * - appDb 单例: 依赖 appCtx (Android Context) + AndroidSQLiteDriver
+ * - appDb 单例: 依赖 appCtx (Android Context) + FrameworkSQLiteOpenHelperFactory
  * - dbCallback: 依赖 SupportSQLiteConnection + Locale.CHINESE + DefaultData (app 端专属)
  *
  * AppDatabase::class.java / AppDatabase.DATABASE_NAME 从 shared/commonMain 引用。
  */
 val appDb by lazy {
     Room.databaseBuilder(appCtx, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-        // 显式走系统 sqlite driver（与默认 FrameworkSQLiteOpenHelper 同一底层，零行为变化），
-        // 为 K5-c 下沉 commonMain / 非安卓端换 BundledSQLiteDriver 铺路。
-        .setDriver(AndroidSQLiteDriver())
+        // 走框架 SupportSQLiteOpenHelper (Android 默认), 提供同步事务 (runInTransaction) 所需的 openHelper
+        .openHelperFactory(FrameworkSQLiteOpenHelperFactory())
         // 包名已由 io.legado.app 改为 shutiao.reader（DB v80 时），新包名最低从 v80 起，
         // 之前所有版本的旧库都属于不同应用，无法原地升级，统一走破坏性重建。
         .fallbackToDestructiveMigrationFrom(
@@ -69,7 +68,7 @@ val dbCallback = object : androidx.room.RoomDatabase.Callback() {
                 "AppDatabaseCallback",
                 "准备 设置 locale for API ${Build.VERSION.SDK_INT}..."
             )
-            // SQLiteConnection 无 setLocale；AndroidSQLiteDriver 的连接实为
+            // SQLiteConnection 无 setLocale；框架 openHelper 的连接实为
             // SupportSQLiteConnection，经底层 SupportSQLiteDatabase 保留原语义
             // （BookmarkDao 的 collate localized 依赖它）。
             (connection as? SupportSQLiteConnection)?.db?.setLocale(Locale.CHINESE)

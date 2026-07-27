@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +42,7 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -110,7 +110,7 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
                     actions = {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_more_vert),
+                                painter = rememberPainter("ic_more_vert"),
                                 contentDescription = getString(R.string.more_menu),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -173,14 +173,14 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
                 Spacer(Modifier.width(8.dp))
                 IconButton(onClick = { showDialogFragment(TxtTocRuleEditDialog(item.id)) }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_edit),
+                        painter = rememberPainter("ic_edit"),
                         contentDescription = stringResource(R.string.edit),
                         tint = colors.primaryText,
                     )
                 }
                 IconButton(onClick = { confirmDelete(item) }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_clear_all),
+                        painter = rememberPainter("ic_clear_all"),
                         contentDescription = stringResource(R.string.delete),
                         tint = colors.primaryText,
                     )

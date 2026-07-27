@@ -89,6 +89,21 @@ data class ThemeConfigData(
 }
 
 /**
+ * 主题自定义编辑数据类 (KMP 版, commonMain)。
+ *
+ * 对照 app 端 `ThemeConfig.CustomTheme` (accent/background/bottomBackground/bgImage/bgImageBlur),
+ * 去掉背景图相关字段 (背景图功能不下沉), 仅保留三色 (ARGB packed Int, 与 ColorPicker 一致)。
+ *
+ * 供 ThemeCustomizeDialog 下沉后跨平台共享表单状态 (EDIT_PREFS / EDIT_CONFIG / NEW_CONFIG 三模式),
+ * 颜色用 Int 而非 Compose Color, 保持 commonMain 无 Compose UI 依赖 (与 [ThemeConfigData] 用 String 同理)。
+ */
+data class CustomThemeData(
+    val accent: Int,
+    val bg: Int,
+    val bbg: Int,
+)
+
+/**
  * ThemeConfig 跨模块访问接口。
  *
  * app 端 `ThemeConfig` 单例依赖 Android 专属资源 (Context / ThemeStore /
@@ -128,6 +143,61 @@ interface ThemeConfigProvider {
      * @param config 待新增/覆盖的主题配置 (KMP 版数据类)
      */
     fun addConfig(config: ThemeConfigData)
+
+    /**
+     * 删除指定索引的主题配置 (对照 `ThemeConfig.delConfig(index: Int)`)。
+     *
+     * app 端实现内部: `configList.removeAt(index)` + `save()` + `applyTheme(appCtx)`。
+     *
+     * @param index 待删除的主题配置索引 (在 configList 中的位置)
+     */
+    fun delConfig(index: Int)
+
+    /**
+     * 应用内置默认主题 (对照 `ThemeConfig.applyBuiltin(context: Context, isNight: Boolean)`)。
+     *
+     * app 端实现内部: 清 6 个 pref → `AppConfig.isNightTheme = isNight` → `applyDayNight(context)`
+     * (含 applyTheme + postEvent(RECREATE))。
+     *
+     * 桌面/iOS/鸿蒙 actual: 仅清自定义色 pref / no-op (Dialog 下沉后由 [applyConfig] +
+     * [io.legado.app.ui.compose.platform.ThemeStoreProvider.applyColors] +
+     * [io.legado.app.ui.compose.platform.EventBusProvider.emitRecreate] 组合实现)。
+     *
+     * @param isNight 是否夜间主题
+     */
+    fun applyBuiltin(isNight: Boolean)
+
+    /**
+     * 应用指定主题配置 (对照 `ThemeConfig.applyConfig(context: Context, config: Config)`)。
+     *
+     * app 端实现内部: `applyConfigToPrefs` + `AppConfig.isNightTheme = config.isNightTheme` +
+     * `applyDayNight(context)` (含 applyTheme + postEvent(RECREATE))。
+     *
+     * 桌面/iOS/鸿蒙 actual: 仅持久化 config (Dialog 下沉后由
+     * [io.legado.app.ui.compose.platform.ThemeStoreProvider.applyColors] +
+     * [io.legado.app.ui.compose.platform.EventBusProvider.emitRecreate] 组合实现应用+重建)。
+     *
+     * @param config 待应用的主题配置 (KMP 版数据类)
+     */
+    fun applyConfig(config: ThemeConfigData)
+
+    /**
+     * 返回内置主题配置列表 (对照 `ThemeConfig.getBuiltinConfigs(context: Context): List<Config>`)。
+     *
+     * app 端返回 2 项 (默认日间 + 默认夜间, isBuiltin=true); 桌面/iOS/鸿蒙 actual
+     * 返回空列表 (Dialog 下沉后在 sharedUiMain 用 @Composable fun + rememberString 计算 BuiltinThemes)。
+     *
+     * @return 内置主题配置列表 (每项 isBuiltin=true)
+     */
+    fun getBuiltinConfigs(): List<ThemeConfigData>
+
+    /**
+     * 持久化 configList 到磁盘 (对照 `ThemeConfig.save()`)。
+     *
+     * app 端实现内部: `GSON.toJson(configList)` → 写 themeConfig.json;
+     * 桌面/iOS/鸿蒙 actual: no-op (内存版) 或持久化到 PreferenceStoreProvider。
+     */
+    fun save()
 
     /**
      * 清理主题背景图片缓存 (对照 app 端 `ThemeConfig.clearBg`)。

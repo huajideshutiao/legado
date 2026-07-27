@@ -1,0 +1,6 @@
+{
+  "name": "libmykmp_framework.so",
+  "types": "./index.d.ts",
+  "version": "1.0.0",
+  "description": "MYKMP Framework native module"
+}

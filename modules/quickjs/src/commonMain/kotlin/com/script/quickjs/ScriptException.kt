@@ -43,8 +43,14 @@ class ScriptException : Exception {
      */
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.append(message?.trim() ?: "")
+        val msg = message?.trim() ?: ""
+        sb.append(msg)
         if (fileName != null && lineNumber != -1) {
+            // message 已含 JS stack trace (如 "TypeError: ...\n    at <eval> (<input>:40:365)"),
+            // 追加的首帧位置信息需独占一行,否则末帧与该行粘连
+            if (msg.isNotEmpty()) {
+                sb.append('\n')
+            }
             sb.append("at ").append(fileName).append(':').append(lineNumber)
             if (columnNumber != -1) {
                 sb.append(':').append(columnNumber)

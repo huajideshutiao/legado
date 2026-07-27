@@ -23,3 +23,7 @@ package-lock.json
 
 # 文档目录仅本地保留，不入库（调研/计划类文档，非源码）
 docs/
+
+# OHOS AntUI Framework 原生构建产物（libmykmp_framework.so 由 build_ohos_framework.sh 本地生成）
+ohosApp/entry/libs/
+build/native_framework_build/

@@ -95,18 +95,18 @@ fun TextSelectionDialog(
     onDict: (String) -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    // i18n: 复用已注册 key (cancel / content_edit_copy_all / content_edit_copy_success);
-    // 浏览器搜索 / 翻译 / 复制章节标题 / 文字操作 / 请先选中并复制文字 用硬编码中文字面量
-    // (与 ComposeTextToolbar 处理方式一致: 桌面端无 R.string 等价物的 key 用硬编码)
+    // i18n: 文案全部走 rememberString (cancel / content_edit_copy_all / content_edit_copy_success
+    // / text_action 复用已注册 key; copy_chapter_title / lookup_word / browser_search /
+    // translate / select_and_copy_first_hint 为桌面端 key, 由 sharedStringTable 统一补)
     val cancelText = rememberString("cancel")
     val copyAllText = rememberString("content_edit_copy_all")
     val copySuccessText = rememberString("content_edit_copy_success")
-    val copyChapterTitleText = "复制章节标题"
-    val dictText = "查词"
-    val browserSearchText = "浏览器搜索"
-    val translateText = "翻译"
-    val titleText = "文字操作"
-    val noSelectionHintText = "请先选中并复制文字"
+    val copyChapterTitleText = rememberString("copy_chapter_title")
+    val dictText = rememberString("lookup_word")
+    val browserSearchText = rememberString("browser_search")
+    val translateText = rememberString("translate")
+    val titleText = rememberString("text_action")
+    val noSelectionHintText = rememberString("select_and_copy_first_hint")
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(

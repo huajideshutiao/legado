@@ -114,7 +114,7 @@ private fun AllBookmarkContent(
     // 收集全部书签 (按 bookName/bookAuthor/chapterIndex/chapterPos 排序, DAO SQL 已排序)
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.bookmarkDao.flowAll()
-            .catch { AppLog.put("所有书签界面获取数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("all_bookmark_load_data_failed_log", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { bookmarks ->
@@ -140,7 +140,7 @@ private fun AllBookmarkContent(
                         val file = dialog.file ?: return@withContext null
                         dir + file
                     } ?: run {
-                        AppLog.put("导出书签: 用户取消选择")
+                        AppLog.put(jvmGetString("export_bookmark_user_cancelled"))
                         return@launch
                     }
                     runCatching {
@@ -150,7 +150,7 @@ private fun AllBookmarkContent(
                         }
                         Toasters.get().toast(jvmGetString("export_success"))
                     }.onFailure {
-                        AppLog.put("导出失败\n${it.localizedMessage}", it, true)
+                        AppLog.put(jvmGetString("export_failed_log", it.localizedMessage), it, true)
                     }
                 }
             }
@@ -168,7 +168,7 @@ private fun AllBookmarkContent(
                         val file = dialog.file ?: return@withContext null
                         dir + file
                     } ?: run {
-                        AppLog.put("导出书签: 用户取消选择")
+                        AppLog.put(jvmGetString("export_bookmark_user_cancelled"))
                         return@launch
                     }
                     runCatching {
@@ -191,7 +191,7 @@ private fun AllBookmarkContent(
                         }
                         Toasters.get().toast(jvmGetString("export_success"))
                     }.onFailure {
-                        AppLog.put("导出失败\n${it.localizedMessage}", it, true)
+                        AppLog.put(jvmGetString("export_failed_log", it.localizedMessage), it, true)
                     }
                 }
             }

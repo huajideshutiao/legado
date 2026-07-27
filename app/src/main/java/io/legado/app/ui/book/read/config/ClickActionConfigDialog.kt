@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
@@ -210,7 +209,7 @@ class ClickActionConfigDialog : DialogFragment() {
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    painter = painterResource(R.drawable.ic_baseline_close),
+                    painter = rememberPainter("ic_baseline_close"),
                     contentDescription = stringResource(R.string.close),
                     tint = Color.White,
                     modifier = Modifier

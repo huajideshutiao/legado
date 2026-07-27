@@ -253,6 +253,7 @@ class ThemeConfigHost(activity: ConfigActivity) : ConfigHost(activity),
                     // 排序列表段(原 RecyclerView+ItemTouchHelper)：拖拽换位、点击切换启停
                     Column(
                         Modifier
+                            .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                             .padding(top = 16.dp)
                     ) {

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -29,15 +30,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -50,7 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,18 +60,20 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.ui.bookshelf.ShelfGridItem
+import io.legado.app.ui.bookshelf.ShelfLastUpdateText
+import io.legado.app.ui.bookshelf.ShelfListItem
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
@@ -134,7 +137,7 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `stringResource(R.string.xxx)` → [rememberString]("xxx") (Android actual 动态查 R.string, 桌面返回 key)
  * - `painterResource(R.drawable.xxx)` → [rememberPainter]("xxx")
  * - `colorResource(R.color.xxx)` → [AppTheme.colors] 语义色
- * - `WindowInsets.navigationBars.asPaddingValues()` → `platformStatusBarPadding()` (跨平台状态栏 padding)
+ * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
  * - `ShelfCover` (app 专属, 走 Glide) → 简化文本项 (跨平台无 Glide, KMP 封面留后续 KP3)
  * - `KindLabels` / `UnreadBadge` (app 专属) → 简化为多源计数文字
  * - `AndroidView { LinearLayout + setUpExploreOptions }` (单源搜索选项 chip) → 暂未实现 (KMP 无桥接)
@@ -206,7 +209,12 @@ fun SearchScreen(
                     onQueryChange = viewModel::onQueryChange,
                     onQuerySubmit = viewModel::onQuerySubmit,
                     focusEpoch = focusEpoch,
-                    onCleared = { viewModel.showInputHelp(true) },
+                    onCleared = {
+                        // 搜索中或已有结果时不弹回输入帮助 (对齐原 onFieldFocusChanged 的 autoLoading/有结果分支)
+                        if (!viewModel.isSearching.value && viewModel.searchBooks.value.isEmpty()) {
+                            viewModel.showInputHelp(true)
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 )
             },
@@ -225,7 +233,9 @@ fun SearchScreen(
                 .weight(1f)
         ) {
             Column(Modifier.fillMaxSize()) {
-                if (inputHelpVisible) {
+                // 搜索中或已有结果时强制显示结果区, 不弹回书架/历史 (对齐原 onFieldFocusChanged)
+                val showInputHelp = inputHelpVisible && !isSearching && resultBooks.isEmpty()
+                if (showInputHelp) {
                     InputHelp(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
@@ -234,10 +244,12 @@ fun SearchScreen(
                         spanCount = spanCount,
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
+                        bookshelfVersion = bookshelfVersion,
                     )
                 } else {
                     ResultArea(
                         viewModel = viewModel,
+                        navCallbacks = navCallbacks,
                         books = resultBooks,
                         isSearching = isSearching,
                         hasMore = hasMore,
@@ -344,19 +356,22 @@ private fun SearchActions(
 @Composable
 private fun TextMenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 @Composable
 private fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = colors.primaryText)
+        Spacer(Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 // ===== 输入帮助: 书架命中区与历史词互斥 =====
@@ -371,9 +386,10 @@ private fun ColumnScope.InputHelp(
     spanCount: Int,
     styleIsVideo: Boolean,
     styleCols: Int,
+    bookshelfVersion: Int,
 ) {
     val colors = AppTheme.colors
-    val navPad = Modifier.platformStatusBarPadding()
+    val navPad = rememberNavigationBarPaddingValues()
     if (bookshelfBooks.isNotEmpty()) {
         Text(
             text = rememberString("bookshelf"),
@@ -390,18 +406,18 @@ private fun ColumnScope.InputHelp(
                 .weight(1f),
         ) {
             items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                SearchListItem(
+                // 复用 ShelfListItem (BookshelfComposablesShared), 与书架列表项一致
+                ShelfListItem(
                     book = book,
-                    coverPath = book.coverUrl,
                     isVideoStyle = styleCols == 0 && styleIsVideo,
-                    inBookshelf = true,
-                    showShelfDot = false,
-                    originCount = 0,
-                    readTitle = book.durChapterTitle,
-                    timeAgo = book.durChapterTime.toTimeAgo(),
-                    intro = book.intro,
-                    onClick = { viewModel.searchHistory(book.name) },
-                    onLongClick = { viewModel.searchHistory(book.name) },
+                    coverReloadTick = bookshelfVersion,
+                    refreshingUrls = emptySet(),
+                    showLastUpdateTime = true,
+                    showKindIntro = true,
+                    onClick = { navCallbacks.onBookClick(book) },
+                    onLongClick = { navCallbacks.onBookClick(book, true) },
+                    coverSlot = { b, modifier, isVideoCover -> SearchCoverPlaceholder(b, modifier, isVideoCover) },
+                    lastUpdateTextSlot = { ShelfLastUpdateText(book.latestChapterTime, remember { mutableIntStateOf(0) }) },
                 )
             }
         }
@@ -432,7 +448,7 @@ private fun ColumnScope.InputHelp(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp)
-                .then(navPad),
+                .padding(navPad),
         ) {
             FlowRow(Modifier.fillMaxWidth()) {
                 historyKeys.forEach { keyword ->
@@ -452,6 +468,7 @@ private fun ColumnScope.InputHelp(
 @Composable
 private fun ColumnScope.ResultArea(
     viewModel: SearchViewModel,
+    navCallbacks: SearchNavCallbacks,
     books: List<SearchBook>,
     isSearching: Boolean,
     hasMore: Boolean,
@@ -489,8 +506,8 @@ private fun ColumnScope.ResultArea(
                     showShelfDot = true,
                     originCount = book.origins.size,
                     intro = book.intro,
-                    onClick = { viewModel.searchHistory(book.name) },
-                    onLongClick = { viewModel.searchHistory(book.name) },
+                    onClick = { navCallbacks.onBookClick(book) },
+                    onLongClick = { navCallbacks.onBookClick(book, true) },
                 )
             }
         }
@@ -513,12 +530,15 @@ private fun ColumnScope.ResultArea(
                 .weight(1f),
         ) {
             items(books, key = { "${it.name}|${it.author}" }) { book ->
-                SearchGridItem(
-                    book = book,
-                    inBookshelf = viewModel.isInBookShelf(book),
-                    showBadge = true,
-                    onClick = { viewModel.searchHistory(book.name) },
-                    onLongClick = { viewModel.searchHistory(book.name) },
+                // 复用 ShelfGridItem (BookshelfComposablesShared), SearchBook 经 toBook() 适配
+                val displayBook = remember(book) { book.toBook() }
+                ShelfGridItem(
+                    book = displayBook,
+                    coverReloadTick = 0,
+                    refreshingUrls = emptySet(),
+                    onClick = { navCallbacks.onBookClick(book) },
+                    onLongClick = { navCallbacks.onBookClick(book, true) },
+                    coverSlot = { _, modifier, isVideoCover -> SearchCoverPlaceholder(book, modifier, isVideoCover) },
                 )
             }
         }
@@ -659,55 +679,24 @@ private fun SearchListItem(
     }
 }
 
-/** Grid tier: 封面占位 + 两行书名 (KMP 简化版, 无 ShelfCover/书签图) */
+/** 搜索项占位封面 (KMP 无 ShelfCover, 用纯色 Box + 书名首字占位, 与原 SearchListItem 封面一致) */
 @Composable
-private fun SearchGridItem(
-    book: BaseBook,
-    inBookshelf: Boolean,
-    showBadge: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
+private fun SearchCoverPlaceholder(book: BaseBook, modifier: Modifier, isVideoCover: Boolean) {
     val colors = AppTheme.colors
-    Box(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Column(Modifier.fillMaxWidth()) {
-            // KMP 简化版封面: 纯色 Box 占位
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                    .aspectRatio(0.75f)
-                    .background(colors.bottomBackground),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = book.name.take(2),
-                    color = colors.secondaryText,
-                    fontSize = 14.sp,
-                    maxLines = 2,
-                    textAlign = TextAlign.Center,
-                )
-            }
+    // 对照 CoverRatio: NOVEL=3:4 (0.75), VIDEO=16:9
+    val ratio = if (isVideoCover) 16f / 9f else 0.75f
+    Box(
+        modifier
+            .aspectRatio(ratio)
+            .background(colors.bottomBackground),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!book.coverUrl.isNullOrBlank()) {
             Text(
-                text = book.name,
-                color = colors.primaryText,
+                text = book.name.take(2),
+                color = colors.secondaryText,
                 fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 12.dp),
-            )
-        }
-        // 书架书签: 简化为 accent 圆点 (替代原 ic_bookmark 图)
-        if (showBadge && inBookshelf) {
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 12.dp)
-                    .size(8.dp)
-                    .background(colors.accent, CircleShape),
+                maxLines = 1,
             )
         }
     }
@@ -729,7 +718,7 @@ private fun RefreshBar(visible: Boolean, modifier: Modifier) {
     } else {
         LinearProgressIndicator(
             color = colors.accent,
-            trackColor = Color.Transparent,
+            backgroundColor = Color.Transparent,
             modifier = modifier
                 .fillMaxWidth()
                 .height(2.dp),

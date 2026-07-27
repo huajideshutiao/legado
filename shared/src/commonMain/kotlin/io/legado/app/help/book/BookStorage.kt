@@ -104,6 +104,22 @@ interface BookStorage {
      * 漫画图片缓存管理段。
      */
     fun clearInvalidCache(maxSize: Long)
+
+    /**
+     * 清除无效缓存文件夹 (删除不在书架的 + 按图片子目录名做 512MB 超量淘汰)。
+     *
+     * 编排逻辑对照 [io.legado.app.help.book.BookHelpShared.clearInvalidCache] 步骤 1+2:
+     * 1. 删除缓存根目录下不在 [validFolderNames] 中的书籍缓存文件夹
+     * 2. 对含 [imageSubFolderName] 子目录的文件夹按最旧优先淘汰, 总大小收敛到 [maxSize] 以内
+     *
+     * 对应 Android 端 [io.legado.app.help.book.BookHelp.clearInvalidCache] 中
+     * "删除不在书架的书籍缓存 + 漫画图片缓存管理 (512MB)" 段。
+     */
+    fun clearInvalidBookFolders(
+        validFolderNames: Set<String>,
+        imageSubFolderName: String,
+        maxSize: Long
+    )
 }
 
 /**

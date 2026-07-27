@@ -42,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -55,6 +54,7 @@ import io.legado.app.ui.book.read.AccelerateDecelerateEasing
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 
@@ -236,7 +236,7 @@ private fun MangaMenuTopBar(state: MangaMenu) {
         ) {
             IconButton(onClick = { state.activity.supportFinishAfterTransition() }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_arrow_back),
+                    painter = rememberPainter("ic_arrow_back"),
                     contentDescription = null,
                     tint = topText,
                 )
@@ -250,10 +250,10 @@ private fun MangaMenuTopBar(state: MangaMenu) {
                 modifier = Modifier.weight(1f),
             )
             val onAction = state.activity::onMangaMenuAction
-            TopBarActionIcon(R.drawable.ic_refresh_black_24dp, R.string.refresh, topText) {
+            TopBarActionIcon("ic_refresh_black_24dp", R.string.refresh, topText) {
                 onAction(MangaMenuAction.REFRESH)
             }
-            TopBarActionIcon(R.drawable.ic_toc, R.string.chapter_list, topText) {
+            TopBarActionIcon("ic_toc", R.string.chapter_list, topText) {
                 onAction(MangaMenuAction.CATALOG)
             }
             MangaOverflowMenu(state, topText)
@@ -270,7 +270,7 @@ private fun MangaMenuTopBar(state: MangaMenu) {
 }
 
 @Composable
-private fun TopBarActionIcon(iconRes: Int, descRes: Int, tint: Color, onClick: () -> Unit) {
+private fun TopBarActionIcon(iconName: String, descRes: Int, tint: Color, onClick: () -> Unit) {
     Box(
         Modifier
             .size(48.dp)
@@ -279,7 +279,7 @@ private fun TopBarActionIcon(iconRes: Int, descRes: Int, tint: Color, onClick: (
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            painter = rememberPainter(iconName),
             contentDescription = stringResource(descRes),
             tint = tint,
             modifier = Modifier.size(24.dp),
@@ -301,7 +301,7 @@ private fun MangaOverflowMenu(state: MangaMenu, tint: Color) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_more_vert),
+                painter = rememberPainter("ic_more_vert"),
                 contentDescription = stringResource(R.string.more_menu),
                 tint = tint,
                 modifier = Modifier.size(24.dp),

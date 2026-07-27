@@ -17,9 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -159,6 +159,7 @@ fun AppSearchField(
             if (value.isEmpty()) {
                 Text(hint, color = colors.secondaryText, fontSize = 14.sp, maxLines = 1)
             }
+            // 保留 BasicTextField: 外层 Row 已自绘圆角描边/背景/搜索图标/清除按钮, Md2TextField 强制 outlined 边框会重复描边
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,

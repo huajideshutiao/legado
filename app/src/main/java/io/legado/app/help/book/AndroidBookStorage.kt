@@ -84,4 +84,19 @@ object AndroidBookStorage : BookStorage {
     override fun clearInvalidCache(maxSize: Long) {
         runBlocking { BookHelp.clearInvalidCache() }
     }
+
+    /**
+     * 清除无效缓存文件夹。
+     *
+     * 委托 [BookHelp.clearInvalidCache] 执行完整清理 (含删除无效书 + 大变量 + 临时文件),
+     * 与 [clearInvalidCache] 一致用 [runBlocking] 适配同步签名。参数 [validFolderNames]/
+     * [imageSubFolderName] 由 BookHelp 内部重新派生, 此处忽略 (行为与 [clearInvalidCache] 等价)。
+     */
+    override fun clearInvalidBookFolders(
+        validFolderNames: Set<String>,
+        imageSubFolderName: String,
+        maxSize: Long
+    ) {
+        runBlocking { BookHelp.clearInvalidCache() }
+    }
 }

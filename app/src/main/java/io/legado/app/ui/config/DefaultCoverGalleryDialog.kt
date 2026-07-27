@@ -25,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
@@ -39,6 +38,7 @@ import io.legado.app.model.DefaultCoverEntry
 import io.legado.app.model.bakedPath
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -131,7 +131,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_add),
+                            painter = rememberPainter("ic_add"),
                             contentDescription = stringResource(R.string.add),
                             tint = AppTheme.colors.primaryText,
                             modifier = Modifier.size(48.dp),

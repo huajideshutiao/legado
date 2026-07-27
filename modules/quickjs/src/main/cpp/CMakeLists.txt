@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(legado_quickjs LANGUAGES C CXX)
 
-# QuickJS-NG 源码目录
-set(QUICKJS_NG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/quickjs-ng)
+# QuickJS-NG 源码目录 (单一数据源: 与 iOS/鸿蒙 cinterop 共用 shared/src/cinterop/quickjs-ng/)
+get_filename_component(LEGADO_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+set(QUICKJS_NG_DIR "${LEGADO_PROJECT_ROOT}/shared/src/cinterop/quickjs-ng")
 
 # ============ 通用瘦身开关 ============
 # ThinLTO 跨 TU 内联+死码; gc-sections/icf 回收 section 与折叠相同函数。

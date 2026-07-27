@@ -3,7 +3,6 @@ package io.legado.desktop.ui.book.filter
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -137,7 +138,7 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
         val flow = if (searchKey.isBlank()) dao.flowAll()
         else dao.flowSearch("%$searchKey%")
         flow
-            .catch { AppLog.put("书源过滤规则界面获取数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("source_filter_rule_load_data_failed_log", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { rules ->
@@ -369,10 +370,10 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(importOnlineTitleLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
-                    label = { Text(importOnlineTitleLabel) },
+                    label = importOnlineTitleLabel,
                     singleLine = true,
                 )
             },
@@ -434,7 +435,7 @@ private suspend fun importSourceFilterRulesFromLocalFile(dialogTitle: String): S
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入书源过滤规则: 用户取消选择")
+        AppLog.put(jvmGetString("import_source_filter_rule_user_cancelled"))
         return null
     }
     return json
@@ -455,7 +456,7 @@ private suspend fun importSourceFilterRulesFromLocalFile(dialogTitle: String): S
  */
 private suspend fun exportSourceFilterRulesToLocalFile(rules: List<SourceFilterRule>, dialogTitle: String) {
     if (rules.isEmpty()) {
-        AppLog.put("导出书源过滤规则: 未选中任何规则")
+        AppLog.put(jvmGetString("export_source_filter_rule_no_selection"))
         return
     }
     val targetPath = withContext(Dispatchers.IO) {
@@ -466,7 +467,7 @@ private suspend fun exportSourceFilterRulesToLocalFile(rules: List<SourceFilterR
         val file = dialog.file ?: return@withContext null
         dir + file
     } ?: run {
-        AppLog.put("导出书源过滤规则: 用户取消选择")
+        AppLog.put(jvmGetString("export_source_filter_rule_user_cancelled"))
         return
     }
     val targetFile = File(targetPath)
@@ -475,8 +476,8 @@ private suspend fun exportSourceFilterRulesToLocalFile(rules: List<SourceFilterR
             val json = GSON.toJson(rules)
             targetFile.writeText(json)
         }
-        AppLog.put("导出书源过滤规则完成, 共 ${rules.size} 条 → ${targetFile.absolutePath}")
+        AppLog.put(jvmGetString("export_source_filter_rule_done_log", rules.size, targetFile.absolutePath))
     }.onFailure {
-        AppLog.put("导出书源过滤规则失败", it)
+        AppLog.put(jvmGetString("export_source_filter_rule_failed"), it)
     }
 }

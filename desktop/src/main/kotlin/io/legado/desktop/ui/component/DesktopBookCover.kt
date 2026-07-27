@@ -44,8 +44,8 @@ import javax.imageio.ImageIO
  * - **网络路径** (`http://`/`https://`): 用项目已注册的 OkHttp (经 [OkHttpClientProviders])
  *   下载字节流后 ImageIO 解码 (参照 shared 端 JvmBookImageStorage.saveImages 的下载逻辑,
  *   不引入 Glide/Coil 等新库)
- * - **内存缓存**: 全局 [coverCache] 缓存已解码 [ImageBitmap], 避免详情页内多次重组时
- *   重复下载/解码 (BlurCoverBg 与 InfoCover 共享同一 Book 的封面, 命中缓存零开销)
+ * - **内存缓存**: 走 [getOrLoadCover] 共享 LRU 缓存 (与书架共用同一份),
+ *   命中零开销 (BlurCoverBg 与 InfoCover 共享同一 Book 的封面)
  * - **加载失败/进行中**: 走原占位视觉 (保持与替换前一致的兜底样式)
  *
  * # 提供的 Composable
@@ -191,58 +191,36 @@ object DesktopBookCover {
 }
 
 /**
- * 全局封面内存缓存。
- *
- * - key: 封面 URL/路径 (与 produceState 的 key 一致)
- * - value: 已解码 [ImageBitmap] (Compose 可直接渲染)
- *
- * 线程安全: 用 [java.util.Collections.synchronizedMap] 包装, 下载在 IO Dispatcher,
- * 读取在 UI 线程, 仅做引用读写无并发问题。
- *
- * TODO: 未做 LRU 淘汰, 长时间运行可能占用较多内存; 后续可改为 androidx.collection.LruCache
- * 或限制条目数 (参照 app 端 Glide 的内存缓存策略)。
- */
-private val coverCache: MutableMap<String, ImageBitmap> =
-    java.util.Collections.synchronizedMap(mutableMapOf())
-
-/**
- * 加载封面为 [ImageBitmap] (本地路径或网络 URL), 命中内存缓存直接返回。
+ * 加载封面为 [ImageBitmap] (本地路径或网络 URL), 命中全局 LRU 缓存直接返回。
  *
  * - `file://` / 绝对路径 `/...`: [ImageIO.read] 读文件
  * - `http://` / `https://`: [OkHttpClientProviders] 下载字节流后 [ImageIO.read] 解码
  * - 相对路径/未知协议: 返回 null (调用方走占位)
  * - 任意步骤异常 (IO/解码/网络): 返回 null (调用方走占位)
  *
- * 参照:
- * - 本地加载: [io.legado.desktop.ui.bookshelf.BookshelfScreen] 的 loadLocalImageBitmap
- * - 网络下载: shared 端 JvmBookImageStorage.saveImages 的 OkHttp GET 逻辑
+ * 缓存: 走 [getOrLoadCover] (书架 + 详情页共享 LRU, 含失败 null 避免重试)。
  */
-private suspend fun loadCoverBitmap(src: String): ImageBitmap? {
-    // 命中内存缓存直接返回 (避免重复下载/解码)
-    coverCache[src]?.let { return it }
-    return withContext(Dispatchers.IO) {
-        runCatching {
-            val bitmap = when {
-                src.startsWith("file://") -> {
-                    val file = File(src.removePrefix("file://"))
-                    if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
+private suspend fun loadCoverBitmap(src: String): ImageBitmap? =
+    getOrLoadCover(src) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                when {
+                    src.startsWith("file://") -> {
+                        val file = File(src.removePrefix("file://"))
+                        if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
+                    }
+                    src.startsWith("/") -> {
+                        val file = File(src)
+                        if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
+                    }
+                    src.startsWith("http://") || src.startsWith("https://") -> {
+                        downloadAndDecode(src)
+                    }
+                    else -> null // 相对路径/未知协议, 走占位
                 }
-                src.startsWith("/") -> {
-                    val file = File(src)
-                    if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
-                }
-                src.startsWith("http://") || src.startsWith("https://") -> {
-                    downloadAndDecode(src)
-                }
-                else -> null // 相对路径/未知协议, 走占位
-            }
-            if (bitmap != null) {
-                coverCache[src] = bitmap
-            }
-            bitmap
-        }.getOrNull()
+            }.getOrNull()
+        }
     }
-}
 
 /**
  * 网络封面下载 + 解码 (参照 JvmBookImageStorage.saveImages 的下载逻辑)。

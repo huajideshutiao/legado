@@ -11,15 +11,16 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.vectordrawable.graphics.drawable.Animatable2Compat
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.resource.gif.GifDrawable
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
+import coil3.asDrawable
+import coil3.dispose
+import coil3.gif.MovieDrawable
+import coil3.load as loadCoil
+import coil3.request.CachePolicy
+import coil3.request.transformations
+import coil3.size.Dimension
+import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
@@ -28,10 +29,14 @@ import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
 enum class MangaCellState { LOADING, SUCCESS, ERROR }
 
 /**
- * 漫画图片叶子件(原 MangaVH 的加载部分)：只负责 Glide 加载、下载进度、
+ * 漫画图片叶子件(原 MangaVH 的加载部分)：只负责 Coil3 加载、下载进度、
  * GIF 播完翻页；尺寸/占位/重试 UI 全在 Compose 层。
+ *
+ * 实现 [MangaRenderState.MangaPageRenderer] 以便 shared 版 MangaRenderState
+ * 的 GIF 注册表通过平台无关接口持有单元格引用。
  */
-class MangaPageImageView(context: Context) : AppCompatImageView(context) {
+class MangaPageImageView(context: Context) : AppCompatImageView(context),
+    MangaRenderState.MangaPageRenderer {
 
     var onStateChange: ((MangaCellState) -> Unit)? = null
     var onProgress: ((String) -> Unit)? = null
@@ -83,7 +88,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
     fun recycle() {
         val activity = context.findActivity()
         if (activity == null || !activity.isDestroyed) {
-            ImageLoader.with(context).clear(this)
+            dispose()
         }
         (tag as? String)?.let { ProgressManager.removeListener(it) }
         tag = null
@@ -95,8 +100,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
 
     @SuppressLint("CheckResult", "DefaultLocale")
     private fun doLoad(imageUrl: String, gray: Boolean) {
-        //Activity 销毁时（如关闭阅读界面）仍可能触发加载，
-        //此时 Glide.with(activity) 会抛 "destroyed activity" 异常，直接跳过
+        //Activity 销毁时（如关闭阅读界面）仍可能触发加载，此时跳过
         val activity = context.findActivity()
         if (activity != null && activity.isDestroyed) {
             return
@@ -120,42 +124,35 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
             }
         }
         tag = imageUrl
-        ImageLoader.loadManga(context, MangaModel(imageUrl, lastBook ?: return, lastSource))
-            .override(context.resources.displayMetrics.widthPixels, SIZE_ORIGINAL)
-            .apply { if (gray) transform(sharedGrayTransformation) }
-            .listener(object : RequestListener<Drawable> {
-                override fun onLoadFailed(
-                    e: GlideException?,
-                    p1: Any,
-                    p2: Target<Drawable>,
-                    isFirstResource: Boolean
-                ): Boolean {
+        val book = lastBook ?: return
+        val model = MangaModel(imageUrl, book, lastSource)
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        loadCoil(model) {
+            // 漫画页磁盘缓存禁用(loadManga 已自管 BookHelp 磁盘缓存)
+            memoryCachePolicy(CachePolicy.DISABLED)
+            diskCachePolicy(CachePolicy.DISABLED)
+            size(Size(Dimension(screenWidth), Dimension.Undefined))
+            if (gray) transformations(sharedGrayTransformation)
+            listener(
+                onError = { _, _ ->
                     if (tag == imageUrl) {
                         onStateChange?.invoke(MangaCellState.ERROR)
                     }
-                    return false
-                }
-
-                override fun onResourceReady(
-                    p0: Drawable,
-                    model: Any,
-                    p2: Target<Drawable>,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean
-                ): Boolean {
+                },
+                onSuccess = { _, result ->
                     if (tag == imageUrl) {
                         onStateChange?.invoke(MangaCellState.SUCCESS)
-                        if (isAnimatedDrawable(p0) && gifAutoNextEnabled()) {
+                        val drawable = result.image?.asDrawable(resources)
+                        if (drawable != null && isAnimatedDrawable(drawable) && gifAutoNextEnabled()) {
                             //加载完成时：若此页正是当前停稳的居中页（例如直接打开到此页，
                             //或图片在停稳后才加载完），立即从第一帧单次播放并准备翻页；
                             //否则保持无限循环，等真正停稳居中时再装填
-                            if (isArmTarget()) armGifAutoNext(p0) else disarmGifAutoNext(p0)
+                            if (isArmTarget()) armGifAutoNext(drawable) else disarmGifAutoNext(drawable)
                         }
                     }
-                    return false
-                }
-            })
-            .into(this)
+                },
+            )
+        }
     }
 
     private fun Context.findActivity(): Activity? {
@@ -167,9 +164,9 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
         return null
     }
 
-    /** 是否为可控制循环的动图（Glide 的 GifDrawable 或平台 AnimatedImageDrawable） */
+    /** 是否为可控制循环的动图（Coil3 MovieDrawable 或平台 AnimatedImageDrawable） */
     private fun isAnimatedDrawable(d: Drawable?): Boolean = when {
-        d is GifDrawable -> true
+        d is MovieDrawable -> true
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && d is AnimatedImageDrawable -> true
         else -> false
     }
@@ -187,14 +184,14 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
         mPendingSelfEnds = 0
         val imageUrl = tag as? String
         when {
-            drawable is GifDrawable ->
+            drawable is MovieDrawable ->
                 drawable.registerAnimationCallback(object : Animatable2Compat.AnimationCallback() {
-                    override fun onAnimationEnd(d: Drawable?) = onAnimEnded(imageUrl)
+                    override fun onAnimationEnd(d: Drawable) = onAnimEnded(imageUrl)
                 })
 
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
                 drawable.registerAnimationCallback(object : Animatable2.AnimationCallback() {
-                    override fun onAnimationEnd(d: Drawable?) = onAnimEnded(imageUrl)
+                    override fun onAnimationEnd(d: Drawable) = onAnimEnded(imageUrl)
                 })
         }
     }
@@ -202,7 +199,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
     /** 单轮播放（播完一轮触发结束回调） */
     private fun setPlayOnce(drawable: Drawable) {
         when {
-            drawable is GifDrawable -> drawable.setLoopCount(1)
+            drawable is MovieDrawable -> drawable.setRepeatCount(0)
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
                 drawable.repeatCount = 0
         }
@@ -211,7 +208,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
     /** 无限循环（结束回调永不触发） */
     private fun setLoopForever(drawable: Drawable) {
         when {
-            drawable is GifDrawable -> drawable.setLoopCount(GifDrawable.LOOP_FOREVER)
+            drawable is MovieDrawable -> drawable.setRepeatCount(MovieDrawable.REPEAT_INFINITE)
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
                 drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
         }
@@ -254,15 +251,15 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
 
     /**
      * 从第一帧重新播放当前动图。
-     * 平台 AnimatedImageDrawable 无“重置到首帧”API，只能 stop()+start()；而 stop() 会
-     * 主动投递一次 onAnimationEnd，故先对 mPendingSelfEnds 计数，供 onAnimEnded 抵消。
+     * Coil3 MovieDrawable 与平台 AnimatedImageDrawable 均无“重置到首帧”API，
+     * 用 stop()+start() 近似（start 会把 loopIteration 归 0 并重设 startTime）。
+     * 平台 AnimatedImageDrawable.stop() 会主动投递一次 onAnimationEnd，故先计数抵消。
      */
     private fun restartAnim(drawable: Drawable) {
         when {
-            drawable is GifDrawable -> {
-                //Glide 的 GifDrawable.stop() 不会回调结束，无需计数
+            drawable is MovieDrawable -> {
                 if (drawable.isRunning) drawable.stop()
-                drawable.startFromFirstFrame()
+                drawable.start()
             }
 
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable -> {
@@ -293,7 +290,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
     }
 
     /** 此页停稳为当前居中页时调用：从第一帧单次播放并准备翻页 */
-    fun playGifForCurrentPage() {
+    override fun playGifForCurrentPage() {
         if (!gifAutoNextEnabled()) return
         val drawable = drawable
         if (drawable == null || !isAnimatedDrawable(drawable)) return
@@ -301,14 +298,14 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context) {
     }
 
     /** 此页离开当前居中位置、或关闭 GIF 自动翻页时调用：恢复无限循环 */
-    fun stopGifAutoNext() {
+    override fun stopGifAutoNext() {
         val drawable = drawable
         if (drawable == null || !isAnimatedDrawable(drawable)) return
         disarmGifAutoNext(drawable)
     }
 
     companion object {
-        //共享实例保证 Glide 内存缓存键稳定(equals 按类)，与原 adapter 单实例语义一致
+        //共享实例保证 Coil3 内存缓存键稳定(equals 按类)，与原 adapter 单实例语义一致
         private val sharedGrayTransformation = GrayscaleTransformation()
     }
 }

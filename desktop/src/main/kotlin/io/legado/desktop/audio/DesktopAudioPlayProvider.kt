@@ -19,6 +19,7 @@ import io.legado.app.model.LrcParser
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             }
 
             override fun onError(message: String?) {
-                AppLog.put("桌面音频播放出错\n$message", null, true)
+                AppLog.put(jvmGetString("desktop_audio_play_error", message ?: ""), null, true)
                 progressJob?.cancel()
                 paused = true
                 AudioPlayShared.status = Status.STOP
@@ -291,7 +292,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             val content = chapter.resourceUrl
                 ?: WebBook.getContentAwait(source, book, chapter, needSave = false)
             if (content.isEmpty()) {
-                AppLog.put("未获取到资源链接", null, true)
+                AppLog.put(jvmGetString("desktop_audio_no_resource_url"), null, true)
                 postEvent(EventBus.AUDIO_LOADING, false)
                 return
             }
@@ -304,7 +305,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             AudioPlayShared.durPlayUrl = content
             triggerPlay(playNew = false)
         } catch (e: Exception) {
-            AppLog.put("桌面音频加载失败\n${e.message}", e, true)
+            AppLog.put(jvmGetString("desktop_audio_load_failed", e.message ?: ""), e, true)
             postEvent(EventBus.AUDIO_LOADING, false)
         } finally {
             removeLoading(index)
@@ -341,7 +342,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             postEvent(EventBus.AUDIO_LRC, parsed)
             postEvent(EventBus.AUDIO_LRCPROGRESS, 0)
         } catch (e: Exception) {
-            AppLog.put("桌面歌词加载失败\n${e.message}", e, true)
+            AppLog.put(jvmGetString("desktop_lrc_load_failed", e.message ?: ""), e, true)
         }
     }
 
@@ -392,7 +393,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 )
                 ReadTimeRecorder.flushAll()
             } catch (e: Exception) {
-                AppLog.put("桌面 saveRead 失败\n${e.message}", e)
+                AppLog.put(jvmGetString("desktop_audio_save_read_failed", e.message ?: ""), e)
             }
         }
     }
@@ -409,7 +410,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                     dao.insert(book)
                 }
             } catch (e: Exception) {
-                AppLog.put("桌面 save 失败\n${e.message}", e)
+                AppLog.put(jvmGetString("desktop_audio_save_failed", e.message ?: ""), e)
             }
         }
     }
@@ -420,7 +421,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             try {
                 AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
             } catch (e: Exception) {
-                AppLog.put("桌面 getBookSource 失败\n${e.message}", e)
+                AppLog.put(jvmGetString("desktop_audio_get_book_source_failed", e.message ?: ""), e)
                 null
             }
         }

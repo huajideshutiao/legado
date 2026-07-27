@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,8 +33,8 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 // ===== state / actions =====
 
@@ -145,7 +145,7 @@ fun RuleSubScreen(
  * 仅将 viewModel 直调 / showEditDialog / openSubscription / delete 替换为外部回调。
  */
 @Composable
-private fun ReorderableCollectionItemScope.RuleSubItem(
+private fun RuleItemScope.RuleSubItem(
     item: RuleSub,
     onEdit: () -> Unit,
     onOpen: () -> Unit,
@@ -205,17 +205,20 @@ private fun ReorderableCollectionItemScope.RuleSubItem(
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text(rememberString("to_top"), color = colors.primaryText) },
                     onClick = { showMenu = false; onToTop() },
-                )
+                ) {
+                    Text(rememberString("to_top"), color = colors.primaryText)
+                }
                 DropdownMenuItem(
-                    text = { Text(rememberString("to_bottom"), color = colors.primaryText) },
                     onClick = { showMenu = false; onToBottom() },
-                )
+                ) {
+                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                }
                 DropdownMenuItem(
-                    text = { Text(rememberString("delete"), color = colors.primaryText) },
                     onClick = { showMenu = false; onDelete() },
-                )
+                ) {
+                    Text(rememberString("delete"), color = colors.primaryText)
+                }
             }
         }
     }

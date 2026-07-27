@@ -35,7 +35,6 @@ package io.legado.app.help.config
 object LocalConfigKeys {
     const val password = "password"
     const val lastBackup = "lastBackup"
-    const val privacyPolicyOk = "privacyPolicyOk"
 
     // help 引导版本 key
     const val readHelpVersion = "readHelpVersion"

@@ -10,6 +10,7 @@ import io.legado.app.data.entities.VideoSource
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonObject
@@ -135,14 +136,14 @@ class VideoPlayerViewModel(
         // 拉章节列表 (对照 app 端 upToc: WebBook.getChapterListAwait)
         val source = curBookSource
         if (source == null) {
-            _error.value = "书源不存在"
+            _error.value = jvmGetString("source_not_exists")
             return
         }
         chapterList = runCatching {
             WebBook.getChapterListAwait(source, book).getOrThrow()
         }.onFailure {
-            AppLog.put("桌面视频获取章节列表出错\n${it.message}", it)
-            _error.value = "获取章节列表失败: ${it.message}"
+            AppLog.put(jvmGetString("video_load_chapter_list_error_log", it.message), it)
+            _error.value = jvmGetString("manga_load_chapter_list_failed", it.message)
         }.getOrNull()
         _chapterSize.value = chapterList?.size ?: 0
         // 加载初始章节
@@ -167,16 +168,16 @@ class VideoPlayerViewModel(
     fun loadChapter(index: Int) {
         val book = curBook ?: return
         val source = curBookSource ?: run {
-            _error.value = "书源不存在"
+            _error.value = jvmGetString("source_not_exists")
             return
         }
         val chapters = chapterList ?: run {
-            _error.value = "章节列表未加载"
+            _error.value = jvmGetString("chapter_list_not_loaded")
             return
         }
         val clampedIndex = index.coerceIn(0, chapters.lastIndex.coerceAtLeast(0))
         val chapter = chapters.getOrNull(clampedIndex) ?: run {
-            _error.value = "章节不存在: $clampedIndex"
+            _error.value = jvmGetString("chapter_not_exists", clampedIndex)
             return
         }
         // 标记加载中, 清空旧视频源 (避免显示上一章视频)
@@ -196,14 +197,14 @@ class VideoPlayerViewModel(
                 val content = runCatching {
                     WebBook.getContentAwait(source, book, chapter, nextChapterUrl, needSave = false)
                 }.onFailure {
-                    AppLog.put("桌面视频获取章节内容出错\n${it.message}", it)
-                    _error.value = "加载失败: ${it.message}"
+                    AppLog.put(jvmGetString("video_load_chapter_content_error_log", it.message), it)
+                    _error.value = jvmGetString("load_failed", it.message)
                 }.getOrNull()
                 if (content == null) {
                     return@launch
                 }
                 if (content.isEmpty()) {
-                    _error.value = "未获取到资源链接"
+                    _error.value = jvmGetString("video_no_resource_url")
                     return@launch
                 }
                 // 解析视频源 (对照 app 端 VideoViewModel.parseVideoContent)
@@ -212,8 +213,8 @@ class VideoPlayerViewModel(
                 // 持久化阅读进度
                 saveRead(clampedIndex)
             } catch (e: Exception) {
-                AppLog.put("桌面视频加载章节出错\n${e.message}", e)
-                _error.value = "加载出错: ${e.message}"
+                AppLog.put(jvmGetString("video_load_chapter_error_log", e.message), e)
+                _error.value = jvmGetString("load_error", e.message)
             }
         }
     }
@@ -241,7 +242,7 @@ class VideoPlayerViewModel(
                 GSON.fromJsonObject<VideoSource>(content).getOrNull()
                     ?.takeIf { it.resolutions.any { r -> r.url.isNotEmpty() } }
             }.onFailure {
-                AppLog.put("桌面视频解析源JSON出错\n${it.message}", it)
+                AppLog.put(jvmGetString("video_parse_source_json_error_log", it.message), it)
             }.getOrNull()
         } else if (content.contains("::") && content.contains("\n")) {
             // 2. name::url\n 多分辨率格式
@@ -379,7 +380,7 @@ class VideoPlayerViewModel(
             book.durChapterTime = System.currentTimeMillis()
             AppDbProviders.get().bookDao.update(book)
         }.onFailure {
-            AppLog.put("桌面视频保存阅读进度出错\n${it.message}", it)
+            AppLog.put(jvmGetString("video_save_read_progress_error_log", it.message), it)
         }
     }
 
@@ -400,7 +401,7 @@ class VideoPlayerViewModel(
         runCatching {
             prefStore.putString("video_progress_$bookUrl", positionMs.coerceAtLeast(0L).toString())
         }.onFailure {
-            AppLog.put("桌面视频保存播放位置出错\n${it.message}", it)
+            AppLog.put(jvmGetString("video_save_play_position_error_log", it.message), it)
         }
     }
 

@@ -9,6 +9,7 @@ import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
+import io.legado.app.help.image.IosBitmapProvider
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerIosHttpProvider
 import io.legado.app.help.notification.registerIosNotificationProgress
@@ -19,6 +20,10 @@ import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.registerIosSystemTtsEngine
+import io.legado.app.help.ui.registerIosOpenUrlProvider
+import io.legado.app.help.ui.registerIosToastProvider
+import io.legado.app.help.ui.registerIosUserAgentProvider
+import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -51,9 +56,11 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *    [registerNativeFileCacheProvider] 紧随 SourceCacheProvider (CacheManager 文件/二进制层
  *    getFile/putFile/getByteArray/put(ByteArray)/delete 委托 FileCacheProviders; 持久化目录从
  *    AppFilesDirs.cacheDir 派生; 亦经 @JsApi 暴露给 JS, 未注册时文件层静默 no-op)
- * 7. [registerIosJsEngines] (JS 引擎 + ImageOps 降级占位) 在任何 JS eval / JsBindings 构造之前
+ * 7. [registerIosJsEngines] (JS 引擎 + IosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
  *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
+ * 7.5 [BitmapProviders.register]([IosBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
+ *    (委托 IosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
  * 8. [registerIosSystemTtsEngine] (AVSpeechSynthesizer) 在 JsEngines 之后
  *    (与 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后对齐)
  * 9. 其余 provider ([registerNativeFileDownloader] / [registerIosToaster] /
@@ -98,6 +105,9 @@ fun registerIosProviders() {
     registerIosPreferenceProvider()
     registerNativeAppConfigAccessor()
 
+    // 2.5 主题配置 provider (内存版, 供 BackupShared 备份 themeConfig.json / ImportThemeViewModelShared 用)
+    ThemeConfigProviders.register(InMemoryThemeConfigProvider())
+
     // 3. HTTP provider (Ktor CIO 包装, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader/IosBookCover 取 OkHttpClient,
     // AnalyzeUrlCore 取 OkHttpProxyClient; 未注册时这些调用抛 IllegalStateException
@@ -139,6 +149,10 @@ fun registerIosProviders() {
     // (解除 KP3 P0 阻塞: iOS 端 JS 引擎缺失导致书源规则解析全失效)
     registerIosJsEngines()
 
+    // 7.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 IosImageOps 的 UIImage 解码/编码)
+    // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
+    BitmapProviders.register(IosBitmapProvider)
+
     // 8. TTS 引擎 provider (AVSpeechSynthesizer), 供 ReadAloudControllerShared 用
     // (对齐 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后)
     registerIosSystemTtsEngine()
@@ -147,6 +161,10 @@ fun registerIosProviders() {
     registerNativeFileDownloader()
     registerIosToaster()
     registerIosNotificationProgress()
+    // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前
+    registerIosToastProvider()
+    registerIosOpenUrlProvider()
+    registerIosUserAgentProvider()
     // UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider)、
     // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
     registerNativeUpdateBookCallback()

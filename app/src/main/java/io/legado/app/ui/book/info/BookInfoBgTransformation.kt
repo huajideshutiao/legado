@@ -12,20 +12,18 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
-import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool
-import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
-import java.security.MessageDigest
+import coil3.size.Size
+import coil3.transform.Transformation
 
 /**
  * 详情页背景专用转换：顶部微遮 + 底部透明渐变 + 暗化蒙层
  * 优化版：通过 ComposeShader 合并绘制步骤，减少像素遍历次数和对象分配
  * 渐变分区：顶部 30% 清晰 → 30%-65% 柔和过渡 → 65%-100% 加速淡出
  */
-class BookInfoBgTransformation : BitmapTransformation() {
+class BookInfoBgTransformation : Transformation() {
 
     companion object {
         private const val ID = "io.legado.app.ui.book.info.BookInfoBgTransformation"
-        private val idBytes = ID.toByteArray()
 
         private val GRADIENT_COLORS = intArrayOf(
             Color.BLACK,                     // 0f 封面主体完全清晰
@@ -62,17 +60,14 @@ class BookInfoBgTransformation : BitmapTransformation() {
         private val threadMatrix = ThreadLocal.withInitial { Matrix() }
     }
 
-    override fun transform(
-        pool: BitmapPool,
-        toTransform: Bitmap,
-        outWidth: Int,
-        outHeight: Int,
-    ): Bitmap {
-        val width = toTransform.width
-        val height = toTransform.height
+    override val cacheKey: String = ID
 
-        // 使用 getDirty 配合 SRC 模式，比 get 更高效且能完全覆盖旧数据，避免杂色
-        val result = pool.getDirty(width, height, Bitmap.Config.ARGB_8888)
+    override suspend fun transform(input: Bitmap, size: Size): Bitmap {
+        val width = input.width
+        val height = input.height
+
+        // Coil3 无 BitmapPool，直接 createBitmap（配合 SRC 模式覆盖旧数据）
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
         val canvas = Canvas(result)
         val paint = threadPaint.get()!!
@@ -80,7 +75,7 @@ class BookInfoBgTransformation : BitmapTransformation() {
         val gradient = threadGradient.get()!!
 
         // 1. 将原图设为 Shader
-        val bitmapShader = BitmapShader(toTransform, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val bitmapShader = BitmapShader(input, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
 
         // 2. 使用模板渐变并通过 Matrix 缩放，避免每次 new LinearGradient
         matrix.setScale(1f, height.toFloat())
@@ -108,12 +103,4 @@ class BookInfoBgTransformation : BitmapTransformation() {
 
         return result
     }
-
-    override fun updateDiskCacheKey(messageDigest: MessageDigest) {
-        messageDigest.update(idBytes)
-    }
-
-    override fun equals(other: Any?): Boolean = other is BookInfoBgTransformation
-
-    override fun hashCode(): Int = ID.hashCode()
 }

@@ -18,7 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import io.legado.app.ui.compose.platform.rememberPainter
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.legado.app.R
@@ -67,14 +67,14 @@ class ThemeListDialog : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { alertNewTheme() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_add),
+                            painter = rememberPainter("ic_add"),
                             contentDescription = stringResource(R.string.add),
                             tint = colors.primaryText,
                         )
                     }
                     IconButton(onClick = { importFromClip() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_copy),
+                            painter = rememberPainter("ic_copy"),
                             contentDescription = "剪贴板导入",
                             tint = colors.primaryText,
                         )
@@ -130,14 +130,14 @@ class ThemeListDialog : BaseComposeDialogFragment() {
             if (!item.isBuiltin) {
                 IconButton(onClick = { share(configIndex) }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_share),
+                        painter = rememberPainter("ic_share"),
                         contentDescription = stringResource(R.string.share),
                         tint = colors.primaryText,
                     )
                 }
                 IconButton(onClick = { delete(configIndex) }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_clear_all),
+                        painter = rememberPainter("ic_clear_all"),
                         contentDescription = stringResource(R.string.delete),
                         tint = colors.primaryText,
                     )

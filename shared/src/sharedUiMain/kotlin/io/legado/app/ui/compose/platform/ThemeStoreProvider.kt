@@ -21,4 +21,14 @@ interface ThemeStoreProvider {
 
     /** 对应 ThemeConfig.curBgImagePath, null 表示无壁纸 */
     val bgImagePath: String?
+
+    /**
+     * 应用自定义主题色 (供 ThemeCustomizeDialog/ThemeListDialog 下沉后跨平台调用)。
+     *
+     * - Android actual: 包装 ThemeConfig.applyConfig + postEvent(RECREATE)
+     * - 桌面/iOS/鸿蒙 actual: 写入本地持久化 (NSUserDefaults/Preferences/PreferenceStoreProvider)
+     *
+     * 注: 背景图功能不下沉 (与 desktop 一致), 本方法仅处理三色 + 日夜模式。
+     */
+    fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean)
 }

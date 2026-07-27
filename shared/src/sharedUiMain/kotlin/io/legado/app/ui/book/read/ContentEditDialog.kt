@@ -14,15 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -145,24 +144,26 @@ fun ContentEditDialog(
                         // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入)
                         if (onReset != null) {
                             DropdownMenuItem(
-                                text = { Text(resetText, color = colors.primaryText) },
                                 onClick = {
                                     dismissMenu()
                                     onReset()
                                 },
-                            )
+                            ) {
+                                Text(resetText, color = colors.primaryText)
+                            }
                         }
                         // 复制全部: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
                         if (clipTextSink != null) {
                             DropdownMenuItem(
-                                text = { Text(copyAllText, color = colors.primaryText) },
                                 onClick = {
                                     dismissMenu()
                                     // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
                                     clipTextSink("$chapterName\n$contentState")
                                     Toasters.get().toast(copySuccessText)
                                 },
-                            )
+                            ) {
+                                Text(copyAllText, color = colors.primaryText)
+                            }
                         }
                     }
                 },
@@ -174,25 +175,16 @@ fun ContentEditDialog(
                     .fillMaxWidth()
                     .padding(16.dp),
             ) {
-                // 多行 OutlinedTextField, maxLines = 10 (任务硬要求)
-                // 不走 AppOutlinedTextField (其未暴露 maxLines 参数), 直接用 M3 OutlinedTextField +
-                // 手动复制 AppOutlinedTextField 的颜色逻辑 (accent 聚焦 / secondaryText 未聚焦),
-                // 保持与项目其它输入框视觉一致; maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
-                OutlinedTextField(
+                // 多行输入, maxLines = 10 (任务硬要求); 走 Md2TextField 统一 MD2 视觉
+                // maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
+                Md2TextField(
                     value = contentState,
                     onValueChange = { contentState = it },
                     modifier = Modifier.fillMaxWidth(),
+                    maxLines = 10,
                     textStyle = LocalTextStyle.current.copy(
                         color = colors.primaryText,
                         fontSize = 16.sp,
-                    ),
-                    maxLines = 10,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = colors.primaryText,
-                        unfocusedTextColor = colors.primaryText,
-                        cursorColor = colors.accent,
-                        focusedBorderColor = colors.accent,
-                        unfocusedBorderColor = colors.secondaryText,
                     ),
                 )
             }

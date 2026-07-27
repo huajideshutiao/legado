@@ -10,6 +10,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.RuleData
@@ -292,9 +293,9 @@ object BookList {
     }
 
     private fun checkExploreJson(bookSource: IBookSource) {
-        // 原 app 端条件 Debug.callback == null (无 UI 调试窗口时跳过严格 JSON 校验)
-        // shared 无 Debug.callback 句柄, 改用 SourceDebugLoggers.impl == null (宿主未注册 provider 时跳过)
-        if (SourceDebugLoggers.impl == null) {
+        // 仅调试窗口打开时才做严格 JSON 校验; Debug.callback 常驻为 null, 用它而非
+        // SourceDebugLoggers.impl (宿主常驻注册, 会让每次发现页解析都白跑一遍双栈解析)
+        if (Debug.callback == null) {
             return
         }
         val json = bookSource.exploreKindsJson()
@@ -302,13 +303,10 @@ object BookList {
             return
         }
         // Phase D: GSONStrict.fromJsonArray<ExploreKind>(json).getOrNull() ?: GSON.fromJsonArray<ExploreKind>(json).getOrNull() 双栈
-        // decodeListWithFallbackOrNull 复刻: 先严格, 失败降级到宽松 (并触发 log 提示 JSON 格式不规范)
-        val kinds: List<ExploreKind>? = decodeListWithFallbackOrNull(json) {
+        // decodeListWithFallbackOrNull 复刻: 先严格, 严格失败但宽松成功才提示格式不规范
+        // 仅为校验/打日志, 解析结果不消费 (原代码也只是 getOrNull()?.let { log(...) })
+        decodeListWithFallbackOrNull<ExploreKind>(json) {
             SourceDebugLoggers.impl?.log("≡发现地址规则 JSON 格式不规范，请改为规范格式")
-        }
-        // 仅为校验/打日志, 解析结果不消费; 与原行为一致 (原代码也只是 getOrNull()?.let { log(...) })
-        if (kinds != null) {
-            return
         }
     }
 

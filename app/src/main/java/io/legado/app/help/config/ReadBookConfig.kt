@@ -12,6 +12,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
+import kotlinx.serialization.Serializable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -559,6 +560,7 @@ object ReadBookConfig {
     }
 
     @Keep
+    @Serializable
     data class Config(
         var name: String = "",
         var bgStr: String = "#EEEEEE",//白天背景

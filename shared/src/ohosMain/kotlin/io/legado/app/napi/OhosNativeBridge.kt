@@ -429,6 +429,315 @@ object OhosNativeBridge {
      */
     fun isTtsBridgeReady(): Boolean = synchronized(lock) { ttsTsfn != null }
 
+    // ===== Crypto 同步桥 (tsfn + callback, KP8+) =====
+    // 非对称加解密 + 签名/验签 (encrypt/decrypt/sign/verify) 是同步接口, 但 ArkTS
+    // @ohos.security.cryptoFramework 只能通过 napi 桥接异步调用。采用与 Image 完全一致的
+    // "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    //
+    // 调用链 (以 encrypt 为例):
+    // KMP NativeAsymmetricCryptoOps.encrypt
+    //   → invokeCryptoSync("encrypt", json)
+    //   → 生成 requestId, 存入 cryptoPendingRequests (CompletableDeferred)
+    //   → cryptoTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
+    //   → [ArkTS 主线程] crypto callback 收到 requestJson
+    //   → CryptoBridgeHandler.handleCryptoRequest → cryptoFramework.createCipher/createSign/createVerify/createMd/createMac
+    //   → legado.cryptoCallback(requestId, resultJson)  (napi → @CName legado_crypto_callback)
+    //   → onCryptoResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → runBlocking 返回, NativeAsymmetricCryptoOps.encrypt 解析 base64 返回 ByteArray
+
+    /** crypto threadsafe_function 引用 (Kotlin → ArkTS 发送 crypto 操作请求)。 */
+    @Volatile
+    private var cryptoTsfn: TsfnCallback? = null
+
+    /** 待响应的 crypto 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val cryptoPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** crypto 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var cryptoRequestCounter = 0L
+
+    /** 注入 crypto tsfn (由 legado_napi.cpp registerCryptoCallback 调用)。 */
+    fun registerCryptoFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            cryptoTsfn = tsfn
+        }
+    }
+
+    /**
+     * crypto 操作结果回调 (由 ArkTS 侧调 @CName legado_crypto_callback 触发)。
+     * ArkTS 完成 encrypt/decrypt/sign/verify 后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
+     * 唤醒 [invokeCryptoSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeCryptoSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (含 ok/data 或 ok/result 或 ok/error 字段)
+     */
+    fun onCryptoResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { cryptoPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用 crypto 操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "encrypt" / "decrypt" / "sign" / "verify" / "digest" / "hmac" / "aesEncrypt" / "aesDecrypt"
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 algorithm/key/data 等)
+     * @param timeoutMs 超时毫秒 (默认 30s, crypto 比 image 慢, 给更长超时)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方抛异常)
+     */
+    fun invokeCryptoSync(action: String, payloadJson: String, timeoutMs: Long = 30000L): String? {
+        val requestId = synchronized(lock) { ++cryptoRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { cryptoPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            CryptoBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { cryptoTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { cryptoPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { cryptoPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { cryptoPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 crypto 桥是否已就绪 (tsfn 已注入)。
+     * NativeAsymmetricCryptoOps / NativeSignOps 据此判断走真实 cryptoFramework 实现还是抛异常。
+     */
+    fun isCryptoBridgeReady(): Boolean = synchronized(lock) { cryptoTsfn != null }
+
+    // ===== Http 同步桥 (tsfn + callback, KP8+) =====
+    // KmpHttpClient 的 newCall/execute 是同步接口, 但 ArkTS @ohos.net.http 只能通过 napi 桥接异步调用。
+    // 采用与 Image/Crypto 完全一致的 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    //
+    // 调用链 (以 execute 为例):
+    // KMP OhosKmpCall.execute
+    //   → invokeHttpSync("execute", json)
+    //   → 生成 requestId, 存入 httpPendingRequests (CompletableDeferred)
+    //   → httpTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞等待结果)
+    //   → [ArkTS 主线程] HttpBridgeHandler.handleHttpRequest
+    //   → http.createHttp().request(url, options, callback)
+    //   → legado.httpCallback(requestId, resultJson)  (napi → @CName legado_http_callback)
+    //   → onHttpResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → runBlocking 返回, OhosKmpCall 解析响应
+
+    /** http threadsafe_function 引用 (Kotlin → ArkTS 发送 HTTP 请求)。 */
+    @Volatile
+    private var httpTsfn: TsfnCallback? = null
+
+    /** 待响应的 http 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val httpPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** http 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var httpRequestCounter = 0L
+
+    /** 注入 http tsfn (由 legado_napi.cpp registerHttpCallback 调用)。 */
+    fun registerHttpFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            httpTsfn = tsfn
+        }
+    }
+
+    /**
+     * http 请求结果回调 (由 ArkTS 侧调 @CName legado_http_callback 触发)。
+     * ArkTS 完成 HTTP 请求后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
+     * 唤醒 [invokeHttpSync] 中阻塞的 CompletableDeferred。
+     */
+    fun onHttpResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { httpPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用 http 操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "execute" / "cancel"
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 url/method/headers/body 等)
+     * @param timeoutMs 超时毫秒 (默认 60s, HTTP 请求可能较慢)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方抛异常)
+     */
+    fun invokeHttpSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+        val requestId = synchronized(lock) { ++httpRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { httpPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            HttpBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { httpTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { httpPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { httpPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { httpPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 http 桥是否已就绪 (tsfn 已注入)。
+     * KmpHttpClientBuilder.build 据此判断走真实 @ohos.net.http 实现还是抛异常。
+     */
+    fun isHttpBridgeReady(): Boolean = synchronized(lock) { httpTsfn != null }
+
+    // ===== OpenUrl tsfn (KMP → ArkTS, fire-and-forget, 同 Toast 模式) =====
+    // OhosOpenUrlProvider.openUrl 经 tsfn dispatch 到 ArkTS, 由 SystemBridgeHandler.handleOpenUrl
+    // 调 context.startAbility(Want.uri=url) 打开 URL (KMP 无 ArkTS API 访问能力, 需 tsfn 桥接)。
+
+    /** openUrl threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
+    @Volatile
+    private var openUrlTsfn: TsfnCallback? = null
+
+    /** 注入 openUrl tsfn (由 legado_napi.cpp RegisterOpenUrlCallback 调用)。 */
+    fun registerOpenUrlFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            openUrlTsfn = tsfn
+        }
+    }
+
+    /**
+     * 打开 URL (跨线程 dispatch 到 ArkTS context.startAbility)。未注册 tsfn 时降级 println。
+     *
+     * @param url 要打开的 URL (http/https/file/intent 等, 由 ArkTS 侧 system 选择合适应用打开)
+     * @param mimeType MIME 类型 (可为空, 作为 Want.type 传给 startAbility)
+     * @param sourceKey 调用源 key (调试用, 透传给 ArkTS 便于日志追踪)
+     * @param sourceTag 调用源 tag (调试用, 透传给 ArkTS 便于日志追踪)
+     * @param sourceType 调用源类型 (调试用, 透传给 ArkTS 便于日志追踪)
+     */
+    fun openUrl(url: String, mimeType: String?, sourceKey: String?, sourceTag: String?, sourceType: Int) {
+        val json = KS_JSON.encodeToString(
+            OpenUrlPayload(
+                url = url,
+                mimeType = mimeType,
+                sourceKey = sourceKey,
+                sourceTag = sourceTag,
+                sourceType = sourceType,
+            )
+        )
+        val tsfn = synchronized(lock) { openUrlTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                // tsfn 调用失败 (module 卸载 / 线程异常) 时降级 println
+                println("[ohos-open-url] tsfn call failed, fallback: $url")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            println("[ohos-open-url] $url")
+        }
+    }
+
+    /**
+     * 检查 openUrl 桥是否已就绪 (tsfn 已注入)。
+     * OhosOpenUrlProviderImpl 据此判断走真实 startAbility 还是降级 println (兼容 napi 未接入阶段)。
+     */
+    fun isOpenUrlBridgeReady(): Boolean = synchronized(lock) { openUrlTsfn != null }
+
+    // ===== FilePicker 同步桥 (tsfn + callback, KP8+, 同 Image/Crypto/Http 模式) =====
+    // 文件选择 (pickDocuments/pickDocumentContent) 是同步接口, 但 ArkTS @ohos.file.picker.DocumentViewPicker
+    // 与 @ohos.file.fs 只能通过 napi 桥接异步调用。采用与 Image 完全一致的
+    // "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    //
+    // 调用链 (以 pickDocuments 为例):
+    // KMP OhosFilePicker.pickDocuments
+    //   → invokeFilePickerSync("pickDocuments", json)
+    //   → 生成 requestId, 存入 filePickerPendingRequests (CompletableDeferred)
+    //   → filePickerTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞等待结果)
+    //   → [ArkTS 主线程] FilePickerBridgeHandler.handleFilePickerRequest
+    //   → @ohos.file.picker.DocumentViewPicker.select / @ohos.file.fs.openSync+readSync
+    //   → legado.filePickerCallback(requestId, resultJson)  (napi → @CName legado_file_picker_callback)
+    //   → onFilePickerResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → runBlocking 返回, OhosFilePicker 解析 uris / base64 data
+
+    /** filePicker threadsafe_function 引用 (Kotlin → ArkTS 发送文件选择请求)。 */
+    @Volatile
+    private var filePickerTsfn: TsfnCallback? = null
+
+    /** 待响应的 filePicker 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val filePickerPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** filePicker 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var filePickerRequestCounter = 0L
+
+    /** 注入 filePicker tsfn (由 legado_napi.cpp RegisterFilePickerCallback 调用)。 */
+    fun registerFilePickerFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            filePickerTsfn = tsfn
+        }
+    }
+
+    /**
+     * filePicker 操作结果回调 (由 ArkTS 侧调 @CName legado_file_picker_callback 触发)。
+     * ArkTS 完成 pickDocuments/pickDocumentContent 后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
+     * 唤醒 [invokeFilePickerSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeFilePickerSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (含 ok/uris 或 ok/data 或 ok/error 字段)
+     */
+    fun onFilePickerResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { filePickerPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用 filePicker 操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "pickDocuments" / "pickDocumentContent"
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 contentTypes/allowsMultiple 或 uri)
+     * @param timeoutMs 超时毫秒 (默认 60s, 用户选文件可能耗时较长)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
+     */
+    fun invokeFilePickerSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+        val requestId = synchronized(lock) { ++filePickerRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { filePickerPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            FilePickerBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { filePickerTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { filePickerPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { filePickerPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { filePickerPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 filePicker 桥是否已就绪 (tsfn 已注入)。
+     * OhosFilePicker 据此判断走真实 DocumentViewPicker 实现还是降级返回 null。
+     */
+    fun isFilePickerBridgeReady(): Boolean = synchronized(lock) { filePickerTsfn != null }
+
     /** toast 跨语言传递 payload (序列化为 JSON 给 ArkTS)。 */
     @Serializable
     private data class ToastPayload(
@@ -457,6 +766,40 @@ object OhosNativeBridge {
         val requestId: Long,
         val action: String,
         val payload: String,
+    )
+
+    /** crypto 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=encrypt/decrypt/sign/verify)。 */
+    @Serializable
+    private data class CryptoBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** http 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=execute/cancel)。 */
+    @Serializable
+    private data class HttpBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** filePicker 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=pickDocuments/pickDocumentContent)。 */
+    @Serializable
+    private data class FilePickerBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */
+    @Serializable
+    private data class OpenUrlPayload(
+        val url: String,
+        val mimeType: String? = null,
+        val sourceKey: String? = null,
+        val sourceTag: String? = null,
+        val sourceType: Int = 0,
     )
 
     /** TTS 命令 payload (Kotlin → ArkTS, createEngine/speak/pause/resume/stop/shutdown)。 */

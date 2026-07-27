@@ -56,15 +56,13 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.CoverConfigScreen as SharedCoverConfigScreen
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.utils.MD5Utils
+import io.legado.desktop.ui.component.FileDialogs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.awt.FileDialog
-import java.awt.Frame
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.FilenameFilter
 import java.nio.file.Paths
 import javax.imageio.ImageIO
 
@@ -296,7 +294,7 @@ private fun DesktopDefaultCoverDialog(
                                 .clickable {
                                     // 弹 FileDialog 选图 → 烘焙落盘 → 更新 prefs (IO 线程)
                                     scope.launch {
-                                        val picked = withContext(Dispatchers.IO) { pickImageBytes() }
+                                        val picked = withContext(Dispatchers.IO) { FileDialogs.pickImageFile() }
                                         if (picked == null) return@launch
                                         val (bytes, name) = picked
                                         val added = withContext(Dispatchers.IO) {
@@ -498,23 +496,3 @@ private fun removeCover(coversDir: String, prefKey: String, entry: DefaultCoverE
     }
 }
 
-/**
- * 弹 [FileDialog] 选图片, 返回 (bytes, fileName), 用户取消返回 null。
- *
- * 必须在 IO 线程调用 (FileDialog.show 阻塞当前线程直到用户选择/取消),
- * 与其它 desktop 文件 (TxtTocRuleScreen / ReplaceRuleScreen 等) 的 FileDialog 用法一致。
- */
-private fun pickImageBytes(): Pair<ByteArray, String>? {
-    val dialog = FileDialog(Frame(), "Select Image", FileDialog.LOAD)
-    dialog.filenameFilter = FilenameFilter { _, name ->
-        val lower = name.lowercase()
-        lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
-            lower.endsWith(".webp") || lower.endsWith(".bmp") || lower.endsWith(".gif")
-    }
-    dialog.isVisible = true // 阻塞直到用户选择或取消
-    val file = dialog.file ?: return null
-    val dir = dialog.directory ?: return null
-    val srcFile = File(dir, file)
-    if (!srcFile.exists()) return null
-    return srcFile.readBytes() to file
-}

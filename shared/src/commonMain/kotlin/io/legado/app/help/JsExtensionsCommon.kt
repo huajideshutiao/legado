@@ -7,16 +7,26 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.androidId
 import io.legado.app.constant.dateFormat
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.source.VerificationUiProviders
+import io.legado.app.help.ui.OpenUrlProviders
+import io.legado.app.help.ui.ToastProviders
+import io.legado.app.help.ui.UserAgentProviders
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
 import io.legado.app.model.script.jsContextOrNull
+import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.utils.Base64Lenient
+import io.legado.app.utils.EncodingDetect
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.HtmlFormatter
@@ -424,6 +434,53 @@ interface JsExtensionsCommon {
      */
     fun androidId() = AppConst.androidId
 
+    //****************** P1: UI 反馈 (toast/longToast/getWebViewUA/openUrl, 走 Providers) ******************
+
+    /**
+     * 弹窗提示 (走 [ToastProviders], 由宿主端注册)
+     */
+    fun toast(msg: Any?) {
+        jsContext.ensureActive()
+        ToastProviders.get().showToast("${getSource()?.getTag()}: ${msg.toString()}", long = false)
+    }
+
+    /**
+     * 弹窗提示 停留时间较长
+     */
+    fun longToast(msg: Any?) {
+        jsContext.ensureActive()
+        ToastProviders.get().showToast("${getSource()?.getTag()}: ${msg.toString()}", long = true)
+    }
+
+    /**
+     * 获取 WebView 默认 UserAgent (走 [UserAgentProviders], 由宿主端注册)
+     */
+    fun getWebViewUA(): String {
+        return UserAgentProviders.get().getWebViewUA()
+    }
+
+    /**
+     * 打开链接 (走 [OpenUrlProviders], 由宿主端注册)
+     *
+     * 弹跳转确认对话框, 与原 app 端 `OpenUrlConfirmDialog.display` 等价。
+     */
+    fun openUrl(url: String, mimeType: String? = null) {
+        require(url.length < 64 * 1024) { "openUrl parameter url too long" }
+        jsContext.ensureActive()
+        val source = getSource() ?: throw NoStackTraceException("openUrl source cannot be null")
+        OpenUrlProviders.get().openUrl(
+            url,
+            mimeType,
+            source.getKey(),
+            source.getTag(),
+            source.getSourceType()
+        )
+    }
+
+    fun openUrl(url: String) {
+        openUrl(url, null)
+    }
+
     //****************** P1: 字体反混淆 (queryTTF / replaceFont) ******************//
 
     /**
@@ -562,6 +619,376 @@ interface JsExtensionsCommon {
         val provider = CookieStoreProviders.get() ?: return ""
         return key?.let { provider.getKey(tag, it) } ?: provider.getCookie(tag)
     }
+
+    //****************** P1 压缩文件读取 (走 ArchiveProviders, 跨端) ******************//
+
+    /**
+     * 获取网络zip文件里面的数据
+     * @param url zip文件的链接或十六进制字符串
+     * @param path 所需获取文件在zip内的路径
+     * @return zip指定文件的数据
+     */
+    fun getZipStringContent(url: String, path: String): String {
+        val byteArray = getZipByteArrayContent(url, path) ?: return ""
+        val charsetName = EncodingDetect.getEncode(byteArray)
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    fun getZipStringContent(url: String, path: String, charsetName: String): String {
+        val byteArray = getZipByteArrayContent(url, path) ?: return ""
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    /**
+     * 获取网络Rar文件里面的数据
+     * @param url Rar文件的链接或十六进制字符串
+     * @param path 所需获取文件在Rar内的路径
+     * @return Rar指定文件的数据
+     */
+    fun getRarStringContent(url: String, path: String): String {
+        val byteArray = getRarByteArrayContent(url, path) ?: return ""
+        val charsetName = EncodingDetect.getEncode(byteArray)
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    fun getRarStringContent(url: String, path: String, charsetName: String): String {
+        val byteArray = getRarByteArrayContent(url, path) ?: return ""
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    /**
+     * 获取网络7zip文件里面的数据
+     * @param url 7zip文件的链接或十六进制字符串
+     * @param path 所需获取文件在7zip内的路径
+     * @return 7zip指定文件的数据
+     */
+    fun get7zStringContent(url: String, path: String): String {
+        val byteArray = get7zByteArrayContent(url, path) ?: return ""
+        val charsetName = EncodingDetect.getEncode(byteArray)
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    fun get7zStringContent(url: String, path: String, charsetName: String): String {
+        val byteArray = get7zByteArrayContent(url, path) ?: return ""
+        return JsExtensionsPlatform.bytesToStr(byteArray, charsetName)
+    }
+
+    /**
+     * 获取网络zip文件里面的数据 (统一走 ArchiveProviders, zip 不特殊化)
+     * @param url zip文件的链接或十六进制字符串
+     * @param path 所需获取文件在zip内的路径
+     * @return zip指定文件的数据
+     */
+    fun getZipByteArrayContent(url: String, path: String): ByteArray? {
+        val bytes = if (url.isAbsUrl()) {
+            AnalyzeUrlCore(
+                url, source = getSource(),
+                coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+            ).getByteArray()
+        } else {
+            url.hexToByteArray()
+        }
+        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+    }
+
+    /**
+     * 获取网络Rar文件里面的数据
+     * @param url Rar文件的链接或十六进制字符串
+     * @param path 所需获取文件在Rar内的路径
+     * @return Rar指定文件的数据
+     */
+    fun getRarByteArrayContent(url: String, path: String): ByteArray? {
+        val bytes = if (url.isAbsUrl()) {
+            AnalyzeUrlCore(
+                url, source = getSource(),
+                coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+            ).getByteArray()
+        } else {
+            url.hexToByteArray()
+        }
+        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+    }
+
+    /**
+     * 获取网络7zip文件里面的数据
+     * @param url 7zip文件的链接或十六进制字符串
+     * @param path 所需获取文件在7zip内的路径
+     * @return 7zip指定文件的数据
+     */
+    fun get7zByteArrayContent(url: String, path: String): ByteArray? {
+        val bytes = if (url.isAbsUrl()) {
+            AnalyzeUrlCore(
+                url, source = getSource(),
+                coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+            ).getByteArray()
+        } else {
+            url.hexToByteArray()
+        }
+        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+    }
+
+    //****************** P1: 浏览器验证流程 (从 app JsExtensions 下沉) ******************
+
+    /**
+     * 使用内置浏览器打开链接，手动验证网站防爬
+     * @param url 要打开的链接
+     * @param title 浏览器页面的标题
+     */
+    fun startBrowser(url: String, title: String) {
+        jsContext.ensureActive()
+        val source = getSource()
+            ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
+        require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
+        // saveResult=false/refetchAfterSuccess=false 对齐原 app 端 SourceVerificationHelp.startBrowser 默认
+        VerificationUiProviders.get().startBrowser(source, url, title, false, false)
+        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
+    }
+
+    /**
+     * 使用内置浏览器打开链接，并等待网页结果
+     */
+    fun startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean): StrResponse {
+        jsContext.ensureActive()
+        val source = getSource()
+            ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
+        require(url.length < 64 * 1024) { "getVerificationResult parameter url too long" }
+        check(!JsExtensionsPlatform.isMainThread()) { "getVerificationResult must be called on a background thread" }
+        // 对齐原 SourceVerificationHelp.getVerificationResult(useBrowser=true) 流程:
+        // clearResult → startBrowser(saveResult=true) → registerWaitingThread → waitVerificationResult
+        SourceVerificationHelpShared.clearResult(source.getKey())
+        VerificationUiProviders.get().startBrowser(source, url, title, true, refetchAfterSuccess)
+        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
+        val body = SourceVerificationHelpShared.waitVerificationResult(source.getKey())
+        return StrResponse(url, body)
+    }
+
+    fun startBrowserAwait(url: String, title: String): StrResponse {
+        return startBrowserAwait(url, title, false)
+    }
+
+    /**
+     * 打开图片验证码对话框，等待返回验证结果
+     */
+    fun getVerificationCode(imageUrl: String): String {
+        jsContext.ensureActive()
+        val source = getSource()
+            ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
+        require(imageUrl.length < 64 * 1024) { "getVerificationResult parameter url too long" }
+        check(!JsExtensionsPlatform.isMainThread()) { "getVerificationResult must be called on a background thread" }
+        // 对齐原 SourceVerificationHelp.getVerificationResult(useBrowser=false) 流程
+        SourceVerificationHelpShared.clearResult(source.getKey())
+        VerificationUiProviders.get().showVerificationCodeDialog(imageUrl, source)
+        SourceVerificationHelpShared.registerWaitingThread(source.getKey())
+        return SourceVerificationHelpShared.waitVerificationResult(source.getKey())
+    }
+
+    //****************** P1: 文件操作 (从 app JsExtensions 下沉, 走 FileUtilsCommon) ******************
+
+    /**
+     * 获取缓存文件绝对路径
+     * @param path 相对路径
+     * @return 绝对路径字符串 (原 app 端返回 File, 改返回 String 解级联依赖, JS 调用方需适配)
+     */
+    fun getFile(path: String): String {
+        return FileUtilsCommon.resolveCachePath(path)
+    }
+
+    /**
+     * 读取本地文件字节
+     * @param path 相对路径
+     * @return 文件字节内容, 文件不存在返回 null
+     */
+    fun readFile(path: String): ByteArray? {
+        return FileUtilsCommon.readBytes(FileUtilsCommon.resolveCachePath(path))
+    }
+
+    /**
+     * 读取文本文件 (自动检测编码)
+     */
+    fun readTxtFile(path: String): String {
+        val bytes = FileUtilsCommon.readBytes(FileUtilsCommon.resolveCachePath(path)) ?: return ""
+        val charsetName = EncodingDetect.getEncode(bytes)
+        return JsExtensionsPlatform.bytesToStr(bytes, charsetName)
+    }
+
+    /**
+     * 读取文本文件 (指定编码)
+     */
+    fun readTxtFile(path: String, charsetName: String): String {
+        val bytes = FileUtilsCommon.readBytes(FileUtilsCommon.resolveCachePath(path)) ?: return ""
+        return JsExtensionsPlatform.bytesToStr(bytes, charsetName)
+    }
+
+    /**
+     * 删除本地文件
+     */
+    fun deleteFile(path: String): Boolean {
+        return FileUtilsCommon.delete(FileUtilsCommon.resolveCachePath(path), true)
+    }
+
+    /**
+     * js实现Zip压缩文件解压
+     * @param zipPath 相对路径
+     * @return 相对路径
+     */
+    fun unzipFile(zipPath: String): String {
+        return unArchiveFile(zipPath)
+    }
+
+    /**
+     * js实现7Zip压缩文件解压
+     * @param zipPath 相对路径
+     * @return 相对路径
+     */
+    fun un7zFile(zipPath: String): String {
+        return unArchiveFile(zipPath)
+    }
+
+    /**
+     * js实现Rar压缩文件解压
+     * @param zipPath 相对路径
+     * @return 相对路径
+     */
+    fun unrarFile(zipPath: String): String {
+        return unArchiveFile(zipPath)
+    }
+
+    /**
+     * js实现压缩文件解压 (走 ArchiveProviders, 跨端)
+     * @param zipPath 相对路径
+     * @return 解压临时目录相对路径
+     */
+    fun unArchiveFile(zipPath: String): String {
+        if (zipPath.isEmpty()) return ""
+        val absPath = FileUtilsCommon.resolveCachePath(zipPath)
+        val archiveProvider = ArchiveProviders.get()
+        archiveProvider.deCompress(absPath)
+        // basename 提取: 兼容 '/' 与 '\' 分隔符, 与原 File.name 行为一致
+        val name = absPath.substringAfterLast('/').substringAfterLast('\\')
+        return FileUtilsCommon.getPath(archiveProvider.tempFolderName, MD5Utils.md5Encode16(name))
+    }
+
+    /**
+     * js实现文件夹内所有文本文件读取
+     * @param path 文件夹相对路径
+     * @return 所有文件字符串换行连接
+     */
+    fun getTxtInFolder(path: String): String {
+        if (path.isEmpty()) return ""
+        val absPath = FileUtilsCommon.resolveCachePath(path)
+        val contents = StringBuilder()
+        FileUtilsCommon.listFiles(absPath).forEach { fileAbsPath ->
+            val bytes = FileUtilsCommon.readBytes(fileAbsPath) ?: return@forEach
+            val charsetName = EncodingDetect.getEncode(bytes)
+            contents.append(JsExtensionsPlatform.bytesToStr(bytes, charsetName))
+                .append("\n")
+        }
+        if (contents.isNotEmpty()) {
+            contents.deleteCharAt(contents.length - 1)
+        }
+        FileUtilsCommon.delete(absPath, true)
+        return contents.toString()
+    }
+
+    /**
+     * 下载文件
+     * @param url 下载地址:可带参数type
+     * @return 下载的文件相对路径
+     */
+    fun downloadFile(url: String): String {
+        jsContext.ensureActive()
+        val analyzeUrl = AnalyzeUrlCore(
+            url,
+            source = getSource(),
+            coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+        )
+        val type = analyzeUrl.type ?: getUrlSuffix(url)
+        val path = FileUtilsCommon.getPath(
+            FileUtilsCommon.getCachePath(),
+            "${MD5Utils.md5Encode16(url)}.${type}"
+        )
+        FileUtilsCommon.createFileReplace(path)
+        return try {
+            val bytes = analyzeUrl.getByteArray()
+            FileUtilsCommon.writeBytes(path, bytes)
+            path.substring(FileUtilsCommon.getCachePath().length)
+        } catch (e: Throwable) {
+            FileUtilsCommon.delete(path, true)
+            throw e
+        }
+    }
+
+    /**
+     * 实现16进制字符串转文件
+     * @param content 需要转成文件的16进制字符串
+     * @param url 通过url里的参数来判断文件类型
+     * @return 相对路径
+     */
+    @Deprecated(
+        "Deprecated",
+        ReplaceWith("downloadFile(url)")
+    )
+    fun downloadFile(content: String, url: String): String {
+        jsContext.ensureActive()
+        val type = AnalyzeUrlCore(
+            url,
+            source = getSource(),
+            coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+        ).type ?: return ""
+        FileUtilsCommon.createFolderIfNotExist(FileUtilsCommon.getCachePath())
+        val path = FileUtilsCommon.getPath(
+            FileUtilsCommon.getCachePath(),
+            "${MD5Utils.md5Encode16(url)}.${type}"
+        )
+        FileUtilsCommon.createFileReplace(path)
+        content.hexToByteArray().let {
+            if (it.isNotEmpty()) {
+                FileUtilsCommon.writeBytes(path, it)
+            }
+        }
+        return path.substring(FileUtilsCommon.getCachePath().length)
+    }
+
+    /**
+     * 缓存以文本方式保存的文件 如.js .txt等
+     * @param urlStr 网络文件的链接
+     * @return 返回缓存后的文件内容
+     */
+    fun cacheFile(urlStr: String): String {
+        return cacheFile(urlStr, 0)
+    }
+
+    /**
+     * 缓存以文本方式保存的文件 如.js .txt等
+     * @param saveTime 缓存时间，单位：秒
+     */
+    fun cacheFile(urlStr: String, saveTime: Int): String {
+        val key = MD5Utils.md5Encode16(urlStr)
+        val cachePath = CacheManager.get(key)
+        return if (
+            cachePath.isNullOrBlank() ||
+            !FileUtilsCommon.exist(FileUtilsCommon.resolveCachePath(cachePath))
+        ) {
+            val path = downloadFile(urlStr)
+            log("首次下载 $urlStr >> $path")
+            CacheManager.put(key, path, saveTime)
+            readTxtFile(path)
+        } else {
+            readTxtFile(cachePath)
+        }
+    }
+
+    /**
+     * 可从网络，本地文件(阅读私有数据目录相对路径)导入JavaScript脚本
+     */
+    fun importScript(path: String): String {
+        val result = when {
+            path.startsWith("http") -> cacheFile(path)
+            else -> readTxtFile(path)
+        }
+        if (result.isBlank()) throw NoStackTraceException("$path 内容获取失败或者为空")
+        return result
+    }
 }
 
 //****************** P1 辅助函数 (顶层 private, 替代 JVM 专属 API) ******************//
@@ -599,5 +1026,26 @@ private fun codePointToString(code: Int): String {
         val high = 0xD800 + (normalized shr 10)
         val low = 0xDC00 + (normalized and 0x3FF)
         String(charArrayOf(high.toChar(), low.toChar()))
+    }
+}
+
+/**
+ * 提取 URL 的合法文件后缀 (对应 jvmAndAndroidMain `UrlUtil.getSuffix`)。
+ *
+ * UrlUtil 在 jvmAndAndroidMain (依赖 CustomUrl + 正则), 未下沉 commonMain;
+ * 此处复刻同逻辑 (CustomUrl 已在 commonMain) 供 [JsExtensionsCommon.downloadFile] 使用。
+ */
+private fun getUrlSuffix(str: String): String {
+    val suffix = CustomUrl(str).getUrl()
+        .substringAfterLast("/")
+        .substringBefore("?")
+        .substringBefore("#")
+        .substringAfterLast(".", "")
+    val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
+    return if (suffix.length > 5 || !suffix.matches(fileSuffixRegex)) {
+        AppLog.put("Cannot find legal suffix:\n target: $str\n suffix: $suffix")
+        "ext"
+    } else {
+        suffix
     }
 }

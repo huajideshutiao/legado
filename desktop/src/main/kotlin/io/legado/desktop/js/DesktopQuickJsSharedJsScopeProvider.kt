@@ -11,6 +11,7 @@ import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.SharedJsScopeProvider
 import io.legado.app.model.script.quickjs.QuickJsJsScope
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isAbsUrl
@@ -142,7 +143,7 @@ object DesktopQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
                         if (js != null) {
                             jsLibContentCache[fileName] = js
                         } else {
-                            throw NoStackTraceException("下载jsLib-${value}失败")
+                            throw NoStackTraceException(jvmGetString("download_jslib_failed", value))
                         }
                     }
                     out.add(QuickJsEngine.compile(js).bytecode)

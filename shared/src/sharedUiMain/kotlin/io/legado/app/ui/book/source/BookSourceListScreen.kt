@@ -16,11 +16,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,8 +47,8 @@ import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书源列表 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.manage.BookSourceScreen`)。
@@ -294,33 +294,30 @@ private fun SortItem(
     onClick: (BookSourceSort) -> Unit,
 ) {
     val colors = AppTheme.colors
-    DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = current == value) },
-        onClick = { onClick(value) },
-    )
+    DropdownMenuItem(onClick = { onClick(value) }) {
+        Text(text, color = colors.primaryText, modifier = Modifier.weight(1f))
+        AppMenuCheckbox(checked = current == value)
+    }
 }
 
 @Composable
 private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
-    DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(text, color = colors.primaryText, modifier = Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 @Composable
-private fun ReorderableCollectionItemScope.BookSourceItem(
+private fun RuleItemScope.BookSourceItem(
     state: BookSourceListState,
     callbacks: BookSourceListCallbacks,
     item: BookSourcePart,
@@ -475,39 +472,32 @@ private fun BookSourceItemMenu(
     val colors = AppTheme.colors
     AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         if (state.sort == BookSourceSort.Default) {
-            DropdownMenuItem(
-                text = { Text(strToTop, color = colors.primaryText) },
-                onClick = { onDismiss(); callbacks.onToTop(item) },
-            )
-            DropdownMenuItem(
-                text = { Text(strToBottom, color = colors.primaryText) },
-                onClick = { onDismiss(); callbacks.onToBottom(item) },
-            )
+            DropdownMenuItem(onClick = { onDismiss(); callbacks.onToTop(item) }) {
+                Text(strToTop, color = colors.primaryText)
+            }
+            DropdownMenuItem(onClick = { onDismiss(); callbacks.onToBottom(item) }) {
+                Text(strToBottom, color = colors.primaryText)
+            }
         }
         if (item.hasLoginUrl) {
-            DropdownMenuItem(
-                text = { Text(strLogin, color = colors.primaryText) },
-                onClick = { onDismiss(); callbacks.onLogin(item) },
-            )
+            DropdownMenuItem(onClick = { onDismiss(); callbacks.onLogin(item) }) {
+                Text(strLogin, color = colors.primaryText)
+            }
         }
-        DropdownMenuItem(
-            text = { Text(strSearch, color = colors.primaryText) },
-            onClick = { onDismiss(); callbacks.onSearchBook(item) },
-        )
-        DropdownMenuItem(
-            text = { Text(strDebug, color = colors.primaryText) },
-            onClick = { onDismiss(); callbacks.onDebug(item) },
-        )
-        DropdownMenuItem(
-            text = { Text(strDelete, color = colors.primaryText) },
-            onClick = { onDismiss(); callbacks.onDel(item) },
-        )
+        DropdownMenuItem(onClick = { onDismiss(); callbacks.onSearchBook(item) }) {
+            Text(strSearch, color = colors.primaryText)
+        }
+        DropdownMenuItem(onClick = { onDismiss(); callbacks.onDebug(item) }) {
+            Text(strDebug, color = colors.primaryText)
+        }
+        DropdownMenuItem(onClick = { onDismiss(); callbacks.onDel(item) }) {
+            Text(strDelete, color = colors.primaryText)
+        }
         if (item.hasExploreUrl) {
             val txt = if (item.enabledExplore) strDisableExplore else strEnableExplore
-            DropdownMenuItem(
-                text = { Text(txt, color = colors.primaryText) },
-                onClick = { onDismiss(); callbacks.onEnableExplore(!item.enabledExplore, item) },
-            )
+            DropdownMenuItem(onClick = { onDismiss(); callbacks.onEnableExplore(!item.enabledExplore, item) }) {
+                Text(txt, color = colors.primaryText)
+            }
         }
     }
 }

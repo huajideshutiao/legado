@@ -147,7 +147,6 @@
     <string name="replace_to">Replacement</string>
     <string name="img_cover">Cover</string>
     <string name="book">Book</string>
-    <string name="volume_key_page">Volume keys to turn page</string>
     <string name="mouse_wheel_page">Mouse wheel to turn page</string>
     <string name="page_anim">Flip animation</string>
     <string name="book_page_anim">Flip animation (book)</string>
@@ -575,7 +574,7 @@
     <string name="use_default_cover">Always show default cover</string>
     <string name="use_default_cover_s">Always show the default cover, do not show the network cover</string>
     <string name="search_src">Search source code</string>
-    <string name="boo_src">Book source code</string>
+    <string name="book_src">Book source code</string>
     <string name="toc_src">Chapters source code</string>
     <string name="content_src">Content source code</string>
     <string name="review_src">Review source code</string>
@@ -809,7 +808,7 @@
     <string name="no_books_dir">There is no book save location set!</string>
     <string name="no_book_found_bookshelf">No book found in bookshelf, import again ?</string>
     <string name="archive_not_found">Can not find archive selected, continue to download ?</string>
-    <string name="privacy_policy">User Privacy and Agreement</string>
+
     <string name="agree">Agree</string>
     <string name="refuse">Refuse</string>
     <string name="create_folder">Create Folder</string>
@@ -1001,13 +1000,23 @@
     <string name="bottom_nav_items_order">Bottom bar items order</string>
 
     <!--sharedUiMain Compose Screen 下沉补充 key (对齐 jvm ResourceProvider.jvm.kt fallback 字面量)-->
-    <!--BookSourceDebugScreen 帮助面板 label (对应 jvmStringTable 中 debug_*_hint / system)-->
+    <!--BookSourceDebugScreen 帮助面板 label (对应 sharedStringTable 中 debug_*_hint / system)-->
     <string name="debug_search_hint">Debug search>>input keyword, e.g.:</string>
     <string name="debug_explore_hint">Debug explore>>input explore URL, e.g.:</string>
     <string name="debug_book_info_hint">Debug detail>>input detail page URL, e.g.:</string>
     <string name="debug_toc_hint">Debug TOC>>input TOC page URL, e.g.:</string>
     <string name="debug_content_hint">Debug content>>input content page URL, e.g.:</string>
     <string name="system">System</string>
+    <!--BookSourceDebugActivity 硬编码字符串 i18n (对齐 SharedStringTable)-->
+    <string name="debug_fx_default">System::http://xxx</string>
+    <string name="debug_error">Debug error</string>
+    <string name="no_source_found">No source found</string>
+    <string name="select_explore">Select explore</string>
+    <string name="select_explore_kind">Select explore kind</string>
+    <string name="no_source_code">No source code</string>
+    <string name="debug_explore_error">Error getting explore\n%1$s</string>
+    <string name="debug_explore_json_error">Error getting explore JSON data\n%1$s</string>
+    <string name="debug_source_not_found">ERROR:Source not found %1$s</string>
     <!--TextDialog (P0 Dialog 下沉)-->
     <string name="text_too_large">Data too large to display fully…</string>
     <!--AppLogDialog (P0 Dialog 下沉)-->
@@ -1024,14 +1033,14 @@
     <string name="variable_key">Variable name</string>
     <string name="variable_value">Variable value</string>
     <string name="variable_empty">No variables</string>
-    <!--ReadRecordScreen 时间格式化 (对应 jvmStringTable 中 time_format_*)-->
+    <!--ReadRecordScreen 时间格式化 (对应 sharedStringTable 中 time_format_*)-->
     <string name="time_format_minutes">0 minutes</string>
     <string name="time_format_hours_minutes">%1$d hours %2$d minutes</string>
     <string name="time_format_hours">%d hours</string>
     <string name="time_format_minutes_only">%d minutes</string>
     <string name="time_format_seconds">%d seconds</string>
 
-    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 对齐 jvmStringTable 中文值)-->
+    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 对齐 sharedStringTable 中文值)-->
     <!--GroupEditDialog 书籍排序-->
     <string name="book_sort_default">Default</string>
     <string name="book_sort_reading_time">By reading time</string>

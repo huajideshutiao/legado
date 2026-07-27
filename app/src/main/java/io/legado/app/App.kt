@@ -23,6 +23,7 @@ import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.LifecycleHelp
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.AndroidBookImageStorage
 import io.legado.app.help.book.AndroidBookStorage
 import io.legado.app.help.book.AndroidLocalBookLocator
@@ -35,6 +36,9 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.i18n.registerAndroidAppStringProvider
+import io.legado.app.help.archive.ArchiveProviders
+import io.legado.app.help.archive.AndroidArchiveProvider
+import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
@@ -58,6 +62,9 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.registerAndroidPasswordProvider
+import io.legado.app.help.ui.registerAndroidOpenUrlProvider
+import io.legado.app.help.ui.registerAndroidToastProvider
+import io.legado.app.help.ui.registerAndroidUserAgentProvider
 import io.legado.app.model.BookCover
 import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
@@ -104,6 +111,11 @@ class App : Application() {
         // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
         // 须在任何 SystemUtils 屏幕尺寸访问之前 (PdfFile 渲染等)
         registerAndroidScreenInfoProvider()
+        // 注册 UI Provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon.toast/longToast/
+        // getWebViewUA/openUrl 回调, 须在任何 JS 业务调用之前)
+        registerAndroidToastProvider()
+        registerAndroidOpenUrlProvider()
+        registerAndroidUserAgentProvider()
         registerAndroidJsEngines()
         // 注册 ACache 的 cacheDir/filesDir 注入 (供 ACache.get(cacheName) 获取目录),
         // 必须在 registerAndroidFileCacheProvider 之前 (FileCacheProvider 委托 ACache)
@@ -125,6 +137,21 @@ class App : Application() {
         // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)
         registerAndroidRegexErrorHandler()
         registerAndroidWebBookProviders()
+        // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
+        // 依赖 OkHttpClientProviders (上一步 registerAndroidWebBookProviders 已注册),
+        // ImageLoader 内部 lazy 构建故注册本身不触发网络栈初始化
+        registerAndroidBookImageLoader(appCtx)
+        // JsExtensions 压缩方法 (getZip/Rar/7zByteArrayContent 等) 走 ArchiveProviders,
+        // app 端委托 ArchiveUtils/LibArchiveUtils (libarchive 全格式)
+        ArchiveProviders.register(AndroidArchiveProvider)
+        // Coil3 批 2: 设置 SingletonImageLoader.Factory, 让 app 端 AsyncImage / imageView.load 默认走
+        // 注册了 SourceOriginHeaderInterceptor + 共享 OkHttpClient 的 ImageLoader (防盗链 header 自动注入)
+        // 批 4: 追加 MangaModelFetcher(漫画页走 BookHelp 缓存+AnalyzeUrl 下载, 非标准 url)
+        coil3.SingletonImageLoader.setSafe {
+            io.legado.app.help.image.buildBookImageLoader(it).newBuilder()
+                .components { add(io.legado.app.help.glide.MangaModelFetcher.Factory()) }
+                .build()
+        }
         // 注册 FileBook 平台 provider (commonMain FileBook object 经
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /
         // importLocalFile / saveBookFile / downloadRemoteBook / mergeBook 等重 Android 逻辑)
@@ -134,7 +161,7 @@ class App : Application() {
         registerAndroidServiceLauncher(appCtx)
         // 注册 Web 服务 provider (commonMain WebServerManager 调用 WebServerPlatform/WebAssetSource/WebStrings)
         // - WebServerPlatform: HttpServer+WebSocketServer 起停 + serve 回调拉起 WebService 续命 wakelock
-        // - WebAssetSource: appCtx.assets 读 web 静态资源 (Android AssetManager)
+        // - WebAssetSource: composeResources 读 web 静态资源 (单一数据源 commonMain/composeResources/files/web)
         // - WebStrings: R.string.cannot_empty 文案注入 WebSocketServer
         // 须在任何 WebServerManager.start()/stop() 之前注册 (用户触发 Web 服务开关时)
         registerAndroidWebServerPlatform { WebService.serve() }
@@ -159,6 +186,9 @@ class App : Application() {
         // 注入 HomeTabHelpShared 的 SP provider (commonMain 下沉的主页分组持久化,
         // 包装 defaultSharedPreferences, 行为与原 appCtx.getPrefString/putPrefString 等价)
         HomeTabHelpShared.prefs = AndroidPreferenceStoreProvider()
+        // 注入 PinnedExploreHelp 的 SP provider (commonMain 下沉的发现页收藏分类持久化,
+        // 必须与 HomeTabHelpShared 同源 defaultSharedPreferences, 保证老数据兼容 + Backup.kt 备份)
+        PinnedExploreHelp.prefs = AndroidPreferenceStoreProvider()
         // jsoup-compat 复用宿主共享 OkHttpClient,继承 CookieJar/限流/Cronet 拦截器
         org.jsoup.Jsoup.clientFactory = { okHttpClient }
         Coroutine.async {

@@ -33,6 +33,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -172,10 +173,10 @@ private fun TocScreenContent(
         // 失败时 AppLog 记录, 不中断 UI (空列表 fallback)
         runCatching { loadChapterList(b, "") }
             .onSuccess { setChapterListInternal(it, bookState, chaptersState, collapsedVolumesState, chapterScrollState) }
-            .onFailure { AppLog.put("目录界面加载章节失败\n${it.localizedMessage}", it) }
+            .onFailure { AppLog.put(jvmGetString("toc_load_chapter_failed_log", it.localizedMessage), it) }
         runCatching { loadBookmarks(b, "") }
             .onSuccess { setBookmarksInternal(it, bookState, bookmarksState, bookmarkScrollState) }
-            .onFailure { AppLog.put("目录界面获取书签数据失败\n${it.localizedMessage}", it) }
+            .onFailure { AppLog.put(jvmGetString("toc_load_bookmark_failed_log", it.localizedMessage), it) }
     }
 
     // ===== actions =====
@@ -379,7 +380,7 @@ private suspend fun reloadBookmarks(
     val b = book ?: return
     runCatching { loadBookmarks(b, searchKey) }
         .onSuccess { setBookmarksInternal(it, bookState, bookmarksState, bookmarkScrollState) }
-        .onFailure { AppLog.put("目录界面重载书签失败\n${it.localizedMessage}", it) }
+        .onFailure { AppLog.put(jvmGetString("toc_reload_bookmark_failed_log", it.localizedMessage), it) }
 }
 
 /**
@@ -448,14 +449,14 @@ private class DesktopTocActions(
             }.onSuccess { list ->
                 setChapterListInternal(list, bookState, chaptersState, collapsedVolumesState, chapterScrollState)
             }.onFailure {
-                AppLog.put("目录界面加载章节失败\n${it.localizedMessage}", it)
+                AppLog.put(jvmGetString("toc_load_chapter_failed_log", it.localizedMessage), it)
             }
             runCatching {
                 loadBookmarks(book, query)
             }.onSuccess { list ->
                 setBookmarksInternal(list, bookState, bookmarksState, bookmarkScrollState)
             }.onFailure {
-                AppLog.put("目录界面获取书签数据失败\n${it.localizedMessage}", it)
+                AppLog.put(jvmGetString("toc_load_bookmark_failed_log", it.localizedMessage), it)
             }
         }
     }
@@ -512,18 +513,18 @@ private class DesktopTocActions(
         // 对照 app 端 TocViewModel.saveBookmark (SAF 选目录 + GSON.writeText)
         scope.launch {
             val book = bookState.value ?: run {
-                AppLog.put("导出书签: 没有书籍")
+                AppLog.put(jvmGetString("export_bookmark_no_book"))
                 return@launch
             }
             val targetPath = withContext(Dispatchers.IO) {
-                val dialog = FileDialog(Frame(), "导出书签 JSON", FileDialog.SAVE)
+                val dialog = FileDialog(Frame(), jvmGetString("export_bookmark_json"), FileDialog.SAVE)
                 dialog.setFile("bookmark-${book.name} ${book.author}.json")
                 dialog.isVisible = true
                 val dir = dialog.directory ?: return@withContext null
                 val file = dialog.file ?: return@withContext null
                 dir + file
             } ?: run {
-                AppLog.put("导出书签: 用户取消选择")
+                AppLog.put(jvmGetString("export_bookmark_user_cancelled"))
                 return@launch
             }
             runCatching {
@@ -531,9 +532,9 @@ private class DesktopTocActions(
                     val bookmarks = AppDatabaseProviders.get().appDb.bookmarkDao.getByBook(book.name, book.author)
                     File(targetPath).writeText(GSON.toJson(bookmarks))
                 }
-                Toasters.get().toast("导出成功")
+                Toasters.get().toast(jvmGetString("export_success"))
             }.onFailure {
-                AppLog.put("导出失败\n${it.localizedMessage}", it, true)
+                AppLog.put(jvmGetString("export_failed_log", it.localizedMessage), it, true)
             }
         }
     }
@@ -543,18 +544,18 @@ private class DesktopTocActions(
         // 对照 app 端 TocViewModel.saveBookmarkMd (SAF 选目录 + outputStream.write)
         scope.launch {
             val book = bookState.value ?: run {
-                AppLog.put("导出书签: 没有书籍")
+                AppLog.put(jvmGetString("export_bookmark_no_book"))
                 return@launch
             }
             val targetPath = withContext(Dispatchers.IO) {
-                val dialog = FileDialog(Frame(), "导出书签 Markdown", FileDialog.SAVE)
+                val dialog = FileDialog(Frame(), jvmGetString("export_bookmark_md"), FileDialog.SAVE)
                 dialog.setFile("bookmark-${book.name} ${book.author}.md")
                 dialog.isVisible = true
                 val dir = dialog.directory ?: return@withContext null
                 val file = dialog.file ?: return@withContext null
                 dir + file
             } ?: run {
-                AppLog.put("导出书签: 用户取消选择")
+                AppLog.put(jvmGetString("export_bookmark_user_cancelled"))
                 return@launch
             }
             runCatching {
@@ -569,9 +570,9 @@ private class DesktopTocActions(
                     }
                     File(targetPath).writeText(sb.toString())
                 }
-                Toasters.get().toast("导出成功")
+                Toasters.get().toast(jvmGetString("export_success"))
             }.onFailure {
-                AppLog.put("导出失败\n${it.localizedMessage}", it, true)
+                AppLog.put(jvmGetString("export_failed_log", it.localizedMessage), it, true)
             }
         }
     }

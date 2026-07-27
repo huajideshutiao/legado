@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,11 +28,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -594,9 +594,10 @@ private fun BookmarkItem(
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 /** 勾选项：MD2 方框(右置) */
@@ -604,10 +605,12 @@ private fun MenuItem(text: String, onClick: () -> Unit) {
 private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = colors.primaryText)
+        Spacer(Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 // ===== TocDrawerContent (public, 桌面端用) =====
@@ -631,8 +634,8 @@ private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
  *
  * # 职责
  *
- * 仅渲染 drawer 内容 (ModalDrawerSheet + 顶部搜索/反转栏 + LazyColumn + 章节项),
- * 由调用方 ([io.legado.desktop.ui.reader.ReaderScreen]) 用 `ModalNavigationDrawer`
+ * 仅渲染 drawer 内容 (drawerContent + 顶部搜索/反转栏 + LazyColumn + 章节项),
+ * 由调用方 ([io.legado.desktop.ui.reader.ReaderScreen]) 用 `ModalDrawer`
  * 包裹并传入 `drawerContent = { TocDrawerContent(...) }`。
  *
  * @param chapterList 章节列表 (来自 [io.legado.app.ui.book.read.ReadBookViewModelShared.chapterList])
@@ -674,7 +677,7 @@ fun TocDrawerContent(
         }
     }
 
-    ModalDrawerSheet(modifier = modifier) {
+    Column(modifier = modifier) {
         // 顶部搜索栏 + 反转按钮 (对照 D 过渡实现)
         Row(
             modifier = Modifier

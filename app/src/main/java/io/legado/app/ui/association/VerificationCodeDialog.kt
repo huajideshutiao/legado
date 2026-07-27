@@ -1,6 +1,5 @@
 package io.legado.app.ui.association
 
-import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
@@ -23,26 +22,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
+import coil3.load
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import coil3.toBitmap
 import io.legado.app.R
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.glide.OkHttpModelLoader
+import io.legado.app.help.image.sourceOrigin
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.ImageProvider
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
@@ -94,7 +91,7 @@ object VerificationCodeDialog {
                             dialog.dismiss()
                         }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_check),
+                                painter = rememberPainter("ic_check"),
                                 contentDescription = stringResource(R.string.ok),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -103,7 +100,7 @@ object VerificationCodeDialog {
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
-                                    painter = painterResource(R.drawable.ic_more_vert),
+                                    painter = rememberPainter("ic_more_vert"),
                                     contentDescription = stringResource(R.string.more_menu),
                                     tint = AppTheme.colors.primaryText,
                                 )
@@ -141,7 +138,7 @@ object VerificationCodeDialog {
                                 setOnClickListener {
                                     activity.showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
                                 }
-                                loadImage(activity, this, imageUrl, sourceOrigin)
+                                loadImage(this, imageUrl, sourceOrigin)
                             }
                         },
                         modifier = Modifier
@@ -165,44 +162,29 @@ object VerificationCodeDialog {
         }
     }
 
-    @SuppressLint("CheckResult")
     private fun loadImage(
-        activity: AppCompatActivity,
         imageView: ImageView,
         url: String,
-        sourceUrl: String?
+        sourceOrigin: String?
     ) {
         ImageProvider.remove(url)
-        ImageLoader.loadBitmap(activity, url).apply {
-            sourceUrl?.let {
-                apply(RequestOptions().set(OkHttpModelLoader.sourceOriginOption, it))
-            }
-        }.error(R.drawable.image_loading_error)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-            .skipMemoryCache(true)
-            .listener(object : RequestListener<Bitmap> {
-                override fun onLoadFailed(
-                    e: GlideException?,
-                    model: Any?,
-                    target: Target<Bitmap?>,
-                    isFirstResource: Boolean
-                ): Boolean {
-                    return false
+        imageView.setImageResource(R.drawable.image_loading_error)
+        imageView.load(url) {
+            sourceOrigin(sourceOrigin)
+            memoryCachePolicy(CachePolicy.DISABLED)
+            diskCachePolicy(CachePolicy.DISABLED)
+            listener(
+                onSuccess = { _, result ->
+                    result.image?.toBitmap()?.let { bmp ->
+                        val copy = bmp.copy(bmp.config ?: Bitmap.Config.ARGB_8888, true)
+                        ImageProvider.put(url, copy)
+                    }
+                },
+                onError = { _, _ ->
+                    imageView.setImageResource(R.drawable.image_loading_error)
                 }
-
-                override fun onResourceReady(
-                    resource: Bitmap,
-                    model: Any,
-                    target: Target<Bitmap?>?,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean
-                ): Boolean {
-                    val bitmap = resource.copy(resource.config!!, true)
-                    ImageProvider.put(url, bitmap)
-                    return false
-                }
-            })
-            .into(imageView)
+            )
+        }
     }
 
 }

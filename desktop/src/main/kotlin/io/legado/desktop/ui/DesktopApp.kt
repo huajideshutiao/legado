@@ -428,7 +428,7 @@ fun DesktopApp() {
                     )
                 }
                 // P2-5: 漫画阅读路由 (由书架/详情/目录点击 image 类型书籍触发, 与 READER 平级)
-                // 包装 desktop 端 MangaReaderScreen, 内部用 MangaReaderViewModel 管理章节图片列表
+                // 包装 desktop 端 MangaReaderScreen, 内部用 shared MangaReaderViewModelShared 管理章节图片列表
                 DesktopRoute.MANGA_READER -> mangaBook?.let { book ->
                     MangaReaderScreen(
                         book = book,
@@ -629,7 +629,7 @@ fun DesktopApp() {
                             // KP2: 音频书目录点击 → 切到 AUDIO_PLAYER (AudioPlayScreen 内部按
                             //  book.durChapterIndex 调 AudioPlayShared.skipToPrev/next 定位章节)
                             // P2-5: 漫画书目录点击 → 切到 MANGA_READER (MangaReaderScreen 按
-                            //  book.durChapterIndex 调 MangaReaderViewModel.initData 加载该章节)
+                            //  book.durChapterIndex 调 MangaReaderViewModelShared.initData 加载该章节)
                             // 视频书目录点击 → 切到 VIDEO_PLAYER (VideoPlayerScreen 按
                             //  book.durChapterIndex 调 VideoPlayerViewModel.initData 加载该章节)
                             book.durChapterIndex = chapterIndex
@@ -718,6 +718,11 @@ fun DesktopApp() {
                 // 远程书籍页 (由书架顶栏溢出菜单"添加远程书籍"触发, 包装 shared RemoteBookScreen)
                 DesktopRoute.REMOTE_BOOK -> RemoteBookScreen(
                     onBack = { currentRoute = DesktopRoute.BOOKSHELF },
+                    onStartRead = { book ->
+                        // 已上架远程书籍点击阅读: 切到 READER 路由 (对照 app 端 startReadBook)
+                        readerBook = book
+                        currentRoute = DesktopRoute.READER
+                    },
                 )
                 // 字典规则页 (由 MY 入口触发, 包装 shared DictRuleScreen)
                 DesktopRoute.DICT_RULE -> DictRuleScreen(

@@ -4,7 +4,6 @@ import android.app.Application
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
-import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
@@ -36,7 +35,6 @@ import io.legado.app.help.book.update
 import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
@@ -514,8 +512,9 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 appDb.bookChapterDao.delByBook(it.bookUrl)
                 it.delete()
                 try {
-                    ImageLoader.with(context).asFile().load(it.coverUrl).signature(ObjectKey("covers"))
-                        .onlyRetrieveFromCache(true).submit().get()?.delete()
+                    val cache = coil3.SingletonImageLoader.get(context).diskCache
+                    // 封面按 path 隔离缓存, 删 coverUrl 对应的即可
+                    it.coverUrl?.let { url -> cache?.remove(url) }
                 } catch (_: Exception) {
                 }
                 inBookshelf = false

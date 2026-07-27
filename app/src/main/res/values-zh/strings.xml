@@ -146,7 +146,6 @@
     <string name="replace_to">替换为</string>
     <string name="img_cover">封面</string>
    <string name="book">书</string>
-    <string name="volume_key_page">音量键翻页</string>
     <string name="mouse_wheel_page">鼠标滚轮翻页</string>
     <string name="page_anim">翻页动画</string>
     <string name="book_page_anim">翻页动画（本书）</string>
@@ -569,7 +568,7 @@
     <string name="export_type">导出格式</string>
     <string name="checkAuthor">校验作者</string>
     <string name="search_src">搜索源码</string>
-    <string name="boo_src">书籍源码</string>
+    <string name="book_src">书籍源码</string>
     <string name="toc_src">目录源码</string>
     <string name="content_src">正文源码</string>
     <string name="review_src">评论源码</string>
@@ -806,7 +805,7 @@
     <string name="no_books_dir">没有设置书籍保存位置!</string>
     <string name="no_book_found_bookshelf">未在书架上找到所选书籍, 是否重新导入？</string>
     <string name="archive_not_found">未能在书籍保存目录找到压缩文件，是否重新导入？</string>
-    <string name="privacy_policy">用户隐私与协议</string>
+
     <string name="agree">同意</string>
     <string name="refuse">拒绝</string>
     <string name="create_folder">创建文件夹</string>
@@ -999,7 +998,48 @@
     <string name="home_manage_empty">此分组无组件，点击右上角+添加</string>
     <string name="bottom_nav_items_order">底栏项目顺序</string>
 
-    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 与 jvmStringTable 对齐)-->
+    <!--sharedUiMain Compose Screen 下沉补充 key (对齐 SharedStringTable 中文值)-->
+    <!--BookSourceDebugScreen 帮助面板 label-->
+    <string name="debug_search_hint">调试搜索>>输入关键字，如：</string>
+    <string name="debug_explore_hint">调试发现>>输入发现URL，如：</string>
+    <string name="debug_book_info_hint">调试详情页>>输入详情页URL，如：</string>
+    <string name="debug_toc_hint">调试目录页>>输入目录页URL，如：</string>
+    <string name="debug_content_hint">调试正文页>>输入正文页URL，如：</string>
+    <string name="system">系统</string>
+    <!--BookSourceDebugActivity 硬编码字符串 i18n (对齐 SharedStringTable)-->
+    <string name="debug_fx_default">系统::http://xxx</string>
+    <string name="debug_error">调试错误</string>
+    <string name="no_source_found">未获取到书源</string>
+    <string name="select_explore">选择发现</string>
+    <string name="select_explore_kind">选择发现分类</string>
+    <string name="no_source_code">暂无源码</string>
+    <string name="debug_explore_error">获取发现出错\n%1$s</string>
+    <string name="debug_explore_json_error">获取发现出错 JSON 数据错误\n%1$s</string>
+    <string name="debug_source_not_found">ERROR:未找到书源 %1$s</string>
+    <!--TextDialog (P0 Dialog 下沉)-->
+    <string name="text_too_large">数据太大，无法全部显示…</string>
+    <!--AppLogDialog (P0 Dialog 下沉)-->
+    <string name="log_stack_trace">堆栈信息</string>
+    <string name="log_level_all">全部</string>
+    <string name="log_level_error">错误</string>
+    <string name="log_level_warn">警告</string>
+    <string name="log_level_info">信息</string>
+    <string name="log_level_debug">调试</string>
+    <!--VariableDialog (P0 Dialog 下沉)-->
+    <string name="variable_edit_title">编辑变量</string>
+    <string name="source_variable_tab">源变量</string>
+    <string name="book_variable_tab">书籍变量</string>
+    <string name="variable_key">变量名</string>
+    <string name="variable_value">变量值</string>
+    <string name="variable_empty">暂无变量</string>
+    <!--ReadRecordScreen 时间格式化-->
+    <string name="time_format_minutes">0 分钟</string>
+    <string name="time_format_hours_minutes">%1$d 小时 %2$d 分钟</string>
+    <string name="time_format_hours">%d 小时</string>
+    <string name="time_format_minutes_only">%d 分钟</string>
+    <string name="time_format_seconds">%d 秒</string>
+
+    <!--sharedUiMain Compose Screen 下沉补充 key 第二批 (42 个, 与 sharedStringTable 对齐)-->
     <!--GroupEditDialog 书籍排序-->
     <string name="book_sort_default">默认</string>
     <string name="book_sort_reading_time">按阅读时间</string>

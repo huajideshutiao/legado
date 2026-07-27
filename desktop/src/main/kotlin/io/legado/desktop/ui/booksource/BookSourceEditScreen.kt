@@ -3,7 +3,6 @@ package io.legado.desktop.ui.booksource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -18,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
@@ -46,6 +46,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -678,7 +679,7 @@ private fun BookSourceEditContent(
                 bookSourceState.value = source
                 withContext(Dispatchers.Main) { onSavedCallback() }
             } catch (e: Throwable) {
-                AppLog.put("保存书源失败", e)
+                AppLog.put(jvmGetString("save_book_source_failed"), e)
                 // 弹 AlertDialog (替换原 JOptionPane.showMessageDialog;
                 // Compose state setter 线程安全 (snapshot), 无需 withContext(Dispatchers.Main) 切主线程;
                 // 末尾 AlertDialog 渲染分支读取 saveErrorDialog, payload = e.localizedMessage ?: saveFailedLabel)
@@ -701,7 +702,7 @@ private fun BookSourceEditContent(
                     }
                 }
             } catch (e: Throwable) {
-                AppLog.put("调试书源保存失败", e)
+                AppLog.put(jvmGetString("debug_book_source_save_failed"), e)
             }
         }
     }
@@ -723,7 +724,7 @@ private fun BookSourceEditContent(
                 AppConfigProviders.get().searchScope = SearchScope(source).toString()
                 withContext(Dispatchers.Main) { onSearchCallback() }
             } catch (e: Throwable) {
-                AppLog.put("搜索书源保存失败", e)
+                AppLog.put(jvmGetString("search_book_source_save_failed"), e)
             }
         }
     }
@@ -737,8 +738,8 @@ private fun BookSourceEditContent(
             val json = GSON.toJson(getSource())
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(StringSelection(json), null)
-            AppLog.put("书源已复制到剪贴板")
-        }.onFailure { AppLog.put("复制书源失败", it) }
+            AppLog.put(jvmGetString("book_source_copied"))
+        }.onFailure { AppLog.put(jvmGetString("copy_book_source_failed"), it) }
     }
 
     /** 分享源字符串到剪贴板 (对照 app 端 Activity.shareSourceStr, 桌面端无 Intent 分享) */
@@ -747,8 +748,8 @@ private fun BookSourceEditContent(
             val json = GSON.toJson(getSource())
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(StringSelection(json), null)
-            AppLog.put("书源字符串已复制到剪贴板 (桌面端用剪贴板替代分享)")
-        }.onFailure { AppLog.put("分享书源失败", it) }
+            AppLog.put(jvmGetString("book_source_str_copied_desktop"))
+        }.onFailure { AppLog.put(jvmGetString("share_book_source_failed"), it) }
     }
 
     /**
@@ -770,7 +771,7 @@ private fun BookSourceEditContent(
             text.isJsonObject() -> {
                 GSON.fromJsonObject<BookSource>(text).getOrThrow()
             }
-            else -> throw IllegalArgumentException("格式不对")
+            else -> throw IllegalArgumentException(jvmGetString("wrong_format"))
         }
     }
 
@@ -799,7 +800,7 @@ private fun BookSourceEditContent(
                 bookSourceState.value = source
                 withContext(Dispatchers.Main) { upSourceView(source) }
             } catch (e: Throwable) {
-                AppLog.put("粘贴书源失败", e)
+                AppLog.put(jvmGetString("paste_book_source_failed"), e)
                 // 弹 AlertDialog (替换原 JOptionPane.showMessageDialog;
                 // 末尾 AlertDialog 渲染分支读取 pasteErrorDialog, payload = e.localizedMessage ?: wrongFormatLabel)
                 pasteErrorDialog = e.localizedMessage ?: wrongFormatLabel
@@ -902,11 +903,11 @@ private fun BookSourceEditContent(
         codeEditorSlot = { entity, modifier ->
             // 桌面端用 OutlinedTextField 替代 CodeView (Android 专属语法高亮控件)
             // entity.value 双向同步: 初始化时读, 输入时写回 (对照 app 端 createEditField)
-            OutlinedTextField(
+            Md2TextField(
                 value = entity.value.orEmpty(),
                 onValueChange = { entity.value = it },
                 modifier = modifier.fillMaxWidth(),
-                label = { Text(entity.hint) },
+                label = entity.hint,
                 textStyle = TextStyle(fontSize = 13.sp),
                 // 多行输入 (CodeView 默认多行), 不限行数 (app 端用 sourceEditMaxLine, 默认 MAX_VALUE)
                 minLines = 2,

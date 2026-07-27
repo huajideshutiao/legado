@@ -6,8 +6,8 @@ import io.legado.app.data.entities.Server.WebDavConfig
  * WebDav 认证 expect 声明。
  *
  * - jvmAndAndroidMain actual: 基于 okhttp3.Credentials.basic 的原实现, 行为零变化
- * - iosMain actual: Ktor CIO + kotlin.io.encoding.Base64 实现 (UTF-8 编码, 与 jvm 端 ISO_8859_1 在 ASCII 场景一致)
- * - ohosMain actual: stub, 抛 [UnsupportedOperationException] (Ktor 不支持 ohosArm64)
+ * - nativeMain actual (iosMain/ohosMain 共用): kotlin.io.encoding.Base64 实现
+ *   (UTF-8 编码, 与 jvm 端 ISO_8859_1 在 ASCII 场景一致)
  *
  * **KMP 化说明**:
  * - 原 `data class Authorization` 改为 `expect class` (KMP 限制: expect 不能是 data),

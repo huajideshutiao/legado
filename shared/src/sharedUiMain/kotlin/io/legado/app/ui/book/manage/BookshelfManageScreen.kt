@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyListState
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,8 +42,8 @@ import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书架管理 Screen (KMP 版, 替代 app 端原 BookshelfManageScreen)。
@@ -225,39 +226,36 @@ private fun BookshelfManageActions(state: BookshelfManageState, callbacks: Books
     }
     // 溢出菜单
     OverflowMenu { dismiss ->
-        FilterSubmenu(state, callbacks, dismiss)
-        MenuItem(rememberString("export_all_use_book_source")) {
-            dismiss(); callbacks.onExportAllUseBookSource()
+        // 类型筛选: 点击后用筛选项替换一级菜单(对照原 Android submenu 替换行为);
+        // 菜单关闭随 Popup 释放状态, 下次打开回到一级菜单
+        var showFilter by remember { mutableStateOf(false) }
+        if (showFilter) {
+            FilterItem(state, callbacks, "all", 0) { dismiss() }
+            FilterItem(state, callbacks, "book_type_novel", 1) { dismiss() }
+            FilterItem(state, callbacks, "book_type_comic", 2) { dismiss() }
+            FilterItem(state, callbacks, "audio", 3) { dismiss() }
+            FilterItem(state, callbacks, "explore_style_video", 4) { dismiss() }
+        } else {
+            MenuItem(rememberString("filter_book_type")) { showFilter = true }
+            MenuItem(rememberString("export_all_use_book_source")) {
+                dismiss(); callbacks.onExportAllUseBookSource()
+            }
+            CheckDropdownItem(
+                text = rememberString("replace_purify"),
+                checked = state.exportUseReplace,
+            ) { dismiss(); callbacks.onToggleEnableReplace() }
+            CheckDropdownItem(
+                text = rememberString("custom_export_section"),
+                checked = state.enableCustomExportChecked,
+            ) { dismiss(); callbacks.onToggleCustomExport() }
+            CheckDropdownItem(
+                text = rememberString("export_to_web_dav"),
+                checked = state.exportToWebDav,
+            ) { dismiss(); callbacks.onToggleExportWebDav() }
+            MenuItem(rememberString("export_folder")) { dismiss(); callbacks.onSelectExportFolderMenu() }
+            MenuItem(rememberString("export_config")) { dismiss(); callbacks.onShowExportConfig() }
+            MenuItem(rememberString("log")) { dismiss(); callbacks.onShowLog() }
         }
-        CheckDropdownItem(
-            text = rememberString("replace_purify"),
-            checked = state.exportUseReplace,
-        ) { dismiss(); callbacks.onToggleEnableReplace() }
-        CheckDropdownItem(
-            text = rememberString("custom_export_section"),
-            checked = state.enableCustomExportChecked,
-        ) { dismiss(); callbacks.onToggleCustomExport() }
-        CheckDropdownItem(
-            text = rememberString("export_to_web_dav"),
-            checked = state.exportToWebDav,
-        ) { dismiss(); callbacks.onToggleExportWebDav() }
-        MenuItem(rememberString("export_folder")) { dismiss(); callbacks.onSelectExportFolderMenu() }
-        MenuItem(rememberString("export_config")) { dismiss(); callbacks.onShowExportConfig() }
-        MenuItem(rememberString("log")) { dismiss(); callbacks.onShowLog() }
-    }
-}
-
-/** 类型筛选子菜单(对照 menu_filter_book_type 单选组) */
-@Composable
-private fun FilterSubmenu(state: BookshelfManageState, callbacks: BookshelfManageCallbacks, dismiss: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    MenuItem(rememberString("filter_book_type")) { expanded = true }
-    AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        FilterItem(state, callbacks, "all", 0) { expanded = false; dismiss() }
-        FilterItem(state, callbacks, "book_type_novel", 1) { expanded = false; dismiss() }
-        FilterItem(state, callbacks, "book_type_comic", 2) { expanded = false; dismiss() }
-        FilterItem(state, callbacks, "audio", 3) { expanded = false; dismiss() }
-        FilterItem(state, callbacks, "explore_style_video", 4) { expanded = false; dismiss() }
     }
 }
 
@@ -281,24 +279,27 @@ private fun FilterItem(
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 @Composable
 private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
         onClick = onClick,
-    )
+    ) {
+        Text(text, color = colors.primaryText)
+        Spacer(Modifier.weight(1f))
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 /** 书籍条目(对照 item_arrange_book):复选框 + 封面 + 名/作者/来源/分组/缓存 + 下载 + 改分组 + 删除。 */
 @Composable
-private fun ReorderableCollectionItemScope.BookItem(
+private fun RuleItemScope.BookItem(
     state: BookshelfManageState,
     callbacks: BookshelfManageCallbacks,
     book: Book,

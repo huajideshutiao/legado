@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material.DrawerValue
+import androidx.compose.material.ModalDrawer
+import androidx.compose.material.rememberDrawerState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -55,7 +55,6 @@ import io.legado.app.ui.book.read.ReadMenuOverlay
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen
-import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.page.ReadViewComposable
 import io.legado.app.ui.book.read.page.delegate.CoverPageDelegateCompose
@@ -71,6 +70,7 @@ import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.dict.IosDictDialog
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.ReplaceRuleListScreen
@@ -105,7 +105,7 @@ import kotlinx.coroutines.withContext
  *   PageViewComposable / IosReadStyleDialog 依赖 LocalReadConfigProviders.current)
  * - **菜单层**: 调用 shared [ReadMenuOverlay], 传入 iOS 端 [IosReadMenuState] 实现
  *   `ReadMenuState` 接口 (与 app 端 `ReadMenu` 类 / 桌面端 `DesktopReadMenuState` 对应)
- * - **目录侧栏**: [ModalNavigationDrawer] + [TocDrawerContent] (由底栏 `clickCatalog` 触发)
+ * - **目录侧栏**: [ModalDrawer] + [TocDrawerContent] (由底栏 `clickCatalog` 触发)
  * - **TTS 控制**: [ReadAloudDialog] (由底栏朗读按钮长按触发, 桥接 [rememberIosReadAloudController])
  *
  * # 点击 / 长按事件
@@ -176,7 +176,7 @@ fun IosReaderScreen(
         val readAloudController = rememberIosReadAloudController(viewModel)
 
         // KP5: 目录侧栏状态 + 章节列表 / 当前章节订阅 (供 TocDrawerContent 高亮 + 跳转联动)
-        // drawerState 用 ModalNavigationDrawer 标准状态, 默认 Closed; scope.launch { open/close } 切换
+        // drawerState 用 ModalDrawer 标准状态, 默认 Closed; scope.launch { open/close } 切换
         val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
         // 朗读控制 Dialog 显隐状态 (底栏朗读按钮长按触发, 与 app 端 ReadBookActivity.showReadAloudDialog 对应)
@@ -211,6 +211,11 @@ fun IosReaderScreen(
         var loadingTextSelection by remember { mutableStateOf(false) }
         var textSelectionChapterName by remember { mutableStateOf("") }
         var textSelectionContent by remember { mutableStateOf("") }
+
+        // 查词对话框状态 (IosTextSelectionDialog 底部"查词"按钮触发, 对照 desktop ReaderScreen)
+        // dictWord 由剪贴板内容填充, showDict 控制 IosDictDialog 显隐
+        var showDict by remember { mutableStateOf(false) }
+        var dictWord by remember { mutableStateOf("") }
 
         // 章节换源覆盖层 (顶栏 CHAPTER_CHANGE_SOURCE 触发, 对照 desktop ReaderScreen)
         var showChangeChapterSource by remember { mutableStateOf(false) }
@@ -320,7 +325,7 @@ fun IosReaderScreen(
                 },
                 openSourceEdit = {
                     // 编辑书源: iOS 端暂无 BOOK_SOURCE_EDIT 路由 + IosBookSourceEditScreen wrapper, 留 TODO
-                    Toasters.get().toast("编辑书源功能暂未接入")
+                    Toasters.get().toast(editBookSourceText)
                 },
                 autoPageScope = scope,
                 showAutoReadDialog = { showAutoReadDialog = true },
@@ -338,9 +343,9 @@ fun IosReaderScreen(
             )
         }
 
-        // KP5: 用 ModalNavigationDrawer 包裹 Box, drawerContent 渲染 TocDrawerContent
+        // KP5: 用 ModalDrawer 包裹 Box, drawerContent 渲染 TocDrawerContent
         // 对照 desktop ReaderScreen line 315-329 的目录侧栏模式
-        ModalNavigationDrawer(
+        ModalDrawer(
             drawerState = drawerState,
             drawerContent = {
                 TocDrawerContent(
@@ -360,6 +365,10 @@ fun IosReaderScreen(
                 // 主内容: 阅读视图
                 // 点击中心区域 → 切菜单显隐 (与 app 端 showActionMenu 一致; 翻页由 pageDelegate.onTap 自己处理)
                 // 长按正文 → 异步加载正文弹 IosTextSelectionDialog (文字选择)
+                // iOS 端待接入提示文案 (回调 lambda 非 @Composable, 需预先缓存)
+                val editBookSourceText = rememberString("ios_edit_book_source_not_implemented")
+                // 文案 (onFailure lambda 非 @Composable, 预先 remember)
+                val loadChapterContentFailedText = rememberString("load_chapter_content_failed")
                 ReadViewComposable(
                     viewModel = viewModel,
                     modifier = Modifier.fillMaxSize(),
@@ -389,8 +398,8 @@ fun IosReaderScreen(
                                     showTextSelectionDialog = true
                                 }.onFailure {
                                     loadingTextSelection = false
-                                    AppLog.put("加载章节内容失败", it)
-                                    Toasters.get().toast(it.localizedMessage ?: "加载章节内容失败")
+                                    AppLog.put(loadChapterContentFailedText, it)
+                                    Toasters.get().toast(it.localizedMessage ?: loadChapterContentFailedText)
                                 }
                             }
                         }
@@ -730,10 +739,9 @@ fun IosReaderScreen(
             var pageTouchSlop by remember {
                 mutableIntStateOf(prefStore.getInt(PreferKey.pageTouchSlop, 0))
             }
-            // 3 个嵌套 Dialog 显隐状态 (接入 shared 共享的 NumberPickerDialog / ClickActionDialog / PageKeyDialog)
+            // 2 个嵌套 Dialog 显隐状态 (接入 shared 共享的 NumberPickerDialog / ClickActionDialog)
             var showPageTouchSlopDialog by remember { mutableStateOf(false) }
             var showClickActionDialog by remember { mutableStateOf(false) }
-            var showPageKeyDialog by remember { mutableStateOf(false) }
             val pageTouchSlopDialogTitle = rememberString("page_touch_slop_dialog_title")
 
             Dialog(
@@ -750,7 +758,6 @@ fun IosReaderScreen(
                             pageTouchSlopSummary = pageTouchSlop.toString(),
                             onPageTouchSlop = { showPageTouchSlopDialog = true },
                             onClickRegionalConfig = { showClickActionDialog = true },
-                            onCustomPageKey = { showPageKeyDialog = true },
                         )
                     }
                 }
@@ -800,36 +807,6 @@ fun IosReaderScreen(
                         prefStore.putInt(PreferKey.clickActionBR, newCfg.br)
                     },
                     onDismiss = { showClickActionDialog = false },
-                )
-            }
-
-            // 自定义翻页按键 Dialog (接入 shared PageKeyDialog, 读写 PreferKey.prevKeys/nextKeys)
-            // prefs 存逗号分隔 keyCode 串, 解析为 Map<Int, String> 给 Dialog (动作名: "prev_page"/"next_page")
-            if (showPageKeyDialog) {
-                val prevKeysStr = prefStore.getString(PreferKey.prevKeys) ?: ""
-                val nextKeysStr = prefStore.getString(PreferKey.nextKeys) ?: ""
-                val keyMappings = buildMap<Int, String> {
-                    prevKeysStr.split(",")
-                        .mapNotNull { it.trim().toIntOrNull() }
-                        .forEach { put(it, "prev_page") }
-                    nextKeysStr.split(",")
-                        .mapNotNull { it.trim().toIntOrNull() }
-                        .forEach { put(it, "next_page") }
-                }
-                PageKeyDialog(
-                    keyMappings = keyMappings,
-                    onConfirm = { newMap ->
-                        // 写回 prevKeys / nextKeys (逗号分隔的 keyCode 字符串, 与 app 端 AppConfig.prevKeys/nextKeys 格式对齐)
-                        val prevKeys = newMap.entries
-                            .filter { it.value == "prev_page" }
-                            .joinToString(",") { it.key.toString() }
-                        val nextKeys = newMap.entries
-                            .filter { it.value == "next_page" }
-                            .joinToString(",") { it.key.toString() }
-                        prefStore.putString(PreferKey.prevKeys, prevKeys)
-                        prefStore.putString(PreferKey.nextKeys, nextKeys)
-                    },
-                    onDismiss = { showPageKeyDialog = false },
                 )
             }
         }
@@ -917,6 +894,21 @@ fun IosReaderScreen(
                 chapterName = textSelectionChapterName,
                 content = textSelectionContent,
                 onDismiss = { showTextSelectionDialog = false },
+                // 查词回调: 读剪贴板取词已在 IosTextSelectionDialog 内完成,
+                // 此处仅接收 word → 弹 IosDictDialog (对照 desktop ReaderScreen 查词 → DictDialog)
+                onDict = { word ->
+                    dictWord = word
+                    showDict = true
+                },
+            )
+        }
+
+        // 查词对话框 (IosTextSelectionDialog 底部"查词"按钮触发, 包装 shared DictDialogContent)
+        // word 来自剪贴板内容, onDismiss 关闭后保留 dictWord (下次触发时覆盖)
+        if (showDict) {
+            IosDictDialog(
+                word = dictWord,
+                onDismiss = { showDict = false },
             )
         }
 

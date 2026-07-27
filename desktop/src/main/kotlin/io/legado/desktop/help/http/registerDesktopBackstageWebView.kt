@@ -3,6 +3,7 @@ package io.legado.desktop.help.http
 import io.legado.app.help.http.BackstageWebViewFactory
 import io.legado.app.help.http.BackstageWebViewHandle
 import io.legado.app.help.http.BackstageWebViewProviders
+import io.legado.app.ui.compose.platform.jvmGetString
 
 /**
  * 桌面端 [BackstageWebViewFactory] stub 实现: create 直接抛 [UnsupportedOperationException]。
@@ -42,10 +43,7 @@ private object DesktopBackstageWebViewFactory : BackstageWebViewFactory {
         delayTime: Long,
     ): BackstageWebViewHandle {
         // 桌面端无 WebView, 直接抛异常让调用方 runCatching 回退到 HTTP 路径
-        throw UnsupportedOperationException(
-            "桌面端不支持 BackstageWebView (依赖 android.webkit.WebView), " +
-                "请改用 HTTP 路径或选用不依赖 webView 的书源"
-        )
+        throw UnsupportedOperationException(jvmGetString("desktop_backstage_webview_unsupported"))
     }
 }
 

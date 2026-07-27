@@ -37,12 +37,12 @@ import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -56,7 +56,6 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.toDurationTime
 import io.legado.app.utils.toggleSystemBar
 import java.util.Locale
 import kotlin.math.abs
@@ -65,7 +64,6 @@ import kotlin.math.abs
 class VideoPlayActivity : BaseComposeActivity() {
 
     val viewModel by viewModels<VideoViewModel>()
-    private var hasRefreshedOnPlayError = false
 
     // ---- Compose 状态 ----
     var titleText by mutableStateOf("")
@@ -296,7 +294,7 @@ class VideoPlayActivity : BaseComposeActivity() {
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.initData(intent)
         viewModel.videoUrl.observe(this) {
-            refreshPlayer(it)
+            if (it != null) refreshPlayer(it)
             updateResolutionText()
         }
         viewModel.resolutions.observe(this) { updateResolutionText() }
@@ -331,7 +329,7 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     private fun setPlayerMediaSource(
         p: ExoPlayer,
-        analyzeUrl: AnalyzeUrl
+        analyzeUrl: AnalyzeUrlCore
     ) {
         if (analyzeUrl.url.startsWith("http")) {
             p.setMediaItem(
@@ -376,23 +374,18 @@ class VideoPlayActivity : BaseComposeActivity() {
         }
     }
 
-    private fun refreshPlayer(analyzeUrl: AnalyzeUrl) {
+    private fun refreshPlayer(analyzeUrl: AnalyzeUrlCore) {
         val p = player ?: ExoPlayerHelper.createHttpExoPlayer(this).apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        hasRefreshedOnPlayError = false
-                    }
-                    if (playbackState == Player.STATE_ENDED && viewModel.chapterListData.value!!.size != viewModel.curBook!!.durChapterIndex + 1) {
-                        openChapter(viewModel.chapterListData.value!![viewModel.curBook!!.durChapterIndex + 1])
+                    if (playbackState == Player.STATE_ENDED) {
+                        viewModel.moveToNextChapter()
                     }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    if (!hasRefreshedOnPlayError) {
-                        hasRefreshedOnPlayError = true
-                        viewModel.refreshChapter()
-                    } else if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
+                    val retried = viewModel.sharedVM.retryOnPlayError()
+                    if (!retried && error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
                         val msg = when (error.sourceException) {
                             is UnrecognizedInputFormatException -> "不是视频链接"
                             is HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
@@ -452,16 +445,14 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     /** 上一集钮(原 exo_prev): 切到选集列表前一集 */
     fun playPrevChapter() {
-        val list = viewModel.chapterListData.value ?: return
-        val index = viewModel.curBook?.durChapterIndex ?: return
-        list.getOrNull(index - 1)?.let { openChapter(it) }
+        viewModel.moveToPrevChapter()
+        durChapterIndex = viewModel.curBook?.durChapterIndex ?: 0
     }
 
     /** 下一集钮(原 exo_next): 切到选集列表后一集 */
     fun playNextChapter() {
-        val list = viewModel.chapterListData.value ?: return
-        val index = viewModel.curBook?.durChapterIndex ?: return
-        list.getOrNull(index + 1)?.let { openChapter(it) }
+        viewModel.moveToNextChapter()
+        durChapterIndex = viewModel.curBook?.durChapterIndex ?: 0
     }
 
     /** 全屏钮(原 setFullscreenButtonClickListener): 横竖屏互切 */
@@ -547,16 +538,17 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     fun addBookmark() {
         val book = viewModel.curBook ?: return
-        val pos = player?.currentPosition?.toInt() ?: book.durChapterPos.coerceAtLeast(0)
-        val dur = player?.duration?.takeIf { it > 0 }?.toInt() ?: 0
+        val pos = player?.currentPosition ?: 0L
+        val dur = player?.duration?.takeIf { it > 0 } ?: 0L
         val chapters = viewModel.chapterListData.value
         val chapter = chapters?.getOrNull(book.durChapterIndex)
-        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-            chapterIndex = book.durChapterIndex
-            chapterPos = pos
-            chapterName = chapter?.title ?: book.durChapterTitle ?: ""
-            bookText = "${pos.toDurationTime()} / ${if (dur > 0) dur.toDurationTime() else "未知"}"
-        }
+        val bookmark = viewModel.sharedVM.createBookmark(
+            positionMs = pos,
+            durationMs = dur,
+            bookName = book.name,
+            chapterIndex = book.durChapterIndex,
+            chapterName = chapter?.title ?: book.durChapterTitle ?: "",
+        ) ?: return
         showDialogFragment(BookmarkDialog(bookmark))
     }
 
@@ -609,17 +601,16 @@ class VideoPlayActivity : BaseComposeActivity() {
                 controlsVisible = false
                 dialog.dismiss()
                 if (which != viewModel.currentResolutionIndex) {
-                    val position = if (player == null) 0L
-                    else player!!.currentPosition + 800L
-                    switchResolution(which, position)
+                    switchResolution(which)
                 }
             }
         }
     }
 
-    private fun switchResolution(index: Int, seekPosition: Long) {
+    fun switchResolution(index: Int) {
         val source = viewModel.videoSource.value ?: return
         val resolution = source.getResolution(index) ?: return
+        val seekPosition = if (player == null) 0L else player!!.currentPosition + 800L
         viewModel.currentResolutionIndex = index
         updateResolutionText()
 
@@ -669,6 +660,7 @@ class VideoPlayActivity : BaseComposeActivity() {
         val currentPlayer = player
         val duration = currentPlayer?.duration ?: 0L
         val position = currentPlayer?.currentPosition ?: 0L
+        viewModel.sharedVM.saveVideoProgressOnExit(position, duration)
         viewModel.saveRead(
             if (duration > 0 && position > duration - 1000) -1L
             else position
@@ -687,7 +679,7 @@ class VideoPlayActivity : BaseComposeActivity() {
     }
 
     fun openChapter(bookChapter: BookChapter) {
-        viewModel.changeChapter(bookChapter)
+        viewModel.loadChapter(bookChapter.index)
         durChapterIndex = viewModel.curBook!!.durChapterIndex
     }
 }

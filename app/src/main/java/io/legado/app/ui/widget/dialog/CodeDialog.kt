@@ -7,7 +7,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.R
@@ -15,6 +14,7 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.space
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.code.CodeView
 import io.legado.app.ui.widget.code.addJsPattern
@@ -46,7 +46,7 @@ class CodeDialog() : BaseComposeDialogFragment() {
                 if (!disableEdit) {
                     IconButton(onClick = ::onSave) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_save),
+                            painter = rememberPainter("ic_save"),
                             contentDescription = stringResource(R.string.action_save),
                             tint = AppTheme.colors.primaryText
                         )

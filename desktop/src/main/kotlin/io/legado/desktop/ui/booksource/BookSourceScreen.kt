@@ -3,7 +3,6 @@ package io.legado.desktop.ui.booksource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +43,7 @@ import io.legado.app.ui.book.source.BookSourceListViewModel
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -51,6 +51,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -237,6 +238,7 @@ private fun BookSourceListContent(
     var importInitialText by remember { mutableStateOf("") }
     // 导入对话框标题 (ImportListScaffold.title, 对照 app 端 getString(R.string.import_book_source))
     val importBookSourceLabel = rememberString("import_book_source")
+    // Toasters/AppLog 文案 (BookSourceChecker / 顶层 suspend 函数非 @Composable, 用 jvmGetString)
     // 书源登录对话框状态 (null=隐藏, 非空=显示; onLogin 触发后异步按 url 查 BookSource
     // 完整记录填入, 末尾 SourceLoginDialog 渲染分支读取, 确认按钮调 dao.update 写回 header)
     var loginTarget by remember { mutableStateOf<BookSource?>(null) }
@@ -362,7 +364,7 @@ private fun BookSourceListContent(
                 checker.cancel()
                 checkSourceVisible = false
                 checkSourceMsg = null
-                Toasters.get().toast("已取消书源校验")
+                Toasters.get().toast(jvmGetString("check_source_cancelled"))
             },
             onAddBookSource = {
                 // 新建空 BookSource 并入库, 后续可由 onEdit 跳编辑页填充字段
@@ -373,7 +375,7 @@ private fun BookSourceListContent(
                         bookSourceUrl = "new_${System.currentTimeMillis()}",
                     )
                     dao.insert(source)
-                    AppLog.put("新建书源已添加: ${source.bookSourceUrl}")
+                    AppLog.put(jvmGetString("new_book_source_added", source.bookSourceUrl))
                 }
             },
             onImportLocal = {
@@ -439,7 +441,7 @@ private fun BookSourceListContent(
                         // 未选中书源时 toast 提示, 与 app 端 selection() 为空时静默不同, 桌面端给反馈)
                         val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
                         if (selection.isEmpty()) {
-                            Toasters.get().toast("未选中任何书源")
+                            Toasters.get().toast(jvmGetString("no_source_selected"))
                             return@SelectAction
                         }
                         checkKeywordText = CheckSourceShared.keyword
@@ -523,13 +525,13 @@ private fun BookSourceListContent(
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(netImportBookSourceLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
                     // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
                     // 不加的话 OutlinedTextField 默认 widthIn(min=280dp), 在 0.8 窗口宽度的对话框中只占左侧一部分
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(inputBookSourceUrlLabel) },
+                    label = inputBookSourceUrlLabel,
                     singleLine = true,
                 )
             },
@@ -600,13 +602,13 @@ private fun BookSourceListContent(
             onDismissRequest = { groupActionMode = null },
             title = { Text(if (mode == "add") addGroupLabel else removeGroupLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = groupActionText,
                     onValueChange = { groupActionText = it },
                     // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
                     // 与 showImportOnlineDialog 的 URL 输入框保持一致
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(groupNameLabel) },
+                    label = groupNameLabel,
                     singleLine = true,
                 )
             },
@@ -643,12 +645,12 @@ private fun BookSourceListContent(
             onDismissRequest = { showCheckSourceDialog = false },
             title = { Text(searchBookKeyLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = checkKeywordText,
                     onValueChange = { checkKeywordText = it },
                     // fillMaxWidth 让输入框占满对话框宽度 (与 showImportOnlineDialog / groupActionMode 对话框一致)
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(searchBookKeyLabel) },
+                    label = searchBookKeyLabel,
                     singleLine = true,
                 )
             },
@@ -718,7 +720,7 @@ private class BookSourceChecker(
      */
     fun startCheckSource(selection: List<BookSourcePart>) {
         if (checkJob?.isActive == true) {
-            Toasters.get().toast("已有书源在校验,等完成后再试")
+            Toasters.get().toast(jvmGetString("check_source_in_progress"))
             return
         }
         val total = selection.size
@@ -732,7 +734,7 @@ private class BookSourceChecker(
                     AppDbProviders.get().bookSourceDao.getBookSource(part.bookSourceUrl)?.let { emit(it) }
                 }
             }.onStart {
-                val msg = "校验书源 0/$total"
+                val msg = jvmGetString("check_source_progress_msg", 0, total, "").trim()
                 // scope.launch 切回主线程修改 state (mutableStateOf 非主线程修改可能导致重组时机不确定)
                 scope.launch { onMsg(msg); onVisible(true) }
                 postEvent(EventBus.CHECK_SOURCE, msg)
@@ -740,7 +742,7 @@ private class BookSourceChecker(
                 checkSourceImpl(source)
             }.onEach {
                 val count = finishCount.incrementAndGet()
-                val msg = "校验书源 $count/$total ${it.bookSourceName}"
+                val msg = jvmGetString("check_source_progress_msg", count, total, it.bookSourceName)
                 scope.launch { onMsg(msg); onTick() }
                 postEvent(EventBus.CHECK_SOURCE, msg)
                 // 校验后写回 DB (bookSourceGroup/respondTime/bookSourceComment 等字段已修改)
@@ -751,9 +753,9 @@ private class BookSourceChecker(
                 postEvent(EventBus.CHECK_SOURCE_DONE, 0)
                 Debug.finishChecking()
                 pool.close()
-                if (it == null) Toasters.get().toast("书源校验完成")
+                if (it == null) Toasters.get().toast(jvmGetString("check_source_completed"))
             }.catch {
-                AppLog.put("书源校验出错\n${it.localizedMessage}", it)
+                AppLog.put(jvmGetString("check_source_error", it.localizedMessage), it)
             }.collect()
         }
         // 300ms 刷新 Job (对照 app 端 startCheckMessageRefreshJob), 让 BookSourceListScreen
@@ -971,7 +973,7 @@ private suspend fun importBookSourcesFromLocalFile(dialogTitle: String): String?
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入书源: 用户取消选择")
+        AppLog.put(jvmGetString("import_source_cancelled"))
         return null
     }
     return json
@@ -991,14 +993,14 @@ private suspend fun importBookSourcesFromLocalFile(dialogTitle: String): String?
  */
 private suspend fun exportBookSourcesToFile(selection: List<BookSourcePart>, dialogTitle: String, fileFilterDesc: String) {
     if (selection.isEmpty()) {
-        AppLog.put("导出书源: 未选中任何书源")
+        AppLog.put(jvmGetString("export_source_no_selection"))
         return
     }
     val sources = withContext(Dispatchers.IO) {
         AppDbProviders.get().bookSourceDao.getBookSources(selection.map { it.bookSourceUrl })
     }
     if (sources.isEmpty()) {
-        AppLog.put("导出书源: 数据库查询为空")
+        AppLog.put(jvmGetString("export_source_db_empty"))
         return
     }
     val json = GSON.toJson(sources)
@@ -1009,16 +1011,16 @@ private suspend fun exportBookSourcesToFile(selection: List<BookSourcePart>, dia
             extensions = listOf("json"),
         )
     } ?: run {
-        AppLog.put("导出书源: 用户取消选择")
+        AppLog.put(jvmGetString("export_source_cancelled"))
         return
     }
     runCatching {
         withContext(Dispatchers.IO) {
             file.writeText(json)
         }
-        AppLog.put("导出书源完成, 共 ${sources.size} 条 → ${file.absolutePath}")
+        AppLog.put(jvmGetString("export_source_done", sources.size, file.absolutePath))
     }.onFailure {
-        AppLog.put("导出书源: 写文件失败", it)
+        AppLog.put(jvmGetString("export_source_write_failed"), it)
     }
 }
 
@@ -1035,19 +1037,19 @@ private suspend fun exportBookSourcesToFile(selection: List<BookSourcePart>, dia
  */
 private suspend fun shareBookSourcesToClipboard(selection: List<BookSourcePart>) {
     if (selection.isEmpty()) {
-        AppLog.put("分享书源: 未选中任何书源")
+        AppLog.put(jvmGetString("share_source_no_selection"))
         return
     }
     val sources = withContext(Dispatchers.IO) {
         AppDbProviders.get().bookSourceDao.getBookSources(selection.map { it.bookSourceUrl })
     }
     if (sources.isEmpty()) {
-        AppLog.put("分享书源: 数据库查询为空")
+        AppLog.put(jvmGetString("share_source_db_empty"))
         return
     }
     val json = GSON.toJson(sources)
     withContext(Dispatchers.IO) {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(json), null)
     }
-    AppLog.put("分享书源已复制到剪贴板, 共 ${sources.size} 条")
+    AppLog.put(jvmGetString("share_source_copied", sources.size))
 }

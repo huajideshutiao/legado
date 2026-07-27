@@ -41,6 +41,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.delay
@@ -272,8 +273,8 @@ private fun ChangeSourceContent(
                                     // (对照 app 端 waitDialog.dismissSafe + AppLog.put + toastOnUi(true))
                                     waitDialogBookName = null
                                     tocCoroutine = null
-                                    AppLog.put("换源获取目录出错\n$e", e)
-                                    Toasters.get().toast(e.localizedMessage ?: "加载目录失败")
+                                    AppLog.put(jvmGetString("change_source_load_toc_error_log", e), e)
+                                    Toasters.get().toast(e.localizedMessage ?: jvmGetString("error_load_toc"))
                                 },
                             )
                         }

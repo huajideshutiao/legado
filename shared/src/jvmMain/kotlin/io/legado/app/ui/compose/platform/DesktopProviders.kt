@@ -63,7 +63,7 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
      * - isNight 仅更新 isDark 标记, 不再走 [updateDark] 的默认深浅色覆盖
      *   (因为外部已显式给出 bg/bbg, 不能被 updateDark 默认值覆盖)。
      */
-    fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
+    override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
         isDark = isNight
         accentColor = accent
         backgroundColor = bg
@@ -93,7 +93,7 @@ class DesktopEventBusProvider : EventBusProvider {
     )
 
     /** 桌面端无 FlowBus，主题切换后由调用方 emit 此流触发 AppTheme 重组 */
-    fun emitRecreate() {
+    override fun emitRecreate() {
         recreateFlow.tryEmit(Unit)
     }
 

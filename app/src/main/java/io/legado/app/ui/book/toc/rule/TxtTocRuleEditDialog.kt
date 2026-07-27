@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import androidx.fragment.app.viewModels
@@ -27,6 +26,7 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FormEditFields
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
@@ -67,7 +67,7 @@ class TxtTocRuleEditDialog() : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { save() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_save),
+                            painter = rememberPainter("ic_save"),
                             contentDescription = stringResource(R.string.action_save),
                             tint = colors.primaryText,
                         )

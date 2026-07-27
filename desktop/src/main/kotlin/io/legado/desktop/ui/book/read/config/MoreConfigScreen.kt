@@ -16,7 +16,6 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen as SharedMoreConfigScreen
-import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -38,8 +37,8 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  * - 在 [SharedMoreConfigScreen] 之上加 [AppTitleBar] (标题"更多配置" + 返回按钮)
  * - 装配 pageTouchSlopSummary (从 prefs 读取 pageTouchSlop, 0=系统默认)
  * - 装配 1 个 NumberPicker 弹窗: pageTouchSlop(0..9999, 0=系统默认)
- * - 装配 2 个 Dialog: ClickActionDialog (点击区域配置) / PageKeyDialog (自定义翻页键),
- *   回调 onClickRegionalConfig / onCustomPageKey 弹出对应 shared 共享 Dialog
+ * - 装配 1 个 Dialog: ClickActionDialog (点击区域配置),
+ *   回调 onClickRegionalConfig 弹出对应 shared 共享 Dialog
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
  *   [SharedMoreConfigScreen] 内部 PreferenceScreen 通过 LocalXxx 取依赖
  *
@@ -53,9 +52,6 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  * - onClickRegionalConfig: app 端 ReadBookActivity.showClickRegionalConfig()
  *   (点击区域配置 Dialog), 桌面端弹 shared 共享 [ClickActionDialog], 直接读写 prefs
  *   (AppConfigAccessor 接口未暴露 clickActionXX 字段, 走 PreferenceProvider)
- * - onCustomPageKey: app 端 PageKeyDialog().show() (自定义翻页键), 桌面端
- *   弹 shared 共享 [PageKeyDialog], 直接读写 prefs.prevKeys/nextKeys
- *   (AppConfigAccessor 接口未暴露 prevKeys/nextKeys 字段, 走 PreferenceProvider)
  *
  * @param onBack 返回回调 (切回 SETTINGS 路由, 由 DesktopApp 注入)
  */
@@ -103,9 +99,8 @@ private fun MoreConfigContent() {
         mutableIntStateOf(prefs.getInt(PreferKey.pageTouchSlop, 0))
     }
     var showPageTouchSlopDialog by remember { mutableStateOf(false) }
-    // 点击区域配置 / 自定义翻页键两个 Dialog 的显隐状态 (接入 shared 共享的 ClickActionDialog / PageKeyDialog)
+    // 点击区域配置 Dialog 的显隐状态 (接入 shared 共享的 ClickActionDialog)
     var showClickActionDialog by remember { mutableStateOf(false) }
-    var showPageKeyDialog by remember { mutableStateOf(false) }
     // summary 直接显示数值 (桌面端无 ViewConfiguration.scaledTouchSlop, 0=系统默认)
     val pageTouchSlopSummary = pageTouchSlop.toString()
 
@@ -115,10 +110,6 @@ private fun MoreConfigContent() {
         onClickRegionalConfig = {
             // 弹出 ClickActionDialog (shared 共享, 替代 app 端 ReadBookActivity.showClickRegionalConfig())
             showClickActionDialog = true
-        },
-        onCustomPageKey = {
-            // 弹出 PageKeyDialog (shared 共享, 替代 app 端 PageKeyDialog().show())
-            showPageKeyDialog = true
         },
     )
 
@@ -169,39 +160,6 @@ private fun MoreConfigContent() {
                 prefs.putInt(PreferKey.clickActionBR, newCfg.br)
             },
             onDismiss = { showClickActionDialog = false },
-        )
-    }
-
-    // 自定义翻页按键 Dialog (shared 共享, 替代 app 端 PageKeyDialog)
-    // AppConfigAccessor 接口未暴露 prevKeys/nextKeys 字段, 桌面端直接经
-    // PreferenceProvider 读写 prefs (与 app 端 AppConfig.prevKeys/nextKeys stringPref 语义对齐)
-    // prefs 存储逗号分隔的 keyCode 字符串 (如 "37,38"), 解析为 Map<Int, String> 给 Dialog
-    // 动作名: "prev_page" / "next_page" (与 PageKeyDialog 内部约定一致)
-    if (showPageKeyDialog) {
-        val prevKeysStr = prefs.getString(PreferKey.prevKeys)
-        val nextKeysStr = prefs.getString(PreferKey.nextKeys)
-        val keyMappings = buildMap<Int, String> {
-            prevKeysStr.split(",")
-                .mapNotNull { it.trim().toIntOrNull() }
-                .forEach { put(it, "prev_page") }
-            nextKeysStr.split(",")
-                .mapNotNull { it.trim().toIntOrNull() }
-                .forEach { put(it, "next_page") }
-        }
-        PageKeyDialog(
-            keyMappings = keyMappings,
-            onConfirm = { newMap ->
-                // 写回 prevKeys / nextKeys (逗号分隔的 keyCode 字符串, 与原版 AppConfig.prevKeys/nextKeys 格式对齐)
-                val prevKeys = newMap.entries
-                    .filter { it.value == "prev_page" }
-                    .joinToString(",") { it.key.toString() }
-                val nextKeys = newMap.entries
-                    .filter { it.value == "next_page" }
-                    .joinToString(",") { it.key.toString() }
-                prefs.putString(PreferKey.prevKeys, prevKeys)
-                prefs.putString(PreferKey.nextKeys, nextKeys)
-            },
-            onDismiss = { showPageKeyDialog = false },
         )
     }
 }

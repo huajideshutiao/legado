@@ -44,6 +44,7 @@ import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.RadioChip
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppColors
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
@@ -177,7 +178,7 @@ class SearchScopeDialog : BaseComposeDialogFragment() {
             if (!groupMode && showScreen) {
                 IconButton(onClick = { showScreen = false; screenText = "" }) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_arrow_back),
+                        painter = rememberPainter("ic_arrow_back"),
                         contentDescription = null,
                         tint = colors.primaryText,
                     )

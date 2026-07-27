@@ -36,7 +36,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -50,6 +49,7 @@ import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.code.CodeView
 import kotlinx.coroutines.Dispatchers
@@ -240,7 +240,7 @@ private fun FindReplacePanel(
             var showMore by remember { mutableStateOf(false) }
             Box {
                 Icon(
-                    painter = painterResource(R.drawable.ic_more_vert),
+                    painter = rememberPainter("ic_more_vert"),
                     contentDescription = stringResource(R.string.more_menu),
                     tint = colors.primaryText,
                     modifier = Modifier
@@ -296,6 +296,7 @@ private fun PanelInput(
     ) {
         Text(stringResource(labelRes), color = colors.primaryText)
         val lineColor = if (focused) colors.accent else colors.secondaryText.copy(alpha = 0.4f)
+        // 保留 BasicTextField: IME 工具栏自绘 drawBehind 底线复刻 EditText, Md2TextField outlined 边框语义不符
         BasicTextField(
             value = value,
             onValueChange = onValueChange,

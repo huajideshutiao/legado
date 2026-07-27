@@ -1,6 +1,5 @@
 package io.legado.desktop
 
-import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -13,9 +12,9 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.BundledDatabaseDriver
 import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.DesktopAppDatabaseProvider
-import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DefaultDataResourceProviders
 import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
@@ -23,8 +22,8 @@ import io.legado.app.help.book.JvmBookImageStorage
 import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.help.file.registerDesktopAppFilesDir
@@ -47,6 +46,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
@@ -58,11 +58,16 @@ import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
+import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopFileCacheProvider
 import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
+import io.legado.desktop.help.registerDesktopRegexErrorHandler
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
+import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
+import io.legado.desktop.help.ui.registerDesktopToastProvider
+import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.http.registerDesktopHttpProvider
@@ -73,8 +78,10 @@ import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
 import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.DesktopApp
 import io.legado.desktop.ui.SourceUiEventBridgeHost
-import io.legado.desktop.ui.main.DesktopMainViewModel
+import io.legado.desktop.ui.main.DesktopStartupTasks
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -119,11 +126,6 @@ fun main() = application {
     // 因 DesktopAppFilesDir / BundledDatabaseDriver / JvmBookStorage 构造时读
     // legado.portable.root, QuickJsJsEngine 首次 eval 读 legado.quickjs.lib)
     initDesktopRuntimeEnvironment()
-    // 对照 app 端 App.kt:93: 启用 Compose 新版文本上下文菜单 (isNewContextMenuEnabled)。
-    // 1.11+: textToolbarState(Cursor/Selection) 仅在 addBasicTextFieldTextContextMenuComponents
-    // 内设置, 需 isNewContextMenuEnabled=true; 旧路由永不设置 -> 长按菜单失效。
-    // Compose Foundation 跨平台, desktop 同样适用。
-    ComposeFoundationFlags.isNewContextMenuEnabled = true
     // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
     // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
     // - AppStringProvider: 返回 key.name 兜底, 未注册时 appString 同样 fallback 到 key.name
@@ -149,6 +151,9 @@ fun main() = application {
     // 注入 HomeTabHelpShared 的 prefs provider (commonMain 下沉的主页分组持久化)
     // 复用已创建的 DesktopPreferenceStoreProvider, 对齐 app 端 App.kt 的 HomeTabHelpShared.prefs 注入
     HomeTabHelpShared.prefs = preferenceStoreProvider
+    // 注入 PinnedExploreHelp 的 prefs provider (commonMain 下沉的发现页收藏分类持久化)
+    // 与 HomeTabHelpShared 同源, 对齐 app 端 App.kt 的 PinnedExploreHelp.prefs 注入
+    PinnedExploreHelp.prefs = preferenceStoreProvider
     // KP1.4 补: 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
     registerDesktopAppFilesDir()
     // 注册桌面端 DefaultDataResourceProvider (actual 实现由另一子代理处理, 这里只负责 register)
@@ -256,6 +261,9 @@ private suspend fun registerSecondaryProviders() {
         //     供 shared commonMain webBook 编排层通过 BookImageStorageProviders.get() 间接调用;
         //     saveImages 运行时依赖 OkHttpClientProviders (第2步已注册), 注册顺序无强约束
         BookImageStorageProviders.register(JvmBookImageStorage())
+        // 5c. Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
+        //     ImageLoader lazy 构建, 运行时依赖 OkHttpClientProviders (第2步已注册)
+        registerJvmBookImageLoader()
         // 6. EpubFile 相关 (依赖 AppDbProviders, 已同步注册)
         registerDesktopFileBookAccessor()
         // 7. SourceHelp (独立, 供 shared SourceHelp.saveSource/deleteBookSource 调用)
@@ -264,7 +272,7 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopServiceLauncher()
         // 8b. Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider)
         // - WebServerPlatform: HttpServer+WebSocketServer 起停 (JvmWebServerPlatform 共用逻辑)
-        // - WebAssetSource: ClassLoader 读 shared/jvmMain/resources/web/ 静态资源
+        // - WebAssetSource: composeResources 读 commonMain/composeResources/files/web/ 静态资源 (单一数据源)
         // - WebStrings: 硬编码中文文案 (后续接入 i18n 资源后替换)
         // 须在任何 WebServerManager.start()/stop() 之前注册 (MyScreen Web 服务开关触发时)
         registerDesktopWebServerPlatform()
@@ -274,8 +282,17 @@ private suspend fun registerSecondaryProviders() {
         DesktopCacheBook.registerCallback()
         // 10. Source 扩展 provider (依赖 PreferenceProviders, in-memory 实现)
         registerDesktopSourceProviders()
+        // 10b. 正则替换错误处理 + 压缩文件解压 provider (供 shared RegexReplacerImpl / JsExtensionsCommon 调用,
+        //      必须在 WebBook 编排层 + JS 引擎首次 eval 之前注册, Toasters / AppFilesDirs 已就绪)
+        registerDesktopRegexErrorHandler()
+        registerDesktopArchiveProvider()
         // 11. WebBook 编排层 (依赖 AppDbProviders.replaceRuleDao 已就绪)
         registerDesktopWebBookProviders()
+        // 11b. JS 扩展回调 provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon 回调,
+        //      必须在 JS 引擎首次 eval 之前注册)
+        registerDesktopToastProvider()
+        registerDesktopOpenUrlProvider()
+        registerDesktopUserAgentProvider()
         // 12. JS 引擎 (native 库在首次 eval 时加载, 注册本身不耗时)
         registerDesktopJsEngines()
         // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
@@ -288,25 +305,19 @@ private suspend fun registerSecondaryProviders() {
         // adjustSortNumber: 调整书源排序序号 (依赖 AppDbProviders, 已注册)
         // 异常由 Coroutine 内部 printOnDebug 吞没, 与 app 端语义一致
         Coroutine.async { SourceHelp.adjustSortNumber() }
-        // downloadAllBookProgress: 同步云端阅读进度 (条件: syncBookProgress)
-        // 每日清理任务由 DesktopMainViewModel.postLoad 实现, 此处不重复
         // LogUtils.init 为 Android 专属, desktop 用 registerDesktopAppLogHost 替代
         // 注: app 端 App.kt:144 DefaultData.upVersion() 未补齐 — DefaultData object 在 app 模块,
         // 依赖 LocalConfig (SharedPreferences) + AppConst.appInfo (PackageManager), 均 Android 专属,
-        // desktop 无对应下沉实现; 首次启动默认数据导入由 DesktopMainViewModel.postLoad 处理。
+        // desktop 无对应下沉实现; 首次启动默认数据导入由下方 DesktopStartupTasks.run 处理。
         // 注: app 端 App.kt:171 BookCover.toString() 未补齐 — BookCover object 依赖 Android
         // Glide/Bitmap/Drawable/appCtx, desktop 用独立的 DesktopBookCover (JDK ImageIO + OkHttp),
         // 无对应下沉的封面缓存初始化逻辑。
-        Coroutine.async {
-            if (AppConfigProviders.get().syncBookProgress) {
-                AppWebDavShared.downloadAllBookProgress()
-            }
-        }
 
-        // 16. 触发 DesktopMainViewModel.postLoad (对照 app 端 MainActivity.onPostCreate viewModel.postLoad)
-        // 注: DesktopMainViewModel 由 BookshelfScreen remember 持有, 此处用临时实例仅触发一次性启动任务
-        // (postLoad 内的 scope.launch 是 SupervisorJob, 与 BookshelfScreen 的 VM 实例独立)
-        DesktopMainViewModel().postLoad()
+        // 16. 启动期默认数据加载 + 缓存清理 + WebDav 进度同步
+        // (对照 app 端 MainActivity.onPostCreate viewModel.postLoad + App.kt onCreate Coroutine.async 块)
+        // app 生命周期 scope, 退出时由 JVM 回收; 不创建临时 DesktopMainViewModel 避免其内部 scope 泄漏
+        val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        DesktopStartupTasks.run(startupScope)
 
         // 冒烟测试: 仅在 debug 模式执行 (生产环境不执行, 避免启动期阻塞)
         // 开启方式: java -Dlegado.desktop.smokeTest=true -jar ... 或在 build.gradle.kts jvmArgs 添加
@@ -362,7 +373,7 @@ private fun testDesktopJsEngine() {
         debugLog("=== KP1.1 Desktop JS Engine Test FAILED ===")
         e.printStackTrace()
         debugLog("================================================")
-        debugLog("提示: 若错误为 UnsatisfiedLinkError, 请先执行:")
+        debugLog(jvmGetString("desktop_smoke_test_js_hint"))
         debugLog("  ./gradlew :modules:quickjs:buildJvmNativeLib")
         debugLog("================================================")
     }
@@ -422,7 +433,7 @@ private fun testDesktopDatabase() {
         // 跑 suspend DAO 冒烟 (runBlocking 触发 lazy + 执行查询)
         kotlinx.coroutines.runBlocking {
             val count = appDb.bookSourceDao.allCount()
-            debugLog("bookSourceDao.allCount() = $count (空表期望 0)")
+            debugLog(jvmGetString("desktop_smoke_test_db_count", count))
         }
         debugLog("=====================================================================")
     } catch (e: Exception) {
@@ -488,7 +499,7 @@ private fun initDesktopRuntimeEnvironment() {
         System.setProperty("legado.portable.root", dataDir.absolutePath)
         debugLog("[legado-desktop] portable mode ON (InstallType=portable), dataDir = ${dataDir.absolutePath}")
     } else {
-        debugLog("[legado-desktop] install mode = ${InstallType.TYPE} (portable.root not set, 下游走 ~/.legado)")
+        debugLog(jvmGetString("desktop_install_mode_not_portable", InstallType.TYPE))
     }
 
     // 2. native 库加载: 从 resourcesDir 找平台对应 native 库

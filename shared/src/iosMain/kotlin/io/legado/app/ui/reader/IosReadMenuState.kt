@@ -15,6 +15,7 @@ import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.ui.book.read.ReadMenuState
 import io.legado.app.ui.book.read.SourceAction
 import io.legado.app.ui.book.read.TopMenuState
+import io.legado.app.ui.compose.platform.sharedStringTable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,7 +41,7 @@ import kotlinx.coroutines.launch
  *   调 [upBookView] 同步顶栏标题 + 底栏进度 + 上一/下一章可用性
  * - **回调桥接**:
  *   - [supportFinishAfterTransition] → [onBack] 回书架
- *   - [clickCatalog] → [openCatalog] 打开 ModalNavigationDrawer 目录侧栏
+ *   - [clickCatalog] → [openCatalog] 打开 ModalDrawer 目录侧栏
  *   - [clickPre] / [clickNext] → viewModel 切章
  *   - [clickReadAloud] / [longClickReadAloud] → [showReadAloudDialog] 弹朗读控制 Dialog
  *   - [clickAutoPage] → 用 [autoPageScope] 启动/取消定时翻页 job (间隔取 [readBookConfig] 的 autoReadSpeed, 与桌面端对齐)
@@ -241,7 +242,7 @@ class IosReadMenuState(
             SourceAction.DISABLE_SOURCE -> {
                 // 禁用当前书源 + Toast 确认 + 退出阅读 (对照 app 端 ReadBookActivity.disableSource)
                 viewModel.disableSource()
-                Toasters.get().toast("已禁用书源")
+                Toasters.get().toast(sharedStringTable["book_source_disabled"]!!)
                 onBack()
             }
             // 书源登录: 弹 SourceLoginDialog (shared/sharedUiMain 已下沉)
@@ -366,7 +367,7 @@ class IosReadMenuState(
     }
 
     override fun clickCatalog() {
-        // 打开目录侧栏 (与 app 端 openChapterList 对应, iOS 端用 ModalNavigationDrawer 实现)
+        // 打开目录侧栏 (与 app 端 openChapterList 对应, iOS 端用 ModalDrawer 实现)
         openCatalog()
     }
 

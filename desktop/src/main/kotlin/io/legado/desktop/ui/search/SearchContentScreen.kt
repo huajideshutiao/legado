@@ -23,6 +23,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.ChineseUtils
 import kotlinx.coroutines.Dispatchers
@@ -197,7 +198,7 @@ private fun SearchContentContent(
                         }
                     }
                 }.onFailure {
-                    AppLog.put("书内搜索失败\n${it.localizedMessage}", it)
+                    AppLog.put(jvmGetString("search_content_failed") + "\n" + it.localizedMessage, it)
                 }
                 searching = false
                 searchJob = null

@@ -5,35 +5,23 @@ import android.content.Context
 /**
  * [WebAssetSource] 的 Android actual 实现。
  *
- * 用 Android [Context.assets] 读 `app/src/main/assets/web/` 下的静态资源,
- * 对齐原 app 端 [AssetsWeb] 用 `appCtx.assets.open(path)` 的行为。
- * 返回 ByteArray (原 InputStream, 下沉 commonMain 后接口统一)。
+ * 直接用 [android.content.res.AssetManager] 读 `assets/composeResources/files/web/` 下的资源
+ * (Compose Multiplatform 插件自动把 `commonMain/composeResources/` 打包到 Android assets/composeResources/)。
+ * 与 iOS/鸿蒙 NativeWebAssetSource / 桌面 ClasspathWebAssetSource 行为一致 (单一数据源)。
  *
- * # 单一数据源说明
- * 资源本体存 `shared/src/jvmMain/resources/web/` (jvmMain resources 经 shared jar 暴露);
- * app 端 `src/main/assets/web/` 为 Android AssetManager 兼容副本 (KMP commonMain resources
- * 不自动路由到 Android assets, 详见 AssetsWeb.kt 注释)。Android 端读 assets 副本,
- * 桌面端读 classpath, iOS/鸿蒙端读 composeResources, 资源内容保持一致。
- *
- * @param context 任意 Context (推荐 appCtx), 用于 assets
- *
- * 模式参考 `registerAndroidServiceLauncher`。
+ * Context 通过 [registerAndroidWebAssetSource] 注入 (shared androidMain 不依赖 splitties)。
  */
-class AndroidWebAssetSource(
-    private val context: Context,
-) : WebAssetSource {
+class AndroidWebAssetSource(private val context: Context) : WebAssetSource {
 
     override suspend fun read(path: String): ByteArray =
-        context.assets.open(path).use { it.readBytes() }
+        context.assets.open("composeResources/files/$path").use { it.readBytes() }
 }
 
 /**
  * 安卓宿主启动早期注册 [WebAssetSource] 的 actual 实现。
  *
- * @param context 任意 Context (推荐 appCtx), 用于 assets
- *
- * 模式参考 `registerAndroidServiceLauncher`。
+ * @param ctx 任意 Context (推荐传 `appCtx`), 内部只用其 applicationContext
  */
-fun registerAndroidWebAssetSource(context: Context) {
-    WebAssetSources.register(AndroidWebAssetSource(context.applicationContext))
+fun registerAndroidWebAssetSource(ctx: Context) {
+    WebAssetSources.register(AndroidWebAssetSource(ctx.applicationContext))
 }

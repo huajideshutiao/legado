@@ -2,7 +2,6 @@ package io.legado.desktop.ui.book.import.local
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -15,6 +14,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
@@ -33,6 +33,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
@@ -292,7 +293,7 @@ private fun ImportBookContent(onBack: () -> Unit) {
             val chosen = withContext(Dispatchers.IO) {
                 FileDialogs.pickDirectory(title = selectImportBookDirLabel)
             } ?: run {
-                AppLog.put("导入本地书籍: 用户取消选择目录")
+                AppLog.put(jvmGetString("import_local_book_user_cancelled"))
                 return@launch
             }
             initRoot(chosen)
@@ -386,7 +387,7 @@ private fun ImportBookContent(onBack: () -> Unit) {
                                             book.totalChapterNum = chapters.size
                                         }
                                     }.onFailure {
-                                        AppLog.put("Epub 导入解析失败: ${fileName}\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("epub_import_parse_failed_log", fileName, it.localizedMessage), it)
                                     }
                                 }
                                 // cbz/zip 漫画: 调用 CbzFile 解析封面 + ComicInfo.xml 元数据 + 章节列表
@@ -401,7 +402,7 @@ private fun ImportBookContent(onBack: () -> Unit) {
                                             book.totalChapterNum = chapters.size
                                         }
                                     }.onFailure {
-                                        AppLog.put("Cbz 导入解析失败: ${fileName}\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("cbz_import_parse_failed_log", fileName, it.localizedMessage), it)
                                     }
                                 }
                                 dao.insert(book)
@@ -459,10 +460,10 @@ private fun ImportBookContent(onBack: () -> Unit) {
             onDismissRequest = { showImportFileNameDialog = false },
             title = { Text(filenameImportJsTitleLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importFileNameJsText,
                     onValueChange = { importFileNameJsText = it },
-                    label = { Text(filenameImportJsSummaryLabel) },
+                    label = filenameImportJsSummaryLabel,
                 )
             },
             confirmButton = {
@@ -471,7 +472,7 @@ private fun ImportBookContent(onBack: () -> Unit) {
                     showImportFileNameDialog = false
                     // TODO: app 端写 AppConfig.bookImportFileName, 桌面端 AppConfig 是 Android 扩展,
                     //  暂不持久化; 后续接入桌面端 PreferenceStore 后补全
-                    AppLog.put("文件名导入 js 已输入 (桌面端暂不持久化): ${js.take(50)}")
+                    AppLog.put(jvmGetString("filename_import_js_input_log", js.take(50)))
                 }) { Text(okLabel) }
             },
             dismissButton = {

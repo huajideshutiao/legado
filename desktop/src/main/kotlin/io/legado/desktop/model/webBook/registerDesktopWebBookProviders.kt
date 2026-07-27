@@ -15,7 +15,7 @@ import io.legado.app.help.book.DefaultContentProcessorDeps
 import io.legado.app.model.webBook.BookInfoRefresher
 import io.legado.app.model.webBook.BookInfoRefreshers
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.RegexReplacer
+import io.legado.app.utils.RegexReplacerImpl
 import io.legado.app.utils.RegexReplacers
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - [BookInfoRefreshers]: 桥接 [WebBook.getBookInfoAwait] (已下沉 shared commonMain, 可直接调用)
  * - [IntentDataProviders]: 桥接 shared [IntentData] 单例 (跨调用临时数据容器)
  * - [ContentProcessorProviders]: 复用 commonMain 的 [ContentProcessorShared] (替换规则 / 简繁 / 段落重排 / 去重标题)
- * - [RegexReplacers]: 简化为非 @js: 路径直接 [CharSequence.replace] (无超时检测)
+ * - [RegexReplacers]: 复用 shared jvmAndAndroidMain 的 [RegexReplacerImpl] (超时检测 + @js: 求值)
  *
  * 已注册项 (Main.kt 中已注册): AppDbProviders / AppConfigProviders / BookHelpProviders /
  * SourceHelpAccessors / ThemeConfigProviders / AppDatabaseProviders / OkHttpClientProviders。
@@ -39,7 +39,9 @@ fun registerDesktopWebBookProviders() {
     BookInfoRefreshers.register(DesktopBookInfoRefresher)
     IntentDataProviders.register(DesktopIntentDataAccessor)
     ContentProcessorProviders.register(DesktopContentProcessorAccessor)
-    RegexReplacers.register(DesktopRegexReplacer)
+    // 与 app 端一致直接注册 shared 实现: 桌面端已注册 QuickJs 引擎与 RegexErrorHandler,
+    // 超时检测与 @js: 替换规则均可用
+    RegexReplacers.register(RegexReplacerImpl)
 }
 
 /**
@@ -152,36 +154,5 @@ private object DesktopContentProcessorAccessor : ContentProcessorAccessor {
         processorCache.values.forEach {
             runBlocking { it.upReplaceRules() }
         }
-    }
-}
-
-/**
- * 桌面端 [RegexReplacer] 实现: 简化为非 @js: 路径直接 [CharSequence.replace]。
- *
- * app 端带超时检测的复杂实现已下沉 shared jvmAndAndroidMain 的 `RegexReplacerImpl`
- * (依赖 Coroutine.async / JsEngines / JsBindings / Matcher / runBlockingInScope,
- * Android 专属 longToastOnUi/CrashHandler/appCtx.restart 经 RegexErrorHandler 注入)。
- * 桌面端未注册 RegexErrorHandler, 若直接复用 `RegexReplacerImpl` 超时分支会静默跳过
- * toast/restart (行为可接受), 但桌面端 JS 引擎未注册, @js: 路径会抛异常, 故仍用本简化实现:
- *
- * - 非 @js: replacement: 直接 `source.replace(regex, replacement)` (Kotlin 标准库, 无超时检测)
- * - @js: replacement: 不支持, 直接返回原 source (桌面端 JS 替换规则场景较少, 影响可控)
- *
- * 未注册时 RegexReplacers.get() 抛 IllegalStateException, 任何 webBook 编排层调
- * `BookDisplayExtensionsShared.getDisplayTitle` 都会失败被 runCatching 吞掉。
- *
- * 注册时机: desktop main 入口, 由 [registerDesktopWebBookProviders] 完成。
- */
-private object DesktopRegexReplacer : RegexReplacer {
-    override fun replace(
-        source: CharSequence,
-        regex: Regex,
-        replacement: String,
-        timeout: Long,
-    ): String {
-        // @js: 替换规则不支持, 直接返回原 source (与 app 端未启用 JS 引擎时行为近似)
-        if (replacement.startsWith("@js:")) return source.toString()
-        // 非 @js: 走 Kotlin 标准库 replace, 无超时检测 (桌面端可接受)
-        return source.toString().replace(regex, replacement)
     }
 }

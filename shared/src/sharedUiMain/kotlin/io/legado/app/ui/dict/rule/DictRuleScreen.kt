@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,8 +37,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 字典规则管理 Screen (KMP 版, sharedUiMain 共享)。
@@ -236,33 +236,37 @@ private fun DictRuleActions(actions: DictRuleUiActions) {
     }
     OverflowMenu { dismiss ->
         DropdownMenuItem(
-            text = { Text(rememberString("import_local"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportLocal()
             },
-        )
+        ) {
+            Text(rememberString("import_local"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_on_line"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportOnline()
             },
-        )
+        ) {
+            Text(rememberString("import_on_line"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_default_rule"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportDefault()
             },
-        )
+        ) {
+            Text(rememberString("import_default_rule"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("help"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onHelp()
             },
-        )
+        ) {
+            Text(rememberString("help"), color = colors.primaryText)
+        }
     }
 }
 
@@ -271,7 +275,7 @@ private fun DictRuleActions(actions: DictRuleUiActions) {
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun ReorderableCollectionItemScope.DictRuleItem(
+private fun RuleItemScope.DictRuleItem(
     item: DictRule,
     checked: Boolean,
     actions: DictRuleUiActions,
@@ -322,12 +326,13 @@ private fun ReorderableCollectionItemScope.DictRuleItem(
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text(rememberString("delete"), color = colors.primaryText) },
                     onClick = {
                         showMenu = false
                         onDelete()
                     },
-                )
+                ) {
+                    Text(rememberString("delete"), color = colors.primaryText)
+                }
             }
         }
     }

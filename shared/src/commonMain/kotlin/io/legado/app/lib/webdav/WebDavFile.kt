@@ -4,7 +4,7 @@ package io.legado.app.lib.webdav
  * WebDav 文件元数据 expect 声明。
  *
  * - jvmAndAndroidMain actual: 纯 Kotlin 原实现 (继承 [WebDav]), 行为零变化
- * - iosMain/ohosMain actual: stub, 抛 [UnsupportedOperationException], 待 Ktor 接入后补完整
+ * - nativeMain actual (iosMain/ohosMain 共用): 纯 Kotlin 实现 (继承 [WebDav] nativeMain actual)
  *
  * **KMP 化说明**: 继承 [WebDav] (expect class), 故本身也需 expect/actual。
  * 实现体无 JVM 专属 API, actual 仅原样加 `actual` 修饰。

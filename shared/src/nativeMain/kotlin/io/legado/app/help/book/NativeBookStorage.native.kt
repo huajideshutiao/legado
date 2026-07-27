@@ -143,6 +143,15 @@ class NativeBookStorage(
         }
     }
 
+    override fun clearInvalidBookFolders(
+        validFolderNames: Set<String>,
+        imageSubFolderName: String,
+        maxSize: Long
+    ) {
+        // Native 端暂仅做超量淘汰 (复用 clearInvalidCache), 删除不在书架文件夹逻辑待后续实现
+        clearInvalidCache(maxSize)
+    }
+
     /**
      * 解析章节缓存文件路径: `{rootPath}/{bookFolderName}/{chapterFileName}`。
      */

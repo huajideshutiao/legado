@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,10 +20,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -167,6 +168,10 @@ interface ReadRecordUiActions {
  * 注: 顶部统计卡 / 热力图卡 / 日期分段 / 记录行 渲染逻辑与 app 端原 Activity 完全一致,
  * 仅将平台依赖替换为 state + actions + slot; 宽高/边距/字号/圆角/颜色全部保持原值。
  *
+ * 顶部统计卡与热力图卡布局基于可用宽度自适应 (BoxWithConstraints), 不做平台判断:
+ * 宽度 >= [SUMMARY_HEATMAP_ROW_MIN_WIDTH] (1000dp) 时同行排列 (各占一半),
+ * 否则纵向堆叠; 手机/平板竖屏堆叠、桌面宽屏同行。
+ *
  * @param state       展示状态
  * @param actions     交互回调
  * @param modifier    外部 modifier
@@ -255,14 +260,13 @@ private fun TitleActions(state: ReadRecordUiState, actions: ReadRecordUiActions)
             )
         }
         DropdownMenuItem(
-            text = {
-                Text(rememberString("delete_all"), color = AppTheme.colors.primaryText)
-            },
             onClick = {
                 dismiss()
                 actions.onClearAll()
             },
-        )
+        ) {
+            Text(rememberString("delete_all"), color = AppTheme.colors.primaryText)
+        }
     }
 }
 
@@ -292,6 +296,14 @@ private fun SortItem(
 }
 
 // ---- 列表 (header 统计卡/热力图卡 + 记录行 + 日期分段) ----
+
+/**
+ * 顶部统计卡与热力图卡同行排列的最小可用宽度阈值 (基于 BoxWithConstraints.maxWidth)。
+ *
+ * 不做平台判断, 仅按宽度自适应: 手机/平板竖屏 (<1000dp, 约束下纵向堆叠) / 桌面宽屏
+ * (>=1000dp, 同行各占一半)。1000dp 下两卡各 500dp, 统计卡 2 列与热力图 7 列网格均可正常显示。
+ */
+private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 1000.dp
 
 /**
  * 列表: 头部统计卡 + 热力图卡 + 记录行 (perDayMode 时按天分段)。
@@ -325,8 +337,28 @@ private fun RecordList(
         modifier = Modifier.fillMaxSize(),
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),
     ) {
-        item(key = "summary") { SummaryCard(state) }
-        item(key = "heatmap") { HeatMapCard(state, actions, heatmapSlot) }
+        // 顶部统计卡与热力图卡: 基于可用宽度自适应, 不做平台判断
+        // (>=1000dp 同行各占一半, <1000dp 纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
+        //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
+        item(key = "header") {
+            BoxWithConstraints {
+                if (maxWidth >= SUMMARY_HEATMAP_ROW_MIN_WIDTH) {
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) {
+                            SummaryCard(state)
+                        }
+                        Box(Modifier.weight(1f).padding(top = 12.dp)) {
+                            HeatMapCard(state, actions, heatmapSlot)
+                        }
+                    }
+                } else {
+                    Column {
+                        SummaryCard(state)
+                        HeatMapCard(state, actions, heatmapSlot)
+                    }
+                }
+            }
+        }
         if (showSections) {
             // 按时间排序且未筛选某日: 每本书每天一行, 天与天之间插日期分段条
             var lastDay = -1

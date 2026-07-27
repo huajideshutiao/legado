@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -214,8 +214,7 @@ private fun BookmarkItem(
 
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }

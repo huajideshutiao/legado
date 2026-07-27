@@ -8,10 +8,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,7 +76,7 @@ fun AppAutoCompleteField(
             ) {
                 Surface(
                     color = colors.fillet,
-                    shadowElevation = 4.dp,
+                    elevation = 4.dp,
                     modifier = Modifier.fillMaxWidth(0.9f),
                 ) {
                     LazyColumn(Modifier.heightIn(max = 200.dp)) {

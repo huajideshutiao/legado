@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +32,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.utils.toastOnUi
 
 /** 朗读控制：章节/段落切换、定时、语速、目录/菜单/后台/设置 */
@@ -81,19 +81,19 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
                         .padding(horizontal = 12.dp, vertical = 12.dp),
                 )
                 Spacer(Modifier.weight(1f))
-                AloudIcon(R.drawable.ic_skip_previous, stringResource(R.string.prev_sentence), colors) {
+                AloudIcon("ic_skip_previous", stringResource(R.string.prev_sentence), colors) {
                     ReadAloud.prevParagraph(context)
                 }
                 AloudIcon(
-                    if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
+                    if (paused) "ic_play_24dp" else "ic_pause_24dp",
                     stringResource(if (paused) R.string.audio_play else R.string.pause),
                     colors,
                 ) { callBack?.onClickReadAloud() }
-                AloudIcon(R.drawable.ic_stop_black_24dp, stringResource(R.string.stop), colors) {
+                AloudIcon("ic_stop_black_24dp", stringResource(R.string.stop), colors) {
                     ReadAloud.stop(context)
                     dismissAllowingStateLoss()
                 }
-                AloudIcon(R.drawable.ic_skip_next, stringResource(R.string.next_sentence), colors) {
+                AloudIcon("ic_skip_next", stringResource(R.string.next_sentence), colors) {
                     ReadAloud.nextParagraph(context)
                 }
                 Spacer(Modifier.weight(1f))
@@ -110,7 +110,7 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
                 Modifier.fillMaxWidth().padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AloudIcon(R.drawable.ic_time_add_24dp, stringResource(R.string.set_timer), colors) {
+                AloudIcon("ic_time_add_24dp", stringResource(R.string.set_timer), colors) {
                     AppConfig.ttsTimer = timer
                     toastOnUi("保存设定时间成功！")
                 }
@@ -162,7 +162,7 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AloudIcon(
-                    R.drawable.ic_reduce, stringResource(R.string.tts_speech_reduce), colors,
+                    "ic_reduce", stringResource(R.string.tts_speech_reduce), colors,
                     enabled = !followSys,
                 ) {
                     speechRate = (speechRate - 1).coerceIn(0, 45)
@@ -181,7 +181,7 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
                     modifier = Modifier.weight(1f),
                 )
                 AloudIcon(
-                    R.drawable.ic_add, stringResource(R.string.tts_speech_add), colors,
+                    "ic_add", stringResource(R.string.tts_speech_add), colors,
                     enabled = !followSys,
                 ) {
                     speechRate = (speechRate + 1).coerceIn(0, 45)
@@ -194,19 +194,19 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                ReadMenuIconButton(R.drawable.ic_toc, stringResource(R.string.chapter_list), colors.text) {
+                ReadMenuIconButton("ic_toc", stringResource(R.string.chapter_list), colors.text) {
                     callBack?.openChapterList()
                 }
-                ReadMenuIconButton(R.drawable.ic_menu, stringResource(R.string.main_menu), colors.text) {
+                ReadMenuIconButton("ic_menu", stringResource(R.string.main_menu), colors.text) {
                     callBack?.showMenuBar()
                     dismissAllowingStateLoss()
                 }
                 ReadMenuIconButton(
-                    R.drawable.ic_visibility_off,
+                    "ic_visibility_off",
                     stringResource(R.string.to_backstage),
                     colors.text,
                 ) { callBack?.finish() }
-                ReadMenuIconButton(R.drawable.ic_settings, stringResource(R.string.setting), colors.text) {
+                ReadMenuIconButton("ic_settings", stringResource(R.string.setting), colors.text) {
                     ReadAloudConfigDialog().show(childFragmentManager, "readAloudConfigDialog")
                 }
             }
@@ -215,14 +215,14 @@ class ReadAloudDialog : BaseReadBottomComposeDialog() {
 
     @Composable
     private fun AloudIcon(
-        iconRes: Int,
+        iconKey: String,
         description: String,
         colors: ReadMenuColors,
         enabled: Boolean = true,
         onClick: () -> Unit,
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            painter = rememberPainter(iconKey),
             contentDescription = description,
             tint = if (enabled) colors.text else colors.secondaryText,
             modifier = Modifier

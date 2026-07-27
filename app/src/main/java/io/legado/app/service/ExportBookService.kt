@@ -17,7 +17,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.glide.ImageLoader
+import coil3.toBitmap
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getDisplayTitle
@@ -506,11 +506,21 @@ class ExportBookService : BaseService() {
 
     private fun setCover(book: Book, epubBook: EpubBook) {
         kotlin.runCatching {
-            val file = ImageLoader.with(this)
-                .asFile()
-                .load(book.getDisplayCover())
-                .submit()
-                .get()
+            // 先查 Coil3 磁盘缓存文件; 没有则 execute 下载到 Bitmap 写临时文件
+            val loader = coil3.SingletonImageLoader.get(this)
+            val coverUrl = book.getDisplayCover() ?: return
+            val cacheFile = loader.diskCache?.openSnapshot(coverUrl)?.use { it.data.toFile() }
+            val file = cacheFile ?: run {
+                val req = coil3.request.ImageRequest.Builder(this)
+                    .data(coverUrl).build()
+                val result = kotlinx.coroutines.runBlocking { loader.execute(req) }
+                val bmp = (result as? coil3.request.SuccessResult)?.image?.toBitmap()
+                    ?: error("cover decode failed")
+                java.io.File.createTempFile("epub_cover", ".jpg").apply {
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, outputStream())
+                    deleteOnExit()
+                }
+            }
             val provider = object : LazyResourceProvider {
                 override fun getResourceStream(href: String?) = file.inputStream()
             }

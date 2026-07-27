@@ -34,6 +34,17 @@ object FileDialogs {
     fun pickDirectory(title: String? = null): File? =
         showFileDialog(title, FileDialog.LOAD, fileMode = true)
 
+    // 选图片并读取字节，返回 (bytes, fileName) 供调用方做扩展名判断（如 .9.png），取消返回 null
+    fun pickImageFile(): Pair<ByteArray, String>? {
+        val file = showFileDialog(
+            title = null,
+            mode = FileDialog.LOAD,
+            fileMode = false,
+            extensions = listOf("jpg", "jpeg", "png", "webp", "bmp", "gif"),
+        ) ?: return null
+        return file.readBytes() to file.name
+    }
+
     private fun showFileDialog(
         title: String?,
         mode: Int,

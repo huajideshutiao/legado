@@ -11,7 +11,7 @@ package io.legado.app.utils
  *
  * app 端 [CharSequence.replace] 扩展改为薄壳委托 [RegexReplacerImpl.replace];
  * WebBookProvidersImpl 的 RegexReplacer 实现亦经扩展调用本 impl。
- * 桌面端注册简化版 DesktopRegexReplacer (不走 JS/超时, 见 registerDesktopWebBookProviders)。
+ * 桌面端直接注册 [RegexReplacerImpl] (已注册 QuickJs 引擎与 RegexErrorHandler)。
  *
  * 模式参考 AppDbProviders / SourceDebugLoggers / AppConfigProviders。
  */
@@ -41,7 +41,7 @@ interface RegexReplacer {
  *
  * Android 端经 [io.legado.app.model.webBook.registerAndroidWebBookProviders]
  * 注册 WebBookProvidersImpl (其 replace 委托 [RegexReplacerImpl]);
- * 桌面端注册 DesktopRegexReplacer (简化版, 不走 JS/超时)。
+ * 桌面端直接注册 [RegexReplacerImpl]。
  */
 object RegexReplacers {
     @Volatile

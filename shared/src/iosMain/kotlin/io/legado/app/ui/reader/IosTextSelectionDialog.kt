@@ -49,36 +49,38 @@ import io.legado.app.ui.compose.theme.AppTheme
  *
  * - 复制 / 全选: 由 ComposeTextToolbar 自动提供 (用户拖选文字后弹出)
  * - 复制全部 / 复制章节标题: 标题栏 OverflowMenu (用 [copyToClipboard] 写入 UIPasteboard)
+ * - 查词: 底部按钮 (读 [readFromClipboard] 取关键字, 调 [onDict] 回调弹出 IosDictDialog, 对照桌面端)
  * - 浏览器搜索 / 翻译: 底部按钮 (读 [readFromClipboard] 取关键字, 调 [openURL] 打开系统浏览器)
  * - 关闭: 底部按钮
  *
  * # 与桌面端差异
  *
- * - 无查词按钮 (iOS 端 DictDialog 未下沉);
  * - 剪贴板用 [copyToClipboard] / [readFromClipboard] (对照桌面端 AWT Toolkit.systemClipboard);
  * - 浏览器打开用 [openURL] (对照桌面端 Desktop.browse)。
  *
  * @param chapterName 章节名 (标题 + 复制章节标题用)
  * @param content 章节正文 (整章文字, 用户可拖选)
  * @param onDismiss 关闭回调
+ * @param onDict 查词回调 (读剪贴板内容为关键字后触发, 由调用方弹出 IosDictDialog;
+ *   默认空实现不影响现有调用, 避免本文件直接依赖 IosDictDialog 造成耦合)
  */
 @Composable
 fun IosTextSelectionDialog(
     chapterName: String,
     content: String,
     onDismiss: () -> Unit,
+    onDict: (String) -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    // i18n: 复用已注册 key; 浏览器搜索 / 翻译 / 复制章节标题 / 文字操作 / 请先选中并复制文字 用硬编码中文字面量
-    // (与桌面端 TextSelectionDialog 处理方式一致: 无 R.string 等价物的 key 用硬编码)
     val cancelText = rememberString("cancel")
     val copyAllText = rememberString("content_edit_copy_all")
     val copySuccessText = rememberString("content_edit_copy_success")
-    val copyChapterTitleText = "复制章节标题"
-    val browserSearchText = "浏览器搜索"
-    val translateText = "翻译"
-    val titleText = "文字操作"
-    val noSelectionHintText = "请先选中并复制文字"
+    val copyChapterTitleText = rememberString("copy_chapter_title")
+    val dictText = rememberString("lookup_word")
+    val browserSearchText = rememberString("browser_search")
+    val translateText = rememberString("translate")
+    val titleText = rememberString("text_action")
+    val noSelectionHintText = rememberString("select_and_copy_first_hint")
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -135,6 +137,16 @@ fun IosTextSelectionDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 查词: 读剪贴板取词 → 空则 toast 提示, 非空则触发 onDict 回调 (由调用方弹 IosDictDialog)
+                    // 对照桌面端 TextSelectionDialog 查词按钮 (回调解耦, 避免本文件直接依赖 IosDictDialog)
+                    AppTextButton(text = dictText, onClick = {
+                        val query = readFromClipboard()?.takeIf { it.isNotBlank() }
+                        if (query == null) {
+                            Toasters.get().toast(noSelectionHintText)
+                        } else {
+                            onDict(query)
+                        }
+                    })
                     AppTextButton(text = browserSearchText, onClick = {
                         openInBrowser(
                             urlPrefix = "https://www.bing.com/search?q=",

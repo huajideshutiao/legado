@@ -9,6 +9,15 @@
     { "name": "bookshelf_empty", "value": "书架暂无书籍" },
     { "name": "reader_prev", "value": "上一页" },
     { "name": "reader_next", "value": "下一页" },
-    { "name": "reader_back", "value": "返回书架" }
+    { "name": "reader_back", "value": "返回书架" },
+    { "name": "reader_toc", "value": "目录" },
+    { "name": "reader_settings", "value": "设置" },
+    { "name": "reader_read_aloud", "value": "朗读" },
+    { "name": "reader_chapter_list_title", "value": "章节目录" },
+    { "name": "reader_chapter_empty", "value": "暂无章节" },
+    { "name": "discover_title", "value": "发现" },
+    { "name": "discover_empty", "value": "暂无发现源" },
+    { "name": "manga_loading_images", "value": "加载中..." },
+    { "name": "manga_chapter_images_empty", "value": "本章无图片" }
   ]
 }

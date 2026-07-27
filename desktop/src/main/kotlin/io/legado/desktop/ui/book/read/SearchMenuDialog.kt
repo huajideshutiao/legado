@@ -76,13 +76,12 @@ internal class DesktopSearchMenuState(
     /** 更新搜索信息文本 (对照 app 端 SearchMenu.updateSearchInfo) */
     fun updateSearchInfo(chapterTitle: String?) {
         // 格式与 app 端一致: "${search_content_size}: N / 当前章节: title"
-        // "当前章节" 在 app 端为硬编码中文, 这里保留硬编码以不改变实现逻辑
         searchInfo = buildString {
             append(jvmGetString("search_content_size"))
             append(": ")
             append(searchResults.size)
             if (!chapterTitle.isNullOrBlank()) {
-                append(" / 当前章节: ")
+                append(jvmGetString("current_chapter_prefix"))
                 append(chapterTitle)
             }
         }

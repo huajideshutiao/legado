@@ -96,6 +96,14 @@ interface BookHelpAccessor {
      * @return 封面 JPEG 文件绝对路径
      */
     fun getCoverPath(bookUrl: String): String
+
+    /**
+     * 清理平台专属临时文件 (对应 app 端 `BookHelp.clearInvalidCache` 末段)。
+     *
+     * app 端 override 清理 `ArchiveUtils.TEMP_PATH` + `filesDir/share*.json` + `books.json`;
+     * 其他端无此类临时文件, 默认 no-op (与 [saveImages] 默认 no-op 模式一致)。
+     */
+    suspend fun clearCacheExtra()
 }
 
 /**

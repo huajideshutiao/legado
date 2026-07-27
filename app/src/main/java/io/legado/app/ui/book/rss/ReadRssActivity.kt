@@ -33,7 +33,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -59,6 +58,7 @@ import io.legado.app.ui.browser.WebViewUtil
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.anima.RefreshProgressBar
@@ -180,7 +180,7 @@ class ReadRssActivity : BaseComposeActivity() {
         val colors = AppTheme.colors
         IconButton(onClick = { viewModel.refresh { webView.reload() } }) {
             Icon(
-                painter = painterResource(R.drawable.ic_refresh_black_24dp),
+                painter = rememberPainter("ic_refresh_black_24dp"),
                 contentDescription = stringResource(R.string.refresh),
                 tint = colors.primaryText,
             )
@@ -188,8 +188,8 @@ class ReadRssActivity : BaseComposeActivity() {
         if (starVisible) {
             IconButton(onClick = { toggleStar() }) {
                 Icon(
-                    painter = painterResource(
-                        if (inShelf) R.drawable.ic_star else R.drawable.ic_star_border
+                    painter = rememberPainter(
+                        if (inShelf) "ic_star" else "ic_star_border"
                     ),
                     contentDescription = stringResource(
                         if (inShelf) R.string.in_favorites else R.string.out_favorites
@@ -200,15 +200,15 @@ class ReadRssActivity : BaseComposeActivity() {
         }
         IconButton(onClick = { shareUrl() }) {
             Icon(
-                painter = painterResource(R.drawable.ic_share),
+                painter = rememberPainter("ic_share"),
                 contentDescription = stringResource(R.string.share),
                 tint = colors.primaryText,
             )
         }
         IconButton(onClick = { readAloud() }) {
             Icon(
-                painter = painterResource(
-                    if (ttsPlaying) R.drawable.ic_stop_black_24dp else R.drawable.ic_volume_up
+                painter = rememberPainter(
+                    if (ttsPlaying) "ic_stop_black_24dp" else "ic_volume_up"
                 ),
                 contentDescription = stringResource(
                     if (ttsPlaying) R.string.aloud_stop else R.string.read_aloud

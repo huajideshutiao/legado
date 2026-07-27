@@ -14,18 +14,16 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.withStyledAttributes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
+import coil3.load as loadCoil
+import coil3.request.placeholder
 import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.radius
 import io.legado.app.model.BookCover
 import io.legado.app.model.CoverRatio
+import io.legado.app.model.coverConfig
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
 
@@ -254,37 +252,8 @@ class CoverImageView @JvmOverloads constructor(
         }
     }
 
-    private val glideListener by lazy {
-        object : RequestListener<Drawable> {
-
-            override fun onLoadFailed(
-                e: GlideException?,
-                model: Any?,
-                target: Target<Drawable>,
-                isFirstResource: Boolean
-            ): Boolean {
-                defaultCover = true
-                showDefaultCover()
-                return true
-            }
-
-            override fun onResourceReady(
-                resource: Drawable,
-                model: Any,
-                target: Target<Drawable>?,
-                dataSource: DataSource,
-                isFirstResource: Boolean
-            ): Boolean {
-                defaultCover = false
-                scaleType = ScaleType.CENTER_CROP
-                return false
-            }
-
-        }
-    }
-
     /**
-     * 默认封面分支:绕过 Glide 直接 setImageDrawable,
+     * 默认封面分支:绕过图片库直接 setImageDrawable,
      * 保留 NinePatchDrawable 的 9-patch chunk,配合 FIT_XY 让拉伸区生效。
      */
     private fun showDefaultCover() {
@@ -314,34 +283,36 @@ class CoverImageView @JvmOverloads constructor(
         defaultCover = true
         showDefaultCover()
         invalidate()
-        // useDefaultCover 或无 path 时直接停在默认封面,不进 Glide -- 保住 9-patch
+        // useDefaultCover 或无 path 时直接停在默认封面,不进 Coil3 -- 保住 9-patch
         if (path.isNullOrBlank() || AppConfig.useDefaultCover) {
             onLoadFinish?.invoke()
             return
         }
-        val requestManager = fragment?.let { f ->
-            lifecycle?.let { ImageLoader.with(f, it) }
-        } ?: ImageLoader.with(context)
         val doLoad = {
-            // placeholder 走 setImageDrawable,不进 Bitmap pipeline,9-patch chunk 不会被光栅化;
-            // 配合 init/showDefaultCover 设的 FIT_XY,加载期间默认图能正确拉伸。
-            // error 由 glideListener.onLoadFailed 接管 (return true),所以这里不需要再传。
-            BookCover.load(
-                requestManager,
-                path,
-                loadOnlyWifi,
-                sourceOrigin,
-                inBookshelf,
-                seed = defaultCoverSeed(),
-                ratio = coverRatio,
-                onLoadFinish = onLoadFinish,
-            )
-                .addListener(glideListener)
-                .placeholder(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
-                .into(this)
+            // placeholder 走 setImageDrawable(上面 showDefaultCover),9-patch chunk 不会被光栅化;
+            // 加载期间默认图能正确拉伸。error 由 listener.onError 接管(显示默认封面)。
+            this@CoverImageView.loadCoil(path) {
+                coverConfig(
+                    seed = defaultCoverSeed(),
+                    ratio = coverRatio,
+                    sourceOrigin = sourceOrigin,
+                    onLoadFinish = onLoadFinish,
+                )
+                placeholder(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
+                listener(
+                    onSuccess = { _, _ ->
+                        defaultCover = false
+                        scaleType = ScaleType.CENTER_CROP
+                    },
+                    onError = { _, _ ->
+                        defaultCover = true
+                        showDefaultCover()
+                    },
+                )
+            }
             Unit
         }
-        // 等待布局完成，确保Glide获取到最新的cover宽高
+        // 等待布局完成,确保 Coil3 拿到最新的 cover 宽高
         if (width > 0 && height > 0 && !isLayoutRequested) {
             doLoad()
         } else post(doLoad)

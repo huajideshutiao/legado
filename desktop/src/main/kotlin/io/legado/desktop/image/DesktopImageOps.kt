@@ -2,6 +2,7 @@ package io.legado.desktop.image
 
 import io.legado.app.help.image.ImageOps
 import io.legado.app.help.image.ImageRef
+import io.legado.app.ui.compose.platform.jvmGetString
 import java.awt.Graphics
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -34,7 +35,7 @@ object DesktopImageOps : ImageOps {
 
     override fun decode(bytes: ByteArray): ImageRef {
         val image = ImageIO.read(ByteArrayInputStream(bytes))
-            ?: throw IllegalArgumentException("image.decode: 无法解码图片字节(${bytes.size} bytes)")
+            ?: throw IllegalArgumentException(jvmGetString("image_decode_failed_bytes", bytes.size))
         return BufferedImageRef(image)
     }
 
@@ -49,23 +50,23 @@ object DesktopImageOps : ImageOps {
             "png" -> "png"
             "jpg", "jpeg" -> "jpg"
             "webp" -> "webp" // JDK 内置 ImageIO 不支持 webp 编码, 会抛 IIOException; 桌面端暂不支持
-            else -> throw IllegalArgumentException("image.encode: 不支持的格式 $format，仅 png/jpg/webp")
+            else -> throw IllegalArgumentException(jvmGetString("image_encode_unsupported_format", format))
         }
         val out = ByteArrayOutputStream()
         val image = bufferedImageOf(img)
         // 注意: javax.imageio 不直接支持 quality 参数 (需 ImageWriter + ImageWriteParam),
         // 桌面端冒烟阶段用默认质量, 后续 KP2 若有需要再补 quality 控制
         if (!ImageIO.write(image, formatName, out)) {
-            throw IllegalStateException("image.encode: ImageIO.write 失败 format=$formatName")
+            throw IllegalStateException(jvmGetString("image_encode_write_failed", formatName))
         }
         return out.toByteArray()
     }
 
     override fun split(img: ImageRef, rows: Int, cols: Int): List<ImageRef> {
         val image = bufferedImageOf(img)
-        require(rows > 0 && cols > 0) { "image.split: rows/cols 必须为正数($rows,$cols)" }
+        require(rows > 0 && cols > 0) { jvmGetString("image_split_rows_cols_positive", rows, cols) }
         require(cols <= image.width && rows <= image.height) {
-            "image.split: 切块数超过像素尺寸(${image.width}x${image.height} / ${rows}行${cols}列)"
+            jvmGetString("image_split_exceeds_size", image.width, image.height, rows, cols)
         }
         val cellW = image.width / cols
         val cellH = image.height / rows
@@ -82,11 +83,11 @@ object DesktopImageOps : ImageOps {
 
     override fun stitch(imgs: List<ImageRef>, direction: String): ImageRef {
         val images = imgs.map { bufferedImageOf(it) }
-        require(images.isNotEmpty()) { "image.stitch: imgs 为空" }
+        require(images.isNotEmpty()) { jvmGetString("image_stitch_imgs_empty") }
         val horizontal = when (direction.lowercase()) {
             "h" -> true
             "v" -> false
-            else -> throw IllegalArgumentException("image.stitch: direction 仅支持 h/v，收到 $direction")
+            else -> throw IllegalArgumentException(jvmGetString("image_stitch_direction_invalid", direction))
         }
         val width = if (horizontal) images.sumOf { it.width } else images.maxOf { it.width }
         val height = if (horizontal) images.maxOf { it.height } else images.sumOf { it.height }
@@ -122,7 +123,7 @@ object DesktopImageOps : ImageOps {
     private fun bufferedImageOf(ref: Any?): BufferedImage {
         return (ref as? BufferedImageRef)?.image
             ?: throw IllegalArgumentException(
-                "image: 参数不是 image.decode/split/stitch/crop 返回的 ImageRef(${ref?.javaClass?.name})"
+                jvmGetString("image_ref_type_invalid", ref?.javaClass?.name)
             )
     }
 }

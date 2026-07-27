@@ -1,16 +1,5 @@
 package io.legado.app.help.glide
 
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
-import android.view.View
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.Lifecycle
-import com.bumptech.glide.Glide
-import com.bumptech.glide.RequestBuilder
-import com.bumptech.glide.RequestManager
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.signature.ObjectKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
@@ -22,73 +11,15 @@ import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.isUri
-import io.legado.app.utils.lifecycle
+import kotlinx.coroutines.Dispatchers
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 
-//https://bumptech.github.io/glide/doc/generatedapi.html
-//Instead of GlideApp, use com.bumptech.Glide
+/**
+ * 漫画页字节加载(走 BookHelp 缓存 + AnalyzeUrl 下载), 供 Coil3 [MangaModelFetcher] 委托。
+ * 原 Glide 相关入口(with/load/loadBitmap/clearMemory)已随 Coil3 迁移移除。
+ */
 object ImageLoader {
-
-    /**
-     * RequestManager 获取统一走这里,业务代码不直接引用 Glide 入口。
-     */
-    fun with(context: Context): RequestManager = Glide.with(context)
-
-    fun with(view: View): RequestManager = Glide.with(view)
-
-    fun with(fragment: Fragment, lifecycle: Lifecycle): RequestManager =
-        Glide.with(fragment).lifecycle(lifecycle)
-
-    fun clearMemory(context: Context) {
-        Glide.get(context).clearMemory()
-    }
-
-    /**
-     * 漫画页请求:磁盘缓存禁用(loadManga 字节旁路已自管 BookHelp 磁盘缓存)。
-     */
-    fun loadManga(context: Context, model: MangaModel): RequestBuilder<Drawable> {
-        return Glide.with(context).load(model)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-    }
-
-    /**
-     * 自动判断path类型
-     */
-    fun load(
-        requestManager: RequestManager,
-        path: String?,
-        inBookshelf: Boolean = false
-    ): RequestBuilder<Drawable> {
-        return requestManager.load(if (path.isFilePath()) File(path) else path)
-            .diskCacheStrategy(DiskCacheStrategy.DATA)
-            .let { if (inBookshelf) it.signature(ObjectKey("covers")) else it }
-    }
-
-    fun load(
-        context: Context,
-        path: String?,
-        inBookshelf: Boolean = false
-    ): RequestBuilder<Drawable> {
-        return load(Glide.with(context), path, inBookshelf)
-    }
-
-    fun load(
-        fragment: Fragment,
-        lifecycle: Lifecycle,
-        path: String?,
-        inBookshelf: Boolean = false
-    ): RequestBuilder<Drawable> {
-        return load(Glide.with(fragment).lifecycle(lifecycle), path, inBookshelf)
-    }
-
-    fun loadBitmap(context: Context, path: String?): RequestBuilder<Bitmap> {
-        val requestManager = Glide.with(context).`as`(Bitmap::class.java)
-        return when {
-            path.isFilePath() -> requestManager.load(File(path))
-            else -> requestManager.load(path)
-        }.diskCacheStrategy(DiskCacheStrategy.DATA)
-    }
 
     suspend fun loadManga(
         imageUrl: String,

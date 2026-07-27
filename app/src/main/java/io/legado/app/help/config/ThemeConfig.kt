@@ -11,6 +11,7 @@ import android.util.DisplayMetrics
 import androidx.annotation.ColorRes
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
+import kotlinx.serialization.Serializable
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
@@ -405,6 +406,7 @@ object ThemeConfig {
     }
 
     @Keep
+    @Serializable
     data class Config(
         var themeName: String,
         var isNightTheme: Boolean,

@@ -74,6 +74,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.longToastOnUi
@@ -330,17 +331,15 @@ private fun VideoControlsOverlay(activity: VideoPlayActivity, modifier: Modifier
                         modifier = Modifier.weight(1f),
                     )
                     SpeedButton(activity)
-                    // 强制分辨率钮(原 controller 内 tv_force_resolution)
-                    Text(
-                        text = activity.resolutionText ?: stringResource(R.string.resolution),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable { activity.showResolutionDialog() }
-                            .padding(12.dp),
-                    )
+                    // 分辨率切换: 复用 shared ResolutionButton
+                    val resolutions = activity.viewModel.resolutions.value.orEmpty()
+                    if (resolutions.size > 1) {
+                        ResolutionButton(
+                            resolutions = resolutions,
+                            currentResolutionIndex = activity.viewModel.currentResolutionIndex,
+                            onSwitchResolution = { index -> activity.switchResolution(index) },
+                        )
+                    }
                     val isLandscape =
                         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
                     IconButton(onClick = { activity.toggleOrientationFullscreen() }) {
@@ -408,7 +407,7 @@ private fun VideoLockToggle(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_lock_outline),
+            painter = rememberPainter("ic_lock_outline"),
             contentDescription = null,
             tint = Color.White.copy(alpha = if (locked) 0.5f else 1f),
             modifier = Modifier.size(32.dp),
@@ -449,8 +448,8 @@ private fun PlayPauseButton(activity: VideoPlayActivity) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(
-                if (activity.isPlaying) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp
+            painter = rememberPainter(
+                if (activity.isPlaying) "ic_pause_24dp" else "ic_play_24dp"
             ),
             contentDescription = null,
             tint = Color.White,
@@ -557,15 +556,15 @@ private fun VideoTitleActions(activity: VideoPlayActivity) {
     val colors = AppTheme.colors
     IconButton(onClick = { activity.refreshChapter() }) {
         Icon(
-            painter = painterResource(R.drawable.ic_refresh_black_24dp),
+            painter = rememberPainter("ic_refresh_black_24dp"),
             contentDescription = stringResource(R.string.refresh),
             tint = colors.primaryText,
         )
     }
     IconButton(onClick = { activity.toggleShelf() }) {
         Icon(
-            painter = painterResource(
-                if (activity.inShelf) R.drawable.ic_star else R.drawable.ic_star_border
+            painter = rememberPainter(
+                if (activity.inShelf) "ic_star" else "ic_star_border"
             ),
             contentDescription = stringResource(
                 if (activity.inShelf) R.string.in_favorites else R.string.out_favorites
@@ -656,7 +655,7 @@ private fun VideoChapterItem(
     ) {
         if (chapter.isVip && !chapter.isPay) {
             Icon(
-                painter = painterResource(R.drawable.ic_lock_outline),
+                painter = rememberPainter("ic_lock_outline"),
                 contentDescription = null,
                 tint = colors.secondaryText,
                 modifier = Modifier
@@ -694,12 +693,12 @@ private fun VideoChapterItem(
             }
         }
         val rightIcon = when {
-            chapter.isVolume -> R.drawable.ic_expand_less
-            isDur -> R.drawable.ic_check
-            else -> R.drawable.ic_outline_cloud_24
+            chapter.isVolume -> "ic_expand_less"
+            isDur -> "ic_check"
+            else -> "ic_outline_cloud_24"
         }
         Icon(
-            painter = painterResource(rightIcon),
+            painter = rememberPainter(rightIcon),
             contentDescription = stringResource(R.string.success),
             tint = colors.secondaryText,
             modifier = Modifier

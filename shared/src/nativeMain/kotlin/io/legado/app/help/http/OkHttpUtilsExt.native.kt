@@ -145,12 +145,10 @@ actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>
     }
     System.arraycopy(endBytes, 0, bodyBytes, offset, endBytes.size)
 
-    // 用 NativeKmpRequestBody 包装, contentType 设为 multipart/form-data; boundary=...
+    // 用 commonMain 工厂方法构造 body (ios/ohos 各自 actual 内部用 NativeKmp*/OhosKmp* 包装),
+    // contentType 设为 multipart/form-data; boundary=...
     val contentTypeStr = (type ?: "multipart/form-data") + "; boundary=$boundary"
-    val requestBody = NativeKmpRequestBody(
-        bodyBytes,
-        NativeKmpMediaType(contentTypeStr)
-    )
+    val requestBody = bodyBytes.toKmpRequestBody(contentTypeStr.toKmpMediaType())
     post(requestBody)
 }
 

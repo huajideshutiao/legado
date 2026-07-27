@@ -5,6 +5,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.ui.book.manage.BookshelfManagePlatform
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.StringUtils
 import java.util.regex.Pattern
@@ -132,7 +133,7 @@ class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
     }
 
     /** 清缓存成功提示文案 (硬编码, 与 app 端 R.string.clear_cache_success 对应)。 */
-    override val clearCacheSuccessMessage: String = "清缓存成功"
+    override val clearCacheSuccessMessage: String = jvmGetString("clear_cache_success")
 
     // ---- 章节名相似度匹配算法 (复刻 app 端 BookHelp.getDurChapter + 辅助方法) ----
 

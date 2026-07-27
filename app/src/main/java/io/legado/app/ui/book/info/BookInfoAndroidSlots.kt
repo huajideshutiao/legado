@@ -25,26 +25,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
+import coil3.load
+import coil3.request.placeholder
+import coil3.toBitmap
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.model.BookCover
+import io.legado.app.model.blurConfig
 import io.legado.app.model.CoverRatio
 import io.legado.app.ui.main.bookshelf.ShelfCover
 
 /*
  * BookInfoScreen 下沉到 shared 后, app 端保留的 L3 (Android 专属) Composable。
  *
- * 这些 Composable 深度依赖 Glide / AndroidView / Bitmap, 无法下沉到 shared/sharedUiMain,
+ * 这些 Composable 深度依赖 Coil3 / AndroidView / Bitmap, 无法下沉到 shared/sharedUiMain,
  * 通过 BookInfoScreen 的 slot 参数注入到 shared 端使用。
  *
  * 包含:
- * - [BookInfoBlurCoverBg]: 模糊封面背景 (Glide + BookInfoBgTransformation + AndroidView)
+ * - [BookInfoBlurCoverBg]: 模糊封面背景 (Coil3 + BookInfoBgTransformation + AndroidView)
  * - [BookInfoCover]: 书籍封面 (AndroidView + CoverImageView + Glide, 包装 ShelfCover)
- * - [BookInfoIntroImage]: 简介内整宽图 (Glide + asBitmap + CustomTarget<Bitmap>)
+ * - [BookInfoIntroImage]: 简介内整宽图 (Coil3 execute suspend 取 Bitmap)
  *
  * 原 app 端 BookInfoScreen.kt 中的对应私有 Composable 已删除, 视觉/逻辑完全等价保留。
  *
@@ -81,14 +81,14 @@ fun BookInfoBlurCoverBg(
         update = { iv ->
             if (book != null && !isEInkMode && iv.tag != tick) {
                 iv.tag = tick
-                BookCover.loadBlur(
-                    ImageLoader.with(iv),
-                    book.getDisplayCover(),
-                    sourceOrigin = book.origin,
-                    inBookshelf = inBookshelf,
-                    seed = book.name,
-                    extraTransformations = listOf(BookInfoBgTransformation()),
-                ).placeholder(iv.drawable).into(iv)
+                iv.load(book.getDisplayCover()) {
+                    blurConfig(
+                        seed = book.name,
+                        sourceOrigin = book.origin,
+                        extraTransformations = listOf(BookInfoBgTransformation()),
+                    )
+                    placeholder(iv.drawable)
+                }
             }
         },
     )
@@ -143,13 +143,14 @@ fun BookInfoIntroImage(
     var bitmap by remember(src) { mutableStateOf<Bitmap?>(null) }
     val context = LocalContext.current
     LaunchedEffect(src) {
-        ImageLoader.with(context).asBitmap().load(src).into(object : CustomTarget<Bitmap>() {
-            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                bitmap = resource
-            }
-
-            override fun onLoadCleared(placeholder: Drawable?) {}
-        })
+        val loader = coil3.SingletonImageLoader.get(context)
+        val request = coil3.request.ImageRequest.Builder(context)
+            .data(src)
+            .build()
+        val result = loader.execute(request)
+        if (result is coil3.request.SuccessResult) {
+            bitmap = result.image?.toBitmap()
+        }
     }
     bitmap?.let {
         DisableSelection {

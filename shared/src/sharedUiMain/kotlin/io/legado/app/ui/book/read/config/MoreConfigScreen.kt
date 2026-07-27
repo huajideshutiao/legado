@@ -26,7 +26,6 @@ fun MoreConfigScreen(
     pageTouchSlopSummary: String,
     onPageTouchSlop: () -> Unit,
     onClickRegionalConfig: () -> Unit,
-    onCustomPageKey: () -> Unit,
 ) {
     val screenDirectionEntries = rememberStringArray("screen_direction_title")
     val screenDirectionValues = rememberStringArray("screen_direction_value")
@@ -47,13 +46,11 @@ fun MoreConfigScreen(
     val titleTextFullJustify = rememberString("text_full_justify")
     val titleTextBottomJustify = rememberString("text_bottom_justify")
     val titleMouseWheelPage = rememberString("mouse_wheel_page")
-    val titleVolumeKeyPage = rememberString("volume_key_page")
     val titleVolumeKeyPageOnPlay = rememberString("volume_key_page_on_play")
     val titlePageTouchSlop = rememberString("page_touch_slop_title")
     val titleAutoChangeSource = rememberString("auto_change_source")
     val titlePreviewImageByClick = rememberString("preview_image_by_click")
     val titleClickRegionalConfig = rememberString("click_regional_config")
-    val titleCustomPageKey = rememberString("custom_page_key")
     val titleShowReadTitleAddition = rememberString("show_read_title_addition")
 
     AppTheme {
@@ -127,12 +124,6 @@ fun MoreConfigScreen(
                 isBottomBackground = true,
             )
             switchPreference(
-                prefKey = PreferKey.volumeKeyPage,
-                title = titleVolumeKeyPage,
-                defaultValue = true,
-                isBottomBackground = true,
-            )
-            switchPreference(
                 prefKey = PreferKey.volumeKeyPageOnPlay,
                 title = titleVolumeKeyPageOnPlay,
                 defaultValue = false,
@@ -160,11 +151,6 @@ fun MoreConfigScreen(
                 title = titleClickRegionalConfig,
                 isBottomBackground = true,
                 onClick = onClickRegionalConfig,
-            )
-            preference(
-                title = titleCustomPageKey,
-                isBottomBackground = true,
-                onClick = onCustomPageKey,
             )
             switchPreference(
                 prefKey = PreferKey.showReadTitleAddition,

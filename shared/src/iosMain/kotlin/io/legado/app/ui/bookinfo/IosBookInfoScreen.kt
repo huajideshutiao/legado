@@ -42,6 +42,7 @@ import io.legado.app.ui.bookshelf.IosIntroImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
@@ -175,6 +176,10 @@ fun IosBookInfoScreen(
     // (对照 app 端 upLoading: isLoading→null, empty→error_load_toc, else→durChapterTitle)
     var tocText by remember { mutableStateOf<String?>(null) }
     val errorLoadTocLabel = rememberString("error_load_toc")
+    // 文案模板 (LaunchedEffect / launchUpload lambda 非 @Composable, 预先 remember 模板)
+    val getTocFailedTemplate = rememberString("get_toc_failed_log")
+    val uploadSuccessText = rememberString("upload_success")
+    val uploadFailedText = rememberString("upload_failed")
     LaunchedEffect(effectiveBook?.bookUrl, inBookshelf, tocReloadTick) {
         val b = effectiveBook ?: return@LaunchedEffect
         val dao = AppDbProviders.get().bookChapterDao
@@ -190,7 +195,7 @@ fun IosBookInfoScreen(
                         dao.insert(*chapters.toTypedArray())
                     }
                 } catch (e: Throwable) {
-                    AppLog.put("获取目录失败\n${e.localizedMessage}", e)
+                    AppLog.put(String.format(getTocFailedTemplate, e.localizedMessage), e)
                 }
             }
         }
@@ -244,9 +249,9 @@ fun IosBookInfoScreen(
             try {
                 shared.upWaitDialog(true)
                 AppWebDavShared.uploadBook(b)
-                Toasters.get().toast("上传成功")
+                Toasters.get().toast(uploadSuccessText)
             } catch (e: Throwable) {
-                Toasters.get().toast(e.localizedMessage ?: "上传失败")
+                Toasters.get().toast(e.localizedMessage ?: uploadFailedText)
             } finally {
                 shared.upWaitDialog(false)
             }
@@ -518,10 +523,10 @@ private class IosBookInfoActions(
         scope.launch {
             try {
                 FileBook.downloadRemoteBook(b)
-                Toasters.get().toast("下载成功")
+                Toasters.get().toast(sharedStringTable["download_success"]!!)
                 shared.upBook(b)
             } catch (e: Throwable) {
-                AppLog.put("下载远程书籍<${b.name}>失败", e, true)
+                AppLog.put(sharedStringTable["download_remote_book_failed_log"]!!.format(b.name), e, true)
             }
         }
     }
@@ -670,7 +675,7 @@ private class IosBookInfoActions(
                 this["book"] = book
             }
         } catch (e: Exception) {
-            AppLog.put("简介动作执行失败\n${e.localizedMessage}", e)
+            AppLog.put(sharedStringTable["intro_action_failed_log"]!!.format(e.localizedMessage), e)
         }
     }
 

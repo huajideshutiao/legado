@@ -49,7 +49,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.size.Dimension
+import coil3.size.Size
 import io.legado.app.R
+import io.legado.app.help.glide.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
@@ -77,6 +83,17 @@ fun MangaRenderLayer(state: MangaRenderState, modifier: Modifier = Modifier) {
         ScrollableDefaults.flingBehavior()
     }
     state.flingBehavior = fling
+    // app 端用 Coil3 预加载: execute 配 memoryCachePolicy(WRITE_ONLY) 只写内存缓存不返回 drawable
+    state.preloadExecutor = { url, book, source ->
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        val loader = SingletonImageLoader.get(context)
+        val req = ImageRequest.Builder(context)
+            .data(MangaModel(url, book, source))
+            .memoryCachePolicy(CachePolicy.WRITE_ONLY)
+            .size(Size(Dimension(screenWidth), Dimension.Undefined))
+            .build()
+        loader.execute(req)
+    }
 
     LaunchedEffect(state) {
         // 居中页变化(原 onScrolled + findCenterViewPosition)
@@ -90,14 +107,14 @@ fun MangaRenderLayer(state: MangaRenderState, modifier: Modifier = Modifier) {
             snapshotFlow { state.listState.isScrollInProgress }
                 .collect { if (!it) state.onScrollIdle() }
         }
-        // 可见区间驱动 Glide 预加载(原 RecyclerViewPreloader)
+        // 可见区间驱动预加载(原 RecyclerViewPreloader, shared 版通过 preloadExecutor 注入)
         launch {
             snapshotFlow {
                 val info = state.listState.layoutInfo.visibleItemsInfo
                 (info.firstOrNull()?.index ?: -1) to (info.lastOrNull()?.index ?: -1)
             }
                 .distinctUntilChanged()
-                .collect { (first, last) -> state.onVisibleRangeChanged(first, last, context) }
+                .collect { (first, last) -> state.onVisibleRangeChanged(first, last) }
         }
     }
 

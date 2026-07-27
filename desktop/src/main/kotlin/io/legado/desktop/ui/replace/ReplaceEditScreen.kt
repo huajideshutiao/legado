@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.replace.ReplaceEditScreen as SharedReplaceEditScreen
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.utils.GSON
@@ -90,8 +91,8 @@ fun ReplaceEditScreen(
                 val json = GSON.toJson(rule)
                 val clipboard = Toolkit.getDefaultToolkit().systemClipboard
                 clipboard.setContents(StringSelection(json), null)
-                AppLog.put("替换规则已复制到剪贴板")
-            }.onFailure { AppLog.put("复制规则失败", it) }
+                AppLog.put(jvmGetString("replace_rule_copied_to_clipboard"))
+            }.onFailure { AppLog.put(jvmGetString("copy_rule_failed"), it) }
         },
         onPasteRule = { success ->
             // Shared 内部通过 clipTextProvider 取剪贴板文本, desktop 端无需自行读取

@@ -3,9 +3,7 @@ package io.legado.app.utils.canvasrecorder
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import com.bumptech.glide.Glide
 import io.legado.app.utils.canvasrecorder.pools.CanvasPool
-import splitties.init.appCtx
 
 class CanvasRecorderImpl : BaseCanvasRecorder() {
 
@@ -20,14 +18,13 @@ class CanvasRecorderImpl : BaseCanvasRecorder() {
             return
         }
         if (bitmap == null) {
-            bitmap = bitmapPool.get(width, height, Bitmap.Config.ARGB_8888)
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         }
         if (bitmap!!.width != width || bitmap!!.height != height) {
             if (bitmap!!.isMutable && canReconfigure(width, height)) {
                 bitmap!!.reconfigure(width, height, Bitmap.Config.ARGB_8888)
             } else {
-                bitmapPool.put(bitmap!!)
-                bitmap = bitmapPool.get(width, height, Bitmap.Config.ARGB_8888)
+                bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             }
         }
     }
@@ -57,14 +54,12 @@ class CanvasRecorderImpl : BaseCanvasRecorder() {
 
     override fun recycle() {
         super.recycle()
-        val bitmap = bitmap ?: return
-        bitmapPool.put(bitmap)
-        this.bitmap = null
+        bitmap?.recycle()
+        bitmap = null
     }
 
     companion object {
         private val canvasPool = CanvasPool(2)
-        private val bitmapPool = Glide.get(appCtx).bitmapPool
     }
 
 }

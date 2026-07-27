@@ -3,7 +3,6 @@ package io.legado.desktop.ui.book.toc
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.TxtTocRule
@@ -35,6 +35,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.ui.association.DesktopImportDialog
@@ -139,7 +140,7 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
     // 收集全部 TXT 目录规则 (按 serialNumber 排序, DAO SQL 已排序)
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.txtTocRuleDao.observeAll()
-            .catch { AppLog.put("TXT 目录规则界面获取数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("txt_toc_rule_load_data_failed_log", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { rules ->
@@ -195,7 +196,7 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
                 // 不复制到 shared/commonMain/resources, 不走 DesktopImportDialog (与 app 端一致直接入库)
                 scope.launch(Dispatchers.IO) {
                     runCatching { DefaultDataShared.importDefaultTocRules() }
-                        .onFailure { AppLog.put("导入默认 TXT 目录规则失败", it) }
+                        .onFailure { AppLog.put(jvmGetString("import_default_txt_toc_rule_failed"), it) }
                 }
             }
 
@@ -332,13 +333,13 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(netImportTxtTocRuleLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
                     // fillMaxWidth 让输入框占满对话框宽度 (与 BookSourceScreen showImportOnlineDialog 一致,
                     // 不加的话 OutlinedTextField 默认 widthIn(min=280dp) 在 0.8 窗口宽度的对话框中只占左侧一部分)
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(txtTocRuleInputUrlLabel) },
+                    label = txtTocRuleInputUrlLabel,
                     singleLine = true,
                 )
             },
@@ -419,7 +420,7 @@ private suspend fun importTxtTocRulesFromLocalFile(dialogTitle: String): String?
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入 TXT 目录规则: 用户取消选择")
+        AppLog.put(jvmGetString("import_txt_toc_rule_user_cancelled"))
         return null
     }
     return json
@@ -433,7 +434,7 @@ private suspend fun importTxtTocRulesFromLocalFile(dialogTitle: String): String?
  */
 private suspend fun exportTxtTocRulesToLocalFile(rules: List<TxtTocRule>, dialogTitle: String) {
     if (rules.isEmpty()) {
-        AppLog.put("导出 TXT 目录规则: 未选中任何规则")
+        AppLog.put(jvmGetString("export_txt_toc_rule_no_selection"))
         return
     }
     val targetPath = withContext(Dispatchers.IO) {
@@ -444,7 +445,7 @@ private suspend fun exportTxtTocRulesToLocalFile(rules: List<TxtTocRule>, dialog
         val file = dialog.file ?: return@withContext null
         dir + file
     } ?: run {
-        AppLog.put("导出 TXT 目录规则: 用户取消选择")
+        AppLog.put(jvmGetString("export_txt_toc_rule_user_cancelled"))
         return
     }
     val targetFile = File(targetPath)
@@ -453,8 +454,8 @@ private suspend fun exportTxtTocRulesToLocalFile(rules: List<TxtTocRule>, dialog
             val json = GSON.toJson(rules)
             targetFile.writeText(json)
         }
-        AppLog.put("导出 TXT 目录规则完成, 共 ${rules.size} 条 → ${targetFile.absolutePath}")
+        AppLog.put(jvmGetString("export_txt_toc_rule_done_log", rules.size, targetFile.absolutePath))
     }.onFailure {
-        AppLog.put("导出 TXT 目录规则失败", it)
+        AppLog.put(jvmGetString("export_txt_toc_rule_failed"), it)
     }
 }

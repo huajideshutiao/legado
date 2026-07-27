@@ -21,9 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -213,7 +213,7 @@ private fun DebugActions(actions: BookSourceDebugUiActions) {
         MenuItem(rememberString("search_src")) {
             dismiss(); actions.onShowSearchSrc()
         }
-        MenuItem(rememberString("boo_src")) {
+        MenuItem(rememberString("book_src")) {
             dismiss(); actions.onShowBookSrc()
         }
         MenuItem(rememberString("toc_src")) {
@@ -236,10 +236,9 @@ private fun DebugActions(actions: BookSourceDebugUiActions) {
 
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 // ===== 帮助面板 (对齐原 HelpPanel) =====

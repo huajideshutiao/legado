@@ -15,7 +15,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -28,6 +27,7 @@ import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
@@ -63,7 +63,7 @@ class KeyboardAssistsConfig : BaseComposeDialogFragment() {
                     actions = {
                         IconButton(onClick = { editKey(null) }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = stringResource(R.string.add),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -88,7 +88,7 @@ class KeyboardAssistsConfig : BaseComposeDialogFragment() {
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    painter = painterResource(R.drawable.ic_clear_all),
+                    painter = rememberPainter("ic_clear_all"),
                     contentDescription = stringResource(R.string.delete),
                     tint = colors.primaryText,
                     modifier = Modifier

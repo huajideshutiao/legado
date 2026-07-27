@@ -166,6 +166,22 @@ object BookHelp {
         }
     }
 
+    /**
+     * 清理平台专属临时文件 (供 WebBookProvidersImpl.clearCacheExtra 委托)。
+     *
+     * 逻辑与 [clearInvalidCache] 末段一致: ArchiveUtils.TEMP_PATH + filesDir/share*.json + books.json。
+     * BookHelpShared.clearInvalidCache 经 BookHelpProviders.clearCacheExtra 调用本方法。
+     */
+    suspend fun clearCacheExtra() {
+        withContext(IO) {
+            FileUtils.delete(ArchiveUtils.TEMP_PATH)
+            val filesDir = appCtx.filesDir
+            FileUtils.delete(File(filesDir, "shareBookSource.json").absolutePath)
+            FileUtils.delete(File(filesDir, "shareRssSource.json").absolutePath)
+            FileUtils.delete(File(filesDir, "books.json").absolutePath)
+        }
+    }
+
     fun saveContent(
         bookSource: BookSource,
         book: Book,

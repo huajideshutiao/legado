@@ -29,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -48,6 +47,7 @@ import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialogContent
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
@@ -292,7 +292,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                         if (hasImage) {
                             IconButton(onClick = { bgImagePath = null }) {
                                 Icon(
-                                    painter = painterResource(R.drawable.ic_baseline_close),
+                                    painter = rememberPainter("ic_baseline_close"),
                                     contentDescription = stringResource(R.string.delete),
                                     tint = colors.secondaryText,
                                     modifier = Modifier.size(20.dp),

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
@@ -115,7 +116,8 @@ class BookshelfViewModel {
     private fun observeBooks(groupId: Long) {
         booksFlowJob?.cancel()
         booksFlowJob = scope.launch {
-            bookDao.flowByGroup(groupId).catch {
+            // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
+            bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
                 AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
             }.flowOn(Dispatchers.IO).conflate().collect { list ->
                 _books.value = sortBooks(list, sortOf(groupId))

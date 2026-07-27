@@ -2,16 +2,22 @@ package io.legado.app.api.controller
 
 import android.graphics.Bitmap
 import androidx.core.graphics.drawable.toBitmap
+import coil3.PlatformContext
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.size.Scale
+import coil3.toBitmap
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.config.AppConfig
 import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * [ImageControllerProvider] 的 Android 实现。
@@ -23,13 +29,13 @@ import java.util.concurrent.TimeUnit
  * 供 shared/commonMain 端 [BookController.getCover]/[getImg] 走 provider 间接调用。
  *
  * # 状态持有
- * 内部持有原 BookController 的实例状态 (book/bookSource/bookUrl/defaultCoverBitmap),
+ * 内部持有原 BookController 的实例状态 (book/bookSource/bookUrl),
  * 行为与原 app 端 getImg 的 `this.book`/`this.bookSource`/`this.bookUrl` 缓存一致,
  * 避免 bookUrl 未变时重复查库。
  *
  * # 行为等价
- * - [getCover]: ImageLoader.loadBitmap(84x112, centerCrop) → 3s 超时 → 失败回退默认封面
- *   (BookCover.newDefaultDrawable 缓存为 defaultCoverBitmap), 与原 app 端逐字等价。
+ * - [getCover]: Coil3 execute(84x112, FILL) → 3s 超时 → 失败回退默认封面,
+ *   与原 app 端 (Glide loadBitmap+centerCrop) 语义等价。
  * - [getImg]: 按 bookUrl 缓存 book/bookSource, ImageProvider.cacheImage + getImage,
  *   返回 PNG 字节流, 与原 app 端逐字等价。
  *
@@ -52,43 +58,36 @@ object BookControllerImageProviderImpl : ImageControllerProvider {
     /** 当前 getImg 缓存的 bookUrl (用于判断是否需要重新加载 book/bookSource)。 */
     private var bookUrl: String = ""
 
-    /** 默认封面 Bitmap 缓存 (getCover 失败回退用, 避免每次重新解码 BookCover.newDefaultDrawable)。 */
-    private var defaultCoverBitmap: Bitmap? = null
-
     /**
      * 获取封面图片字节流 (PNG), 对应原 app 端 BookController.getCover。
      *
-     * 流程: ImageLoader.loadBitmap(84x112, centerCrop) → 3s 超时获取 →
-     * 失败时回退默认封面 (BookCover.newDefaultDrawable, 缓存为 defaultCoverBitmap) →
-     * 仍失败返回 null (调用方 setErrorMsg("getCover error"))。
+     * 流程: Coil3 execute(84x112, FILL) → 3s 超时 →
+     * useDefaultCover/空路径/失败时回退默认封面 → 仍失败返回 null。
      */
     override fun getCover(coverPath: String?): ByteArray? {
-        val ftBitmap = ImageLoader.loadBitmap(appCtx, coverPath)
-            .override(84, 112)
-            .centerCrop()
-            .submit()
         return try {
-            ftBitmap.get(3, TimeUnit.SECONDS).encodeToBytes()
+            runBlocking { withTimeout(3.seconds) { loadCoverForWeb(coverPath) } }
+                .encodeToBytes()
         } catch (e: Exception) {
-            try {
-                val cached = defaultCoverBitmap
-                val defaultBitmap = if (cached != null && !cached.isRecycled) {
-                    cached
-                } else {
-                    ImageLoader.with(appCtx)
-                        .asBitmap()
-                        .load(BookCover.newDefaultDrawable().toBitmap())
-                        .override(84, 112)
-                        .centerCrop()
-                        .submit()
-                        .get()
-                        .also { defaultCoverBitmap = it }
-                }
-                defaultBitmap.encodeToBytes()
-            } catch (e: Exception) {
-                null
-            }
+            null
         }
+    }
+
+    private suspend fun loadCoverForWeb(path: String?): Bitmap {
+        val loader = coil3.SingletonImageLoader.get(appCtx)
+        val data: Any = if (AppConfig.useDefaultCover || path.isNullOrBlank()) {
+            BookCover.newDefaultDrawable()
+        } else {
+            path
+        }
+        val request = ImageRequest.Builder(appCtx as PlatformContext)
+            .data(data)
+            .size(84, 112)
+            .scale(Scale.FILL)
+            .build()
+        val result = loader.execute(request)
+        return (result as? SuccessResult)?.image?.toBitmap()
+            ?: BookCover.newDefaultDrawable().toBitmap()
     }
 
     /**

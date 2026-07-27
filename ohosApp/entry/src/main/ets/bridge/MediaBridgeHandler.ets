@@ -53,12 +53,32 @@ let currentFd: number | null = null;
 // Media 事件回调 (由 EntryAbility 注入)
 let eventCallback: MediaEventCallback | null = null;
 
+// 本地 media 事件监听器 (ArkTS UI 页面订阅 AVPlayer 事件用于状态更新, 与 KMP 回调并行)
+let localListeners: Array<(eventJson: string) => void> = [];
+
+/**
+ * 注册本地 media 事件监听 (UI 页面 aboutToAppear 调用)。
+ * 与 eventCallback (→ KMP) 并行触发, 互不影响。
+ */
+export function addMediaEventListener(listener: (eventJson: string) => void): void {
+  localListeners.push(listener);
+}
+
+/** 注销本地 media 事件监听 (UI 页面 aboutToDisappear 调用)。 */
+export function removeMediaEventListener(listener: (eventJson: string) => void): void {
+  const idx = localListeners.indexOf(listener);
+  if (idx >= 0) {
+    localListeners.splice(idx, 1);
+  }
+}
+
 // ===== 命令接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
 interface MediaCommand {
   action: string;
   path?: string;
   position?: number;
+  speed?: number;
 }
 
 interface MediaEventPayload {
@@ -109,6 +129,9 @@ export function handleMediaCommand(commandJson: string): void {
       break;
     case 'seekTo':
       handleSeekTo(cmd.position ?? 0);
+      break;
+    case 'setSpeed':
+      handleSetSpeed(cmd.speed ?? 1);
       break;
     case 'release':
       handleRelease();
@@ -184,6 +207,24 @@ function handleSeekTo(position: number): void {
   } else {
     console.warn('[MediaBridge] seekTo: avPlayer is null');
   }
+}
+
+// ===== setSpeed (倍速, 浮点 → PlaybackSpeed 枚举档位) =====
+function handleSetSpeed(speed: number): void {
+  if (avPlayer != null) {
+    avPlayer.setSpeed(mapSpeed(speed));
+  } else {
+    console.warn('[MediaBridge] setSpeed: avPlayer is null');
+  }
+}
+
+// 浮点倍速 → 最近支持档位
+function mapSpeed(rate: number): media.PlaybackSpeed {
+  if (rate <= 0.875) return media.PlaybackSpeed.SPEED_FORWARD_0_75_X;
+  if (rate <= 1.125) return media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+  if (rate <= 1.5) return media.PlaybackSpeed.SPEED_FORWARD_1_25_X;
+  if (rate <= 1.875) return media.PlaybackSpeed.SPEED_FORWARD_1_75_X;
+  return media.PlaybackSpeed.SPEED_FORWARD_2_00_X;
 }
 
 // ===== release =====
@@ -266,11 +307,20 @@ async function releasePlayer(): Promise<void> {
   }
 }
 
-/** 发送事件到 Kotlin (通过 EntryAbility 注入的 legado.mediaEvent 回调) */
+/** 发送事件到 Kotlin (通过 EntryAbility 注入的 legado.mediaEvent 回调) + 本地 UI 监听器 */
 function emitEvent(event: MediaEventPayload): void {
+  const json = JSON.stringify(event);
   if (eventCallback != null) {
-    eventCallback(JSON.stringify(event));
+    eventCallback(json);
   } else {
     console.warn('[MediaBridge] eventCallback not set, event=' + event.event);
+  }
+  // 并行推送给本地 UI 监听器 (AudioPlay 页面据此更新进度/状态)
+  for (let i = 0; i < localListeners.length; i++) {
+    try {
+      localListeners[i](json);
+    } catch (e) {
+      console.error('[MediaBridge] local listener error: ' + (e as Error).message);
+    }
   }
 }

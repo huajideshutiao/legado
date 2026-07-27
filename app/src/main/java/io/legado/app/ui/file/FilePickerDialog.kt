@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,6 +35,7 @@ import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
 import io.legado.app.utils.FileDoc
@@ -97,7 +97,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { showCreateFolderAlert() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_create_folder_outline),
+                            painter = rememberPainter("ic_create_folder_outline"),
                             contentDescription = stringResource(R.string.create_folder),
                             tint = colors.primaryText,
                         )

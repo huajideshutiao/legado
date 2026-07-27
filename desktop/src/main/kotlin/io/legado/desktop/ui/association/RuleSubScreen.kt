@@ -46,6 +46,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.isAbsUrl
@@ -132,7 +133,7 @@ private fun RuleSubContent(onBack: () -> Unit) {
     // 收集全部规则订阅 (按 customOrder 排序, DAO SQL 已排序)
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.ruleSubDao.flowAll()
-            .catch { AppLog.put("规则订阅界面获取数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("rule_sub_load_failed", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { ruleSubs ->
@@ -166,7 +167,7 @@ private fun RuleSubContent(onBack: () -> Unit) {
                 //   else → toast 错误 (与 app 端 toastOnUi(R.string.error) 一致)
                 // URL 校验: 非 http(s) 绝对 URL 时 toast 提示 (与 app 端 !url.isAbsUrl() → toast 一致)
                 if (!ruleSub.url.isAbsUrl()) {
-                    Toasters.get().toast("请输入有效的 URL")
+                    Toasters.get().toast(jvmGetString("input_valid_url"))
                     return
                 }
                 // 按 type 分流: 新建对应 ImportXxxViewModelShared + 适配器, 设置 importVm/importInitialText/

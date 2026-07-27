@@ -15,6 +15,7 @@ import io.legado.app.ui.book.searchContent.SearchContentUiActions
 import io.legado.app.ui.book.searchContent.SearchContentUiState
 import io.legado.app.ui.book.searchContent.SearchContentViewModelShared
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.ChineseUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +70,8 @@ fun IosSearchContentScreen(
     var focusEpoch by remember { mutableStateOf(0) }
     var pendingScrollIndex by remember { mutableStateOf<Int?>(null) }
     var clearFocusHandler by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // 文案模板 (onSubmitSearch lambda 内 onFailure 非 @Composable, 预先 remember)
+    val searchInBookFailedTemplate = rememberString("search_in_book_failed_log")
 
     val state = SearchContentUiState(
         query = query,
@@ -100,7 +103,7 @@ fun IosSearchContentScreen(
                         }
                     }
                 }.onFailure {
-                    AppLog.put("书内搜索失败\n${it.localizedMessage}", it)
+                    AppLog.put(String.format(searchInBookFailedTemplate, it.localizedMessage), it)
                 }
                 searching = false
                 searchJob = null

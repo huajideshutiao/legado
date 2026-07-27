@@ -8,14 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Slider
+import androidx.compose.material.SliderDefaults
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -118,7 +118,7 @@ fun NumberPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 // Slider 拖动调整 (连续值, 适合大范围)
-                // colors 显式指定 arcoblue-6, 不走 MaterialTheme.colorScheme.primary (默认值非 arco)
+                // colors 显式指定 arcoblue-6, 不走 MaterialTheme.colors.primary (默认值非 arco)
                 Slider(
                     value = currentValue.toFloat(),
                     onValueChange = {
@@ -206,6 +206,6 @@ fun NumberPickerDialog(
         },
         shape = RoundedCornerShape(ArcoRadiusLg),
         // 显式容器色, 避免 Material3 AlertDialog 默认色与项目其他对话框 (8dp 圆角) 视觉割裂
-        containerColor = MaterialTheme.colorScheme.surface,
+        backgroundColor = MaterialTheme.colors.surface,
     )
 }

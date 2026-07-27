@@ -8,15 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.ReorderableItem
+import io.legado.app.ui.compose.reorderable.RuleItemScope
+import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * 「搜索 + 列表 + 多选 + 拖拽排序 + 分组筛选 + 底部批量操作栏」规则管理界面共享骨架(plan P2)。
@@ -30,7 +30,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * @param emptyText      列表为空时的占位文案
  * @param listModifier   施加于 LazyColumn 的 modifier，供 Activity 型接入 dragSelectable 边缘拖选
  * @param fillMaxHeight  列表区是否吃满可用高度；非全高 Dialog 传 false 以让内容自适应收缩(复刻 AutoShrinkLinearLayout)
- * @param itemContent    单项内容槽，携带 ReorderableCollectionItemScope 以便 item 内部用 draggableHandle 绑定把手
+ * @param itemContent    单项内容槽，携带 RuleItemScope 以便 item 内部用 draggableHandle 绑定把手
  */
 @Composable
 fun <T> RuleManageScaffold(
@@ -44,10 +44,10 @@ fun <T> RuleManageScaffold(
     listState: LazyListState = rememberLazyListState(),
     listModifier: Modifier = Modifier,
     fillMaxHeight: Boolean = true,
-    itemContent: @Composable ReorderableCollectionItemScope.(item: T) -> Unit,
+    itemContent: @Composable RuleItemScope.(item: T) -> Unit,
 ) {
-    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
-        onMove(from.index, to.index)
+    val reorderState = rememberReorderableListState(listState) { from, to ->
+        onMove(from, to)
     }
     val fillMod = if (fillMaxHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     Column(modifier.then(fillMod)) {

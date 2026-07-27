@@ -17,7 +17,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,6 +29,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.flow.conflate
@@ -79,7 +79,7 @@ class GroupSelectDialog() : BaseComposeDialogFragment() {
                     actions = {
                         IconButton(onClick = { showDialogFragment(GroupEditDialog()) }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = getString(R.string.add_group),
                                 tint = AppTheme.colors.primaryText,
                             )

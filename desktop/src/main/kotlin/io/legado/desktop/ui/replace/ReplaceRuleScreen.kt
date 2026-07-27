@@ -3,7 +3,6 @@ package io.legado.desktop.ui.replace
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -17,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
@@ -31,6 +31,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.ReplaceRuleListScreen
@@ -192,10 +193,10 @@ fun ReplaceRuleScreen(
                     onDismissRequest = { showImportOnlineDialog = false },
                     title = { Text(replaceRuleNetImportTitleLabel) },
                     text = {
-                        OutlinedTextField(
+                        Md2TextField(
                             value = importOnlineUrlText,
                             onValueChange = { importOnlineUrlText = it },
-                            label = { Text(replaceRuleInputUrlLabel) },
+                            label = replaceRuleInputUrlLabel,
                             singleLine = true,
                         )
                     },
@@ -282,7 +283,7 @@ private suspend fun importReplaceRulesFromLocalFile(dialogTitle: String): String
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入替换规则: 用户取消选择")
+        AppLog.put(jvmGetString("import_replace_rule_user_canceled"))
         return null
     }
     return json
@@ -315,7 +316,7 @@ private suspend fun importReplaceRulesFromLocalFile(dialogTitle: String): String
  */
 private suspend fun exportReplaceRulesToLocalFile(rules: List<ReplaceRule>, dialogTitle: String) {
     if (rules.isEmpty()) {
-        AppLog.put("导出替换规则: 未选中任何规则")
+        AppLog.put(jvmGetString("export_replace_rule_no_selection"))
         return
     }
     val targetPath = withContext(Dispatchers.IO) {

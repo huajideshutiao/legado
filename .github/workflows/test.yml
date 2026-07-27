@@ -240,6 +240,22 @@ jobs:
           name: desktop.msi
           path: ${{ github.workspace }}/msi/*.msi
           if-no-files-found: ignore
+      # Windows 便携版 zip: 复用 createDistributable 产物 (MSI 上游), 仅打 zip 不经安装器
+      - name: Build portable zip
+        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createDistributable, 与 MSI 共享 app image
+        run: ./gradlew :desktop:packagePortableZip --build-cache --parallel --daemon --warning-mode all
+      - name: Collect portable zip
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/portable/
+          find ${{ github.workspace }}/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} ${{ github.workspace }}/portable/ \;
+      - name: Upload portable zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-portable-windows-x64
+          path: ${{ github.workspace }}/portable/*.zip
+          if-no-files-found: ignore
+          retention-days: 30
 
   # Linux DEB/RPM: Ubuntu runner 上 jpackage 调 dpkg-deb / rpmbuild
   linux-build:

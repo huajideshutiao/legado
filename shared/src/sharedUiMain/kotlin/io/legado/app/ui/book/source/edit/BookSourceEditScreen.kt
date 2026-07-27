@@ -10,13 +10,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -250,19 +251,34 @@ private fun EditActions(state: BookSourceEditState, callbacks: BookSourceEditCal
         MenuItem(rememberString("auto_indent")) { dismiss(); callbacks.onAutoIndent() }
         MenuItem(rememberString("set_source_variable")) { dismiss(); callbacks.onSetSourceVariable() }
         MenuItem(rememberString("str_share")) { dismiss(); callbacks.onShareSourceStr() }
-        // 原「帮助」子菜单展平 (文案走 rememberString 翻译)
-        MenuItem(rememberString("book_source_tutorial")) { dismiss(); callbacks.onHelp("ruleHelp") }
-        MenuItem(rememberString("js_tutorial")) { dismiss(); callbacks.onHelp("jsHelp") }
-        MenuItem(rememberString("regex_tutorial")) { dismiss(); callbacks.onHelp("regexHelp") }
+        // 「帮助」二级菜单 (对齐 app 端 source_edit.xml 的嵌套 <menu>)
+        var showHelpSubmenu by remember { mutableStateOf(false) }
+        MenuItem(rememberString("help")) { showHelpSubmenu = true }
+        Box {
+            AppDropdownMenu(
+                expanded = showHelpSubmenu,
+                onDismissRequest = { showHelpSubmenu = false },
+                modifier = Modifier.offset(x = 200.dp), // 偏移到父菜单右侧
+            ) {
+                MenuItem(rememberString("book_source_tutorial")) {
+                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("ruleHelp")
+                }
+                MenuItem(rememberString("js_tutorial")) {
+                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("jsHelp")
+                }
+                MenuItem(rememberString("regex_tutorial")) {
+                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("regexHelp")
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun MenuItem(text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(text, color = AppTheme.colors.primaryText)
+    }
 }
 
 @Composable
@@ -495,10 +511,9 @@ private fun DropdownBox(
         }
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { i, label ->
-                DropdownMenuItem(
-                    text = { Text(label, color = colors.primaryText) },
-                    onClick = { expanded = false; onSelect(i) },
-                )
+                DropdownMenuItem(onClick = { expanded = false; onSelect(i) }) {
+                    Text(label, color = colors.primaryText)
+                }
             }
         }
     }

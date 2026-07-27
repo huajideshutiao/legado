@@ -31,7 +31,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
@@ -48,6 +47,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.widget.anima.RefreshProgressBar
@@ -187,7 +187,7 @@ class WebViewActivity : BaseComposeActivity() {
         val colors = AppTheme.colors
         IconButton(onClick = { refresh() }) {
             Icon(
-                painter = painterResource(R.drawable.ic_refresh_black_24dp),
+                painter = rememberPainter("ic_refresh_black_24dp"),
                 contentDescription = stringResource(R.string.refresh),
                 tint = colors.primaryText,
             )
@@ -195,7 +195,7 @@ class WebViewActivity : BaseComposeActivity() {
         if (okMenuVisible) {
             IconButton(onClick = { onOkMenu() }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_check),
+                    painter = rememberPainter("ic_check"),
                     contentDescription = stringResource(R.string.ok),
                     tint = colors.primaryText,
                 )

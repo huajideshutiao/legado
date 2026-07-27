@@ -44,7 +44,6 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.storage.Backup
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.fileBook.CbzFile
@@ -63,6 +62,7 @@ import io.legado.app.ui.book.manga.render.MangaRenderLayer
 import io.legado.app.ui.book.manga.render.MangaRenderState
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
+import io.legado.app.ui.book.read.config.ClickArea
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.theme.AppTheme
@@ -107,9 +107,13 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
         }
 
     // ---- 渲染层：Compose 状态持有者(图片流/缩放/预加载/GIF/自动滚动) ----
+    // app 端九宫格点击动作判定器, 注入 shared 版 MangaRenderState 的平台回调
+    private val clickArea = ClickArea()
     private val renderState by lazy {
         MangaRenderState().apply {
             autoSpeed = AppConfig.mangaAutoPageSpeed
+            clickActionAt = { x, y -> clickArea.getAction(x, y) }
+            onContainerSizeExtra = { size -> clickArea.setRect(size.width, size.height) }
         }
     }
 
@@ -489,7 +493,7 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
 
     override fun onLowMemory() {
         super.onLowMemory()
-        ImageLoader.clearMemory(this)
+        coil3.SingletonImageLoader.get(this).memoryCache?.clear()
     }
 
     fun sureNewProgress(progress: BookProgress) {

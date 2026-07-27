@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -128,15 +129,15 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
     // 校验 (对照 app 端 getRule, 错误提示改 Toasters)
     fun getRule(): DirectLinkUploadRule? {
         if (uploadUrl.isBlank()) {
-            Toasters.get().toast("上传Url不能为空")
+            Toasters.get().toast(jvmGetString("upload_url_empty"))
             return null
         }
         if (downloadUrlRule.isBlank()) {
-            Toasters.get().toast("下载Url规则不能为空")
+            Toasters.get().toast(jvmGetString("download_url_rule_empty"))
             return null
         }
         if (summary.isBlank()) {
-            Toasters.get().toast("注释不能为空")
+            Toasters.get().toast(jvmGetString("summary_empty"))
             return null
         }
         return DirectLinkUploadRule(uploadUrl, downloadUrlRule, summary, compress)
@@ -168,7 +169,7 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                                             val clipboard =
                                                 Toolkit.getDefaultToolkit().systemClipboard
                                             clipboard.setContents(StringSelection(json), null)
-                                        }.onFailure { AppLog.put("复制规则失败", it) }
+                                        }.onFailure { AppLog.put(jvmGetString("copy_rule_failed"), it) }
                                     }
                                 },
                             )
@@ -188,7 +189,7 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                                             }.getOrNull()
                                         }
                                         if (text.isNullOrBlank()) {
-                                            Toasters.get().toast("剪贴板为空或格式不对")
+                                            Toasters.get().toast(jvmGetString("clipboard_empty_or_invalid"))
                                             return@launch
                                         }
                                         runCatching {
@@ -196,7 +197,7 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                                                 .getOrThrow()
                                         }.onSuccess { upView(it) }
                                             .onFailure {
-                                                Toasters.get().toast("剪贴板为空或格式不对")
+                                                Toasters.get().toast(jvmGetString("clipboard_empty_or_invalid"))
                                             }
                                     }
                                 },

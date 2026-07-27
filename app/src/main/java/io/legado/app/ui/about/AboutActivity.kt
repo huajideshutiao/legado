@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,6 +30,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
@@ -71,7 +71,7 @@ class AboutActivity : BaseComposeActivity() {
                         )
                     }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_share),
+                            painter = rememberPainter("ic_share"),
                             contentDescription = stringResource(R.string.share),
                             tint = AppTheme.colors.primaryText,
                         )
@@ -87,9 +87,6 @@ class AboutActivity : BaseComposeActivity() {
                 onCrashLog = { showDialogFragment<CrashLogsDialog>() },
                 onSaveLog = ::saveLog,
                 onCreateHeapDump = ::createHeapDump,
-                onPrivacyPolicy = {
-                    showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
-                },
                 onLicense = { showMdFile(getString(R.string.license), "LICENSE.md") },
                 onDisclaimer = { showMdFile(getString(R.string.disclaimer), "disclaimer.md") },
             )

@@ -1,6 +1,6 @@
 package io.legado.app.help
 
-import com.soywiz.krypto.SHA256
+import io.legado.app.help.crypto.NativeDigestOps
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.encodeURI
@@ -63,9 +63,9 @@ internal actual object JsExtensionsPlatform {
     actual fun chineseS2T(text: String): String = ChineseUtils.s2t(text)
 
     actual fun sha256Hex(bytes: ByteArray): String {
-        // krypto SHA256.digest(ByteArray) 返回原始摘要字节, 转 lowercase hex
+        // NativeDigestOps.digest 返回原始摘要字节, 转 lowercase hex
         // (与 jvmAndAndroid MessageDigest.getInstance("SHA-256") 输出一致)
-        return SHA256.digest(bytes).joinToString("") { "%02x".format(it) }
+        return NativeDigestOps.digest("SHA-256", bytes).joinToString("") { "%02x".format(it) }
     }
 
     actual fun isMainThread(): Boolean = false

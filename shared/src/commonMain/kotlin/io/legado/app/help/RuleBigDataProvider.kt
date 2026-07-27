@@ -19,6 +19,14 @@ interface RuleBigDataProvider {
 
     /** 供 BookHelp.clearCache 用, 返回 book 数据根目录下的子目录路径列表 */
     fun listBookDataDirs(): List<String>
+
+    /**
+     * 清理不在书架的大变量数据 (对照 app 端 `BookHelp.clearInvalidCache` 步骤 2)。
+     *
+     * 遍历 [listBookDataDirs] 返回的各 book 数据根目录下的子目录, 读取 `bookUrl.txt`
+     * 还原原始 bookUrl, 若不在 [bookUrls] 集合中则删除整个子目录。
+     */
+    fun clearInvalidBookData(bookUrls: Set<String>)
 }
 
 object RuleBigDataProviders {

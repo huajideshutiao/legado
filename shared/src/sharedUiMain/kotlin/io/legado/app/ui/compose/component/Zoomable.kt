@@ -1,8 +1,16 @@
 package io.legado.app.ui.compose.component
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.splineBasedDecay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -12,19 +20,25 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.lerp
 import io.legado.app.ui.compose.theme.LocalEInk
+import kotlin.math.abs
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
  * KMP-pure 双指缩放/平移 Modifier，复刻 TouchImageView 交互语义：
  * 双指捏合以质心为锚缩放、拖拽平移、缩放态钳制到边界、双击在 1x/[doubleTapScale] 间循环。
- * E-Ink 下双击不走动画。[onLongPress] 供长按保存等场景使用。
+ * 松手后按速度做 fling 衰减；E-Ink 下禁用 fling 与双击动画。[onLongPress] 供长按保存等场景使用。
  */
 @Composable
 fun Modifier.zoomable(
@@ -35,58 +49,167 @@ fun Modifier.zoomable(
 ): Modifier {
     val eInk = LocalEInk.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val decaySpec = remember(density) { splineBasedDecay<Float>(density) }
+
     var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    val offsetX = remember { Animatable(0f) }
+    val offsetY = remember { Animatable(0f) }
     var size by remember { mutableStateOf(IntSize.Zero) }
+    var flingJob by remember { mutableStateOf<Job?>(null) }
 
     // 钳制语义对齐 TouchImageView：以 Fit 拟合后的内容尺寸为准，放大超出容器的轴向
     // 边缘贴容器边缘，未超出的轴向保持居中——容器尺寸只在无宽高比信息时兜底
-    fun clamp(o: Offset, s: Float): Offset {
-        val w = size.width.toFloat()
-        val h = size.height.toFloat()
+    fun clampX(o: Float, s: Float): Float {
+        val w = size.width.toFloat(); val h = size.height.toFloat()
         val ar = contentAspectRatio
-        val (cw, ch) = if (ar != null && ar > 0f && w > 0f && h > 0f) {
-            if (ar > w / h) w to w / ar else h * ar to h
-        } else w to h
+        val cw = if (ar != null && ar > 0f && w > 0f && h > 0f)
+            (if (ar > w / h) w else h * ar) else w
         val maxX = ((cw * s - w) / 2f).coerceAtLeast(0f)
+        return o.coerceIn(-maxX, maxX)
+    }
+    fun clampY(o: Float, s: Float): Float {
+        val w = size.width.toFloat(); val h = size.height.toFloat()
+        val ar = contentAspectRatio
+        val ch = if (ar != null && ar > 0f && w > 0f && h > 0f)
+            (if (ar > w / h) w / ar else h) else h
         val maxY = ((ch * s - h) / 2f).coerceAtLeast(0f)
-        return Offset(o.x.coerceIn(-maxX, maxX), o.y.coerceIn(-maxY, maxY))
+        return o.coerceIn(-maxY, maxY)
+    }
+    fun clamp(o: Offset, s: Float) = Offset(clampX(o.x, s), clampY(o.y, s))
+
+    fun cancelFling() { flingJob?.cancel(); flingJob = null }
+
+    // 单指松手 fling：x/y 各自衰减，触边即停；E-Ink 与未缩放态不启动
+    fun startFling(vx: Float, vy: Float) {
+        if (eInk) return
+        if (scale <= 1f) return
+        cancelFling()
+        flingJob = scope.launch {
+            coroutineScope {
+                val s = scale
+                launch {
+                    AnimationState(offsetX.value, vx).animateDecay(decaySpec) {
+                        val clamped = clampX(value, s)
+                        scope.launch { offsetX.snapTo(clamped) }
+                        if (clamped != value) cancelAnimation()
+                    }
+                }
+                launch {
+                    AnimationState(offsetY.value, vy).animateDecay(decaySpec) {
+                        val clamped = clampY(value, s)
+                        scope.launch { offsetY.snapTo(clamped) }
+                        if (clamped != value) cancelAnimation()
+                    }
+                }
+            }
+        }
     }
 
     return this
         .onSizeChanged { size = it }
         .pointerInput(Unit) {
-            detectTransformGestures { centroid, pan, zoom, _ ->
-                val s0 = scale
-                val s1 = (s0 * zoom).coerceIn(1f, maxScale)
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val d = centroid - center
-                val k = s1 / s0
-                // graphicsLayer 以中心为原点缩放，保持质心下的内容点不动再叠加平移
-                scale = s1
-                offset = clamp(offset * k + d * (1 - k) + pan, s1)
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                cancelFling()
+                val velocityTracker = VelocityTracker()
+                velocityTracker.addPointerInputChange(down)
+                var lastPos = down.position
+                var panning = false
+                var pinchActive = false
+                var everPinched = false
+                val touchSlop = viewConfiguration.touchSlop
+
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val pressed = event.changes.filter { it.pressed }
+                    if (pressed.isEmpty()) {
+                        if (panning && !everPinched) {
+                            startFling(velocityTracker.calculateVelocity().x,
+                                       velocityTracker.calculateVelocity().y)
+                        }
+                        break
+                    }
+                    if (pressed.size >= 2) {
+                        if (!pinchActive) {
+                            pinchActive = true; everPinched = true
+                        }
+                        if (pinchActive) {
+                            val zoom = event.calculateZoom()
+                            val centroid = event.calculateCentroid()
+                            val pan = event.calculatePan()
+                            val s0 = scale
+                            val s1 = (s0 * zoom).coerceIn(1f, maxScale)
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val d = centroid - center
+                            val k = s1 / s0
+                            scale = s1
+                            val curOffset = Offset(offsetX.value, offsetY.value)
+                            val newOffset = clamp(curOffset * k + d * (1 - k) + pan, s1)
+                            scope.launch {
+                                offsetX.snapTo(newOffset.x)
+                                offsetY.snapTo(newOffset.y)
+                            }
+                            event.changes.fastForEach { it.consume() }
+                            pressed.forEach { velocityTracker.addPointerInputChange(it) }
+                        }
+                    } else {
+                        val change = pressed[0]
+                        if (pinchActive) {
+                            pinchActive = false
+                            lastPos = change.position
+                        }
+                        when {
+                            panning -> {
+                                val delta = change.position - lastPos
+                                lastPos = change.position
+                                velocityTracker.addPointerInputChange(change)
+                                val cur = Offset(offsetX.value, offsetY.value)
+                                val newOffset = clamp(cur + delta, scale)
+                                scope.launch {
+                                    offsetX.snapTo(newOffset.x)
+                                    offsetY.snapTo(newOffset.y)
+                                }
+                                change.consume()
+                            }
+                            everPinched -> change.consume()
+                            else -> {
+                                velocityTracker.addPointerInputChange(change)
+                                if (scale > 1f &&
+                                    (abs(change.position.x - lastPos.x) > touchSlop ||
+                                     abs(change.position.y - lastPos.y) > touchSlop)) {
+                                    panning = true
+                                    lastPos = change.position
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         .pointerInput(Unit) {
             detectTapGestures(
                 onLongPress = onLongPress?.let { { _: Offset -> it() } },
                 onDoubleTap = { tap ->
+                    cancelFling()
                     val s0 = scale
                     val s1 = if (s0 > 1f) 1f else doubleTapScale
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val d = tap - center
                     val k = s1 / s0
-                    val targetOffset = clamp(offset * k + d * (1 - k), s1)
+                    val startOffset = Offset(offsetX.value, offsetY.value)
+                    val targetOffset = clamp(startOffset * k + d * (1 - k), s1)
                     if (eInk) {
                         scale = s1
-                        offset = targetOffset
+                        scope.launch { offsetX.snapTo(targetOffset.x); offsetY.snapTo(targetOffset.y) }
                     } else {
                         val startScale = s0
-                        val startOffset = offset
                         scope.launch {
                             animate(0f, 1f) { t, _ ->
                                 scale = lerp(startScale, s1, t)
-                                offset = lerp(startOffset, targetOffset, t)
+                                val ox = lerp(startOffset.x, targetOffset.x, t)
+                                val oy = lerp(startOffset.y, targetOffset.y, t)
+                                scope.launch { offsetX.snapTo(ox); offsetY.snapTo(oy) }
                             }
                         }
                     }
@@ -96,7 +219,7 @@ fun Modifier.zoomable(
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            translationX = offset.x
-            translationY = offset.y
+            translationX = offsetX.value
+            translationY = offsetY.value
         }
 }

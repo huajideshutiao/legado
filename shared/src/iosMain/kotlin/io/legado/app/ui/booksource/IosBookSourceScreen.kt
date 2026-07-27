@@ -4,10 +4,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import io.legado.app.ui.compose.component.Md2TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -106,6 +106,8 @@ fun IosBookSourceScreen(
 
     // 书源导入 VM (KP6: pickDocuments → importSource → importSelect 自动导入)
     val importVm = remember(scope) { ImportBookSourceViewModelShared(scope) }
+    // 文案模板 (importVm LaunchedEffect lambda 非 @Composable, 预先 remember 模板)
+    val importCompleteTemplate = rememberString("import_complete")
 
     // 过滤关键字 label (rememberString 是 @Composable, 顶层 remember 一次;
     // parseFilter 局部函数非 @Composable, 需预先缓存 label 后捕获)
@@ -160,7 +162,7 @@ fun IosBookSourceScreen(
     LaunchedEffect(importVm) {
         importVm.successState.collectLatest { count ->
             if (count != null) {
-                importVm.importSelect { Toasters.get().toast("导入完成 $count") }
+                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
             }
         }
     }
@@ -184,6 +186,8 @@ fun IosBookSourceScreen(
     val okLabel = rememberString("ok")
     val cancelLabel = rememberString("cancel")
     val newBookSourceLabel = rememberString("new_book_source")
+    // 文案模板 (onAddBookSource lambda 内 AppLog 非 @Composable, 预先 remember 模板)
+    val newBookSourceAddedLogTemplate = rememberString("new_book_source_added_log")
 
     // 分组列表 (订阅 viewModel.flowGroups(), 用于 GroupManageDialog; BookSource 分组是 String 逗号分隔,
     // shared GroupManageDialog 期望 List<BookGroup>, 用 groupEntities 做 String→BookGroup 适配,
@@ -280,7 +284,7 @@ fun IosBookSourceScreen(
                         bookSourceUrl = "new_${NSDate().timeIntervalSince1970().toLong()}",
                     )
                     dao.insert(source)
-                    AppLog.put("新建书源已添加: ${source.bookSourceUrl}")
+                    AppLog.put(String.format(newBookSourceAddedLogTemplate, source.bookSourceUrl))
                 }
             },
             onImportLocal = {
@@ -441,11 +445,11 @@ fun IosBookSourceScreen(
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(netImportBookSourceLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(inputBookSourceUrlLabel) },
+                    label = inputBookSourceUrlLabel,
                     singleLine = true,
                 )
             },

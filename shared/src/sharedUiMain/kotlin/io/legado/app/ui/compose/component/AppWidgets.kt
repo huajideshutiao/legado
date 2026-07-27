@@ -2,15 +2,13 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.ButtonDefaults
+import androidx.compose.material.Checkbox
+import androidx.compose.material.CheckboxDefaults
+import androidx.compose.material.OutlinedButton
+import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -311,7 +309,7 @@ fun AppMenuCheckbox(
     }
 }
 
-/** 输入框：accent 聚焦色对齐 TextInputLayout 主题行为，4dp 圆角走主题 extraSmall */
+/** 输入框：MD2 视觉 (委托 [Md2TextField])，accent 聚焦色 + 4dp 圆角，对齐 TextInputLayout 主题行为 */
 @Composable
 fun AppOutlinedTextField(
     value: String,
@@ -323,26 +321,15 @@ fun AppOutlinedTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: @Composable (() -> Unit)? = null,
 ) {
-    val colors = AppTheme.colors
-    OutlinedTextField(
+    Md2TextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier,
-        // EditText 默认字号 16sp（全局 LocalTextStyle 已降 14sp，输入框显式回 16）
-        textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
-        label = label?.let { { Text(it) } },
         readOnly = readOnly,
+        label = label,
         singleLine = singleLine,
         visualTransformation = visualTransformation,
         trailingIcon = trailingIcon,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = colors.primaryText,
-            unfocusedTextColor = colors.primaryText,
-            cursorColor = colors.accent,
-            focusedBorderColor = colors.accent,
-            unfocusedBorderColor = colors.secondaryText,
-            focusedLabelColor = colors.accent,
-            unfocusedLabelColor = colors.secondaryText,
-        ),
+        textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     )
 }

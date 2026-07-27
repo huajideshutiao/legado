@@ -31,6 +31,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.rss.ReadRssUiState
 import io.legado.app.ui.rss.ReadRssViewModelShared
@@ -101,6 +102,10 @@ private fun ReadRssContent(
     // 复用 shared ReadRssViewModelShared (加载流程 + 状态管理下沉 commonMain)
     val viewModel = remember { ReadRssViewModelShared(scope) }
     val state by viewModel.state.collectAsState()
+    // i18n 文案 (refresh / open_in_browser 为桌面端 key, rss_no_content_rule 提示空正文)
+    val refreshLabel = rememberString("refresh")
+    val openInBrowserLabel = rememberString("open_in_browser")
+    val noContentRuleHintLabel = rememberString("rss_no_content_rule_hint")
 
     // 从 state 提取当前章节 (供顶栏标题 + "浏览器打开" 按钮使用)
     val currentChapter: BookChapter? = when (val s = state) {
@@ -124,7 +129,7 @@ private fun ReadRssContent(
                 IconButton(onClick = { viewModel.loadContent(book, chapterIndex) }) {
                     Icon(
                         painter = rememberPainter("ic_refresh_black_24dp"),
-                        contentDescription = "刷新",
+                        contentDescription = refreshLabel,
                         tint = colors.primaryText,
                     )
                 }
@@ -134,7 +139,7 @@ private fun ReadRssContent(
                     IconButton(onClick = { browseUrl(url) }) {
                         Icon(
                             painter = rememberPainter("ic_web_outline"),
-                            contentDescription = "浏览器打开",
+                            contentDescription = openInBrowserLabel,
                             tint = colors.primaryText,
                         )
                     }
@@ -158,7 +163,7 @@ private fun ReadRssContent(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "无正文规则或内容为空\n请用浏览器打开",
+                        text = noContentRuleHintLabel,
                         color = colors.secondaryText,
                         fontSize = 14.sp,
                     )

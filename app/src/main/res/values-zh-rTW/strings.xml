@@ -146,7 +146,6 @@
     <string name="replace_to">取代為</string>
     <string name="img_cover">封面</string>
     <string name="book">書</string>
-    <string name="volume_key_page">音量鍵翻頁</string>
     <string name="mouse_wheel_page">滑鼠滾輪翻頁</string>
     <string name="page_anim">翻頁動畫</string>
     <string name="book_page_anim">翻頁動畫(本書)</string>
@@ -553,7 +552,7 @@
     <string name="export_type">匯出格式</string>
     <string name="checkAuthor">校驗作者</string>
     <string name="search_src">搜尋原始碼</string>
-    <string name="boo_src">書籍原始碼</string>
+    <string name="book_src">書籍原始碼</string>
     <string name="toc_src">目錄原始碼</string>
     <string name="content_src">正文原始碼</string>
     <string name="review_src">評論原始碼</string>
@@ -760,7 +759,7 @@
     <string name="no_books_dir">沒有設定書籍儲存位置！</string>
     <string name="no_book_found_bookshelf">未在書架上找到所選書籍，是否重新匯入？</string>
     <string name="archive_not_found">未能在書籍儲存目錄找到壓縮檔案，是否重新匯入？</string>
-    <string name="privacy_policy">使用者隱私與協議</string>
+
     <string name="agree">同意</string>
     <string name="refuse">拒絕</string>
     <string name="create_folder">建立資料夾</string>

@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,8 +40,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 替换规则列表 Screen (KMP 版, commonMain 共享)。
@@ -213,56 +213,63 @@ private fun ReplaceRuleActions(
         }
         AppDropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }) {
             DropdownMenuItem(
-                text = { Text(rememberString("group_manage"), color = colors.primaryText) },
                 onClick = { showGroup = false; onGroupManage() },
-            )
+            ) {
+                Text(rememberString("group_manage"), color = colors.primaryText)
+            }
             DropdownMenuItem(
-                text = { Text(rememberString("no_group"), color = colors.primaryText) },
                 onClick = {
                     showGroup = false
                     viewModel.setQuery(ReplaceQuery.NoGroup)
                 },
-            )
+            ) {
+                Text(rememberString("no_group"), color = colors.primaryText)
+            }
             groups.forEach { group ->
                 DropdownMenuItem(
-                    text = { Text(group, color = colors.primaryText) },
                     onClick = {
                         showGroup = false
                         viewModel.setQuery(ReplaceQuery.Group(group))
                     },
-                )
+                ) {
+                    Text(group, color = colors.primaryText)
+                }
             }
         }
     }
     OverflowMenu { dismiss ->
         DropdownMenuItem(
-            text = { Text(rememberString("add_replace_rule"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 onAddRule()
             },
-        )
+        ) {
+            Text(rememberString("add_replace_rule"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_local"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 onImportLocal()
             },
-        )
+        ) {
+            Text(rememberString("import_local"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_on_line"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 onImportOnline()
             },
-        )
+        ) {
+            Text(rememberString("import_on_line"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("help"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 onHelp()
             },
-        )
+        ) {
+            Text(rememberString("help"), color = colors.primaryText)
+        }
     }
 }
 
@@ -271,7 +278,7 @@ private fun ReplaceRuleActions(
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun ReorderableCollectionItemScope.ReplaceRuleItem(
+private fun RuleItemScope.ReplaceRuleItem(
     item: ReplaceRule,
     checked: Boolean,
     viewModel: ReplaceRuleListViewModel,
@@ -323,17 +330,20 @@ private fun ReorderableCollectionItemScope.ReplaceRuleItem(
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text(rememberString("to_top"), color = colors.primaryText) },
                     onClick = { showMenu = false; viewModel.toTop(item) },
-                )
+                ) {
+                    Text(rememberString("to_top"), color = colors.primaryText)
+                }
                 DropdownMenuItem(
-                    text = { Text(rememberString("to_bottom"), color = colors.primaryText) },
                     onClick = { showMenu = false; viewModel.toBottom(item) },
-                )
+                ) {
+                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                }
                 DropdownMenuItem(
-                    text = { Text(rememberString("delete"), color = colors.primaryText) },
                     onClick = { showMenu = false; onDelete() },
-                )
+                ) {
+                    Text(rememberString("delete"), color = colors.primaryText)
+                }
             }
         }
     }

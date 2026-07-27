@@ -45,6 +45,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -274,7 +275,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
     // 收集全部分组 (flowAll, 含系统分组?; 顶栏菜单 + groupName 查询共用)
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.bookGroupDao.flowAll()
-            .catch { AppLog.put("书架管理界面获取分组数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("bookshelf_manage_load_groups_failed", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { groups ->
@@ -293,7 +294,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                 AppDatabaseProviders.get().appDb.bookSourceDao.enabled(true)
             }
         }.onSuccess { bookSources = it }
-            .onFailure { AppLog.put("书架管理界面获取书源数据失败\n${it.localizedMessage}", it) }
+            .onFailure { AppLog.put(jvmGetString("bookshelf_manage_load_sources_failed", it.localizedMessage), it) }
     }
 
     // 收集当前分组书籍 (groupId 变化时重启), 排序后缓存到 allBooks + upBookData
@@ -310,7 +311,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                     else -> list.sortedByDescending { it.durChapterTime }
                 }
             }
-            .catch { AppLog.put("书架管理界面获取书籍列表失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("bookshelf_manage_load_books_failed", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { books ->
@@ -374,23 +375,23 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                         scope.launch {
                             val targetPath = withContext(Dispatchers.IO) {
                                 val dateFormat = SimpleDateFormat("yyMMddHHmmss", Locale.getDefault())
-                                val dialog = FileDialog(Frame(), "导出书架 JSON", FileDialog.SAVE)
+                                val dialog = FileDialog(Frame(), jvmGetString("export_bookshelf_json"), FileDialog.SAVE)
                                 dialog.setFile("bookshelf-${dateFormat.format(Date())}.json")
                                 dialog.isVisible = true
                                 val dir = dialog.directory ?: return@withContext null
                                 val file = dialog.file ?: return@withContext null
                                 dir + file
                             } ?: run {
-                                AppLog.put("导出书架: 用户取消选择")
+                                AppLog.put(jvmGetString("export_bookshelf_cancelled"))
                                 return@launch
                             }
                             runCatching {
                                 withContext(Dispatchers.IO) {
                                     File(targetPath).writeText(GSON.toJson(sel))
                                 }
-                                io.legado.app.help.toast.Toasters.get().toast("导出成功")
+                                io.legado.app.help.toast.Toasters.get().toast(jvmGetString("export_success"))
                             }.onFailure {
-                                AppLog.put("导出失败\n${it.localizedMessage}", it, true)
+                                AppLog.put(jvmGetString("export_failed", it.localizedMessage), it, true)
                             }
                         }
                     },
@@ -441,12 +442,12 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                                     runCatching {
                                         io.legado.app.help.book.BookStorageProviders.get().clearCache(book)
                                     }.onFailure {
-                                        AppLog.put("清缓存失败: ${book.name}\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("clear_cache_failed", book.name, it.localizedMessage), it)
                                     }
                                 }
                             }
                             // 提示成功 (与 app 端 toastOnUi(R.string.clear_cache_success) 行为一致)
-                            io.legado.app.help.toast.Toasters.get().toast("清缓存成功")
+                            io.legado.app.help.toast.Toasters.get().toast(jvmGetString("clear_cache_success"))
                         }
                     },
                     SelectAction(checkSelectedIntervalLabel) {
@@ -640,7 +641,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                                     runCatching {
                                         io.legado.app.help.book.LocalBookLocators.get().deleteBook(book)
                                     }.onFailure {
-                                        AppLog.put("删除本地书源文件失败: ${book.name}\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("delete_local_book_file_failed", book.name, it.localizedMessage), it)
                                     }
                                 }
                             }

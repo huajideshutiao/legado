@@ -6,8 +6,8 @@ import io.legado.app.utils.InputStream
  * WebDav 客户端 expect 声明。
  *
  * - jvmAndAndroidMain actual: 基于 OkHttp 的原实现, 行为零变化
- * - iosMain/ohosMain actual: stub, 抛 [UnsupportedOperationException],
- *   待 Ktor CIO 客户端接入后补完整
+ * - nativeMain actual (iosMain/ohosMain 共用): 基于 Ktor CIO 的真实实现,
+ *   PROPFIND/MKCOL/PUT/DELETE/GET/Range 全可用
  *
  * **KMP 化说明**:
  * - `upload(file: java.io.File, ...)` 重载仅在 jvmAndAndroidMain actual 中存在

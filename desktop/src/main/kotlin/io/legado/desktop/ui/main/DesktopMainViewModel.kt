@@ -15,6 +15,7 @@ import io.legado.app.help.service.UpdateBookCallback
 import io.legado.app.help.service.UpdateBookShared
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.jvmGetString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -172,53 +173,11 @@ class DesktopMainViewModel {
      *
      * 所有 provider 调用均用 `runCatching` 包裹, 避免未注册 / 方法缺失导致启动崩溃
      * (对照 app 端 Coroutine.async 内部异常吞没语义)。
+     * 实现已下沉到顶层 [DesktopStartupTasks.run], 供 Main.kt 启动期不持有 VM 实例直接调用,
+     * 避免创建临时 VM 泄漏其内部 scope。
      */
     fun postLoad() {
-        // 1. 默认 HttpTTS 加载 (对照 app 端 MainViewModel.postLoad)
-        //    首次启动 httpTTSDao.count() == 0 时, 调 DefaultDataShared.importDefaultHttpTTS
-        //    插入默认 HttpTTS 列表 (资源经 DesktopDefaultDataResourceProvider 从
-        //    shared/commonMain/resources/defaultData/httpTTS.json 读取, Main.kt 已注册)
-        scope.launch(Dispatchers.Default) {
-            val appDb = AppDbProviders.get()
-            if (appDb.httpTTSDao.count() == 0) {
-                runCatching { DefaultDataShared.importDefaultHttpTTS() }
-                    .onFailure { AppLog.put("加载默认 HttpTTS 失败\n${it.localizedMessage}", it) }
-            }
-        }
-        // 2. 缓存过期清理 (对照 app 端 App.kt 行 136-144 的 Coroutine.async 块)
-        //    受 LocalConfig.lastBackup + 1天 时间窗控制, 不足 1 天则跳过
-        scope.launch(Dispatchers.Default) {
-            val lastBackup = runCatching {
-                PreferenceProviders.get().getLong(LocalConfigKeys.lastBackup, 0L)
-            }.getOrDefault(0L)
-            if (lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
-                val appDb = AppDbProviders.get()
-                // cacheDao.clearDeadline: 清理 cache 表中过期记录 (对照 app 端 appDb.cacheDao.clearDeadline)
-                runCatching { appDb.cacheDao.clearDeadline(System.currentTimeMillis()) }
-                // BookHelp.clearInvalidCache: 清理无效书缓存目录
-                // shared BookHelpAccessor 未暴露此方法, 改用 BookStorageProviders 等价实现
-                // (512MB 与 app 端漫画图片缓存管理上限一致)
-                runCatching {
-                    BookStorageProviders.get().clearInvalidCache(512L * 1024 * 1024)
-                }
-                // Backup.clearCache: 清理备份临时文件 (shared BackupShared.clearCache 已下沉)
-                runCatching { BackupShared.clearCache() }
-                // ReadBookConfig.clearBgAndCache: 清理阅读背景缓存图片 + readConfig 临时缓存
-                // (shared ReadBookConfigShared.clearBgAndCache 已下沉, 基于 AppFilesDirs + BackupFileOps)
-                runCatching { ReadBookConfigProviders.get().clearBgAndCache() }
-                // ThemeConfig.clearBg: 清理主题背景图片缓存
-                // (shared ThemeConfigProvider.clearBg 已暴露 default 实现, 基于 AppFilesDirs + BackupFileOps)
-                runCatching { ThemeConfigProviders.get().clearBg() }
-            }
-        }
-        // 3. WebDav 阅读进度同步 (对照 app 端 App.kt 行 145-152 的 Coroutine.async 块)
-        //    受 AppConfig.syncBookProgress 控制
-        scope.launch(Dispatchers.Default) {
-            if (AppConfigProviders.get().syncBookProgress) {
-                runCatching { AppWebDavShared.downloadAllBookProgress() }
-                    .onFailure { AppLog.put("WebDav 同步阅读进度失败\n${it.localizedMessage}", it) }
-            }
-        }
+        DesktopStartupTasks.run(scope)
     }
 
     /**
@@ -284,15 +243,78 @@ class DesktopMainViewModel {
         }
 
         override fun toastForceRefreshBusy() {
-            Toasters.get().toast("正在刷新中, 请稍后再试")
+            Toasters.get().toast(jvmGetString("force_refresh_busy"))
         }
 
         override fun toastForceRefreshStart(count: Int) {
-            Toasters.get().toast("开始强制刷新 $count 本")
+            Toasters.get().toast(jvmGetString("force_refresh_start", count))
         }
 
         override fun toastForceRefreshDone() {
-            Toasters.get().toast("刷新完成")
+            Toasters.get().toast(jvmGetString("refresh_complete"))
+        }
+    }
+}
+
+/**
+ * 桌面端启动期异步任务集合 (默认 HttpTTS 加载 + 缓存过期清理 + WebDav 进度同步)。
+ *
+ * 对照 app 端 `MainViewModel.postLoad` + `App.kt` onCreate 的 Coroutine.async 块。
+ * 提取为顶层 object 供 Main.kt 用独立 scope 调用, 避免创建临时 [DesktopMainViewModel]
+ * 实例泄漏其内部 scope (临时 VM 无宿主调 onCleared, scope 永不取消)。
+ *
+ * @param scope 调用方提供的协程 scope, 由调用方管理生命周期
+ */
+object DesktopStartupTasks {
+
+    /**
+     * 启动默认 HttpTTS 加载 / 缓存过期清理 / WebDav 阅读进度同步三组并行任务。
+     */
+    fun run(scope: CoroutineScope) {
+        // 1. 默认 HttpTTS 加载 (对照 app 端 MainViewModel.postLoad)
+        //    首次启动 httpTTSDao.count() == 0 时, 调 DefaultDataShared.importDefaultHttpTTS
+        //    插入默认 HttpTTS 列表 (资源经 DesktopDefaultDataResourceProvider 从
+        //    shared/commonMain/resources/defaultData/httpTTS.json 读取, Main.kt 已注册)
+        scope.launch(Dispatchers.Default) {
+            val appDb = AppDbProviders.get()
+            if (appDb.httpTTSDao.count() == 0) {
+                runCatching { DefaultDataShared.importDefaultHttpTTS() }
+                    .onFailure { AppLog.put(jvmGetString("load_default_http_tts_failed", it.localizedMessage), it) }
+            }
+        }
+        // 2. 缓存过期清理 (对照 app 端 App.kt 行 136-144 的 Coroutine.async 块)
+        //    受 LocalConfig.lastBackup + 1天 时间窗控制, 不足 1 天则跳过
+        scope.launch(Dispatchers.Default) {
+            val lastBackup = runCatching {
+                PreferenceProviders.get().getLong(LocalConfigKeys.lastBackup, 0L)
+            }.getOrDefault(0L)
+            if (lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
+                val appDb = AppDbProviders.get()
+                // cacheDao.clearDeadline: 清理 cache 表中过期记录 (对照 app 端 appDb.cacheDao.clearDeadline)
+                runCatching { appDb.cacheDao.clearDeadline(System.currentTimeMillis()) }
+                // BookHelp.clearInvalidCache: 清理无效书缓存目录
+                // shared BookHelpAccessor 未暴露此方法, 改用 BookStorageProviders 等价实现
+                // (512MB 与 app 端漫画图片缓存管理上限一致)
+                runCatching {
+                    BookStorageProviders.get().clearInvalidCache(512L * 1024 * 1024)
+                }
+                // Backup.clearCache: 清理备份临时文件 (shared BackupShared.clearCache 已下沉)
+                runCatching { BackupShared.clearCache() }
+                // ReadBookConfig.clearBgAndCache: 清理阅读背景缓存图片 + readConfig 临时缓存
+                // (shared ReadBookConfigShared.clearBgAndCache 已下沉, 基于 AppFilesDirs + BackupFileOps)
+                runCatching { ReadBookConfigProviders.get().clearBgAndCache() }
+                // ThemeConfig.clearBg: 清理主题背景图片缓存
+                // (shared ThemeConfigProvider.clearBg 已暴露 default 实现, 基于 AppFilesDirs + BackupFileOps)
+                runCatching { ThemeConfigProviders.get().clearBg() }
+            }
+        }
+        // 3. WebDav 阅读进度同步 (对照 app 端 App.kt 行 145-152 的 Coroutine.async 块)
+        //    受 AppConfig.syncBookProgress 控制
+        scope.launch(Dispatchers.Default) {
+            if (AppConfigProviders.get().syncBookProgress) {
+                runCatching { AppWebDavShared.downloadAllBookProgress() }
+                    .onFailure { AppLog.put(jvmGetString("webdav_sync_progress_failed", it.localizedMessage), it) }
+            }
         }
     }
 }

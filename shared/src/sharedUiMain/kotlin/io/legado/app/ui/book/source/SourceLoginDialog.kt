@@ -4,6 +4,7 @@ package io.legado.app.ui.book.source
 //   "login_source" / "ok" / "show_login_header" / "del_login_header" / "log" /
 //   "login_header" / "copy" / "success"
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,13 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,7 +90,6 @@ import kotlinx.coroutines.withContext
  * @param book JS 上下文 book 绑定 (可空, 对应 app 端 IntentData.book)
  * @param chapter JS 上下文 chapter 绑定 (可空, 对应 app 端 IntentData.chapter)
  */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SourceLoginDialog(
     source: BaseSource,
@@ -232,27 +229,30 @@ fun SourceLoginDialog(
                     onDismissRequest = { showOverflow = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(showLoginHeaderText) },
                         onClick = {
                             showOverflow = false
                             source.getLoginHeader()?.let { headerToShow = it }
                                 ?: Toasters.get().toast("没有请求头！")
                         }
-                    )
+                    ) {
+                        Text(showLoginHeaderText)
+                    }
                     DropdownMenuItem(
-                        text = { Text(delLoginHeaderText) },
                         onClick = {
                             showOverflow = false
                             source.removeLoginHeader()
                         }
-                    )
+                    ) {
+                        Text(delLoginHeaderText)
+                    }
                     DropdownMenuItem(
-                        text = { Text(logText) },
                         onClick = {
                             showOverflow = false
                             showAppLog = true
                         }
-                    )
+                    ) {
+                        Text(logText)
+                    }
                 }
             }
         }
@@ -309,7 +309,6 @@ private fun LoginForm(
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun LoginRow(
     rowUi: RowUi,
@@ -364,7 +363,6 @@ private fun LoginRow(
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectRow(
     rowUi: RowUi,
@@ -380,35 +378,41 @@ private fun SelectRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(rowUi.name, color = colors.primaryText, modifier = Modifier.padding(end = 8.dp))
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it },
-            modifier = Modifier.weight(1f)
-        ) {
+        // 自定义实现替代 MD3 ExposedDropdownMenuBox: Box + TextField + AppDropdownMenu
+        Box(modifier = Modifier.weight(1f)) {
             AppOutlinedTextField(
                 value = loginData[rowUi.name] ?: "",
                 onValueChange = {},
                 readOnly = true,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                // 点击 TextField 切换菜单展开状态
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .clickable { expanded = !expanded },
+                // trailing icon 用 IconButton + ic_arrow_drop_down, 点击切换展开
+                trailingIcon = {
+                    IconButton(onClick = { expanded = !expanded }) {
+                        Icon(
+                            painter = rememberPainter("ic_arrow_drop_down"),
+                            contentDescription = null,
+                            tint = colors.secondaryText
+                        )
+                    }
+                }
             )
-            DropdownMenu(
+            AppDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
             ) {
                 chars.forEach { item ->
-                    DropdownMenuItem(
-                        text = { Text(item) },
-                        onClick = {
-                            expanded = false
-                            if (loginData[rowUi.name] != item) {
-                                loginData[rowUi.name] = item
-                                onButtonClick(rowUi)
-                            }
+                    DropdownMenuItem(onClick = {
+                        expanded = false
+                        if (loginData[rowUi.name] != item) {
+                            loginData[rowUi.name] = item
+                            onButtonClick(rowUi)
                         }
-                    )
+                    }) {
+                        Text(item)
+                    }
                 }
             }
         }

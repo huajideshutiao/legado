@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +38,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 源过滤规则列表 Screen (KMP 版, sharedUiMain 共享)。
@@ -281,27 +281,24 @@ private fun SourceFilterRuleActions(
         )
     }
     OverflowMenu { dismiss ->
-        DropdownMenuItem(
-            text = { Text(rememberString("import_local"), color = colors.primaryText) },
-            onClick = {
-                dismiss()
-                actions.onImportLocal()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(rememberString("import_on_line"), color = colors.primaryText) },
-            onClick = {
-                dismiss()
-                actions.onImportOnline()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(rememberString("delete_all"), color = colors.primaryText) },
-            onClick = {
-                dismiss()
-                onRequestDeleteAll()
-            },
-        )
+        DropdownMenuItem(onClick = {
+            dismiss()
+            actions.onImportLocal()
+        }) {
+            Text(rememberString("import_local"), color = colors.primaryText)
+        }
+        DropdownMenuItem(onClick = {
+            dismiss()
+            actions.onImportOnline()
+        }) {
+            Text(rememberString("import_on_line"), color = colors.primaryText)
+        }
+        DropdownMenuItem(onClick = {
+            dismiss()
+            onRequestDeleteAll()
+        }) {
+            Text(rememberString("delete_all"), color = colors.primaryText)
+        }
     }
 }
 
@@ -310,7 +307,7 @@ private fun SourceFilterRuleActions(
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun ReorderableCollectionItemScope.SourceFilterRuleItem(
+private fun RuleItemScope.SourceFilterRuleItem(
     item: SourceFilterRule,
     checked: Boolean,
     actions: SourceFilterRuleUiActions,
@@ -360,18 +357,15 @@ private fun ReorderableCollectionItemScope.SourceFilterRuleItem(
                 )
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text(rememberString("to_top"), color = colors.primaryText) },
-                    onClick = { showMenu = false; actions.onToTop(item) },
-                )
-                DropdownMenuItem(
-                    text = { Text(rememberString("to_bottom"), color = colors.primaryText) },
-                    onClick = { showMenu = false; actions.onToBottom(item) },
-                )
-                DropdownMenuItem(
-                    text = { Text(rememberString("delete"), color = colors.primaryText) },
-                    onClick = { showMenu = false; onDelete() },
-                )
+                DropdownMenuItem(onClick = { showMenu = false; actions.onToTop(item) }) {
+                    Text(rememberString("to_top"), color = colors.primaryText)
+                }
+                DropdownMenuItem(onClick = { showMenu = false; actions.onToBottom(item) }) {
+                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                }
+                DropdownMenuItem(onClick = { showMenu = false; onDelete() }) {
+                    Text(rememberString("delete"), color = colors.primaryText)
+                }
             }
         }
     }

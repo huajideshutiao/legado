@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import io.legado.app.constant.PreferKey
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import kotlinx.coroutines.channels.BufferOverflow
@@ -43,6 +44,19 @@ class IosThemeStoreProvider(
         get() = readColor(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, bottomBackground)
     override val bgImagePath: String?
         get() = defaults.stringForKey(currentBgImageKey)
+
+    /** 写入主题色到 NSUserDefaults (对齐 getter 读取的键, isNight 同步更新 themeMode) */
+    override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
+        defaults.setObject(accent.toArgb(), forKey = ThemeStorePrefKeys.KEY_ACCENT_COLOR)
+        defaults.setObject(bg.toArgb(), forKey = ThemeStorePrefKeys.KEY_BACKGROUND_COLOR)
+        defaults.setObject(bbg.toArgb(), forKey = ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND)
+        // statusBar / navigationBar 派生色跟随 bg / bbg (与 getter 派生逻辑一致)
+        defaults.setObject(bg.toArgb(), forKey = ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR)
+        defaults.setObject(bbg.toArgb(), forKey = ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR)
+        // themeMode: "0" = 日间, "2" = 夜间 (对齐 currentBgImageKey 判断)
+        defaults.setObject(if (isNight) "2" else "0", forKey = PreferKey.themeMode)
+        defaults.synchronize()
+    }
 
     private fun readColor(key: String, default: Color): Color {
         if (!defaults.objectHasKey(key)) return default
@@ -91,7 +105,7 @@ class IosEventBusProvider : EventBusProvider {
     override val recreateEvent: Flow<Unit> = flow
 
     /** 主题切换后由调用方 emit 触发 AppTheme 重组 (对齐 DesktopEventBusProvider.emitRecreate) */
-    fun emitRecreate() {
+    override fun emitRecreate() {
         flow.tryEmit(Unit)
     }
 }

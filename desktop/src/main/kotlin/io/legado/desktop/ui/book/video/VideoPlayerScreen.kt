@@ -57,6 +57,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.book.video.VideoPlayViewModelShared
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -68,7 +69,10 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
+import java.io.File
+import java.util.UUID
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.component.EmbeddedMediaPlayerComponent
@@ -81,7 +85,7 @@ import kotlin.math.abs
  *
  * # 职责
  *
- * - 包装 [VideoPlayerViewModel] 持有章节视频 URL 列表状态
+ * - 包装 [VideoPlayViewModelShared] 持有章节视频 URL 列表状态
  * - 注入 desktop 平台 Provider (与 [io.legado.desktop.ui.about.AboutScreen] 一致 4 个 Provider)
  * - 顶部标题栏 (返回 + 书名 + 章节名 + 目录 + 换源, 对照 app 端 VideoPlayActivity 标题栏)
  * - 中间视频播放区 (vlcj [EmbeddedMediaPlayerComponent] 经 [SwingPanel] 嵌入 AWT 渲染视频)
@@ -104,7 +108,7 @@ import kotlin.math.abs
  *   全屏由窗口管理控制 (不在本 Screen 职责内)
  * - **进度持久化**: app 端 saveRead(position) 写 book.durChapterPos; desktop 端用
  *   [PreferenceStoreProvider] 存 `video_progress_{bookUrl}` (内存 Map, 进程级),
- *   打开时 vlcj `:start-time=` 恢复, 退出 / 切章时落存 (与 [VideoPlayerViewModel.saveVideoProgress] 一致)
+ *   打开时 vlcj `:start-time=` 恢复, 退出 / 切章时落存 (与 [VideoPlayViewModelShared.saveVideoProgress] 一致)
  * - **VLC native 库**: vlcj 运行时需用户机器已安装 VLC media player, 通过 NativeDiscovery
  *   自动查找 libvlc.{dll|so|dylib}; 不引入 native 库打包配置 (VLC 太大 ~200MB),
  *   后续可走 jpackage appResourcesRootDir 模式纳入本地 VLC 副本 (标 TODO)
@@ -169,11 +173,11 @@ private fun VideoPlayerContent(
     onOpenToc: (Book) -> Unit,
     onOpenChangeSource: (Book) -> Unit,
 ) {
-    // VM 记忆 (避免重组重建, 与 MangaReaderScreen 中 MangaReaderViewModel remember 一致)
+    // VM 记忆 (避免重组重建, 与 MangaReaderScreen 中 MangaReaderViewModelShared remember 一致)
     // scope 由 rememberCoroutineScope 注入, Composable 离开组合时自动取消
     // (对照 MangaReaderScreen 第 163-165 行, 不用 MainScope 避免手动管理生命周期)
     val scope = rememberCoroutineScope()
-    val viewModel = remember { VideoPlayerViewModel(scope, prefStore) }
+    val viewModel = remember { VideoPlayViewModelShared(scope, prefStore) }
 
     // 收集 VM 状态 (Compose 经 collectAsState 订阅, StateFlow 有初始值故无需传默认值)
     val videoUrl by viewModel.videoUrl.collectAsState()
@@ -194,7 +198,7 @@ private fun VideoPlayerContent(
         viewModel.initData(book, chapterIndex)
     }
     // 注: 不需要 DisposableEffect 取消 scope, rememberCoroutineScope 离开组合时自动取消
-    // (VideoPlayerViewModel 无独立 downloadScope, 所有 launch 派生于注入的 scope)
+    // (VideoPlayViewModelShared 无独立 downloadScope, 所有 launch 派生于注入的 scope)
 
     Box(Modifier.fillMaxSize().background(Color(0xFF000000))) {
         Column(Modifier.fillMaxSize()) {
@@ -217,9 +221,10 @@ private fun VideoPlayerContent(
                     error = error,
                     initialPositionMs = initialPositionMs,
                     onRetry = { viewModel.refreshChapter() },
+                    onPlayError = { viewModel.retryOnPlayError() },
                     onSwitchResolution = { idx -> viewModel.switchResolution(idx) },
                     onNextChapter = { viewModel.moveToNextChapter() },
-                    onSavePosition = { pos -> viewModel.saveVideoProgress(book.bookUrl, pos) },
+                    onSaveProgressOnExit = { pos, dur -> viewModel.saveVideoProgressOnExit(pos, dur) },
                 )
             }
             // 底部章节控制栏 (上一章 / 进度 / 下一章, 对照 app 端 VideoPlayActivity 底部控制)
@@ -314,10 +319,11 @@ private fun VideoTitleBar(
  * - **释放**: [DisposableEffect](Unit).onDispose 先落存当前位置 (对照 app 端 onPause
  *   `viewModel.saveRead(position)`), 再 stop + release (Screen 退出时)
  *
- * # 内存 m3u8 限制
+ * # 内存 m3u8 支持
  *
  * vlcj 不能直接播放 m3u8 字符串内容 (需要 URL 或文件路径)。app 端用 ByteArrayDataSource
- * 加载内存 m3u8; desktop 端 TODO, 仅支持 http(s) 直链。命中内存 m3u8 时记日志, 不播放。
+ * 加载内存 m3u8; desktop 端写临时文件 + vlcj 播放文件路径实现等价效果, 临时文件在
+ * onDispose 中清理。
  *
  * @param videoUrl 当前播放视频源 (含 URL + header), null = 加载中或失败
  * @param hasMultiResolution 是否多分辨率源 (控制分辨率按钮显隐)
@@ -326,10 +332,11 @@ private fun VideoTitleBar(
  * @param loading 加载中标记
  * @param error 加载失败消息
  * @param initialPositionMs 打开视频时恢复的播放位置 (毫秒, 0=从头播; 仅首次加载生效)
- * @param onRetry 重试回调
+ * @param onRetry 重试回调 (ErrorOverlay 用户手动重试用)
+ * @param onPlayError 播放器错误重试回调 (返回 true 已重试, false 已重试过)
  * @param onSwitchResolution 切换分辨率回调 (索引)
  * @param onNextChapter 播放结束切下一章回调
- * @param onSavePosition 退出时保存当前位置回调 (毫秒)
+ * @param onSaveProgressOnExit 退出时保存进度回调 (片尾归零由 shared VM 处理)
  */
 @Composable
 private fun VideoRenderArea(
@@ -341,54 +348,53 @@ private fun VideoRenderArea(
     error: String?,
     initialPositionMs: Long,
     onRetry: () -> Unit,
+    onPlayError: () -> Boolean,
     onSwitchResolution: (Int) -> Unit,
     onNextChapter: () -> Unit,
-    onSavePosition: (Long) -> Unit,
+    onSaveProgressOnExit: (Long, Long) -> Unit,
 ) {
     // vlcj 播放器实例 (在 AWT EDT 创建, 写入 State 触发重组挂监听)
     var playerComponent by remember { mutableStateOf<EmbeddedMediaPlayerComponent?>(null) }
     // VLC native 库初始化错误 (用户未装 VLC 时显示安装提示)
     var vlcInitError by remember { mutableStateOf<String?>(null) }
+    // 内存 m3u8 临时文件 (vlcj 4.x 无 ByteArrayDataSource 等价 API, 临时文件是最简方案)
+    // cache 目录 + shutdown hook 兜底清理 (防异常退出残留)
+    val tempCacheDir = remember {
+        val dir = File(System.getProperty("java.io.tmpdir"), "legado_video")
+        if (!dir.exists()) dir.mkdirs()
+        dir
+    }
+    var tempFile by remember { mutableStateOf<File?>(null) }
 
     // ---- 播放控制状态 (vlcj 事件回喂 + UI 订阅, 对照 app 端 Player.Listener 回喂) ----
     var isPlaying by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
-    // 首次播放出错重试标记 (对照 app 端 hasRefreshedOnPlayError, 避免循环重试)
-    var hasRefreshedOnError by remember { mutableStateOf(false) }
     // 控制层显隐 (对照 app 端 controlsVisible, 默认显示)
     var controlsVisible by remember { mutableStateOf(true) }
     // 首次加载是否已恢复播放位置 (避免切章时误 seek 到旧位置; 对照 app 端 initData 一次性读 position)
     var hasRestoredInitialPosition by remember { mutableStateOf(false) }
 
-    // URL 变化时重置播放进度 + 错误重试标记 (对照 app 端 refreshPlayer 切换 media source)
+    // URL 变化时重置播放进度 (对照 app 端 refreshPlayer 切换 media source)
     LaunchedEffect(videoUrl) {
         positionMs = 0L
         durationMs = 0L
         isPlaying = false
-        hasRefreshedOnError = false
     }
 
-    // Screen 退出时落存播放位置 + 释放 vlcj 资源 (对照 app 端 onPause: saveRead(position) + onDestroy: release)
+    // Screen 退出时落存播放进度 + 释放 vlcj 资源 (对照 app 端 onPause: saveRead(position) + onDestroy: release)
     DisposableEffect(Unit) {
         onDispose {
-            // 落存当前位置 (仅当播放器实际加载过媒体, 避免初始化失败覆盖旧记录)
-            // 接近片尾 (pos > duration - 1s) 存 0, 下次从头播 (对照 app 端 onPause 末段判断)
-            if (positionMs > 0 || durationMs > 0) {
-                // 优先取 vlcj 实时位置, 取不到回退事件回喂的 positionMs (对照 app 端 player.currentPosition)
-                val directTime = runCatching {
-                    playerComponent?.mediaPlayer()?.status()?.time()
-                }.getOrNull()
-                val finalPos = if (directTime != null && directTime > 0) directTime else positionMs
-                val toSave = if (durationMs > 0 && finalPos > durationMs - 1000L) 0L else finalPos
-                onSavePosition(toSave)
-            }
+            // 片尾归零 + 落存进度委托 shared VM
+            onSaveProgressOnExit(positionMs, durationMs)
+            // 清理内存 m3u8 临时文件
+            tempFile?.delete()
             try {
                 playerComponent?.mediaPlayer()?.controls()?.stop()
                 playerComponent?.release()
             } catch (e: Throwable) {
-                AppLog.put("桌面视频释放 vlcj 出错\n${e.message}", e)
+                AppLog.put(jvmGetString("video_release_vlcj_error_log", e.message), e)
             }
         }
     }
@@ -426,12 +432,10 @@ private fun VideoRenderArea(
                 }
 
                 override fun error(mediaPlayer: MediaPlayer) {
-                    // 首次出错重试一次 (对照 app 端 onPlayerError hasRefreshedOnPlayError)
-                    if (!hasRefreshedOnError) {
-                        hasRefreshedOnError = true
-                        onRetry()
-                    } else {
-                        AppLog.put("桌面视频播放出错 (vlcj error 事件)", toast = true)
+                    // 错误重试委托 shared VM (首次重试一次)
+                    val retried = onPlayError()
+                    if (!retried) {
+                        AppLog.put(jvmGetString("video_play_error_vlcj_event"), toast = true)
                     }
                 }
             }
@@ -447,11 +451,6 @@ private fun VideoRenderArea(
         val pc = playerComponent ?: return@LaunchedEffect
         val url = videoUrl ?: return@LaunchedEffect
         if (vlcInitError != null) return@LaunchedEffect
-        // 仅支持 http(s) 直链; 内存 m3u8 (url.url 非 http 开头) 标 TODO
-        if (!url.url.startsWith("http")) {
-            AppLog.put("桌面视频暂不支持内存 m3u8 (vlcj TODO: 需写临时文件 + file:// 协议)", toast = true)
-            return@LaunchedEffect
-        }
         // 构造 VLC media options: HTTP 头部 (User-Agent / Referer / Cookie 等)
         // VLC 选项格式: ":http-header=Key: Value\nKey2: Value2" (\n 分隔多个 header)
         // :network-caching=3000: 网络缓存 3 秒, 避免 HLS 切片加载抖动
@@ -461,17 +460,31 @@ private fun VideoRenderArea(
         // 首次加载恢复上次播放位置 (对照 app 端 setPlayerMediaSource 后 `if (position != 0L) seekTo`)
         // vlcj 用 `:start-time=<秒>` 选项 (浮点秒), 仅首次加载生效 (切章不恢复)
         val needRestore = !hasRestoredInitialPosition && initialPositionMs > 0
+        // 内存 m3u8 (url.url 非 http 开头): 写临时文件供 vlcj 播放 (vlcj 4.x 无 ByteArrayDataSource 等价 API)
+        // http(s) 直链: 直接 play url; 本地文件场景 http-header 无意义, 省略
+        val isMemoryM3u8 = !url.url.startsWith("http")
+        val playPath = if (isMemoryM3u8) {
+            tempFile?.delete()
+            val file = File(tempCacheDir, "legado_video_${UUID.randomUUID()}.m3u8")
+            file.writeText(url.url, Charsets.UTF_8)
+            tempFile = file
+            // shutdown hook 兜底清理 (防进程异常退出残留)
+            Runtime.getRuntime().addShutdownHook(Thread { file.delete() })
+            file.absolutePath
+        } else {
+            url.url
+        }
         val options = buildList {
-            if (headerStr.isNotEmpty()) add(":http-header=$headerStr")
+            if (!isMemoryM3u8 && headerStr.isNotEmpty()) add(":http-header=$headerStr")
             add(":network-caching=3000")
             if (needRestore) add(":start-time=${initialPositionMs / 1000.0}")
         }
         runCatching {
-            pc.mediaPlayer().media().play(url.url, *options.toTypedArray())
+            pc.mediaPlayer().media().play(playPath, *options.toTypedArray())
             // play 成功后标记已恢复, 避免切章时再次 seek 到旧位置
             if (needRestore) hasRestoredInitialPosition = true
         }.onFailure {
-            AppLog.put("桌面视频加载出错\n${it.message}", it)
+            AppLog.put(jvmGetString("video_load_error_log", it.message), it)
         }
     }
 
@@ -489,9 +502,11 @@ private fun VideoRenderArea(
                         }
                     } catch (e: Throwable) {
                         // VLC native 库未安装 / 加载失败, 显示安装提示 (不抛出避免 Screen 崩溃)
-                        vlcInitError = "VLC 初始化失败: ${e.message ?: e.javaClass.simpleName}\n" +
-                            "请确保已安装 VLC media player (https://www.videolan.org/)"
-                        AppLog.put("桌面视频 vlcj 初始化失败\n${e.message}", e, true)
+                        vlcInitError = jvmGetString(
+                            "vlc_init_failed",
+                            e.message ?: e.javaClass.simpleName,
+                        )
+                        AppLog.put(jvmGetString("video_vlcj_init_failed_log", e.message), e, true)
                         JPanel() // 空面板避免 SwingPanel factory 返回 null
                     }
                 },
@@ -528,7 +543,7 @@ private fun VideoRenderArea(
                                 pc.mediaPlayer().controls().play()
                             }
                         }.onFailure {
-                            AppLog.put("桌面视频播放/暂停出错\n${it.message}", it)
+                            AppLog.put(jvmGetString("video_play_pause_error_log", it.message), it)
                         }
                     }
                 },
@@ -536,7 +551,7 @@ private fun VideoRenderArea(
                     playerComponent?.let { pc ->
                         runCatching { pc.mediaPlayer().controls().setTime(timeMs) }
                             .onFailure {
-                                AppLog.put("桌面视频 seek 出错\n${it.message}", it)
+                                AppLog.put(jvmGetString("video_seek_error_log", it.message), it)
                             }
                     }
                 },
@@ -546,7 +561,7 @@ private fun VideoRenderArea(
                             pc.mediaPlayer().controls().setRate(speed)
                             playbackSpeed = speed
                         }.onFailure {
-                            AppLog.put("桌面视频倍速出错\n${it.message}", it)
+                            AppLog.put(jvmGetString("video_speed_error_log", it.message), it)
                         }
                     }
                 },
@@ -993,5 +1008,5 @@ private fun VideoControlBar(
  */
 @Suppress("unused")
 private fun logPlayerError(message: String, throwable: Throwable? = null) {
-    AppLog.put("桌面视频播放出错: $message", throwable, true)
+    AppLog.put(jvmGetString("video_play_error_log", message), throwable, true)
 }

@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +33,7 @@ import androidx.compose.ui.window.Dialog
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportThemeViewModelShared
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -90,7 +90,7 @@ import java.awt.datatransfer.StringSelection
  * - **URL 导入** (P2-3 任务4, 桌面端补充): app 端无主题 URL 导入, 桌面端新增第三个 IconButton
  *   (ic_download_line) → AlertDialog 输入 URL → [ImportThemeViewModelShared.importSource]
  *   下载+解析+比对 → 直接读 vm.allSources 合并到 prefStore (不调 vm.importSelect, 因
- *   [DesktopThemeConfigProvider] 是内存版不持久化, 走 importSelect 会与 prefStore 数据源不一致)
+ *   [InMemoryThemeConfigProvider] 是内存版不持久化, 走 importSelect 会与 prefStore 数据源不一致)
  *
  * # UI 结构 (对照 app 端, padding 值原样保留)
  *
@@ -132,7 +132,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     //   1. URL 输入 AlertDialog (showUrlImportDialog=true 显示)
     //   2. 用户确认后新建 ImportThemeViewModelShared.importSource(url) 触发下载+解析+比对
     //   3. 收集 successState: 成功后直接读 vm.allSources 合并到 prefStore (与 importFromClip
-    //      一致的去重逻辑), 不调 vm.importSelect (因 DesktopThemeConfigProvider 是内存版不持久化,
+    //      一致的去重逻辑), 不调 vm.importSelect (因 InMemoryThemeConfigProvider 是内存版不持久化,
     //      走 importSelect 会写到内存 Provider 与 prefStore 数据源不一致; 主题通常单条, 简化处理)
     val scope = rememberCoroutineScope()
     var showUrlImportDialog by remember { mutableStateOf(false) }
@@ -184,7 +184,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
                         }) {
                             Icon(
                                 painter = rememberPainter("ic_download_line"),
-                                contentDescription = "URL 导入",
+                                contentDescription = rememberString("url_import"),
                                 tint = colors.primaryText,
                             )
                         }
@@ -270,10 +270,10 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
             onDismissRequest = { showUrlImportDialog = false },
             title = { Text(rememberString("net_import_theme")) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = urlImportText,
                     onValueChange = { urlImportText = it },
-                    label = { Text(rememberString("input_theme_url")) },
+                    label = rememberString("input_theme_url"),
                     singleLine = true,
                 )
             },
@@ -300,7 +300,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
 
     // ---- URL 导入 VM 状态收集 (successState/errorState) ----
     // 成功后直接读 vm.allSources 合并到 prefStore (与 importFromClip 去重逻辑一致),
-    // 不调 vm.importSelect (DesktopThemeConfigProvider 内存版不持久化, 走 importSelect 会与
+    // 不调 vm.importSelect (InMemoryThemeConfigProvider 内存版不持久化, 走 importSelect 会与
     // prefStore 数据源不一致; 主题通常单条, 简化处理不弹 DesktopImportDialog 让用户勾选)
     urlImportVm?.let { vm ->
         LaunchedEffect(vm) {
@@ -456,16 +456,16 @@ private fun deleteCustom(pref: PreferenceStoreProvider, index: Int) {
  * 深色: bg=#121212 / bbg=#1F1F1F (与 [DesktopThemeStoreProvider] 深色派生色一致)
  */
 private val BuiltinThemes: List<ThemeConfigData> = listOf(
-    builtin("Arcoblue 浅", isNight = false, accent = "#FF165DFF"),
-    builtin("Arcoblue 深", isNight = true, accent = "#FF165DFF"),
-    builtin("Arcogreen 浅", isNight = false, accent = "#FF00B42A"),
-    builtin("Arcogreen 深", isNight = true, accent = "#FF00B42A"),
-    builtin("Arcoorange 浅", isNight = false, accent = "#FFFF7D00"),
-    builtin("Arcoorange 深", isNight = true, accent = "#FFFF7D00"),
-    builtin("Arcored 浅", isNight = false, accent = "#FFF53F3F"),
-    builtin("Arcored 深", isNight = true, accent = "#FFF53F3F"),
-    builtin("Arcopurple 浅", isNight = false, accent = "#FF722ED1"),
-    builtin("Arcopurple 深", isNight = true, accent = "#FF722ED1"),
+    builtin(jvmGetString("theme_arcoblue_light"), isNight = false, accent = "#FF165DFF"),
+    builtin(jvmGetString("theme_arcoblue_dark"), isNight = true, accent = "#FF165DFF"),
+    builtin(jvmGetString("theme_arcogreen_light"), isNight = false, accent = "#FF00B42A"),
+    builtin(jvmGetString("theme_arcogreen_dark"), isNight = true, accent = "#FF00B42A"),
+    builtin(jvmGetString("theme_arcoorange_light"), isNight = false, accent = "#FFFF7D00"),
+    builtin(jvmGetString("theme_arcoorange_dark"), isNight = true, accent = "#FFFF7D00"),
+    builtin(jvmGetString("theme_arcored_light"), isNight = false, accent = "#FFF53F3F"),
+    builtin(jvmGetString("theme_arcored_dark"), isNight = true, accent = "#FFF53F3F"),
+    builtin(jvmGetString("theme_arcopurple_light"), isNight = false, accent = "#FF722ED1"),
+    builtin(jvmGetString("theme_arcopurple_dark"), isNight = true, accent = "#FF722ED1"),
 )
 
 /** 构造内置主题 [ThemeConfigData], isBuiltin=true, primaryColor=backgroundColor */

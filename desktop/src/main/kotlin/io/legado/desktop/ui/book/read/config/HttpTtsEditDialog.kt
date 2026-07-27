@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
@@ -203,7 +204,7 @@ fun HttpTtsEditDialog(
     fun saveAndDismiss() {
         val data = dataFromView()
         viewModel.save(data) {
-            Toasters.get().toast("保存成功")
+            Toasters.get().toast(jvmGetString("save_success"))
             onDismiss()
         }
     }
@@ -215,10 +216,10 @@ fun HttpTtsEditDialog(
             runCatching {
                 AppDbProviders.get().httpTTSDao.delete(data)
             }.onSuccess {
-                Toasters.get().toast("删除成功")
+                Toasters.get().toast(jvmGetString("delete_success"))
                 onDismiss()
             }.onFailure {
-                AppLog.put("删除 HttpTTS 失败", it)
+                AppLog.put(jvmGetString("delete_http_tts_failed"), it)
             }
         }
     }
@@ -230,7 +231,7 @@ fun HttpTtsEditDialog(
             val json = GSON.toJson(data)
             Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(json), null)
             Toasters.get().toast(copiedText)
-        }.onFailure { AppLog.put("复制 HttpTTS 失败", it) }
+        }.onFailure { AppLog.put(jvmGetString("copy_http_tts_failed"), it) }
     }
 
     /** 粘贴源 (委托 viewModel.importFromClip, 内部走 clipTextProvider 取文本 + KS_JSON 解析)。 */
@@ -255,7 +256,7 @@ fun HttpTtsEditDialog(
      * 等桌面端网络栈 + 登录流程接入后补全实际测试逻辑。
      */
     fun testConnection() {
-        Toasters.get().toast("桌面端测试功能待实现")
+        Toasters.get().toast(jvmGetString("desktop_test_not_implemented"))
     }
 
     /** 打开 HTTP TTS 帮助页 (对应 app 端 showHelp("httpTTSHelp"))。 */

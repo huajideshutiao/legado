@@ -140,7 +140,6 @@
     <string name="replace_to">Reemplazo</string>
     <string name="img_cover">Portada</string>
     <string name="book">Libro</string>
-    <string name="volume_key_page">Botones de volumen para pasar página</string>
     <string name="mouse_wheel_page">Rueda del ratón para pasar página</string>
     <string name="page_anim">Animación de hojeada</string>
     <string name="book_page_anim">Animación de hojeada (libro)</string>
@@ -541,7 +540,7 @@
     <string name="use_default_cover">Mostrar siempre la portada predeterminada</string>
     <string name="use_default_cover_s">Mostrar siempre la cobertura predeterminada, no mostrar la cobertura de la red</string>
     <string name="search_src">Código fuente de búsqueda</string>
-    <string name="boo_src">Código fuente del libro</string>
+    <string name="book_src">Código fuente del libro</string>
     <string name="toc_src">Código fuente de los capítulos</string>
     <string name="content_src">Código fuente del contenido</string>
     <string name="title_font_size">Tamaño de fuente</string>
@@ -743,7 +742,6 @@
     <string name="no_books_dir">没有设置书籍保存位置!</string>
     <string name="no_book_found_bookshelf">No book found in bookshelf, import again ?</string>
     <string name="archive_not_found">Can not find archive selected, continue to download ?</string>
-    <string name="privacy_policy">用户隐私与协议</string>
     <string name="agree">同意</string>
     <string name="refuse">拒绝</string>
     <string name="create_folder">创建文件夹</string>

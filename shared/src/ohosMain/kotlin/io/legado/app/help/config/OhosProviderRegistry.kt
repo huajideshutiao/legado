@@ -10,7 +10,9 @@ import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
+import io.legado.app.help.image.OhosBitmapProvider
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
+import io.legado.app.help.http.registerOhosHttpProvider
 import io.legado.app.help.notification.registerOhosNotificationProgress
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
@@ -19,6 +21,10 @@ import io.legado.app.help.service.registerOhosServiceLauncher
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.toast.registerOhosToaster
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
+import io.legado.app.help.ui.registerOhosOpenUrlProvider
+import io.legado.app.help.ui.registerOhosToastProvider
+import io.legado.app.help.ui.registerOhosUserAgentProvider
+import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.web.registerNativeWebServerPlatform
@@ -44,9 +50,11 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *    AppFilesDirs.filesDir 派生; JS eval 时 bindings["cache"] = SourceCacheProviders.impl?.asBinding(),
  *    未注册时 bindings["cache"] 为 null, JS 调用 cache.get/put 会失败被 runCatching 吞掉,
  *    表现为书源变量缓存失效)
- * 6. [registerOhosJsEngines] (JS 引擎 + ImageOps 降级占位) 在任何 JS eval / JsBindings 构造之前
+ * 6. [registerOhosJsEngines] (JS 引擎 + OhosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
  *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
+ * 6.5 [BitmapProviders.register]([OhosBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
+ *    (委托 OhosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
  * 7. [registerOhosSystemTtsEngine] (SystemTts 占位) 在 JsEngines 之后
  *    (与 desktop Main.kt 中 TtsEngineProvider.register 位置一致)
  * 8. 其余 provider ([registerNativeFileDownloader] / [registerOhosToaster] /
@@ -63,12 +71,12 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *
  * JS 引擎 provider: OhosJsEngine (基于 quickjs cinterop 编译 C 源码, 与 Android/Desktop/iOS 端
  * quickjs 引擎统一, KP6 替代原 JSVM-API dlopen/dlsym stub, 解除鸿蒙端 JS 引擎缺失阻塞)
- * + OhosImageOps (KP5 降级占位, 不抛异常让 JS 调用链不崩, 真实像素操作待 KP6+ 用
- *   @ohos.multimedia.image napi 桥接实现)
+ * + OhosImageOps (KP8+ 真实化: 基于 @ohos.multimedia.image PixelMap napi 桥接, decode/encode/
+ *   split/stitch/crop/size 全部可用; 桥接未就绪时降级为字节持有, 不抛异常让 JS 调用链不崩)
  *
- * HTTP 层: 鸿蒙端基于 Ktor HttpClient (CIO engine, 纯 Kotlin 跨平台) 实现 KmpHttpClient/KmpHttpClientBuilder,
- * 无需独立 provider 注册 (actual class 直接构造, 不依赖 OkHttpClientProviders provider 模式);
- * 与 desktop 端 OkHttp + OkHttpClientProviders 模式不同但功能等价。
+ * HTTP 层: 鸿蒙端基于 napi 桥接 @ohos.net.http 实现 KmpHttpClient/KmpHttpClientBuilder,
+ * 通过 [registerOhosHttpProvider] 注册到 OkHttpClientProviders + OkHttpProxyClientProviders,
+ * 与 desktop 端 OkHttp + OkHttpClientProviders 模式一致 (与 iOS 端 IosHttpProvider 同构)。
  *
  * 模式参考 Android 端 `App.onCreate` / iOS 端 `registerIosProviders` /
  * desktop 端 `Main.kt` 中的 provider 注册序列。
@@ -80,6 +88,15 @@ fun registerOhosProviders() {
     // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
     registerOhosPreferenceProvider()
     registerNativeAppConfigAccessor()
+
+    // 2.3 主题配置 provider (内存版, 供 BackupShared 备份 themeConfig.json / ImportThemeViewModelShared 用)
+    ThemeConfigProviders.register(InMemoryThemeConfigProvider())
+
+    // 2.5 HTTP provider (napi 桥接 @ohos.net.http, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
+    // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader 取 OkHttpClient,
+    // AnalyzeUrlCore 取 OkHttpProxyClient; 未注册时这些调用抛 IllegalStateException
+    // (与 iOS 端 registerIosHttpProvider 位置对齐: 文件目录 → 配置 → HTTP provider → 数据库)
+    registerOhosHttpProvider()
 
     // 3. 数据库 provider (DatabaseDriver + AppDatabase + AppDb, 依赖 AppFilesDirs)
     // 与 desktop Main.kt 中 `DatabaseDriverProviders.register + AppDatabaseProviders.register + AppDbProviders.register` 三步对齐
@@ -114,6 +131,10 @@ fun registerOhosProviders() {
     // (解除 KP4 P0 阻塞: 鸿蒙端 JS 引擎缺失导致书源规则解析全失效)
     registerOhosJsEngines()
 
+    // 6.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 OhosImageOps 的 PixelMap 解码/编码)
+    // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
+    BitmapProviders.register(OhosBitmapProvider)
+
     // 7. TTS 引擎 provider (OhosSystemTtsEngine 占位), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
     registerOhosSystemTtsEngine()
@@ -135,6 +156,12 @@ fun registerOhosProviders() {
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider
     // / iOS registerDefaultIosCookieStoreProvider 对齐
     registerDefaultOhosCookieStoreProvider()
+
+    // 8.7 UI provider (Toast / OpenUrl / UserAgent, JsExtensionsCommon 在 JS eval 时回调)
+    // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发); stub 实现, 真实实现需 tsfn 桥接 ArkTS
+    registerOhosToastProvider()
+    registerOhosOpenUrlProvider()
+    registerOhosUserAgentProvider()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

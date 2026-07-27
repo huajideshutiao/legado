@@ -3,15 +3,14 @@ package io.legado.app.web.utils
 /**
  * Web 静态资源 (web/index.html 等) 读取抽象 (shared commonMain)。
  *
- * # 背景
- * 原 app 端 [AssetsWeb] 直接用 `appCtx.assets.open(path)` (Android AssetManager) 读
- * `app/src/main/assets/web/` 下的静态资源; 桌面端无 AssetManager, 改从 classpath 读
- * `shared/jvmMain/resources/web/`。iOS/鸿蒙端用 composeResources 读
- * `commonMain/composeResources/files/web/`。读源是平台特殊行为, 抽象至此接口。
+ * # 单一数据源
+ * web 资源唯一数据源在 `shared/src/commonMain/composeResources/files/web/`, 四端 actual
+ * (Android / 桌面 JVM / iOS / 鸿蒙) 均通过 composeResources [org.jetbrains.compose.resources.Res.readBytes]
+ * 读取, 无任何平台端资源副本 (Android 不再拷贝到 app/assets/web, 桌面不再放 jvmMain/resources/web)。
  *
  * # 下沉 commonMain (原 jvmAndAndroidMain)
  * 返回 [ByteArray] (资源都很小, 几 KB 到几百 KB), 避免 commonMain 无 java.io.InputStream 的问题,
- * 让 iOS/鸿蒙 (nativeMain) 共用同一接口。各端 actual 负责把原生资源源转成 ByteArray。
+ * 让 iOS/鸿蒙 (nativeMain) 共用同一接口。各端 actual 负责把 composeResources 资源转成 ByteArray。
  */
 interface WebAssetSource {
 
@@ -43,6 +42,7 @@ object WebAssetSources {
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): WebAssetSource =
         impl ?: error("WebAssetSources not registered; call registerAndroidWebAssetSource() / registerDesktopWebAssetSource() / registerNativeWebAssetSource() first")
+    // 注: registerAndroidWebAssetSource() 现无参 (改用 composeResources, 不再需要 Context)
 
     /** 仅测试场景: 清空注册。 */
     fun reset() {

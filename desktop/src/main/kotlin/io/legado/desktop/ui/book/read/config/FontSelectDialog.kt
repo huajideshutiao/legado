@@ -29,6 +29,7 @@ import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -163,7 +164,7 @@ fun FontSelectDialog(
             // 错误提示（扫描失败时显示）
             loadError?.let { err ->
                 Text(
-                    text = "加载字体失败: $err",
+                    text = rememberString("load_font_failed", err),
                     color = colors.secondaryText,
                     fontSize = 14.sp,
                     modifier = Modifier.padding(vertical = 8.dp),

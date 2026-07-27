@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,23 +27,22 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
+import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.pullToRefresh
+import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -83,8 +83,9 @@ import kotlinx.coroutines.delay
  *   - `AppConfig.xxx` → `AppConfigProviders.get().xxx` (provider 间接访问)
  *   - `ThemeConfig.curBgImagePath` → `LocalThemeStoreProvider.current.bgImagePath`
  *   - `ColorUtils.isColorLight` → 内联 `isColorLight` 私有函数 (亮度公式与 ColorUtils 一致)
- *   - `AndroidView + CoverImageView` (ShelfCover) → 用 `coverSlot: @Composable (Book) -> Unit`
- *     参数注入; app 端用 ShelfCover 包装, 桌面端用 DesktopBookCover 等自定义实现
+ *   - `AndroidView + CoverImageView` (ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit`
+ *     参数注入; app 端用 ShelfCover 包装, 桌面端用 DesktopBookCover 等自定义实现;
+ *     isVideoCover 由条目按 tier 决定 (对照原 adapter coverRatio 赋值)
  * - **状态提升**: `BookshelfActions` 改为接受 [BookshelfActionsCallbacks] 而非 BaseBookshelfState;
  *   `ShelfBooksContent` 去掉 `Lifecycle` 参数 (shared 不依赖 androidx.lifecycle,
  *   30s 心跳改用 LaunchedEffect + while(true) + delay, 后台时 Compose 不重组故无副作用)
@@ -146,8 +147,8 @@ class ShelfScrollState(
  * 桌面端可用 `BoxWithConstraints.maxWidth` 转 dp 后传入)
  */
 @Composable
-fun rememberShelfLayoutSpec(configTick: Int, screenWidthDp: Int): ShelfLayoutSpec {
-    return remember(configTick, screenWidthDp) {
+fun rememberShelfLayoutSpec(layoutSpecTick: Int, screenWidthDp: Int): ShelfLayoutSpec {
+    return remember(layoutSpecTick, screenWidthDp) {
         val appConfig = AppConfigProviders.get()
         val style = appConfig.bookshelfLayout
         val isVideo = BookSource.exploreStyleIsVideo(style)
@@ -209,7 +210,6 @@ interface BookshelfTabController {
  * 行为差异: app 在后台 (非 RESUMED) 时, 原 repeatOnLifecycle 取消协程, shared 版本仍跑心跳;
  * 但 Compose 不可见时不重组, timeTick++ 仅触发状态写入不重组 UI, 实际无副作用。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShelfBooksContent(
     items: List<Any>,
@@ -217,29 +217,35 @@ fun ShelfBooksContent(
     scroll: ShelfScrollState,
     refreshEnabled: Boolean,
     onRefresh: () -> Unit,
-    configTick: Int,
-    refreshingUrls: () -> Set<String>,
+    coverReloadTick: Int,
+    refreshingUrls: Set<String>,
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit,
     showLastUpdateTime: Boolean,
     showKindIntro: Boolean,
-    bookCoverSlot: @Composable (Book) -> Unit,
-    groupCoverSlot: @Composable (BookGroup) -> Unit,
+    // isVideoCover: 是否用 VIDEO(16:9) 封面比例。对照原版 ShelfCover ratio 选取:
+    // Book list 按 isVideoStyle; Group list 恒 NOVEL(原 GroupViewHolder 不设 coverRatio);
+    // Grid 恒 NOVEL; Video 恒 VIDEO。
+    bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
+    groupCoverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onGroupClick: ((BookGroup) -> Unit)? = null,
     onGroupLongClick: ((BookGroup) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     val pullState = rememberPullToRefreshState()
+    // 锁定 refreshingUrls 引用, 避免子项无谓重组
+    val refreshingUrlsSet = remember(refreshingUrls) { refreshingUrls }
     val appConfig = remember { AppConfigProviders.get() }
-    // 30s 心跳只在列表模式且开了"显示更新时间"时跑
+    // 30s 心跳只在列表模式且开了"显示更新时间"时跑, 不依赖任何 tick
     // (原 repeatOnLifecycle(RESUMED) 改为 LaunchedEffect, shared 不依赖 androidx.lifecycle)
-    var timeTick by remember { mutableIntStateOf(0) }
+    // 心跳 State, 下发给 ShelfLastUpdateText 订阅
+    val timeTickState = remember { mutableIntStateOf(0) }
     if (spec.tier == ShelfTier.LIST && showLastUpdateTime && appConfig.showLastUpdateTime) {
-        LaunchedEffect(configTick) {
+        LaunchedEffect(Unit) {
             while (true) {
                 delay(30 * 1000)
-                timeTick++
+                timeTickState.intValue++
             }
         }
     }
@@ -274,16 +280,17 @@ fun ShelfBooksContent(
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
                         is Book -> ShelfListItem(
-                            item, spec.isVideoList, configTick, timeTick, refreshingUrls,
+                            item, spec.isVideoList, coverReloadTick, refreshingUrlsSet,
                             showLastUpdateTime, showKindIntro,
                             onClick = { onBookClick(item) },
                             onLongClick = { onBookLongClick(item) },
                             modifier = itemModifier,
                             coverSlot = bookCoverSlot,
+                            lastUpdateTextSlot = { ShelfLastUpdateText(item.latestChapterTime, timeTickState) },
                         )
 
                         is BookGroup -> GroupListItem(
-                            item, spec.isVideoList, configTick,
+                            item, spec.isVideoList, coverReloadTick,
                             onClick = { onGroupClick?.invoke(item) },
                             onLongClick = { onGroupLongClick?.invoke(item) },
                             modifier = itemModifier,
@@ -303,7 +310,7 @@ fun ShelfBooksContent(
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
                         is Book -> ShelfGridItem(
-                            item, configTick, refreshingUrls,
+                            item, coverReloadTick, refreshingUrlsSet,
                             onClick = { onBookClick(item) },
                             onLongClick = { onBookLongClick(item) },
                             modifier = itemModifier,
@@ -311,7 +318,7 @@ fun ShelfBooksContent(
                         )
 
                         is BookGroup -> GroupGridItem(
-                            item, configTick,
+                            item, coverReloadTick,
                             onClick = { onGroupClick?.invoke(item) },
                             onLongClick = { onGroupLongClick?.invoke(item) },
                             modifier = itemModifier,
@@ -331,7 +338,7 @@ fun ShelfBooksContent(
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
                         is Book -> ShelfVideoItem(
-                            item, configTick,
+                            item, coverReloadTick,
                             onClick = { onBookClick(item) },
                             onLongClick = { onBookLongClick(item) },
                             modifier = itemModifier,
@@ -339,7 +346,7 @@ fun ShelfBooksContent(
                         )
 
                         is BookGroup -> GroupVideoItem(
-                            item, configTick,
+                            item, coverReloadTick,
                             onClick = { onGroupClick?.invoke(item) },
                             onLongClick = { onGroupLongClick?.invoke(item) },
                             modifier = itemModifier,
@@ -450,9 +457,10 @@ data class BookshelfActionsCallbacks(
 @Composable
 private fun ShelfMenuItem(textKey: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(rememberString(textKey), color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) {
+        Text(rememberString(textKey), color = AppTheme.colors.primaryText)
+    }
 }
 
 // ---- 条目 ----
@@ -510,28 +518,32 @@ private fun ShelfRowIcon(painterKey: String) {
 /**
  * 列表条目, 对照 item_bookshelf_list: 书名行(徽标/转圈)+作者行(更新时间)+分类+进度+最新+简介
  *
- * shared 版本: 封面改为 [coverSlot] 注入 (app 端用 ShelfCover AndroidView, 桌面端自定义)
+ * shared 版本: 封面改为 [coverSlot] 注入 (app 端用 ShelfCover AndroidView, 桌面端自定义);
+ * 封面尺寸由 [coverSlot] 接收的 Modifier 决定 (列表档传 fillMaxHeight 触发 CoverImageView
+ * 按高度+比例反算宽度, 对照原 XML iv_cover height=120dp + wrap_content width)
+ *
+ * 封面比例: 对照原 [ItemBookshelfListBinding.bindExploreCard] 的 `ivCover.coverRatio =
+ * if (isVideoStyle) VIDEO else NOVEL`, 此处把 [isVideoStyle] 作为 isVideoCover 透传给 [coverSlot].
  */
 @Composable
 fun ShelfListItem(
     book: Book,
     isVideoStyle: Boolean,
-    configTick: Int,
-    timeTick: Int,
-    refreshingUrls: () -> Set<String>,
+    coverReloadTick: Int,
+    refreshingUrls: Set<String>,
     showLastUpdateTime: Boolean,
     showKindIntro: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (Book) -> Unit,
+    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
+    // 更新时间 Text 注入: 父项不感知 timeTick 心跳
+    lastUpdateTextSlot: @Composable () -> Unit,
 ) {
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
-    val coverHeight = remember(configTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
-    val refreshing by remember(book.bookUrl) {
-        derivedStateOf { book.bookUrl in refreshingUrls() }
-    }
+    val coverHeight = remember(coverReloadTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
+    val refreshing = book.bookUrl in refreshingUrls
     Row(
         modifier
             .fillMaxWidth()
@@ -539,7 +551,7 @@ fun ShelfListItem(
             .padding(8.dp),
     ) {
         Box(Modifier.height(coverHeight.dp)) {
-            coverSlot(book)
+            coverSlot(book, Modifier.fillMaxHeight(), isVideoStyle)
         }
         Column(
             Modifier
@@ -578,10 +590,7 @@ fun ShelfListItem(
                     modifier = Modifier.weight(1f).padding(end = 8.dp),
                 )
                 if (showLastUpdateTime && appConfig.showLastUpdateTime && !book.isLocal) {
-                    val time = remember(book.latestChapterTime, timeTick) {
-                        book.latestChapterTime.toTimeAgo()
-                    }
-                    Text(time, color = colors.secondaryText, fontSize = 13.sp, maxLines = 1)
+                    lastUpdateTextSlot()
                 }
             }
             if (showKindIntro && appConfig.bookshelfListShowKind) {
@@ -629,47 +638,42 @@ fun ShelfListItem(
     }
 }
 
+/** 更新时间 Text: derivedStateOf 订阅心跳, 仅本 Composable 在 timeTick 变化时重组 */
+@Composable
+fun ShelfLastUpdateText(time: Long, timeTick: State<Int>) {
+    val colors = AppTheme.colors
+    val timeAgo by remember(time) {
+        derivedStateOf {
+            timeTick.value
+            time.toTimeAgo()
+        }
+    }
+    Text(timeAgo, color = colors.secondaryText, fontSize = 13.sp, maxLines = 1)
+}
+
 /** 网格条目, 对照 item_bookshelf_grid: 封面(12dp 边距)+两行书名, 徽标/转圈叠加右上 */
 @Composable
 fun ShelfGridItem(
     book: Book,
-    configTick: Int,
-    refreshingUrls: () -> Set<String>,
+    coverReloadTick: Int,
+    refreshingUrls: Set<String>,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (Book) -> Unit,
+    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
-    val refreshing by remember(book.bookUrl) {
-        derivedStateOf { book.bookUrl in refreshingUrls() }
-    }
+    val refreshing = book.bookUrl in refreshingUrls
     Box(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
-            // 封面 Box: 宽度填满 (减 12dp 左右内边距), contentAlignment=TopCenter
-            // 让封面在自身宽度小于 Box 时水平居中, 避免封面贴左偏移
-            // 对照原 XML item_bookshelf_grid: iv_cover match_parent + 12dp margin
-            // 注: 徽标/转圈保持在外层 Box (用 TopEnd 对齐到封面 Box 右上角附近, 与原 XML 一致),
-            //     不引入内层 wrapContent Box (会导致样式变化)
+            // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
             Box(
                 Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
                 contentAlignment = Alignment.TopCenter,
             ) {
-                coverSlot(book)
-                if (refreshing && !book.isLocal) {
-                    CircularProgressIndicator(
-                        color = colors.accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
-                    )
-                } else if (appConfig.showUnread) {
-                    UnreadBadge(
-                        count = book.getUnreadChapterNum(),
-                        highlight = book.lastCheckCount > 0,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp),
-                    )
-                }
+                // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
+                coverSlot(book, Modifier.fillMaxWidth(), false)
             }
             Text(
                 text = book.name,
@@ -681,6 +685,21 @@ fun ShelfGridItem(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
         }
+        // 徽标/转圈对照原 XML: 约束到 parent 右上角 (bv_unread/rl_loading 均 layout_constraintRight_toRightOf=parent + Top_toTopOf=parent),
+        // 不放进封面 Box (那有 12dp padding 会把徽标推到 16dp 处); bv_unread marginTop/End=4dp, rl_loading 无 margin
+        if (refreshing && !book.isLocal) {
+            CircularProgressIndicator(
+                color = colors.accent,
+                strokeWidth = 2.dp,
+                modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
+            )
+        } else if (appConfig.showUnread) {
+            UnreadBadge(
+                count = book.getUnreadChapterNum(),
+                highlight = book.lastCheckCount > 0,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp),
+            )
+        }
     }
 }
 
@@ -688,11 +707,11 @@ fun ShelfGridItem(
 @Composable
 fun ShelfVideoItem(
     book: Book,
-    configTick: Int,
+    coverReloadTick: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (Book) -> Unit,
+    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(
@@ -701,7 +720,8 @@ fun ShelfVideoItem(
             .padding(8.dp),
     ) {
         Box(Modifier.fillMaxWidth()) {
-            coverSlot(book)
+            // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
+            coverSlot(book, Modifier.fillMaxWidth(), true)
         }
         Text(
             text = book.name,
@@ -736,14 +756,14 @@ fun ShelfVideoItem(
 fun GroupListItem(
     group: BookGroup,
     isVideoStyle: Boolean,
-    configTick: Int,
+    coverReloadTick: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val coverHeight = remember(configTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
+    val coverHeight = remember(coverReloadTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
     Row(
         modifier
             .fillMaxWidth()
@@ -752,7 +772,9 @@ fun GroupListItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.height(coverHeight.dp)) {
-            coverSlot(group)
+            // 对照原 style2 BooksAdapterList.GroupViewHolder: applyCoverHeight(isVideoStyle) 收窄高度,
+            // 但不设 coverRatio (保持默认 NOVEL); 故 isVideoCover 恒 false
+            coverSlot(group, Modifier.fillMaxHeight(), false)
         }
         Text(
             text = group.groupName,
@@ -768,11 +790,11 @@ fun GroupListItem(
 @Composable
 fun GroupGridItem(
     group: BookGroup,
-    configTick: Int,
+    coverReloadTick: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(
@@ -783,7 +805,8 @@ fun GroupGridItem(
         Box(
             Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
         ) {
-            coverSlot(group)
+            // 对照原 style2 BooksAdapterGrid.GroupViewHolder: 不设 coverRatio (保持默认 NOVEL)
+            coverSlot(group, Modifier.fillMaxWidth(), false)
         }
         Text(
             text = group.groupName,
@@ -800,11 +823,11 @@ fun GroupGridItem(
 @Composable
 fun GroupVideoItem(
     group: BookGroup,
-    configTick: Int,
+    coverReloadTick: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(
@@ -814,7 +837,8 @@ fun GroupVideoItem(
     ) {
         if (!group.cover.isNullOrBlank()) {
             Box(Modifier.fillMaxWidth()) {
-                coverSlot(group)
+                // 对照原 style2 BooksAdapterVideo.GroupViewHolder: ivCover.coverRatio = VIDEO
+                coverSlot(group, Modifier.fillMaxWidth(), true)
             }
         }
         Text(

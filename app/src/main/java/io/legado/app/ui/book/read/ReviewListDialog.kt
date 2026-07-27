@@ -37,7 +37,9 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.getBookSource
-import io.legado.app.help.glide.ImageLoader
+import coil3.load
+import coil3.request.error
+import coil3.request.placeholder
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
@@ -379,9 +381,9 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
         reviews = reviews.filterNot { it.id == reviewId }
     }
 
-    // ---- Glide 图片渲染槽 (注入 shared Composable 的 avatarSlot / imageSlot) ----
+    // ---- Coil3 图片渲染槽 (注入 shared Composable 的 avatarSlot / imageSlot) ----
 
-    /** Glide 头像（ImageLoader 栈，tag 防重复加载闪烁） */
+    /** 头像 (Coil3 imageView.load, tag 防重复加载闪烁) */
     @Composable
     private fun GlideAvatar(url: String?, modifier: Modifier) {
         AndroidView(
@@ -391,16 +393,16 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 // url 为 null 时 tag(null)==url，靠 drawable 空判定兜首帧占位图
                 if (iv.tag != url || iv.drawable == null) {
                     iv.tag = url
-                    ImageLoader.load(iv.context, url)
-                        .placeholder(R.drawable.ic_bottom_person)
-                        .error(R.drawable.ic_bottom_person)
-                        .into(iv)
+                    iv.load(url) {
+                        placeholder(R.drawable.ic_bottom_person)
+                        error(R.drawable.ic_bottom_person)
+                    }
                 }
             },
         )
     }
 
-    /** Glide 评论配图 */
+    /** 评论配图 */
     @Composable
     private fun GlideImage(url: String, modifier: Modifier) {
         AndroidView(
@@ -412,9 +414,7 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 if (iv.tag != url) {
                     iv.tag = url
                     val size = 120.dpToPx()
-                    ImageLoader.load(iv.context, url)
-                        .override(size, size)
-                        .into(iv)
+                    iv.load(url) { size(size, size) }
                 }
             },
         )

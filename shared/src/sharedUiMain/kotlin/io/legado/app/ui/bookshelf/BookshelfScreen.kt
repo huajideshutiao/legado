@@ -1,11 +1,9 @@
-package io.legado.app.ui.bookshelf
+﻿package io.legado.app.ui.bookshelf
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,15 +11,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -30,14 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -45,10 +36,6 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
-import androidx.compose.foundation.layout.width
-import io.legado.app.constant.BookType
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 书架 Screen (KMP 版, commonMain 共享)。
@@ -57,23 +44,20 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * `BookshelfScreen2` (style2, 单列表 + 标题) 的共有骨架, 下沉后融合为一个 Screen:
  *
  * - **顶栏**: 分组切换 ([AppScrollTabRow]) + 搜索图标 + 溢出菜单槽 ([actions] slot)
- * - **内容区**: 按 [tier] 选 [LazyColumn] (列表) / [LazyVerticalGrid] (网格)
- *   - 列表项: [ShelfListItem] (封面 + 书名 + 作者 + 最新章节)
- *   - 网格项: [ShelfGridItem] (封面 + 书名)
- * - **空态**: 居中提示
+ * - **内容区**: 复用 [ShelfBooksContent] (按 [tier] 选 LIST/GRID, 享受 contentType /
+ *   animateItem / timeTick / 滚顶等性能优化; 列表/网格条目由 shared 端 [ShelfListItem] /
+ *   [ShelfGridItem] 渲染)
+ * - **空态**: 由 [ShelfBooksContent] 内部居中提示
  *
  * # 简化项 (对照 app 端 ShelfBooksContent)
  *
- * - 不接入下拉刷新 (PullToRefresh, 依赖 M3 experimental API 与 MainViewModel.upToc),
- *   桌面端无下拉手势, 后续按需补
+ * - 不接入下拉刷新 (桌面端无下拉手势), refreshEnabled 恒 false
  * - 不接入 HorizontalPager 分组分页 (style1 视觉), 改用顶部 tab 切换 + 单内容区,
  *   对桌面端更适合 (无 ViewPager 习惯, 鼠标点击切换)
- * - 不显示未读徽标 (依赖 BaseBook.getUnreadChapterNum 扩展, 该扩展在 app/BookExtensions.kt
- *   未下沉, 桌面端如需可后续下沉)
- * - 不显示分类标签/最新章节行/更新时间等扩展信息 (依赖 toTimeAgo/KindLabels 等
- *   Android-specific 工具), 仅保留书名 + 作者 + 最新章节标题三条核心字段
- * - 封面由 [coverSlot] 注入: commonMain 不依赖 Glide/Coil, 桌面端通过 slot 注入
- *   DesktopImageOps 本地缓存加载; 默认 [DefaultBookCoverPlaceholder] 渲染书名首字
+ * - refreshingUrls / coverReloadTick 桌面端暂无 state, 传空省略对应功能
+ *   (条目仍渲染, 仅无刷新转圈/封面重载动画)
+ * - 封面由 [coverSlot] 注入: 默认 [DefaultBookCoverPlaceholder] 渲染书名首字;
+ *   桌面端通过 slot 注入 DesktopBookCover (ImageIO + OkHttp 加载)
  *
  * # 路由跳转
  *
@@ -106,7 +90,6 @@ fun BookshelfScreen(
     actions: @Composable RowScope.() -> Unit = { DefaultBookshelfActions(onSearchClick) },
 ) {
     val colors = AppTheme.colors
-    val eInk = LocalEInk.current
     val appConfig = remember { AppConfigProviders.get() }
     val groups by viewModel.bookGroups.collectAsState()
     val currentGroupId by viewModel.currentGroupId.collectAsState()
@@ -115,10 +98,6 @@ fun BookshelfScreen(
     // tier 决策: 显式传入优先, 否则按 bookshelfLayout (0=LIST, 其他=GRID)
     val resolvedTier = remember(tier, appConfig.bookshelfLayout) {
         tier ?: if (appConfig.bookshelfLayout == 0) BookshelfTier.LIST else BookshelfTier.GRID
-    }
-    // 列表封面高度 (对照 app 端 shelfCoverHeightDp, 桌面端无 video 模式收窄)
-    val coverHeightDp = remember(appConfig.bookshelfCoverHeight) {
-        appConfig.bookshelfCoverHeight.coerceIn(60, 240)
     }
     // 网格列宽 (对照 app 端 bookshelfGridWidth, Adaptive 模式)
     val gridWidthDp = remember(appConfig.bookshelfGridWidth) {
@@ -137,27 +116,40 @@ fun BookshelfScreen(
             onGroupLongClick = onGroupLongClick,
             actions = actions,
         )
-        if (books.isEmpty()) {
-            // 空态提示 (对照 app 端 R.string.bookshelf_empty)
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = rememberString("empty"),
-                    color = colors.secondaryText,
-                    fontSize = 14.sp,
-                )
-            }
-        } else {
-            BookshelfBooksContent(
-                books = books,
-                tier = resolvedTier,
-                coverHeightDp = coverHeightDp,
-                gridWidthDp = gridWidthDp,
-                eInk = eInk,
-                coverSlot = coverSlot,
-                onBookClick = onBookClick,
-                onBookLongClick = onBookLongClick,
-            )
-        }
+        // 复用 ShelfBooksContent: 享受 contentType / animateItem / timeTick / 滚顶等性能优化
+        // (refreshingUrls / coverReloadTick 桌面端暂无 state, 省略对应功能传空)
+        ShelfBooksContent(
+            items = books,
+            spec = remember(resolvedTier, gridWidthDp) {
+                when (resolvedTier) {
+                    BookshelfTier.LIST -> ShelfLayoutSpec(
+                        tier = ShelfTier.LIST,
+                        isVideoList = false,
+                        cols = 1,
+                        fixedWidth = false,
+                        gridWidthDp = gridWidthDp,
+                    )
+                    BookshelfTier.GRID -> ShelfLayoutSpec(
+                        tier = ShelfTier.GRID,
+                        isVideoList = false,
+                        cols = 1,
+                        fixedWidth = true,
+                        gridWidthDp = gridWidthDp,
+                    )
+                }
+            },
+            scroll = remember { ShelfScrollState() },
+            refreshEnabled = false,
+            onRefresh = {},
+            coverReloadTick = 0,
+            refreshingUrls = emptySet(),
+            onBookClick = onBookClick,
+            onBookLongClick = onBookLongClick,
+            showLastUpdateTime = true,
+            showKindIntro = true,
+            bookCoverSlot = { book, _, _ -> coverSlot(book) },
+            groupCoverSlot = { _, modifier, _ -> Box(modifier) },
+        )
     }
 }
 
@@ -172,7 +164,7 @@ fun BookshelfScreen(
  * @param bookCount 当前分组书籍数 (showGroupCount=true 时附加到当前 tab 标题)
  */
 @Composable
-private fun BookshelfTopBar(
+internal fun BookshelfTopBar(
     groups: List<BookGroup>,
     currentGroupId: Long,
     showGroupCount: Boolean,
@@ -235,7 +227,7 @@ private fun BookshelfTopBar(
 
 /** 单个分组 tab 项 (对照 app 端 style1.GroupTab) */
 @Composable
-private fun GroupTab(
+internal fun GroupTab(
     title: String,
     selected: Boolean,
     eInk: Boolean,
@@ -259,155 +251,6 @@ private fun GroupTab(
     }
 }
 
-/**
- * 内容区: 按 tier 选 LazyColumn / LazyVerticalGrid。
- *
- * 对照 app 端 ShelfBooksContent: key=bookUrl 稳定, 列表项 8dp padding,
- * 网格列宽走 [GridCells.Adaptive] (固定宽度模式), 底部 8dp 留白避让导航栏。
- */
-@Composable
-private fun BookshelfBooksContent(
-    books: List<Book>,
-    tier: BookshelfTier,
-    coverHeightDp: Int,
-    gridWidthDp: Int,
-    eInk: Boolean,
-    coverSlot: @Composable (Book) -> Unit,
-    onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit,
-) {
-    when (tier) {
-        BookshelfTier.LIST -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 8.dp),
-        ) {
-            items(books, key = { it.bookUrl }) { book ->
-                ShelfListItem(
-                    book = book,
-                    coverHeightDp = coverHeightDp,
-                    coverSlot = coverSlot,
-                    onClick = { onBookClick(book) },
-                    onLongClick = { onBookLongClick(book) },
-                )
-            }
-        }
-
-        BookshelfTier.GRID -> LazyVerticalGrid(
-            columns = GridCells.Adaptive(gridWidthDp.dp),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 8.dp),
-        ) {
-            items(books, key = { it.bookUrl }) { book ->
-                ShelfGridItem(
-                    book = book,
-                    coverSlot = coverSlot,
-                    onClick = { onBookClick(book) },
-                    onLongClick = { onBookLongClick(book) },
-                )
-            }
-        }
-    }
-}
-
-// ---- 条目 ----
-
-/**
- * 列表条目 (对照 app 端 ShelfListItem 简化版)。
- *
- * 结构: 封面 (固定高度 [coverHeightDp]) + 右侧三行
- * (书名 16sp / 作者 13sp / 最新章节 13sp), 整行点击/长按。
- */
-@Composable
-private fun ShelfListItem(
-    book: Book,
-    coverHeightDp: Int,
-    coverSlot: @Composable (Book) -> Unit,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
-    ) {
-        Box(Modifier.height(coverHeightDp.dp)) {
-            coverSlot(book)
-        }
-        Column(
-            Modifier
-                .padding(start = 8.dp)
-                .heightIn(min = coverHeightDp.dp)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            // 书名行
-            Text(
-                text = book.name,
-                color = colors.primaryText,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-            // 作者行 (对照 app 端 ShelfRowIcon ic_author + getRealAuthor)
-            Text(
-                text = book.getRealAuthor(),
-                color = colors.secondaryText,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // 最新章节行 (对照 app 端 ShelfRowIcon ic_book_last + latestChapterTitle)
-            if (!book.latestChapterTitle.isNullOrEmpty()) {
-                Text(
-                    text = book.latestChapterTitle.toString(),
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/**
- * 网格条目 (对照 app 端 ShelfGridItem 简化版)。
- *
- * 结构: 封面 (12dp 内边距) + 书名两行居中, 整卡点击/长按。
- */
-@Composable
-private fun ShelfGridItem(
-    book: Book,
-    coverSlot: @Composable (Book) -> Unit,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    Box(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Column(Modifier.fillMaxWidth()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, top = 12.dp, end = 12.dp),
-            ) {
-                coverSlot(book)
-            }
-            Text(
-                text = book.name,
-                color = colors.primaryText,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            )
-        }
-    }
-}
-
 // ---- 默认实现 (供宿主端未注入 slot 时使用) ----
 
 /**
@@ -418,7 +261,7 @@ private fun ShelfGridItem(
  * 不下沉)。
  */
 @Composable
-private fun DefaultBookshelfActions(onSearchClick: () -> Unit) {
+internal fun DefaultBookshelfActions(onSearchClick: () -> Unit) {
     val colors = AppTheme.colors
     IconButton(onClick = onSearchClick) {
         Icon(
@@ -456,157 +299,5 @@ fun DefaultBookCoverPlaceholder(book: Book) {
             fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
         )
-    }
-}
-
-// ---- @Preview (BookshelfScreen.kt 内 Composable) ----
-// 假数据: 纯内存 Book/BookGroup, 不依赖 DB/网络;
-// AppConfigProviders 由 LegadoThemePreview 注册 stub。
-// BookshelfScreen 自身依赖 BookshelfViewModel (需 DB), 不 Preview, 仅 Preview 其内部组件。
-
-private val screenPreviewBook = Book(
-    name = "三体",
-    author = "刘慈欣",
-    bookUrl = "screenPreview://1",
-    tocUrl = "screenPreview://toc",
-    origin = BookType.localTag,
-    kind = "科幻;小说",
-    intro = "三体世界与地球文明的接触, 黑暗森林法则下的宇宙博弈...",
-    coverUrl = "https://preview/cover.jpg",
-    durChapterTitle = "黑暗森林",
-    latestChapterTitle = "末日之战",
-    durChapterIndex = 5,
-    totalChapterNum = 10,
-    latestChapterTime = 1_700_000_000_000,
-    lastCheckCount = 3,
-)
-
-private val screenPreviewBooks = listOf(
-    screenPreviewBook,
-    screenPreviewBook.copy(name = "球状闪电", bookUrl = "screenPreview://2"),
-    screenPreviewBook.copy(name = "流浪地球", bookUrl = "screenPreview://3"),
-)
-
-private val screenPreviewGroups = listOf(
-    BookGroup(groupId = 1, groupName = "全部"),
-    BookGroup(groupId = 2, groupName = "科幻"),
-    BookGroup(groupId = 3, groupName = "小说"),
-)
-
-@Preview
-@Composable
-fun DefaultBookCoverPlaceholderPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp).width(120.dp)) {
-        DefaultBookCoverPlaceholder(screenPreviewBook)
-    }
-}
-
-@Preview
-@Composable
-fun DefaultBookCoverPlaceholderDarkPreview() = LegadoThemePreview(dark = true) {
-    Box(Modifier.padding(16.dp).width(120.dp)) {
-        DefaultBookCoverPlaceholder(screenPreviewBook)
-    }
-}
-
-@Preview
-@Composable
-fun BookshelfScreenTopBarPreview() = LegadoThemePreview {
-    BookshelfTopBar(
-        groups = screenPreviewGroups,
-        currentGroupId = 1L,
-        showGroupCount = true,
-        bookCount = 3,
-        onGroupClick = {},
-        onGroupLongClick = {},
-        actions = { DefaultBookshelfActions(onSearchClick = {}) },
-    )
-}
-
-@Preview
-@Composable
-fun BookshelfScreenTopBarEmptyPreview() = LegadoThemePreview {
-    BookshelfTopBar(
-        groups = emptyList(),
-        currentGroupId = BookGroup.IdAll,
-        showGroupCount = false,
-        bookCount = 0,
-        onGroupClick = {},
-        onGroupLongClick = {},
-        actions = { DefaultBookshelfActions(onSearchClick = {}) },
-    )
-}
-
-@Preview
-@Composable
-fun BookshelfScreenGroupTabPreview() = LegadoThemePreview {
-    Row(Modifier.padding(16.dp)) {
-        GroupTab(title = "选中", selected = true, eInk = false, onClick = {}, onLongClick = {})
-        GroupTab(title = "未选中", selected = false, eInk = false, onClick = {}, onLongClick = {})
-    }
-}
-
-@Preview
-@Composable
-fun BookshelfScreenBooksContentListPreview() = LegadoThemePreview {
-    BookshelfBooksContent(
-        books = screenPreviewBooks,
-        tier = BookshelfTier.LIST,
-        coverHeightDp = 120,
-        gridWidthDp = 120,
-        eInk = false,
-        coverSlot = { DefaultBookCoverPlaceholder(it) },
-        onBookClick = {},
-        onBookLongClick = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookshelfScreenBooksContentGridPreview() = LegadoThemePreview {
-    BookshelfBooksContent(
-        books = screenPreviewBooks,
-        tier = BookshelfTier.GRID,
-        coverHeightDp = 120,
-        gridWidthDp = 120,
-        eInk = false,
-        coverSlot = { DefaultBookCoverPlaceholder(it) },
-        onBookClick = {},
-        onBookLongClick = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookshelfScreenListItemPreview() = LegadoThemePreview {
-    Box(Modifier.padding(8.dp)) {
-        ShelfListItem(
-            book = screenPreviewBook,
-            coverHeightDp = 120,
-            coverSlot = { DefaultBookCoverPlaceholder(it) },
-            onClick = {},
-            onLongClick = {},
-        )
-    }
-}
-
-@Preview
-@Composable
-fun BookshelfScreenGridItemPreview() = LegadoThemePreview {
-    Box(Modifier.padding(8.dp).width(120.dp)) {
-        ShelfGridItem(
-            book = screenPreviewBook,
-            coverSlot = { DefaultBookCoverPlaceholder(it) },
-            onClick = {},
-            onLongClick = {},
-        )
-    }
-}
-
-@Preview
-@Composable
-fun BookshelfScreenActionsPreview() = LegadoThemePreview {
-    Row(Modifier.padding(16.dp)) {
-        DefaultBookshelfActions(onSearchClick = {})
     }
 }

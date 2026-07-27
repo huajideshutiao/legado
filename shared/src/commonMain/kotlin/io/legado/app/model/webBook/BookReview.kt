@@ -204,6 +204,13 @@ object BookReview {
                         // Phase D: GSON.fromJson<Map<String, Any>>(bodyStr, type) → decodeAnyMapOrNull(bodyStr)
                         // AnyMapSerializer 复刻原 MapDeserializerDoubleAsIntFix 数字策略 (整数 Long/小数 Double)
                         val map = decodeAnyMapOrNull(bodyStr)
+                        if (map == null) {
+                            // decodeAnyMapOrNull 吞异常返回 null, 补回原 GSON 抛异常时的 onFailure 日志
+                            SourceDebugLoggers.impl?.log(
+                                bookSource.bookSourceUrl,
+                                "段评数解析失败:${bodyStr.take(200)}"
+                            )
+                        }
                         map?.forEach { (k, v) ->
                             val idx = k.toIntOrNull() ?: return@forEach
                             val count = v.toString().toIntOrNull() ?: 0

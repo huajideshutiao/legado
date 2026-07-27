@@ -66,18 +66,18 @@ class AutoReadDialog : BaseReadBottomComposeDialog() {
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                ReadMenuIconButton(R.drawable.ic_toc, stringResource(R.string.chapter_list), colors.text) {
+                ReadMenuIconButton("ic_toc", stringResource(R.string.chapter_list), colors.text) {
                     callBack?.openChapterList()
                 }
-                ReadMenuIconButton(R.drawable.ic_menu, stringResource(R.string.main_menu), colors.text) {
+                ReadMenuIconButton("ic_menu", stringResource(R.string.main_menu), colors.text) {
                     callBack?.showMenuBar()
                     dismissAllowingStateLoss()
                 }
-                ReadMenuIconButton(R.drawable.ic_auto_page_stop, stringResource(R.string.stop), colors.text) {
+                ReadMenuIconButton("ic_auto_page_stop", stringResource(R.string.stop), colors.text) {
                     callBack?.autoPageStop()
                     dismissAllowingStateLoss()
                 }
-                ReadMenuIconButton(R.drawable.ic_settings, stringResource(R.string.setting), colors.text) {
+                ReadMenuIconButton("ic_settings", stringResource(R.string.setting), colors.text) {
                     (activity as BaseReadBookActivity).showPageAnimConfig {
                         (activity as ReadBookActivity).upPageAnim()
                         ReadBook.loadContent(false)

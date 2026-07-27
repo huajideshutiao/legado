@@ -10,8 +10,8 @@ import org.jetbrains.compose.resources.Res
  * (compose.components.resources 已 KMP 发布, 经 generateComposeResClass task 暴露 Res 类)。
  *
  * # 单一数据源
- * web 资源本体在 jvmMain/resources/web/ (Android + 桌面 JVM classpath),
- * iOS/鸿蒙端用 commonMain/composeResources/files/web/ 副本 (内容一致, 升级时两处同步)。
+ * web 资源唯一数据源在 `commonMain/composeResources/files/web/`, Android/桌面 JVM/iOS/鸿蒙
+ * 四端均通过 composeResources [Res.readBytes] 读取, 无任何平台端资源副本。
  *
  * # 注意
  * compose.components.resources 不发布 linuxArm64 (ohos) 变体, 鸿蒙 target 默认关闭

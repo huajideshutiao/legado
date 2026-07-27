@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -262,12 +262,13 @@ private fun PageAnimRow(
             ) {
                 PAGE_ANIM_OPTIONS.forEach { (anim, _) ->
                     DropdownMenuItem(
-                        text = { Text(labels[anim] ?: noneLabel) },
                         onClick = {
                             onSelect(anim)
                             onMenuExpandedChange(false)
                         },
-                    )
+                    ) {
+                        Text(labels[anim] ?: noneLabel)
+                    }
                 }
             }
         }

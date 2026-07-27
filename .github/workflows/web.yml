@@ -70,5 +70,5 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
           commit_message: Bump web ${{ env.APP_VER}}
-          file_pattern: app/src/main/assets/web/vue/
+          file_pattern: shared/src/commonMain/composeResources/files/web/
 

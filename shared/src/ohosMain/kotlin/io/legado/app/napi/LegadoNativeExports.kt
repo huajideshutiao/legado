@@ -11,6 +11,8 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.ui.book.manga.OhosMangaImageExtractor
+import io.legado.app.ui.explore.ExploreViewModelShared
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
@@ -22,9 +24,17 @@ import kotlinx.cinterop.cstr
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.toKString
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.experimental.CName
 
 /**
@@ -47,6 +57,7 @@ import kotlin.experimental.CName
  * - `legado_bookshelf_list() -> const char*` (返回 JSON 数组)
  * - `legado_search_book(const char* query) -> const char*` (返回 JSON 数组, 书架内搜索)
  * - `legado_load_chapter(const char* bookUrl, int chapterIndex) -> const char*` (返回章节内容)
+ * - `legado_chapter_list(const char* bookUrl) -> const char*` (返回章节目录 JSON 数组)
  * - `legado_import_booksource(const char* json) -> int` (返回导入数量)
  *
  * ## 调用链
@@ -79,6 +90,14 @@ object LegadoNativeExports {
         // 真实部署可改在 EntryAbility.onCreate 显式调用 legado_register_providers()
         runCatching { registerOhosProviders() }
     }
+
+    // 发现页 VM 共享核心 (topSource/deleteSource 转发到此, scope=应用级 IO 协程)
+    private val exploreVmShared = ExploreViewModelShared(
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    )
+
+    // 漫画图片 URL 提取器 (复用 commonMain MangaImageExtractorShared 纯字符串扫描)
+    private val mangaExtractor = OhosMangaImageExtractor()
 
     // ===== 工具类函数 (KP4 已存在) =====
 
@@ -239,6 +258,39 @@ object LegadoNativeExports {
     }
 
     /**
+     * 获取章节目录列表 (返回 JSON 数组字符串)。
+     *
+     * 调用链: `AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)` 取章节列表,
+     * 仅序列化 UI 所需字段 (index/title/url) 返回, 避免传输 BookChapter 全部字段。
+     *
+     * 同步语义: 同 [loadChapter], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
+     *
+     * 失败兜底: provider 未注册 / 章节列表为空 / 异常时返回 `"[]"` (空数组)。
+     *
+     * @param bookUrl 书籍 URL (UTF-8 C 字符串)
+     * @return UTF-8 C 字符串, JSON 数组格式 `[{"index":0,"title":"...","url":"..."}, ...]`
+     */
+    @CName("legado_chapter_list")
+    fun chapterList(bookUrl: CPointer<ByteVar>): CPointer<ByteVar> {
+        val bookUrlStr = bookUrl.toKString()
+        val json = runCatching {
+            runBlocking {
+                val list = AppDbProviders.get().bookChapterDao.getChapterList(bookUrlStr)
+                buildJsonArray {
+                    list.forEach { ch ->
+                        add(buildJsonObject {
+                            put("index", ch.index)
+                            put("title", ch.title)
+                            put("url", ch.url)
+                        })
+                    }
+                }.toString()
+            }
+        }.getOrNull() ?: "[]"
+        return json.cstr.getPointer(nativeHeap)
+    }
+
+    /**
      * 导入书源 (返回导入数量)。
      *
      * 调用链:
@@ -266,6 +318,166 @@ object LegadoNativeExports {
             }
             sources.size
         }.getOrNull() ?: 0
+    }
+
+    // ===== 漫画 + 发现页函数 (KP5+ 新增) =====
+
+    /**
+     * 加载漫画章节图片 URL 列表 (返回 `{"images":["url1","url2",...]}` JSON)。
+     *
+     * 调用链 (对齐 Index.d.ts 注释 + MangaReaderViewModelShared.getManageChapter):
+     * 1. `AppDbProviders.get().bookDao.getBook(bookUrl)` 取书籍
+     * 2. `AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)` 取章节列表
+     * 3. `BookStorageProviders.get().getContent(book, chapter)` 读本地缓存正文
+     * 4. `mangaExtractor.flowImages(chapter, content).distinctUntilChanged().toList()` 提取图片 URL
+     *
+     * 同步语义: 同 [loadChapter], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
+     *
+     * 失败兜底: 任何步骤异常 / 书籍不存在 / 章节越界时返回 `{"images":[]}`。
+     *
+     * @param bookUrl 书籍 URL (UTF-8 C 字符串)
+     * @param chapterIndex 章节索引 (0-based)
+     * @return UTF-8 C 字符串, JSON 格式 `{"images":["url1","url2",...]}`
+     */
+    @CName("legado_load_manga_chapter")
+    fun loadMangaChapter(bookUrl: CPointer<ByteVar>, chapterIndex: Int): CPointer<ByteVar> {
+        val bookUrlStr = bookUrl.toKString()
+        val json = runCatching {
+            runBlocking {
+                val book = AppDbProviders.get().bookDao.getBook(bookUrlStr) ?: return@runBlocking
+                val chapterList = AppDbProviders.get().bookChapterDao.getChapterList(bookUrlStr)
+                val chapter = chapterList.getOrNull(chapterIndex) ?: return@runBlocking
+                // 读本地缓存正文 (对齐 loadChapter), 由该 content 提取图片 URL
+                val content = BookStorageProviders.get().getContent(book, chapter) ?: ""
+                val images = mangaExtractor.flowImages(chapter, content)
+                    .distinctUntilChanged()
+                    .toList()
+                buildJsonObject {
+                    put("images", buildJsonArray { images.forEach { add(it) } })
+                }.toString()
+            }
+        }.getOrNull() ?: buildJsonObject { put("images", buildJsonArray()) }.toString()
+        return json.cstr.getPointer(nativeHeap)
+    }
+
+    /**
+     * 获取发现源列表 (返回 JSON 数组字符串, 仅 enabledExplore=true 且 hasExploreUrl=1 的源)。
+     *
+     * 调用链: `AppDbProviders.get().bookSourceDao.flowExplore(true).first()` 取发现源列表,
+     * 手动序列化 [io.legado.app.data.entities.BookSourcePart] 全字段 (该 data class 未标 @Serializable,
+     * 与 chapterList 同模式用 [buildJsonArray] + [buildJsonObject] 拼 JSON, 避免给它加注解影响 Room)。
+     *
+     * 同步语义: 同 [bookshelfList], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
+     *
+     * 失败兜底: provider 未注册 / DAO 查询异常时返回 `"[]"` (空数组)。
+     *
+     * @return UTF-8 C 字符串, JSON 数组格式 `[{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]`
+     */
+    @CName("legado_explore_list")
+    fun exploreList(): CPointer<ByteVar> {
+        val json = runCatching {
+            runBlocking {
+                val list = AppDbProviders.get().bookSourceDao.flowExplore(true).first()
+                buildJsonArray {
+                    list.forEach { src ->
+                        add(buildJsonObject {
+                            put("bookSourceUrl", src.bookSourceUrl)
+                            put("bookSourceName", src.bookSourceName)
+                            put("bookSourceGroup", src.bookSourceGroup)
+                            put("customOrder", src.customOrder)
+                            put("enabled", src.enabled)
+                            put("enabledExplore", src.enabledExplore)
+                            put("hasLoginUrl", src.hasLoginUrl)
+                            put("lastUpdateTime", src.lastUpdateTime)
+                            put("respondTime", src.respondTime)
+                            put("weight", src.weight)
+                            put("hasExploreUrl", src.hasExploreUrl)
+                        })
+                    }
+                }.toString()
+            }
+        }.getOrNull() ?: "[]"
+        return json.cstr.getPointer(nativeHeap)
+    }
+
+    /**
+     * 打开发现源详情/书籍列表 (跳转 ExploreShow)。
+     *
+     * # stub no-op
+     * 页面跳转属 ArkTS 路由范畴, Kotlin 侧无 ArkTS 路由 API 访问能力 (与 showToast 走 tsfn 不同,
+     * 路由跳转需在 ArkTS 主线程同步执行, tsfn 异步 dispatch 反而带来时序问题)。
+     * 本函数仅满足 napi 三件套契约, 实际导航应由 ArkTS 端直接调 router.pushUrl 完成。
+     *
+     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
+     * @param exploreUrl 发现分类 URL (UTF-8 C 字符串, 可为空)
+     */
+    @CName("legado_open_explore")
+    fun openExplore(sourceUrl: CPointer<ByteVar>, exploreUrl: CPointer<ByteVar>) {
+        // stub no-op: ArkTS 端应直接处理导航, 不经 napi 往返
+    }
+
+    /**
+     * 编辑书源 (跳转 BookSourceEdit)。
+     *
+     * 同 [openExplore], stub no-op (页面跳转属 ArkTS 路由范畴)。
+     *
+     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
+     */
+    @CName("legado_edit_explore_source")
+    fun editExploreSource(sourceUrl: CPointer<ByteVar>) {
+        // stub no-op: ArkTS 端应直接处理导航, 不经 napi 往返
+    }
+
+    /**
+     * 置顶书源 (调 ExploreViewModelShared.topSource)。
+     *
+     * 调用链:
+     * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
+     * 2. `exploreVmShared.topSource(part)` → 内部 `scope.launch(Dispatchers.IO) { ... }`
+     *    把 customOrder 改为 minOrder - 1 后 upOrder
+     *
+     * 同步语义: 仅步骤 1 同步 (runBlocking), 步骤 2 fire-and-forget (VM 内部 launch)。
+     *
+     * 失败兜底: provider 未注册 / 书源不存在 / 异常时静默 no-op (ArkTS 侧 loadSources 重载即可看到结果)。
+     *
+     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
+     */
+    @CName("legado_top_explore_source")
+    fun topExploreSource(sourceUrl: CPointer<ByteVar>) {
+        val sourceUrlStr = sourceUrl.toKString()
+        runCatching {
+            runBlocking {
+                val part = AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrlStr)
+                    ?: return@runBlocking
+                exploreVmShared.topSource(part)
+            }
+        }
+    }
+
+    /**
+     * 删除书源 (调 ExploreViewModelShared.deleteSource)。
+     *
+     * 调用链:
+     * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
+     * 2. `exploreVmShared.deleteSource(part)` → 内部 `scope.launch(Dispatchers.IO) { ... }`
+     *    调 SourceHelp.deleteBookSource(part.bookSourceUrl)
+     *
+     * 同步语义: 同 [topExploreSource], 仅步骤 1 同步, 步骤 2 fire-and-forget。
+     *
+     * 失败兜底: provider 未注册 / 书源不存在 / 异常时静默 no-op。
+     *
+     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
+     */
+    @CName("legado_delete_explore_source")
+    fun deleteExploreSource(sourceUrl: CPointer<ByteVar>) {
+        val sourceUrlStr = sourceUrl.toKString()
+        runCatching {
+            runBlocking {
+                val part = AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrlStr)
+                    ?: return@runBlocking
+                exploreVmShared.deleteSource(part)
+            }
+        }
     }
 
     // ===== FileDir / CacheDir 路径注入 (ArkTS → Kotlin, KP7+) =====
@@ -476,5 +688,158 @@ object LegadoNativeExports {
     @CName("legado_tts_event")
     fun ttsEvent(event: CPointer<ByteVar>) {
         OhosNativeBridge.onTtsEvent(event.toKString())
+    }
+
+    // ===== Crypto tsfn 注入 + ArkTS → Kotlin 结果回调 (KP8+, 同 Image 模式) =====
+
+    /**
+     * 注入 crypto dispatch 函数指针 (由 legado_napi.cpp RegisterCryptoCallback 调用)。
+     *
+     * 同 [registerImageFn], 注入到 [OhosNativeBridge.cryptoTsfn],
+     * 使 KMP [OhosNativeBridge.invokeCryptoSync] 能跨线程 dispatch crypto 操作请求到 ArkTS。
+     * ArkTS CryptoBridgeHandler 处理完成后通过 [cryptoCallback] (@CName legado_crypto_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_crypto_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_crypto_fn")
+    fun registerCryptoFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerCryptoFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin crypto 操作结果回调 (由 legado_napi.cpp CryptoCallback 调用)。
+     *
+     * 调用链: `ArkTS cryptoCallback(requestId, resultJson)` → napi (legado_napi.cpp CryptoCallback) →
+     * dlsym("legado_crypto_callback") → 本函数 → [OhosNativeBridge.onCryptoResult] →
+     * 唤醒 [OhosNativeBridge.invokeCryptoSync] 中阻塞的 CompletableDeferred。
+     *
+     * # 跨语言传递
+     * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeCryptoSync] 生成的 requestId 一致
+     * - [result]: UTF-8 C 字符串, JSON 格式:
+     *   - encrypt/decrypt/sign 成功: `{ ok: true, data: "<base64>" }`
+     *   - verify 成功: `{ ok: true, result: true/false }`
+     *   - 失败: `{ ok: false, error: "<string>" }`
+     *
+     * @param requestId 请求 ID (与 invokeCryptoSync 生成的 requestId 对应)
+     * @param result ArkTS 返回的结果 JSON 字符串 (UTF-8 C 字符串)
+     */
+    @CName("legado_crypto_callback")
+    fun cryptoCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onCryptoResult(requestId, result.toKString())
+    }
+
+    // ===== Http tsfn 注入 + ArkTS → Kotlin 结果回调 (KP8+, 同 Image/Crypto 模式) =====
+
+    /**
+     * 注入 http dispatch 函数指针 (由 legado_napi.cpp RegisterHttpCallback 调用)。
+     *
+     * 同 [registerImageFn]/[registerCryptoFn], 注入到 [OhosNativeBridge.httpTsfn],
+     * 使 KMP [OhosNativeBridge.invokeHttpSync] 能跨线程 dispatch HTTP 请求到 ArkTS。
+     * ArkTS HttpBridgeHandler 处理完成后通过 [httpCallback] (@CName legado_http_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_http_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_http_fn")
+    fun registerHttpFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerHttpFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin HTTP 请求结果回调 (由 legado_napi.cpp HttpCallback 调用)。
+     *
+     * 调用链: `ArkTS httpCallback(requestId, resultJson)` → napi (legado_napi.cpp HttpCallback) →
+     * dlsym("legado_http_callback") → 本函数 → [OhosNativeBridge.onHttpResult] →
+     * 唤醒 [OhosNativeBridge.invokeHttpSync] 中阻塞的 CompletableDeferred。
+     *
+     * # 跨语言传递
+     * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeHttpSync] 生成的 requestId 一致
+     * - [result]: UTF-8 C 字符串, JSON 格式 (HttpResponsePayload):
+     *   - 成功: `{ ok: true, code: <int>, message: "<string>", headers: [...], body: "<base64>" }`
+     *   - 失败: `{ ok: false, error: "<string>" }`
+     *
+     * @param requestId 请求 ID (与 invokeHttpSync 生成的 requestId 对应)
+     * @param result ArkTS 返回的结果 JSON 字符串 (UTF-8 C 字符串)
+     */
+    @CName("legado_http_callback")
+    fun httpCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onHttpResult(requestId, result.toKString())
+    }
+
+    // ===== OpenUrl tsfn 注入 (KP8+, 同 Toast 模式, fire-and-forget dispatch) =====
+
+    /**
+     * 注入 openUrl dispatch 函数指针 (由 legado_napi.cpp RegisterOpenUrlCallback 调用)。
+     *
+     * 同 [registerToastFn], 注入到 [OhosNativeBridge.openUrlTsfn],
+     * 使 KMP [OhosNativeBridge.openUrl] 能跨线程 dispatch URL 打开请求到 ArkTS。
+     * ArkTS 侧 SystemBridgeHandler.handleOpenUrl 调 `context.startAbility(Want.uri=url)` 打开 URL
+     * (KMP 无 ArkTS API 访问能力, 需 tsfn 桥接; 与 showToast 走相同 fire-and-forget 模式)。
+     *
+     * 调用链: `ArkTS registerOpenUrlCallback(cb)` → C++ 创建 napi_threadsafe_function 包装 cb →
+     * C++ dlsym("legado_register_open_url_fn") → 本函数 → 把 [dispatch] 包成 (String) -> Unit lambda →
+     * [OhosNativeBridge.registerOpenUrlFn]。之后 KMP [OhosNativeBridge.openUrl] 调用时,
+     * `openUrlTsfn?.invoke(json)` → 本 lambda → `dispatch(json.cstr)` →
+     * C++ ohos_open_url_dispatch → napi_call_threadsafe_function → OpenUrlCallJs (ArkTS 主线程) → ArkTS cb(json)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_open_url_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_open_url_fn")
+    fun registerOpenUrlFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerOpenUrlFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    // ===== FilePicker tsfn 注入 + ArkTS → Kotlin 结果回调 (KP8+, 同 Image/Crypto/Http 模式) =====
+
+    /**
+     * 注入 filePicker dispatch 函数指针 (由 legado_napi.cpp RegisterFilePickerCallback 调用)。
+     *
+     * 同 [registerImageFn]/[registerCryptoFn]/[registerHttpFn], 注入到 [OhosNativeBridge.filePickerTsfn],
+     * 使 KMP [OhosNativeBridge.invokeFilePickerSync] 能跨线程 dispatch 文件选择请求到 ArkTS。
+     * ArkTS FilePickerBridgeHandler 处理完成后通过 [filePickerCallback] (@CName legado_file_picker_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_file_picker_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_file_picker_fn")
+    fun registerFilePickerFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerFilePickerFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin filePicker 操作结果回调 (由 legado_napi.cpp FilePickerCallback 调用)。
+     *
+     * 调用链: `ArkTS filePickerCallback(requestId, resultJson)` → napi (legado_napi.cpp FilePickerCallback) →
+     * dlsym("legado_file_picker_callback") → 本函数 → [OhosNativeBridge.onFilePickerResult] →
+     * 唤醒 [OhosNativeBridge.invokeFilePickerSync] 中阻塞的 CompletableDeferred。
+     *
+     * # 跨语言传递
+     * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeFilePickerSync] 生成的 requestId 一致
+     * - [result]: UTF-8 C 字符串, JSON 格式:
+     *   - pickDocuments 成功: `{ ok: true, uris: ["<uri1>", "<uri2>", ...] }`
+     *   - pickDocuments 用户取消: `{ ok: true, cancelled: true }`
+     *   - pickDocumentContent 成功: `{ ok: true, data: "<base64>" }`
+     *   - 失败: `{ ok: false, error: "<string>" }`
+     *
+     * @param requestId 请求 ID (与 invokeFilePickerSync 生成的 requestId 对应)
+     * @param result ArkTS 返回的结果 JSON 字符串 (UTF-8 C 字符串)
+     */
+    @CName("legado_file_picker_callback")
+    fun filePickerCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onFilePickerResult(requestId, result.toKString())
     }
 }

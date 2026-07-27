@@ -1,0 +1,5 @@
+language = C
+package = mykmp_framework
+headers = antui_framework.h
+linkerOpts = -lmykmp_framework
+---

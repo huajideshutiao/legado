@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.rss.ArticlesUiState
 import io.legado.app.ui.rss.RssArticlesViewModelShared
@@ -106,6 +107,8 @@ private fun RssArticlesContent(
     // 复用 shared RssArticlesViewModelShared (加载流程 + 状态管理下沉 commonMain)
     val viewModel = remember { RssArticlesViewModelShared(scope) }
     val state by viewModel.state.collectAsState()
+    val refreshLabel = rememberString("refresh")
+    val rssArticlesEmptyLabel = rememberString("rss_articles_empty")
 
     // 首次进入触发加载 (ViewModelShared 内部先读缓存再联网, 失败回退缓存)
     LaunchedEffect(book.bookUrl) {
@@ -121,7 +124,7 @@ private fun RssArticlesContent(
                 IconButton(onClick = { viewModel.loadArticles(book) }) {
                     Icon(
                         painter = rememberPainter("ic_refresh_black_24dp"),
-                        contentDescription = "刷新",
+                        contentDescription = refreshLabel,
                         tint = colors.primaryText,
                     )
                 }
@@ -158,7 +161,7 @@ private fun RssArticlesContent(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "暂无文章",
+                            text = rssArticlesEmptyLabel,
                             color = colors.secondaryText,
                             fontSize = 14.sp,
                         )

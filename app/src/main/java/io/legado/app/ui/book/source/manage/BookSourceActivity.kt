@@ -102,6 +102,16 @@ class BookSourceActivity : BaseComposeActivity() {
 
     private val hostMap = hashMapOf<String, String>()
 
+    // 增量更新: 记录上次排序参数与结果, 仅排序参数变化时全量重排
+    @Volatile
+    private var lastSort: BookSourceSort? = null
+    @Volatile
+    private var lastSortAscending: Boolean? = null
+    @Volatile
+    private var lastGroupSourcesByDomain: Boolean? = null
+    @Volatile
+    private var lastSortedSources: List<BookSourcePart> = emptyList()
+
     private val importDoc = registerHandleFile {
         it.uri?.let { uri ->
             showDialogFragment(ImportBookSourceDialog(uri.toString()))
@@ -268,6 +278,10 @@ class BookSourceActivity : BaseComposeActivity() {
             part.customOrder = if (sortAscending) index else -index
             part
         }
+        // 重置排序状态: customOrder 已变更, 下次 emit 需按新 customOrder 全量重排
+        lastSort = null
+        lastSortAscending = null
+        lastGroupSourcesByDomain = null
         viewModel.upOrder(items)
     }
 
@@ -277,8 +291,31 @@ class BookSourceActivity : BaseComposeActivity() {
         }
     }
 
+    /** 增量合并: 保持 oldList 顺序, 用 newData 中对应项替换, 已删除项过滤, 新增项追加末尾。 */
+    private fun mergeIncremental(
+        oldList: List<BookSourcePart>,
+        newData: List<BookSourcePart>,
+    ): List<BookSourcePart> {
+        if (oldList.isEmpty()) return newData
+        val newMap = newData.associateBy { it.bookSourceUrl }
+        val result = ArrayList<BookSourcePart>(newData.size)
+        for (item in oldList) {
+            newMap[item.bookSourceUrl]?.let(result::add)
+        }
+        val oldUrls = HashSet<String>(oldList.size)
+        for (item in oldList) oldUrls.add(item.bookSourceUrl)
+        for (item in newData) {
+            if (item.bookSourceUrl !in oldUrls) result.add(item)
+        }
+        return result
+    }
+
     private fun upBookSource(searchKey: String? = null) {
         sourceFlowJob?.cancel()
+        // 重置排序状态: 新 Flow 首次 emit 强制全量重排 (应对 searchKey/sort 变化导致数据集切换)
+        lastSort = null
+        lastSortAscending = null
+        lastGroupSourcesByDomain = null
         sourceFlowJob = lifecycleScope.launch {
             when {
                 searchKey.isNullOrEmpty() -> {
@@ -318,34 +355,48 @@ class BookSourceActivity : BaseComposeActivity() {
                     appDb.bookSourceDao.flowSearch(searchKey)
                 }
             }.map { data ->
-                hostMap.clear()
-                if (groupSourcesByDomain) {
-                    data.sortedWith(
-                        compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
-                            .thenBy { getSourceHost(it.bookSourceUrl) }
-                            .thenByDescending { it.lastUpdateTime })
-                } else {
-                    val tmp = when (sort) {
-                        BookSourceSort.Weight -> data.sortedBy { it.weight }
-                        BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                            o1.bookSourceName.cnCompare(o2.bookSourceName)
-                        }
-
-                        BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
-                        BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
-                        BookSourceSort.Respond -> data.sortedBy { it.respondTime }
-                        BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
-                            var sortNum = -o1.enabled.compareTo(o2.enabled)
-                            if (sortNum == 0) {
-                                sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                // hostMap 为纯缓存, 不随数据变化失效
+                val needResort = lastSort != sort
+                    || lastSortAscending != sortAscending
+                    || lastGroupSourcesByDomain != groupSourcesByDomain
+                val sorted = if (needResort) {
+                    // 排序参数变化, 全量重排
+                    if (groupSourcesByDomain) {
+                        data.sortedWith(
+                            compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
+                                .thenBy { getSourceHost(it.bookSourceUrl) }
+                                .thenByDescending { it.lastUpdateTime })
+                    } else {
+                        val tmp = when (sort) {
+                            BookSourceSort.Weight -> data.sortedBy { it.weight }
+                            BookSourceSort.Name -> data.sortedWith { o1, o2 ->
+                                o1.bookSourceName.cnCompare(o2.bookSourceName)
                             }
-                            sortNum
-                        }
 
-                        else -> data.sortedBy { it.customOrder }
+                            BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
+                            BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
+                            BookSourceSort.Respond -> data.sortedBy { it.respondTime }
+                            BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
+                                var sortNum = -o1.enabled.compareTo(o2.enabled)
+                                if (sortNum == 0) {
+                                    sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                                }
+                                sortNum
+                            }
+
+                            else -> data.sortedBy { it.customOrder }
+                        }
+                        if (!sortAscending) tmp.reversed() else tmp
                     }
-                    if (!sortAscending) tmp.reversed() else tmp
+                } else {
+                    // 排序参数未变, 增量合并: 保持旧顺序, 仅替换/增删变化项
+                    mergeIncremental(lastSortedSources, data)
                 }
+                lastSort = sort
+                lastSortAscending = sortAscending
+                lastGroupSourcesByDomain = groupSourcesByDomain
+                lastSortedSources = sorted
+                sorted
             }.flowWithLifecycleAndDatabaseChange(
                 lifecycle,
                 table = AppDatabase.BOOK_SOURCE_TABLE_NAME

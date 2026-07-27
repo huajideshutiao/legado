@@ -21,6 +21,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceShared
+import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -106,6 +107,8 @@ fun DesktopOtherConfigScreen(onBack: () -> Unit) {
     var showLocalPasswordDialog by remember { mutableStateOf(false) }
     var showUserAgentDialog by remember { mutableStateOf(false) }
     var showCheckSourceDialog by remember { mutableStateOf(false) }
+    // 自定义翻页按键 Dialog 显隐 (接入 shared PageKeyDialog, 读写 PreferKey.prevKeys/nextKeys)
+    var showPageKeyDialog by remember { mutableStateOf(false) }
     // summary 跟随 Dialog 保存后刷新 (替代 app 端 OnSharedPreferenceChangeListener 回写)
     var userAgentSummary by remember { mutableStateOf(prefs.getString(PreferKey.userAgent)) }
     var checkSourceSummary by remember { mutableStateOf(CheckSourceShared.summary) }
@@ -150,7 +153,7 @@ fun DesktopOtherConfigScreen(onBack: () -> Unit) {
                                     runCatching {
                                         BookStorageProviders.get().clearCache()
                                     }.onFailure {
-                                        AppLog.put("清缓存失败\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("clear_all_cache_failed", it.localizedMessage), it)
                                     }
                                 }
                                 Toasters.get().toast(jvmGetString("clear_cache_success"))
@@ -174,13 +177,14 @@ fun DesktopOtherConfigScreen(onBack: () -> Unit) {
                                         appDb.bookDao.deleteNotShelfBook()
                                         appDb.useWriterConnection { it.execSQL("VACUUM") }
                                     }.onFailure {
-                                        AppLog.put("收缩数据库失败\n${it.localizedMessage}", it)
+                                        AppLog.put(jvmGetString("shrink_database_failed", it.localizedMessage), it)
                                     }
                                 }
                                 Toasters.get().toast(jvmGetString("success"))
                             }
                         },
                         onThreadCount = { showThreadCountDialog = true },
+                        onCustomPageKey = { showPageKeyDialog = true },
                     )
                 }
             }
@@ -290,6 +294,34 @@ fun DesktopOtherConfigScreen(onBack: () -> Unit) {
                         showCheckSourceDialog = false
                         checkSourceSummary = CheckSourceShared.summary
                     },
+                )
+            }
+            // 自定义翻页按键 Dialog (shared 共享, 读写 PreferKey.prevKeys/nextKeys)
+            // prefs 存逗号分隔 keyCode 串, 解析为 Map<Int, String> 给 Dialog (动作名: "prev_page"/"next_page")
+            if (showPageKeyDialog) {
+                val prevKeysStr = prefs.getString(PreferKey.prevKeys)
+                val nextKeysStr = prefs.getString(PreferKey.nextKeys)
+                val keyMappings = buildMap<Int, String> {
+                    prevKeysStr.split(",")
+                        .mapNotNull { it.trim().toIntOrNull() }
+                        .forEach { put(it, "prev_page") }
+                    nextKeysStr.split(",")
+                        .mapNotNull { it.trim().toIntOrNull() }
+                        .forEach { put(it, "next_page") }
+                }
+                PageKeyDialog(
+                    keyMappings = keyMappings,
+                    onConfirm = { newMap ->
+                        val prevKeys = newMap.entries
+                            .filter { it.value == "prev_page" }
+                            .joinToString(",") { it.key.toString() }
+                        val nextKeys = newMap.entries
+                            .filter { it.value == "next_page" }
+                            .joinToString(",") { it.key.toString() }
+                        prefs.putString(PreferKey.prevKeys, prevKeys)
+                        prefs.putString(PreferKey.nextKeys, nextKeys)
+                    },
+                    onDismiss = { showPageKeyDialog = false },
                 )
             }
         }

@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,7 +66,7 @@ class HomeTabManageDialog : BaseComposeDialogFragment() {
                     actions = {
                         IconButton(onClick = { showHomeTabEditDialog(requireContext()) }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = getString(R.string.home_tab_add),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -94,7 +93,7 @@ class HomeTabManageDialog : BaseComposeDialogFragment() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_baseline_sort_24),
+                painter = rememberPainter("ic_baseline_sort_24"),
                 contentDescription = stringResource(R.string.sort),
                 tint = colors.secondaryText,
                 modifier = Modifier.size(24.dp),

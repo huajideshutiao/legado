@@ -36,6 +36,7 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -142,8 +143,6 @@ class MainActivity : BaseComposeActivity() {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         lifecycleScope.launch {
-            //隐私协议
-            if (!privacyPolicy()) return@launch
             //版本更新
             upVersion()
             //设置本地密码
@@ -185,43 +184,21 @@ class MainActivity : BaseComposeActivity() {
     }
 
     /**
-     * 用户隐私与协议
-     */
-    private suspend fun privacyPolicy(): Boolean = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.privacyPolicyOk) {
-            block.resume(true)
-            return@sc
-        }
-        val privacyPolicy = String(assets.open("privacyPolicy.md").readBytes())
-        alert(getString(R.string.privacy_policy), privacyPolicy) {
-            positiveButton(R.string.agree) {
-                LocalConfig.privacyPolicyOk = true
-                block.resume(true)
-            }
-            negativeButton(R.string.refuse) {
-                finish()
-                block.resume(false)
-            }
-        }
-    }
-
-    /**
      * 版本更新日志
      */
-    private suspend fun upVersion() = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.versionCode == AppConst.appInfo.versionCode) {
-            block.resume(null)
-            return@sc
-        }
+    private suspend fun upVersion() {
+        if (LocalConfig.versionCode == AppConst.appInfo.versionCode) return
         LocalConfig.versionCode = AppConst.appInfo.versionCode
-        if (LocalConfig.isFirstOpenApp) {
-            val help = String(assets.open("web/help/md/appHelp.md").readBytes())
+        if (!LocalConfig.isFirstOpenApp) return
+        // 先读资源( suspend ), 再进 suspendCancellableCoroutine 等待 Dialog 关闭
+        val help = String(WebAssetSources.get().read("web/help/md/appHelp.md"))
+        suspendCancellableCoroutine<Unit> { block ->
             val dialog = TextDialog(getString(R.string.help), help, TextDialog.Mode.MD)
             dialog.setOnDismissListener {
-                block.resume(null)
+                block.resume(Unit)
             }
             showDialogFragment(dialog)
-        } else block.resume(null)
+        }
     }
 
     /**

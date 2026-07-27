@@ -56,12 +56,14 @@ import legado.shared.generated.resources.ic_edit
 import legado.shared.generated.resources.ic_exchange
 import legado.shared.generated.resources.ic_expand_less
 import legado.shared.generated.resources.ic_expand_more
+import legado.shared.generated.resources.ic_export
 import legado.shared.generated.resources.ic_find_replace
 import legado.shared.generated.resources.ic_folder
 import legado.shared.generated.resources.ic_folder_open
 import legado.shared.generated.resources.ic_groups
 import legado.shared.generated.resources.ic_help
 import legado.shared.generated.resources.ic_history
+import legado.shared.generated.resources.ic_image
 import legado.shared.generated.resources.ic_import
 import legado.shared.generated.resources.ic_interface_setting
 import legado.shared.generated.resources.ic_layout_list
@@ -72,10 +74,19 @@ import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_outline_cloud_24
 import legado.shared.generated.resources.ic_pause_24dp
 import legado.shared.generated.resources.ic_play_24dp
+import legado.shared.generated.resources.ic_play_mode_list_end_stop
+import legado.shared.generated.resources.ic_play_mode_list_loop
+import legado.shared.generated.resources.ic_play_mode_random
+import legado.shared.generated.resources.ic_play_mode_single_loop
 import legado.shared.generated.resources.ic_praise
 import legado.shared.generated.resources.ic_read_aloud
 import legado.shared.generated.resources.ic_reduce
 import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.ic_review_close
+import legado.shared.generated.resources.ic_review_thumb_down
+import legado.shared.generated.resources.ic_review_thumb_down_filled
+import legado.shared.generated.resources.ic_review_thumb_up
+import legado.shared.generated.resources.ic_review_thumb_up_filled
 import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.ic_search
 import legado.shared.generated.resources.ic_settings
@@ -95,22 +106,14 @@ import legado.shared.generated.resources.ic_web_outline
 import legado.shared.generated.resources.outline_filter_alt_24
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
-import platform.Foundation.NSBundle
-import platform.Foundation.NSString
 
 /**
- * iOS actual: 复用 jvmMain 的字面量映射策略, 保持跨平台一致。
+ * iOS actual: 复用 commonMain sharedStringTable, 保持跨平台一致 (不再依赖 NSBundle/Localizable.strings)。
  *
  * ## 实现说明
  *
- * - rememberString: 用 NSBundle + Localizable.strings 真实化实现 (iOS 独有)。
- *   资源文件: shared/src/iosMain/resources/Localizable.strings
- *   (KMP 默认把 src/iosMain/resources/* 打入 framework bundle 根目录)。
- *   `NSBundle.mainBundle.localizedStringForKey(key, "", null)` 取字符串;
- *   未识别 key (返回空串) 回退到 key 本身, 与 jvmMain/Android 行为一致。
- *   formatArgs 非空时用 `NSString.stringWithFormat` 格式化, 并把 Java Formatter 的
- *   `%s` / `%N$s` 替换为 iOS 的 `%@` / `%N$@` (NSString.stringWithFormat 不支持 %s
- *   解析 Kotlin String, 会按 C 字符串处理导致乱码); `%d` / `%N$d` 两者一致无需替换。
+ * - rememberString: 复用 commonMain sharedStringTable (与 jvmMain 一致, 单一数据源),
+ *   不再依赖 NSBundle/Localizable.strings; formatArgs 非空时用 String.format 填充。
  * - rememberPainter: 加载 shared/commonMain/composeResources/drawable/ 下 SVG
  *   (与 app 端 R.drawable 视觉对齐, 单一数据源, iOS 端不再用 Material Icons 替代)。
  *   与 jvmMain 镜像: 仅 ic_arrow_forward / ic_speed (app 端无对应 drawable xml) 与
@@ -129,12 +132,8 @@ import platform.Foundation.NSString
  *
  * ## 后续 TODO
  *
- * - TODO(KP4): Localizable.strings 当前直接放在 bundle 根目录, iOS 不会按系统语言
- *   切换 (始终走根目录文件 = 简体中文)。如需 i18n, 移动到
- *   `zh-Hans.lproj/Localizable.strings` 并补 `Base.lproj/Localizable.strings`。
- * - TODO(KP4): NSBundle.mainBundle 是 App bundle, KMP framework 资源实际在 framework
- *   bundle。当 Legado iOS App 与 KMP framework 是同一 bundle 时 (Compose iOS App
- *   通常如此) 可工作; 若 framework 单独打包需改用 NSBundle.bundleForClass。
+ * - TODO(KP4): iOS 端目前不做 i18n (始终走 sharedStringTable 简体中文)。如需 i18n,
+ *   可在 commonMain sharedStringTable 之上加一层语言切换抽象, 或恢复 .lproj 方案。
  */
 @Composable
 actual fun rememberPainter(key: String): Painter {
@@ -181,10 +180,12 @@ actual fun rememberPainter(key: String): Painter {
         "ic_book_last" -> Res.drawable.ic_book_last
         "ic_book_has" -> Res.drawable.ic_book_has
         "ic_bookmark" -> Res.drawable.ic_bookmark
-        // 文件夹/帮助/导入 (BookshelfManageScreen / RemoteBookScreen / ReplaceEditScreen)
+        // 文件夹/帮助/导入/导出 (BookshelfManageScreen / RemoteBookScreen / ReplaceEditScreen)
         "ic_folder" -> Res.drawable.ic_folder
         "ic_folder_open" -> Res.drawable.ic_folder_open
         "ic_help" -> Res.drawable.ic_help
+        "ic_image" -> Res.drawable.ic_image
+        "ic_export" -> Res.drawable.ic_export
         "ic_import" -> Res.drawable.ic_import
         // 书架/发现布局切换 (BookshelfScreen / ExploreScreen)
         "ic_layout_list" -> Res.drawable.ic_layout_list
@@ -230,6 +231,17 @@ actual fun rememberPainter(key: String): Painter {
         "ic_volume_up" -> Res.drawable.ic_volume_up
         "ic_visibility_off" -> Res.drawable.ic_visibility_off
         "ic_time_add_24dp" -> Res.drawable.ic_time_add_24dp
+        // TTS 播放模式 (ReadAloud/ReadMenu 播放模式切换)
+        "ic_play_mode_list_end_stop" -> Res.drawable.ic_play_mode_list_end_stop
+        "ic_play_mode_list_loop" -> Res.drawable.ic_play_mode_list_loop
+        "ic_play_mode_random" -> Res.drawable.ic_play_mode_random
+        "ic_play_mode_single_loop" -> Res.drawable.ic_play_mode_single_loop
+        // ReviewListDialog 下沉带入 (对应 app 端 R.drawable.ic_review_*)
+        "ic_review_close" -> Res.drawable.ic_review_close
+        "ic_review_thumb_up" -> Res.drawable.ic_review_thumb_up
+        "ic_review_thumb_up_filled" -> Res.drawable.ic_review_thumb_up_filled
+        "ic_review_thumb_down" -> Res.drawable.ic_review_thumb_down
+        "ic_review_thumb_down_filled" -> Res.drawable.ic_review_thumb_down_filled
         else -> null
     }
     if (svgRes != null) {
@@ -246,19 +258,8 @@ actual fun rememberPainter(key: String): Painter {
 
 @Composable
 actual fun rememberString(key: String, vararg formatArgs: Any): String {
-    // NSBundle.mainBundle.localizedStringForKey: 第二参数 value="" 表示未找到时返回空串,
-    // 第三参数 table=null 表示用默认表名 Localizable.strings
-    val raw = NSBundle.mainBundle.localizedStringForKey(key, "", null)
-    // 未识别 key 回退到 key 本身 (与 jvmMain table[key] ?: key 行为对齐)
-    val resolved = if (raw.isEmpty()) key else raw
-    // formatArgs 为空时直接返回原始字符串 (保留 %1$d 等占位符, 与 Android stringResource(id) 一致);
-    // 非空时用 NSString.stringWithFormat 填充占位符 (与 Android resources.getString(id, *args) 对齐)
-    if (formatArgs.isEmpty()) return resolved
-    // NSString.stringWithFormat 与 Java Formatter 占位符差异:
-    // - %d / %N$d (整数): 两者格式一致, 无需转换
-    // - %s / %N$s (字符串): iOS 用 %@ / %N$@, 需替换 (否则 %s 在 iOS 会按 C 字符串解析导致乱码)
-    val iosFormat = resolved.replace(Regex("%(\\d+\\$)?s"), "%$1@")
-    return NSString.stringWithFormat(iosFormat, *formatArgs)
+    val raw = sharedStringTable[key] ?: key
+    return if (formatArgs.isEmpty()) raw else String.format(raw, *formatArgs)
 }
 
 @Composable

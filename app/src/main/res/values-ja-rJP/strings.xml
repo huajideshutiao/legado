@@ -144,7 +144,6 @@
     <string name="replace_to">Replacement</string>
     <string name="img_cover">Cover</string>
     <string name="book">Book</string>
-    <string name="volume_key_page">Volume keys to turn page</string>
     <string name="mouse_wheel_page">Mouse wheel to turn page</string>
     <string name="page_anim">Flip animation</string>
     <string name="book_page_anim">Flip animation (book)</string>
@@ -544,7 +543,7 @@
     <string name="use_default_cover">Always show default cover</string>
     <string name="use_default_cover_s">Always show the default cover, do not show the network cover</string>
     <string name="search_src">Search source code</string>
-    <string name="boo_src">Book source code</string>
+    <string name="book_src">Book source code</string>
     <string name="toc_src">Chapters source code</string>
     <string name="content_src">Content source code</string>
     <string name="title_font_size">Font size</string>
@@ -746,7 +745,6 @@
     <string name="no_books_dir">没有设置书籍保存位置!</string>
     <string name="no_book_found_bookshelf">No book found in bookshelf, import again ?</string>
     <string name="archive_not_found">Can not find archive selected, continue to download ?</string>
-    <string name="privacy_policy">用户隐私与协议</string>
     <string name="agree">同意</string>
     <string name="refuse">拒绝</string>
     <string name="create_folder">创建文件夹</string>

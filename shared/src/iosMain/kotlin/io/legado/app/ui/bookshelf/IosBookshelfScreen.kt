@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import io.legado.app.ui.compose.component.Md2TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -130,6 +130,19 @@ fun IosBookshelfScreen(
     // 书架管理页面选中集 (Book.bookUrl 集合)
     var manageSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
 
+    // 文案模板 (actions lambda / 协程非 @Composable, 预先 remember 模板)
+    val importCompleteTemplate = rememberString("import_complete")
+    val importCompleteWithFailTemplate = rememberString("import_complete_with_fail_count")
+    val formatInvalidText = rememberString("format_invalid")
+    val sourceNotExistText = rememberString("source_not_exists")
+    val importLocalBookFailedTemplate = rememberString("import_local_book_failed_log")
+    val importBookFailedTemplate = rememberString("import_book_failed")
+    val importBookshelfFailedTemplate = rememberString("import_bookshelf_failed")
+    val addBookUrlFailedTemplate = rememberString("add_book_url_failed")
+    val addBookUrlSuccessTemplate = rememberString("add_book_url_success")
+    val addBookUrlAllFailedText = rememberString("add_book_url_all_failed")
+    val addingBookText = rememberString("adding_book")
+
     SharedBookshelfScreen(
         viewModel = viewModel,
         onBookClick = onBookClick,
@@ -163,11 +176,11 @@ fun IosBookshelfScreen(
                                         success++
                                     }.onFailure { e ->
                                         fail++
-                                        AppLog.put("导入本地书籍失败\n${e.localizedMessage}", e)
+                                        AppLog.put(String.format(importLocalBookFailedTemplate, e.localizedMessage), e)
                                     }
                                 }
                             }
-                            Toasters.get().toast("导入完成 成功 $success 失败 $fail")
+                            Toasters.get().toast(String.format(importCompleteWithFailTemplate, success, fail))
                         }
                     },
                     // KP7: iOS 端无 RemoteBookWebDav, 简化为 URL 输入对话框下载导入
@@ -195,14 +208,14 @@ fun IosBookshelfScreen(
                             val bytes = pickDocumentContent(firstUrl) ?: return@launch
                             val text = bytes.toString(Charsets.UTF_8).trim()
                             if (!text.startsWith("[")) {
-                                Toasters.get().toast("格式不对")
+                                Toasters.get().toast(formatInvalidText)
                                 return@launch
                             }
                             // 解析 JSON 数组, 遍历 bookInfo 列表 insert (对照 desktop inline)
                             // 简化: 仅处理 origin+bookUrl 都有的情况 (走 WebBook.getBookInfoAwait 刷新)
                             runCatching {
                                 val jsonArray = parseJsonElement(text) as? JsonArray
-                                    ?: throw NoStackTraceException("格式不对")
+                                    ?: throw NoStackTraceException(formatInvalidText)
                                 var successCount = 0
                                 for (element in jsonArray) {
                                     val name = element.readString("$.name") ?: continue
@@ -230,14 +243,14 @@ fun IosBookshelfScreen(
                                         AppDbProviders.get().bookDao.insert(book)
                                         successCount++
                                     }.onFailure { e ->
-                                        AppLog.put("导入<$name>失败\n${e.localizedMessage}", e)
+                                        AppLog.put(String.format(importBookFailedTemplate, name, e.localizedMessage), e)
                                     }
                                 }
                                 successCount
                             }.onSuccess { count ->
-                                Toasters.get().toast("导入完成 $count")
+                                Toasters.get().toast(String.format(importCompleteTemplate, count))
                             }.onFailure { e ->
-                                AppLog.put("导入书架失败\n${e.localizedMessage}", e)
+                                AppLog.put(String.format(importBookshelfFailedTemplate, e.localizedMessage), e)
                                 Toasters.get().toast(e.localizedMessage ?: "ERROR")
                             }
                         }
@@ -294,10 +307,10 @@ fun IosBookshelfScreen(
             onDismissRequest = { if (!importingRemoteBook) showAddRemoteBookDialog = false },
             title = { Text(rememberString("add_book_url")) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = remoteBookUrlText,
                     onValueChange = { remoteBookUrlText = it },
-                    label = { Text("url") },
+                    label = "url",
                     singleLine = false,
                 )
             },
@@ -316,7 +329,7 @@ fun IosBookshelfScreen(
                                     runCatching {
                                         val book = WebBook.getBookInfoByUrlAwait(url)
                                         val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                                            ?: throw NoStackTraceException("书源不存在")
+                                            ?: throw NoStackTraceException(sourceNotExistText)
                                         val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
                                         val dbBook = AppDbProviders.get().bookDao.getBook(book.name, book.author)
                                         if (dbBook != null) {
@@ -334,7 +347,7 @@ fun IosBookshelfScreen(
                                         AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
                                         successCount++
                                     }.onFailure { e ->
-                                        AppLog.put("添加 $url 失败\n${e.localizedMessage}", e)
+                                        AppLog.put(String.format(addBookUrlFailedTemplate, url, e.localizedMessage), e)
                                     }
                                 }
                             }
@@ -342,11 +355,11 @@ fun IosBookshelfScreen(
                             showAddRemoteBookDialog = false
                             remoteBookUrlText = ""
                             Toasters.get().toast(
-                                if (successCount > 0) "$successCount/${urls.size} 成功" else "添加网址失败"
+                                if (successCount > 0) String.format(addBookUrlSuccessTemplate, successCount, urls.size) else addBookUrlAllFailedText
                             )
                         }
                     },
-                ) { Text(if (importingRemoteBook) "添加中..." else okLabel) }
+                ) { Text(if (importingRemoteBook) addingBookText else okLabel) }
             },
             dismissButton = {
                 TextButton(

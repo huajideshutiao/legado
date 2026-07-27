@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +26,7 @@ import io.legado.app.ui.association.ImportHttpTtsViewModelShared
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen as SharedReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.ui.association.DesktopImportDialog
@@ -128,7 +129,7 @@ private fun ReadAloudConfigContent() {
     // 引擎列表 (produceState 订阅 httpTTSDao.flowAll, 生命周期绑定 Composable, 退出自动取消订阅)
     val engines by produceState<List<HttpTTS>>(emptyList()) {
         AppDbProviders.get().httpTTSDao.flowAll()
-            .catch { AppLog.put("加载 HttpTTS 列表失败", it) }
+            .catch { AppLog.put(jvmGetString("load_http_tts_list_failed"), it) }
             .collect { value = it }
     }
     // 当前选中引擎 id (null=系统默认, 与 app 端 ReadAloud.ttsEngine 为空兜底 system_tts 对齐)
@@ -281,10 +282,10 @@ private fun ReadAloudConfigContent() {
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(httpTtsNetImportTitleLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
-                    label = { Text(httpTtsInputUrlLabel) },
+                    label = httpTtsInputUrlLabel,
                     singleLine = true,
                 )
             },
@@ -347,7 +348,7 @@ private suspend fun importHttpTtsFromLocalFile(dialogTitle: String): String? {
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入 HttpTTS: 用户取消选择")
+        AppLog.put(jvmGetString("import_http_tts_user_cancelled"))
         return null
     }
     return json

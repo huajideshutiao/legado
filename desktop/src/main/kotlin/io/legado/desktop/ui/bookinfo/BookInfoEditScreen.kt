@@ -28,6 +28,7 @@ import io.legado.app.ui.book.info.edit.BookInfoEditScreen as SharedBookInfoEditS
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiState
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.ui.component.DesktopBookCover
 import kotlinx.coroutines.CoroutineScope
@@ -314,7 +315,7 @@ private class DesktopBookInfoEditActions(
                 dialog.isVisible = true
                 dialog.files?.firstOrNull()?.absolutePath
             } ?: run {
-                AppLog.put("选择封面: 用户取消选择")
+                AppLog.put(jvmGetString("select_cover_cancelled"))
                 return@launch
             }
             coverUrlState.value = path

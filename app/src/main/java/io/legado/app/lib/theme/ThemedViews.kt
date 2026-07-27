@@ -52,8 +52,9 @@ fun View.applyTheme() {
         is RadioButton -> buttonTintList = checkableTintList(accentColor, isDark)
 
         is SwitchCompat -> {
-            trackDrawable = tintSwitchDrawable(trackDrawable, accentColor, isDark, thumb = false)
-            thumbDrawable = tintSwitchDrawable(thumbDrawable, accentColor, isDark, thumb = true)
+            // 直用 trackTintList/thumbTintList 由视图层着色，避免 DrawableCompat.wrap 在新 Android 上失效回落静态色
+            trackTintList = switchTintList(accentColor, isDark, thumb = false)
+            thumbTintList = switchTintList(accentColor, isDark, thumb = true)
         }
 
         is SeekBar -> {
@@ -172,14 +173,12 @@ private fun View.editTextTintList(color: Int, isDark: Boolean): ColorStateList {
     )
 }
 
-/** SwitchCompat thumb/track：勾选=accent(track 半透明)，未勾选=ate 灰阶 */
-private fun View.tintSwitchDrawable(
-    from: Drawable?,
+/** SwitchCompat thumb/track tint：勾选=accent(track 半透明)，未勾选=ate 灰阶 */
+private fun View.switchTintList(
     color: Int,
     isDark: Boolean,
     thumb: Boolean
-): Drawable? {
-    from ?: return null
+): ColorStateList {
     var tint = if (isDark) ColorUtils.shiftColor(color, 1.1f) else color
     tint = ColorUtils.adjustAlpha(tint, if (thumb) 1.0f else 0.5f)
     val disabled: Int
@@ -203,7 +202,7 @@ private fun View.tintSwitchDrawable(
             if (isDark) R.color.ate_switch_track_normal_dark else R.color.ate_switch_track_normal_light
         )
     }
-    val sl = ColorStateList(
+    return ColorStateList(
         arrayOf(
             intArrayOf(-android.R.attr.state_enabled),
             intArrayOf(
@@ -216,9 +215,6 @@ private fun View.tintSwitchDrawable(
         ),
         intArrayOf(disabled, normal, tint, tint)
     )
-    val wrapped = DrawableCompat.wrap(from.mutate())
-    DrawableCompat.setTintList(wrapped, sl)
-    return wrapped
 }
 
 @SuppressLint("DiscouragedPrivateApi", "SoonBlockedPrivateApi")

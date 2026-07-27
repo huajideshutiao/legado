@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
@@ -9,6 +10,8 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.hexString
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
@@ -42,6 +45,19 @@ class AndroidThemeStoreProvider : ThemeStoreProvider {
         get() = Color(ThemeStore.navigationBarColor)
     override val bgImagePath: String?
         get() = ThemeConfig.curBgImagePath
+
+    /** 包装 ThemeConfig.applyConfig + postEvent(RECREATE) (Color→Config 转换在此完成) */
+    override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
+        val config = ThemeConfig.Config(
+            themeName = "",
+            isNightTheme = isNight,
+            primaryColor = "#${bg.toArgb().hexString}",
+            accentColor = "#${accent.toArgb().hexString}",
+            backgroundColor = "#${bg.toArgb().hexString}",
+            bottomBackground = "#${bbg.toArgb().hexString}",
+        )
+        ThemeConfig.applyConfig(appCtx, config)
+    }
 }
 
 /** 包装 [AppConfig.isEInkMode] */
@@ -54,6 +70,11 @@ class AndroidAppConfigProvider : AppConfigProvider {
 class AndroidEventBusProvider : EventBusProvider {
     override val recreateEvent: Flow<Unit> =
         FlowBus.with(EventBus.RECREATE).map { Unit }
+
+    /** 包装 postEvent(EventBus.RECREATE, "") */
+    override fun emitRecreate() {
+        postEvent(EventBus.RECREATE, "")
+    }
 }
 
 /**

@@ -39,6 +39,7 @@ import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiState
 import io.legado.app.ui.about.formatDayKey
 import io.legado.app.ui.about.rememberFormatDuring
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.ui.component.DesktopBookCover
@@ -447,7 +448,7 @@ fun ReadRecordScreen(
                     AppDbProviders.get().bookDao.findByName(item.bookName).firstOrNull()
                 }
                 if (book == null) {
-                    Toasters.get().toast("没有书籍")
+                    Toasters.get().toast(jvmGetString("no_book"))
                 } else {
                     onOpenBook(book)
                 }
@@ -506,6 +507,7 @@ fun ReadRecordScreen(
             //  book 为 null 时占位显示首字 "?", 与 app 端 ShelfCover 用 item.bookName 略有差异)
             DesktopBookCover.InfoCover(book, modifier)
         },
+        // 顶部统计卡与热力图卡同行/堆叠由 shared ReadRecordScreen 按宽度自适应 (>=1000dp 同行)
     )
 
     // ---- 确认弹窗 (material3 AlertDialog, desktop 端无 shared alert) ----

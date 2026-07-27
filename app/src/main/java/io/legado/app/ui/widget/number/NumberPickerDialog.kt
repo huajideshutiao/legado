@@ -3,6 +3,8 @@ package io.legado.app.ui.widget.number
 import android.content.Context
 import android.widget.NumberPicker
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.hideSoftInput
@@ -22,15 +24,18 @@ fun showNumberPicker(
         title?.let { setTitle(it) }
         titleResId?.let { setTitle(it) }
         customView {
-            AndroidView(factory = { ctx ->
-                NumberPicker(ctx).apply {
-                    isVerticalScrollBarEnabled = false
-                    min?.let { minValue = it }
-                    max?.let { maxValue = it }
-                    value?.let { this.value = it }
-                    numberPicker = this
+            AndroidView(
+                modifier = Modifier.fillMaxWidth(),
+                factory = { ctx ->
+                    NumberPicker(ctx).apply {
+                        isVerticalScrollBarEnabled = false
+                        min?.let { minValue = it }
+                        max?.let { maxValue = it }
+                        value?.let { this.value = it }
+                        numberPicker = this
+                    }
                 }
-            })
+            )
         }
         okButton {
             numberPicker.clearFocus()

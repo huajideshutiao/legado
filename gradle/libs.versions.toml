@@ -1,9 +1,11 @@
 [versions]
 
 cronet = "143.7445.0"
-kotlin = "2.3.21"
+# AntUI 接入: 切换到 fork 版 Kotlin 2.3.0.1-alipay (提供 ohosArm64() target)
+kotlin = "2.3.0.1-alipay"
 krypto = "4.0.10"
 ksoup = "0.2.6"
+# KSP 2.x 独立版本号, 不再强绑定 Kotlin 主版本号; AntUI fork 版 Kotlin 2.3.0.1-alipay 兼容 KSP 2.3.7
 ksp = "2.3.7"
 #agp影响范围太大，暂不升级
 #noinspection AndroidGradlePluginVersion
@@ -18,12 +20,20 @@ documentfile = "1.1.0"
 libarchive = "1.1.6"
 glide = "5.0.7"
 jsonPath = "3.0.0"
-kotlinxSerializationJson = "1.8.1"
-coroutines = "1.11.0"
+# AntUI 接入: kotlinx 系列切换到 fork 版 -alipay (与 compose-multiplatform 1.8.2.99-alipay 配套)
+kotlinxSerializationJson = "1.9.1-alipay"
+coroutines = "1.10.2-alipay"
 # KJ3 并发原语下沉：仅用 locks 门面(synchronized/SynchronizedObject)，纯库无需 gradle 插件
-atomicfu = "0.23.2"
+# AntUI 接入: atomicfu 切换到 fork 版 0.30.0-beta-alipay
+atomicfu = "0.30.0-beta-alipay"
+# AntUI 接入: 新增 fork 版 kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖)
+kotlinxDatetime = "0.6.1-alipay"
+# AntUI 接入: 新增 fork 版 skiko (鸿蒙端 Compose 渲染后端, ohosArm64 变体)
+skiko = "0.9.4.2.40-alipay"
 # 作者已声明项目暂停维护（最后发布 2021），但 Android 平台无同等功能的活跃替代品
 markwon = "4.6.2"
+# 锁定 0.41.0：0.42.0+ 起 AAR 强制 compileSdk 37（kotlin-stdlib 2.4.0），AGP 8.13.2 上限 36
+multiplatformMarkdown = "0.41.0"
 material = "1.14.0"
 media = "1.8.0"
 # 出于轻量化考虑，不改用ktor
@@ -70,10 +80,21 @@ jlayer = "1.0.1"
 junit = "4.13.2"
 # Compose BOM 只统一 compose.* 组件版本；编译器插件版本跟随 kotlin(2.3.21)，二者解耦
 composeBom = "2026.06.01"
+# Coil3: KMP+Compose 原生图片加载库, 替代 Glide
+coil3 = "3.2.0"
 # 拖拽排序：KMP 原生库(Maven Central，经 Aliyun central 镜像可达)，替代 ItemTouchHelper。3.x 用 animateItem API，需 compose≥1.7(BOM 已满足)
 reorderable = "3.1.0"
 
 [libraries]
+
+multiplatformMarkdown = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "multiplatformMarkdown" }
+multiplatformMarkdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
+multiplatformMarkdown-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "multiplatformMarkdown" }
+
+# AntUI 接入: skiko (鸿蒙端 Compose 渲染后端, ohosArm64 变体)
+skiko = { module = "org.jetbrains.skiko:skiko", version.ref = "skiko" }
+# AntUI 接入: kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖, ohosMain 显式声明)
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 
 activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
 cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
@@ -174,6 +195,14 @@ quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt"
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-ui = { module = "androidx.compose.ui:ui" }
+# Coil3 KMP 图片加载 (替代 Glide, 适配 Compose + 跨端)
+# artifact 名校验 (search.maven.org g:io.coil-kt.coil3): coil-compose / coil-network-okhttp 均 3.2.0
+# coil3-core 原写法 io.coil-kt.coil3:coil3 不存在 (Maven 404), 正确聚合 artifact 为 io.coil-kt.coil3:coil
+# 变体覆盖: coil-compose 发 iosArm64 (klib) 可放 sharedUiMain; coil-network-okhttp 仅 jvm/android (无 iosArm64/linuxArm64), 必须放 jvmAndAndroidMain
+coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
+coil3-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil3" }
+coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
+coil3-core = { module = "io.coil-kt.coil3:coil", version.ref = "coil3" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
@@ -199,6 +228,6 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 
 # 桌面端入口模块（验证 KMP shared jvm target）
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-# Compose Multiplatform 桌面端 (plan 附录J: desktop/jvm 走 CMP 桌面官方 JVM)
-# 1.10.3 兼容 Kotlin 2.2.20+, 本项目 Kotlin 2.3.21
-compose-multiplatform = { id = "org.jetbrains.compose", version = "1.10.3" }
+# Compose Multiplatform (AntUI fork 版 1.8.2.99-alipay: 提供 ohosArm64 变体, 鸿蒙端 Compose 支持)
+# 官方上游 1.8.2 兼容 Kotlin 2.0.x+; fork 版基于 Kotlin 2.3.0.1-alipay 重新构建
+compose-multiplatform = { id = "org.jetbrains.compose", version = "1.8.2.99-alipay" }

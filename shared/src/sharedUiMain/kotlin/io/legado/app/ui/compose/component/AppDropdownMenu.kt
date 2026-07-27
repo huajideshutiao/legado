@@ -1,8 +1,10 @@
 package io.legado.app.ui.compose.component
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.DropdownMenu
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpOffset
@@ -22,14 +24,21 @@ fun AppDropdownMenu(
     offset: DpOffset = DpOffset.Zero,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // MD2 DropdownMenu 不支持 shape/containerColor/shadowElevation，用 Surface 包裹 content 复刻视觉
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         offset = offset,
-        shape = RoundedCornerShape(8.dp),
-        containerColor = AppTheme.colors.bottomBackground,
-        shadowElevation = 8.dp,
-        content = content,
-    )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = AppTheme.colors.bottomBackground,
+            elevation = 8.dp,
+        ) {
+            Column {
+                content()
+            }
+        }
+    }
 }

@@ -3,6 +3,11 @@
     "pages/Index",
     "pages/Bookshelf",
     "pages/Reader",
-    "pages/KmpInteropTest"
+    "pages/AudioPlay",
+    "pages/MangaReader",
+    "pages/KmpInteropTest",
+    "pages/MyTab",
+    "pages/SearchScreen",
+    "pages/VideoPlay"
   ]
 }

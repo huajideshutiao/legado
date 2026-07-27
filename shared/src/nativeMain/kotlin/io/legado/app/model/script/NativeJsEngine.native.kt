@@ -82,12 +82,12 @@ import kotlin.coroutines.ensureActive
  * - **全平台 quickjs 统一**: 原 iOS 端用 JavaScriptCore (系统库)、鸿蒙端用 JSVM-API (ArkJS/V8 系统库),
  *   与 Android/Desktop 的 quickjs 行为不一致 (ES 特性、错误信息、bytecode 等); KP6 改为 quickjs cinterop,
  *   与 jvmAndAndroid 端 [QuickJsJsEngine] 行为一致, 减少 platform 分支;
- * - **C 源码内嵌**: cinterop 直接编译 `modules/quickjs/src/main/cpp/quickjs-ng/` 的 C 源码
- *   (复制到 `shared/src/iosMain/cinterop/quickjs-ng/` 与 `shared/src/ohosMain/cinterop/quickjs-ng/`,
- *   两端共用同一份 C 源码副本), 不依赖系统 JS 运行时, 跨版本行为一致;
- * - **cinterop 绑定**: `src/iosMain/cinterop/quickjs.def` / `src/ohosMain/cinterop/quickjs.def` 声明
+ * - **C 源码内嵌**: cinterop 直接编译 `shared/src/cinterop/quickjs-ng/` 的 C 源码
+ *   (单一数据源: iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 共用同一份 C 源码),
+ *   不依赖系统 JS 运行时, 跨版本行为一致;
+ * - **cinterop 绑定**: `src/cinterop/quickjs.def` 声明
  *   quickjs C API, Kotlin/Native cinterop 编译后生成 `io.legado.app.napi.quickjs.*` Kotlin 绑定,
- *   类型安全调用 C 函数 (两端 .def 内容一致, 共用同一份绑定);
+ *   类型安全调用 C 函数 (iOS/鸿蒙共用同一份 .def 与绑定);
  * - **无 JNI**: iOS/鸿蒙 Kotlin/Native 不支持 JNI, 无法复用 `modules/quickjs` 的 `QuickJsNative` JNI 桥;
  *   cinterop 是 Kotlin/Native 的原生 C 互操作机制, 直接编译 C 源码到 framework/.so, 无需 JNI。
  *
@@ -128,10 +128,9 @@ import kotlin.coroutines.ensureActive
  *   (无 Java 类可旁路访问), 保留字段仅为了接口对齐。
  *
  * # cinterop C 源码维护
- * `shared/src/iosMain/cinterop/quickjs-ng/` 与 `shared/src/ohosMain/cinterop/quickjs-ng/` 下的 C 源码是
- * `modules/quickjs/src/main/cpp/quickjs-ng/` 的子集副本 (仅 quickjs 核心源码, 不含 quickjs-libc/qjs CLI/test 等),
- * cinterop 编译需要本地 C 文件, 这是必要的复制 (不是"资源维护两份"): Android 端走 CMake + JNI 编译同一份 C 源码,
- * iOS/鸿蒙端走 cinterop 编译副本, 三端 C 源码内容完全一致 (升级 quickjs-ng 时同步更新)。
+ * `shared/src/cinterop/quickjs-ng/` 是 quickjs-ng 核心源码的单一数据源
+ * (仅 quickjs 核心源码, 不含 quickjs-libc/qjs CLI/test 等),
+ * iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 均直接引用此目录, 升级 quickjs-ng 时只需更新此一处。
  *
  * # 启动注册
  * 宿主启动早期经 [registerIosJsEngines] / [registerOhosJsEngines] 注册到 [JsEngines] (在任何 JS eval 之前),

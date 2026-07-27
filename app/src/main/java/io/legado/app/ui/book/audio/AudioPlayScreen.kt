@@ -1,32 +1,14 @@
 package io.legado.app.ui.book.audio
 
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.TransitionDrawable
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,25 +19,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,134 +35,119 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.graphics.drawable.toBitmapOrNull
-import com.bumptech.glide.request.target.CustomViewTarget
-import com.bumptech.glide.request.transition.Transition
+import coil3.asDrawable
+import coil3.load
+import coil3.request.placeholder
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
-import io.legado.app.model.BookCover
-import io.legado.app.model.iconRes
+import io.legado.app.model.blurConfig
+import io.legado.app.model.coverConfig
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.LrcView
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.toDurationTime
 import java.util.Locale
 
-/** 音频播放页，对照 activity_audio_play.xml：模糊背景+遮罩、透明白字标题栏、圆形封面、歌词、进度条、播放控制排 */
+/**
+ * 音频播放页 (薄壳): 主体 UI 调用 shared [AudioPlayScreenContent], 平台特殊部分以 slot 注入。
+ *
+ * 平台 slot:
+ * - [AudioPlayScreenContent.coverSlot]: 圆形封面 (Coil + AndroidView + coverConfig + placeholder)
+ * - [AudioPlayScreenContent.blurBgSlot]: 模糊背景 (Coil + AndroidView + blurConfig + TransitionDrawable 淡入 +
+ *   onBlurCoverLoaded 回调, 用于推导 lrcColors 调色板)
+ * - [AudioPlayScreenContent.lrcSlot]: 自绘 LrcView (AndroidView 桥接, 滚动 + 渐变动画)
+ * - [AudioPlayScreenContent.titleBarTrailingSlot]: review 钮 + 溢出菜单 (登录/复制URL/变量/编辑书源/锁屏/书签/日志)
+ * - [AudioPlayScreenContent.timerDialogSlot]/[speedDialogSlot]: Popup + AppSlider (对照原 SliderPopupCard)
+ */
 @Composable
 fun AudioPlayScreen(activity: AudioPlayActivity) {
-    Box(Modifier.fillMaxSize()) {
-        BlurBg(activity, Modifier.matchParentSize())
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(Color(0x3A000000))
-        )
-        Column(Modifier.fillMaxSize()) {
-            AudioTitleBar(activity)
-            Text(
-                text = activity.subTitle,
-                color = Color.White,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+    val colors = AppTheme.colors
+    // 模糊背景代表色衍生主/次色, null 时回退 accent
+    val lrcActiveColor = activity.lrcColors?.let { Color(it.first) }
+    val lrcInactiveColor = activity.lrcColors?.let { Color(it.second) }
+    AudioPlayScreenContent(
+        title = activity.titleText,
+        subTitle = activity.subTitle,
+        coverUrl = activity.coverUrl,
+        coverVisible = activity.coverVisible,
+        timerMinute = activity.timerMinute,
+        speed = AudioPlayService.playSpeed,
+        progressMs = activity.progressMs,
+        durationMs = activity.durationMs,
+        bufferMs = activity.bufferMs,
+        isPlaying = activity.isPlaying,
+        loading = activity.loading,
+        playMode = activity.playMode,
+        prevEnabled = activity.prevEnabled,
+        nextEnabled = activity.nextEnabled,
+        accentColor = colors.accent,
+        lrcActiveColor = lrcActiveColor,
+        lrcInactiveColor = lrcInactiveColor,
+        onBack = { activity.onBackPressedDispatcher.onBackPressed() },
+        onOpenChangeSource = { activity.showChangeSource() },
+        onCoverClick = { activity.coverVisible = false },
+        onTogglePlay = { activity.playButton() },
+        onPrev = { activity.viewModel.prev() },
+        onNext = { activity.viewModel.next() },
+        onChangePlayMode = { activity.viewModel.changePlayMode() },
+        onOpenToc = { activity.openChapterList() },
+        onSeek = { activity.viewModel.adjustProgress(it) },
+        onSetTimer = { activity.viewModel.setTimer(it) },
+        onSetSpeed = { activity.viewModel.adjustSpeed(it) },
+        onStop = null,
+        coverSlot = { url, modifier -> CoverSlot(url, modifier) },
+        blurBgSlot = { url, modifier -> BlurBgSlot(activity, url, modifier) },
+        lrcSlot = { modifier -> LrcSlot(activity, modifier) },
+        titleBarTrailingSlot = { TitleBarTrailing(activity) },
+        timerDialogSlot = { initial, onProgressChanged, onDismiss ->
+            SliderPopupCard(
+                max = 180,
+                initial = initial,
+                formatText = { activity.getString(R.string.timer_m, it) },
+                onProgressChanged = onProgressChanged,
+                onDismiss = onDismiss,
             )
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (activity.coverVisible) {
-                        CoverImage(activity)
-                    }
-                    LrcPanel(
-                        activity,
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(vertical = 16.dp),
-                    )
-                }
-                if (activity.timerMinute > 0) {
-                    FilletLabel(
-                        text = "${activity.timerMinute}m",
-                        iconRes = R.drawable.ic_timer_black_24dp,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp),
-                    )
-                }
-                activity.speedText?.let {
-                    FilletLabel(
-                        text = it,
-                        iconRes = null,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp),
-                    )
-                }
-            }
-            ProgressRow(activity)
-            PlayMenu(activity)
-        }
-    }
+        },
+        speedDialogSlot = { initial, onProgressChanged, onDismiss ->
+            // shared 传入 Float 初值; 原实现用 (speed*10).toInt() int 形态 slider, 这里反向 *10 取整
+            SliderPopupCard(
+                max = 30,
+                initial = (initial * 10).toInt(),
+                formatText = { String.format(Locale.ROOT, "%.1fX", it / 10.0f) },
+                onProgressChanged = { onProgressChanged(it / 10.0f) },
+                onDismiss = onDismiss,
+            )
+        },
+        timerIconKey = "ic_timer_black_24dp",
+        speedIconKey = "ic_fast_forward",
+        chapterListIconKey = "ic_chapter_list",
+        filletLabelColor = colorResource(R.color.arco_fill_3),
+        playMenuButtonPressedBgEnabled = true,
+        playMenuAlpha = 0.7f,
+        titleBarHorizontalPadding = 0.dp,
+        playModeIconPadding = 8.dp,
+    )
 }
 
-// ---- 标题栏(原 TitleBar themeMode=dark + 透明背景: 白字白图标) ----
+// ---- 标题栏尾部: review + 溢出菜单 (登录/复制URL/变量/编辑书源/锁屏/书签/日志) ----
 
 @Composable
-private fun AudioTitleBar(activity: AudioPlayActivity) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = { activity.onBackPressedDispatcher.onBackPressed() }) {
+private fun TitleBarTrailing(activity: AudioPlayActivity) {
+    if (AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false) {
+        IconButton(onClick = { activity.openReview() }) {
             Icon(
-                painter = painterResource(R.drawable.ic_arrow_back),
-                contentDescription = null,
+                painter = rememberPainter("ic_edit"),
+                contentDescription = stringResource(R.string.review),
                 tint = Color.White,
             )
         }
-        Text(
-            text = activity.titleText,
-            color = Color.White,
-            fontSize = 20.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = { activity.showChangeSource() }) {
-            Icon(
-                painter = painterResource(R.drawable.ic_exchange),
-                contentDescription = stringResource(R.string.change_origin),
-                tint = Color.White,
-            )
-        }
-        if (AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false) {
-            IconButton(onClick = { activity.openReview() }) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_edit),
-                    contentDescription = stringResource(R.string.review),
-                    tint = Color.White,
-                )
-            }
-        }
-        AudioOverflowMenu(activity)
     }
+    AudioOverflowMenu(activity)
 }
 
 @Composable
@@ -201,7 +157,7 @@ private fun AudioOverflowMenu(activity: AudioPlayActivity) {
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                painter = painterResource(R.drawable.ic_more_vert),
+                painter = rememberPainter("ic_more_vert"),
                 contentDescription = stringResource(R.string.more_menu),
                 tint = Color.White,
             )
@@ -241,47 +197,10 @@ private fun AudioMenuItem(textRes: Int, onClick: () -> Unit) {
     )
 }
 
-// ---- 封面/背景(Glide 栈经 AndroidView 桥接, 对齐 BookInfoScreen.BlurCoverBg 先例) ----
+// ---- 平台 coverSlot: 圆形封面 (Coil + AndroidView + coverConfig + placeholder) ----
 
 @Composable
-private fun BlurBg(activity: AudioPlayActivity, modifier: Modifier) {
-    AndroidView(
-        factory = {
-            AppCompatImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        },
-        modifier = modifier,
-        update = { iv ->
-            val url = activity.coverUrl
-            if (url != null && iv.tag != url) {
-                iv.tag = url
-                BookCover.loadBlur(
-                    ImageLoader.with(iv), url,
-                    sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
-                    seed = AudioPlay.book?.name,
-                ).into(object : CustomViewTarget<ImageView, Drawable>(iv) {
-                    override fun onResourceCleared(p0: Drawable?) {}
-                    override fun onLoadFailed(p0: Drawable?) {}
-                    override fun onResourceReady(p0: Drawable, p1: Transition<in Drawable>?) {
-                        if (view.drawable != null) {
-                            val transitionDrawable =
-                                TransitionDrawable(arrayOf(view.drawable, p0))
-                            transitionDrawable.isCrossFadeEnabled = true
-                            view.setImageDrawable(transitionDrawable)
-                            transitionDrawable.startTransition(300)
-                        } else {
-                            view.setImageDrawable(p0)
-                        }
-                        p0.toBitmapOrNull()?.let { activity.onBlurCoverLoaded(it) }
-                    }
-                })
-            }
-        },
-    )
-}
-
-@Composable
-private fun CoverImage(activity: AudioPlayActivity) {
-    val colors = AppTheme.colors
+private fun CoverSlot(coverUrl: String?, modifier: Modifier) {
     val coverDesc = stringResource(R.string.img_cover)
     AndroidView(
         factory = {
@@ -290,30 +209,66 @@ private fun CoverImage(activity: AudioPlayActivity) {
                 contentDescription = coverDesc
             }
         },
-        modifier = Modifier
-            .padding(top = 16.dp)
-            .size(200.dp)
-            .clip(CircleShape)
-            // 圆形描边用主题强调色(原 strokeColor 动态设置以响应主题切换)
-            .border(2.dp, colors.accent, CircleShape)
-            .clickable { activity.coverVisible = false },
+        modifier = modifier,
         update = { iv ->
-            val url = activity.coverUrl
-            if (url != null && iv.tag != url) {
-                iv.tag = url
-                BookCover.load(
-                    ImageLoader.with(iv), url,
-                    sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
-                    seed = AudioPlay.book?.name,
-                ).placeholder(iv.drawable).into(iv)
+            if (coverUrl != null && iv.tag != coverUrl) {
+                iv.tag = coverUrl
+                iv.load(coverUrl) {
+                    coverConfig(
+                        seed = AudioPlay.book?.name,
+                        sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
+                    )
+                    placeholder(iv.drawable)
+                }
             }
         },
     )
 }
 
-/** LrcView 为自绘歌词控件(滚动/渐变动画), 保留 View 实现经 AndroidView 桥接(登记欠账) */
+// ---- 平台 blurBgSlot: 模糊背景 (blurConfig + TransitionDrawable 淡入 + onBlurCoverLoaded 回调) ----
+
 @Composable
-private fun LrcPanel(activity: AudioPlayActivity, modifier: Modifier) {
+private fun BlurBgSlot(activity: AudioPlayActivity, coverUrl: String?, modifier: Modifier) {
+    AndroidView(
+        factory = {
+            AppCompatImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        },
+        modifier = modifier,
+        update = { iv ->
+            if (coverUrl != null && iv.tag != coverUrl) {
+                iv.tag = coverUrl
+                iv.load(coverUrl) {
+                    blurConfig(
+                        seed = AudioPlay.book?.name,
+                        sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
+                    )
+                    listener(
+                        onSuccess = { _, result ->
+                            val newDrawable = result.image?.asDrawable(iv.resources)
+                            if (newDrawable != null) {
+                                if (iv.drawable != null) {
+                                    val transitionDrawable =
+                                        TransitionDrawable(arrayOf(iv.drawable, newDrawable))
+                                    transitionDrawable.isCrossFadeEnabled = true
+                                    iv.setImageDrawable(transitionDrawable)
+                                    transitionDrawable.startTransition(300)
+                                } else {
+                                    iv.setImageDrawable(newDrawable)
+                                }
+                                newDrawable.toBitmapOrNull()?.let { activity.onBlurCoverLoaded(it) }
+                            }
+                        },
+                    )
+                }
+            }
+        },
+    )
+}
+
+// ---- 平台 lrcSlot: 自绘 LrcView (AndroidView 桥接, 滚动 + 渐变动画) ----
+
+@Composable
+private fun LrcSlot(activity: AudioPlayActivity, modifier: Modifier) {
     val holder = remember { LrcKeys() }
     AndroidView(
         factory = { ctx ->
@@ -350,256 +305,7 @@ private class LrcKeys {
     var colors: Pair<Int, Int>? = null
 }
 
-// ---- 定时/倍速回显标签(shape_fillet_btn_press: arco_fill_3 填充 8dp 圆角) ----
-
-@Composable
-private fun FilletLabel(text: String, iconRes: Int?, modifier: Modifier) {
-    Row(
-        modifier
-            .background(colorResource(R.color.arco_fill_3), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (iconRes != null) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-        Text(text, color = Color.White, fontSize = 14.sp)
-    }
-}
-
-// ---- 进度条 ----
-
-@Composable
-private fun ProgressRow(activity: AudioPlayActivity) {
-    val colors = AppTheme.colors
-    // 拖动中的预览值(原 adjustProgress 标记: 拖动期间不回显事件进度)
-    var dragValue by remember { mutableStateOf<Int?>(null) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            (dragValue ?: activity.progressMs).toDurationTime(),
-            color = Color.White,
-            fontSize = 14.sp,
-        )
-        AudioSeekBar(
-            value = dragValue ?: activity.progressMs,
-            secondary = activity.bufferMs,
-            max = activity.durationMs,
-            activeColor = activity.lrcColors?.let { Color(it.first) } ?: colors.accent,
-            bufferColor = activity.lrcColors?.let { Color(it.second) }
-                ?: colors.accent.copy(alpha = 0.5f),
-            onDrag = { dragValue = it },
-            onDragFinished = {
-                dragValue?.let { activity.viewModel.adjustProgress(it) }
-                dragValue = null
-            },
-            modifier = Modifier
-                .weight(1f)
-                .height(25.dp),
-        )
-        Text(activity.durationMs.toDurationTime(), color = Color.White, fontSize = 14.sp)
-    }
-}
-
-/** 自绘 MD2 SeekBar(同 AppSlider 形态)加缓冲层: 背景 md_dark_secondary、缓冲 secondary、已播 active */
-@Composable
-private fun AudioSeekBar(
-    value: Int,
-    secondary: Int,
-    max: Int,
-    activeColor: Color,
-    bufferColor: Color,
-    onDrag: (Int) -> Unit,
-    onDragFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val range = max.coerceAtLeast(1)
-
-    fun fractionToValue(fraction: Float): Int =
-        (fraction * range).toInt().coerceIn(0, range)
-
-    Box(
-        modifier
-            .pointerInput(max) {
-                detectTapGestures(onTap = { pos ->
-                    onDrag(fractionToValue(pos.x / size.width))
-                    onDragFinished()
-                })
-            }
-            .pointerInput(max) {
-                detectHorizontalDragGestures(
-                    onDragEnd = { onDragFinished() },
-                    onDragCancel = { onDragFinished() },
-                ) { change, _ ->
-                    change.consume()
-                    onDrag(fractionToValue(change.position.x / size.width))
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val thumbR = 8.dp.toPx()
-            val trackH = 2.dp.toPx()
-            val cy = size.height / 2
-            val startX = thumbR
-            val endX = size.width - thumbR
-            val playFrac = (value.toFloat() / range).coerceIn(0f, 1f)
-            val bufFrac = (secondary.toFloat() / range).coerceIn(0f, 1f)
-            val playX = startX + (endX - startX) * playFrac
-            val bufX = startX + (endX - startX) * bufFrac
-            // 进度背景(原 progressBackgroundTint=md_dark_secondary)
-            drawLine(Color(0xB3FFFFFF), Offset(startX, cy), Offset(endX, cy), trackH, StrokeCap.Round)
-            if (bufX > startX) {
-                drawLine(bufferColor, Offset(startX, cy), Offset(bufX, cy), trackH, StrokeCap.Round)
-            }
-            drawLine(activeColor, Offset(startX, cy), Offset(playX, cy), trackH, StrokeCap.Round)
-            drawCircle(activeColor, thumbR, Offset(playX, cy))
-        }
-    }
-}
-
-// ---- 播放控制排 ----
-
-@Composable
-private fun PlayMenu(activity: AudioPlayActivity) {
-    val colors = AppTheme.colors
-    var showTimer by remember { mutableStateOf(false) }
-    var showSpeed by remember { mutableStateOf(false) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .alpha(0.7f)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box {
-            PlayMenuButton(R.drawable.ic_timer_black_24dp, stringResource(R.string.set_timer)) {
-                showTimer = true
-            }
-            if (showTimer) {
-                SliderPopupCard(
-                    max = 180,
-                    initial = AudioPlayService.timeMinute,
-                    formatText = { activity.getString(R.string.timer_m, it) },
-                    onProgressChanged = { activity.viewModel.setTimer(it) },
-                    onDismiss = { showTimer = false },
-                )
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Box {
-            PlayMenuButton(R.drawable.ic_fast_forward, stringResource(R.string.skip_previous)) {
-                showSpeed = true
-            }
-            if (showSpeed) {
-                SliderPopupCard(
-                    max = 30,
-                    initial = (AudioPlayService.playSpeed * 10).toInt(),
-                    formatText = { String.format(Locale.ROOT, "%.1fX", it / 10.0f) },
-                    onProgressChanged = { activity.viewModel.adjustSpeed(it / 10.0f) },
-                    onDismiss = { showSpeed = false },
-                )
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        PlayMenuButton(
-            R.drawable.ic_skip_previous,
-            stringResource(R.string.skip_previous),
-            enabled = activity.prevEnabled,
-        ) { activity.viewModel.prev() }
-        Box(contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .padding(12.dp)
-                    .size(56.dp)
-                    .shadow(6.dp, CircleShape)
-                    // clip: ripple 裁进圆形, 对齐原 FloatingActionButton 圆形按压反馈
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .clickable { activity.playButton() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(
-                        if (activity.isPlaying) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp
-                    ),
-                    contentDescription = stringResource(R.string.audio_play),
-                    tint = Color.Black,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            if (activity.loading) {
-                CircularProgressIndicator(
-                    color = colors.accent,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
-        }
-        PlayMenuButton(
-            R.drawable.ic_skip_next,
-            stringResource(R.string.skip_next),
-            enabled = activity.nextEnabled,
-        ) { activity.viewModel.next() }
-        Spacer(Modifier.weight(1f))
-        PlayMenuButton(
-            activity.playMode.iconRes,
-            stringResource(R.string.skip_next),
-            iconPadding = 8.dp,
-        ) { activity.viewModel.changePlayMode() }
-        Spacer(Modifier.weight(1f))
-        PlayMenuButton(R.drawable.ic_chapter_list, stringResource(R.string.chapter_list)) {
-            activity.openChapterList()
-        }
-    }
-}
-
-/** 46dp 圆钮: 按压态圆形 arco_fill_3 底(selector_circle_btn_bg), 图标白/禁用 25% 白(selector_white_icon) */
-@Composable
-private fun PlayMenuButton(
-    iconRes: Int,
-    contentDescription: String,
-    enabled: Boolean = true,
-    iconPadding: Dp = 4.dp,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val pressedBg = colorResource(R.color.arco_fill_3)
-    Box(
-        Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(if (pressed) pressedBg else Color.Transparent)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = if (enabled) Color.White else Color(0x3FFFFFFF),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(iconPadding),
-        )
-    }
-}
-
-// ---- 定时/倍速滑条弹窗(原 SliderPopup: 全宽卡片, 锚点下沿上方 100dp) ----
+// ---- 定时/倍速滑条弹窗 (原 SliderPopup: 全宽卡片, 锚点下沿上方 100dp) ----
 
 @Composable
 private fun SliderPopupCard(
@@ -630,7 +336,7 @@ private fun SliderPopupCard(
                 .fillMaxWidth()
                 .background(colorResource(R.color.background_card), RoundedCornerShape(8.dp))
                 .padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         ) {
             Text(formatText(value), color = AppTheme.colors.secondaryText, fontSize = 14.sp)
             AppSlider(

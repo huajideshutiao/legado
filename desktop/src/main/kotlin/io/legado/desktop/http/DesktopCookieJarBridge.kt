@@ -3,6 +3,7 @@ package io.legado.desktop.http
 import io.legado.app.constant.AppLog
 import io.legado.app.help.http.CookieJarBridge
 import io.legado.app.help.http.mergeCookies
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.NetworkUtils
 import okhttp3.Cookie
 import okhttp3.Request
@@ -36,7 +37,7 @@ class DesktopCookieJarBridge : CookieJarBridge {
                 .header("Cookie", newCookie)
                 .build()
         } catch (e: Exception) {
-            AppLog.put("桌面端设置 cookie 出错 domain=$domain cookie=$newCookie", e)
+            AppLog.put(jvmGetString("desktop_cookie_set_error", domain, newCookie), e)
             request
         }
     }

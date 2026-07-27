@@ -20,15 +20,17 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.net.toUri
-import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.signature.ObjectKey
+import coil3.PlatformContext
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.size.Size
+import coil3.toBitmap
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppConst
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isEpub
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.glide.OkHttpModelLoader
+import io.legado.app.help.image.sourceOrigin
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
@@ -78,12 +80,6 @@ class PhotoDialog() : BaseComposeDialogFragment() {
         }
     }
 
-    private val requestOptions: RequestOptions by lazy {
-        arguments?.getString("sourceOrigin")?.let {
-            RequestOptions().set(OkHttpModelLoader.sourceOriginOption, it)
-        } ?: RequestOptions()
-    }
-
     private val saveImageLauncher by lazy {
         registerHandleFile { result ->
             result.uri?.let { uri ->
@@ -129,7 +125,7 @@ class PhotoDialog() : BaseComposeDialogFragment() {
 
                 else -> null
             }?.apply { density = targetDensity }
-            bitmap ?: loadBitmapByGlide()
+            bitmap ?: loadBitmapByCoil()
         }.onSuccess { bitmap ->
             onLoaded(bitmap?.asImageBitmap())
         }.onError {
@@ -147,18 +143,31 @@ class PhotoDialog() : BaseComposeDialogFragment() {
     /**
      * 本地路径都不命中时的兜底：先查 covers 磁盘缓存（封面场景命中），否则正常请求，仍失败取默认封面。
      */
-    private fun loadBitmapByGlide(): Bitmap? {
+    private suspend fun loadBitmapByCoil(): Bitmap? {
         val ctx = context ?: return null
-        val base = ImageLoader.with(ctx).asBitmap()
-            .apply(requestOptions)
-            .dontTransform()
-            .downsample(DownsampleStrategy.NONE)
-        return runCatching {
-            base.clone().signature(ObjectKey("covers")).onlyRetrieveFromCache(true)
-                .load(src).submit().get()
-        }.getOrNull() ?: runCatching {
-            base.clone().load(src).submit().get()
-        }.getOrNull() ?: BookCover.newDefaultDrawable().toBitmap()
+        val sourceOrigin = arguments?.getString("sourceOrigin")
+        val loader = coil3.SingletonImageLoader.get(ctx)
+        val cached = runCatching {
+            val req = ImageRequest.Builder(ctx as PlatformContext)
+                .data(src)
+                .sourceOrigin(sourceOrigin)
+                .diskCachePolicy(CachePolicy.READ_ONLY)
+                .networkCachePolicy(CachePolicy.DISABLED)
+                .size(Size.ORIGINAL)
+                .build()
+            loader.execute(req)
+        }.getOrNull()
+        if (cached is SuccessResult) return cached.image?.toBitmap()
+        val fresh = runCatching {
+            val req = ImageRequest.Builder(ctx as PlatformContext)
+                .data(src)
+                .sourceOrigin(sourceOrigin)
+                .size(Size.ORIGINAL)
+                .build()
+            loader.execute(req)
+        }.getOrNull()
+        if (fresh is SuccessResult) return fresh.image?.toBitmap()
+        return BookCover.newDefaultDrawable().toBitmap()
     }
 
     @SuppressLint("CheckResult")
@@ -167,27 +176,11 @@ class PhotoDialog() : BaseComposeDialogFragment() {
             val localFile = ReadBook.book?.let { book ->
                 BookHelp.getImage(book, src).takeIf { it.exists() }
             }
-            val file = localFile ?: run {
-                val glide = ImageLoader.with(requireContext())
-                runCatching {
-                    glide.downloadOnly()
-                        .apply(requestOptions)
-                        .signature(ObjectKey("covers"))
-                        .onlyRetrieveFromCache(true)
-                        .load(src)
-                        .submit()
-                        .get()
-                }.getOrNull() ?: runCatching {
-                    glide.downloadOnly()
-                        .apply(requestOptions)
-                        .onlyRetrieveFromCache(true)
-                        .load(src)
-                        .submit()
-                        .get()
-                }.getOrNull()
-            }
-
-            val result = file?.let { FileUtils.saveImage(it, uri) } ?: FileUtils.saveImage(src, uri)
+            // localFile 命中(章节缓存)直接保存; 否则按 url 下载保存。
+            // 原 Glide downloadOnly+onlyRetrieveFromCache 查磁盘缓存省下载的优化,
+            // Coil3 无等价 downloadOnly, 改为统一走 FileUtils.saveImage(src) 下载。
+            val result = localFile?.let { FileUtils.saveImage(it, uri) }
+                ?: FileUtils.saveImage(src, uri)
 
             if (!result) error("找不到数据")
         }.onError {

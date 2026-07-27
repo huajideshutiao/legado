@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,6 +31,7 @@ import io.legado.app.help.HomeTabHelp
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
@@ -75,7 +75,7 @@ class HomeSectionManageDialog : BaseComposeDialogFragment() {
                             showDialogFragment(HomeSectionEditDialog.newInstance(tabTitle))
                         }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = getString(R.string.home_add_section),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -102,7 +102,7 @@ class HomeSectionManageDialog : BaseComposeDialogFragment() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_baseline_sort_24),
+                painter = rememberPainter("ic_baseline_sort_24"),
                 contentDescription = stringResource(R.string.sort),
                 tint = colors.secondaryText,
                 modifier = Modifier.size(24.dp),

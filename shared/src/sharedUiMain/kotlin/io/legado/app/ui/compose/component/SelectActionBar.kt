@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,8 +29,8 @@ data class SelectAction(val text: String, val onClick: () -> Unit)
  * 全选复选框(带 已选/总数 计数) + 反选 + 主操作(默认删除) + 溢出菜单。
  * 未选中(selectCount==0)时反选/主操作/菜单置灰不可点，对齐 setMenuClickable。
  *
- * 注: select_cancel_count / select_all_count 原为带 %1$d/%2$d 的格式化文案,
- * commonMain 端 rememberString 仅按 key 取字面量(无 format 参数), 未识别 key 返回 key 本身作 fallback。
+ * 注: select_cancel_count / select_all_count 为带 %1$d/%2$d 的格式化文案,
+ * 调用 rememberString 时需传入 selectCount/allCount 由 Formatter 填充占位符。
  */
 @Composable
 fun SelectActionBar(
@@ -59,7 +59,7 @@ fun SelectActionBar(
         ) {
             AppCheckbox(checked = isSelectAll, onCheckedChange = { onSelectAll(it) })
             Text(
-                text = rememberString(tpl),
+                text = rememberString(tpl, selectCount, allCount),
                 color = colors.primaryText,
             )
         }
@@ -87,12 +87,13 @@ fun SelectActionBar(
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 actions.forEach { action ->
                     DropdownMenuItem(
-                        text = { Text(action.text, color = colors.primaryText) },
                         onClick = {
                             showMenu = false
                             action.onClick()
                         },
-                    )
+                    ) {
+                        Text(action.text, color = colors.primaryText)
+                    }
                 }
             }
         }

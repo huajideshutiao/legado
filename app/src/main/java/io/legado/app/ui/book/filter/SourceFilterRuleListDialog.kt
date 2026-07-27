@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,6 +33,7 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.Dispatchers.IO
@@ -85,7 +85,7 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
                             )
                         }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = getString(R.string.add),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -138,14 +138,14 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { showDialogFragment(SourceFilterEditDialog(item)) }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_edit),
+                    painter = rememberPainter("ic_edit"),
                     contentDescription = stringResource(R.string.edit),
                     tint = colors.primaryText,
                 )
             }
             IconButton(onClick = { showMenu = true }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_more_vert),
+                    painter = rememberPainter("ic_more_vert"),
                     contentDescription = stringResource(R.string.more_menu),
                     tint = colors.primaryText,
                 )

@@ -127,6 +127,10 @@ private object DesktopRuleBigDataProvider : RuleBigDataProvider {
     }
 
     override fun listBookDataDirs(): List<String> = emptyList()
+
+    override fun clearInvalidBookData(bookUrls: Set<String>) {
+        // in-memory 实现, 进程退出即丢失, 无需清理
+    }
 }
 
 /**

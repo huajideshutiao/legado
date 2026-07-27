@@ -7,25 +7,20 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import androidx.annotation.Keep
 import androidx.collection.LruCache
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
-import com.bumptech.glide.RequestBuilder
-import com.bumptech.glide.RequestManager
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.Transformation
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.resource.bitmap.CenterCrop
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
+import coil3.PlatformContext
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.transformations
+import coil3.toBitmap
+import coil3.transform.Transformation
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.glide.OkHttpModelLoader
-import io.legado.app.model.BookCover.load
-import io.legado.app.model.BookCover.upDefaultCover
+import io.legado.app.help.image.sourceOrigin
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -251,92 +246,41 @@ object BookCover {
     }
 
     /**
-     * 加载封面
-     * @param seed 默认封面回退时的稳定挑选种子 (通常是书名),为 null 时随机。
-     *             必须与同一书的 loadBlur 用同一 seed,否则失败回退会撞到不同的默认图。
-     */
-    fun load(
-        requestManager: RequestManager,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-        inBookshelf: Boolean = false,
-        seed: String? = null,
-        ratio: CoverRatio = CoverRatio.NOVEL,
-        onLoadFinish: (() -> Unit)? = null,
-    ): RequestBuilder<Drawable> {
-        if (AppConfig.useDefaultCover) {
-            return requestManager.load(newDefaultDrawable(ratio, seed)).centerCrop()
-        }
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        var builder = ImageLoader.load(requestManager, path, inBookshelf).apply(options)
-        if (onLoadFinish != null) {
-            builder = builder.addListener(object : RequestListener<Drawable> {
-                override fun onLoadFailed(
-                    e: GlideException?,
-                    model: Any?,
-                    target: Target<Drawable?>,
-                    isFirstResource: Boolean,
-                ): Boolean {
-                    onLoadFinish.invoke()
-                    return false
-                }
-
-                override fun onResourceReady(
-                    resource: Drawable,
-                    model: Any,
-                    target: Target<Drawable?>?,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean,
-                ): Boolean {
-                    onLoadFinish.invoke()
-                    return false
-                }
-            })
-        }
-        return builder.error(newDefaultDrawable(ratio, seed)).centerCrop()
-    }
-
-    /**
-     * 加载模糊封面
-     * @param seed 与 [load] 一致的默认封面种子,保证失败回退时前景/背景挑到同一张图。
-     * @param extraTransformations 额外的 Bitmap 变换 (如 BookInfoBgTransformation 的渐变),
-     *                             会同时作用于网络结果与默认封面回退,避免外层再叠一层 .error。
-     */
-    fun loadBlur(
-        requestManager: RequestManager,
-        path: String?,
-        loadOnlyWifi: Boolean = false,
-        sourceOrigin: String? = null,
-        inBookshelf: Boolean = false,
-        seed: String? = null,
-        ratio: CoverRatio = CoverRatio.NOVEL,
-        extraTransformations: List<Transformation<Bitmap>> = emptyList(),
-    ): RequestBuilder<Drawable> {
-        val allTransforms = arrayOf<Transformation<Bitmap>>(BlurTransformation(), CenterCrop()) +
-            extraTransformations
-        val blurOptions = RequestOptions().transform(*allTransforms)
-        if (AppConfig.useDefaultCover) {
-            return requestManager.load(newDefaultDrawable(ratio, seed)).apply(blurOptions)
-        }
-        var options = RequestOptions().set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
-        if (sourceOrigin != null) {
-            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
-        }
-        return ImageLoader.load(requestManager, path, inBookshelf).apply(options).apply(blurOptions)
-            .error(requestManager.load(newDefaultDrawable(ratio, seed)).apply(blurOptions))
-    }
-
-    /**
      * 媒体通知/MediaSession 通用的默认封面 Bitmap。
      */
     val notificationDefaultCover: Bitmap by lazy {
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
     }
 
+    /**
+     * suspend 取封面 Bitmap: 通知/PhotoDialog/getCover 用。useDefaultCover 或空路径回退默认封面。
+     */
+    suspend fun loadCoverBitmap(
+        context: Context,
+        path: String?,
+        sourceOrigin: String? = null,
+        seed: String? = null,
+        ratio: CoverRatio = CoverRatio.NOVEL,
+    ): Bitmap {
+        if (AppConfig.useDefaultCover || path.isNullOrBlank()) {
+            return newDefaultDrawable(ratio, seed).toBitmap()
+        }
+        val loader = coil3.SingletonImageLoader.get(context)
+        val request = ImageRequest.Builder(context as PlatformContext)
+            .data(path)
+            .sourceOrigin(sourceOrigin)
+            .build()
+        val result = loader.execute(request)
+        return if (result is SuccessResult) {
+            result.image?.toBitmap() ?: newDefaultDrawable(ratio, seed).toBitmap()
+        } else {
+            newDefaultDrawable(ratio, seed).toBitmap()
+        }
+    }
+
+    /**
+     * 通知封面: 保留旧签名(服务调用点不改), 内部走 [loadCoverBitmap]。
+     */
     fun loadNotificationCover(
         context: Context,
         url: String?,
@@ -345,7 +289,7 @@ object BookCover {
     ): Coroutine<Bitmap>? {
         if (url.isNullOrBlank()) return null
         return Coroutine.async(scope) {
-            ImageLoader.loadBitmap(context, url).submit().get()
+            loadCoverBitmap(context, url, seed = null)
         }.onSuccess { bitmap ->
             if (bitmap.width > 16 && bitmap.height > 16) {
                 onLoaded(bitmap)
@@ -353,4 +297,39 @@ object BookCover {
         }
     }
 
+}
+
+/**
+ * 封面加载配置: 调用方 `imageView.load(path) { coverConfig(...) }`。
+ * useDefaultCover 由调用方自行判断后 load 默认 Drawable(走默认封面 9-patch 路径)。
+ * 封面缓存按 path 默认隔离(Coil3 默认 key 策略), 调用方无需手动设置 cache key。
+ * loadOnlyWifi 暂未下沉到 Coil3(需 Extras.Key+Interceptor, 另批处理), 此处 no-op。
+ */
+fun ImageRequest.Builder.coverConfig(
+    seed: String? = null,
+    ratio: CoverRatio = CoverRatio.NOVEL,
+    sourceOrigin: String? = null,
+    onLoadFinish: (() -> Unit)? = null,
+): ImageRequest.Builder = apply {
+    sourceOrigin(sourceOrigin)
+    if (onLoadFinish != null) {
+        listener(
+            onSuccess = { _, _ -> onLoadFinish() },
+            onError = { _, _ -> onLoadFinish() },
+        )
+    }
+}
+
+/**
+ * 模糊封面配置: 调用方 `imageView.load(path) { blurConfig(...) }`。
+ * 含 BlurTransformation + 调用方传入的 extraTransformations(如 BookInfoBgTransformation)。
+ */
+fun ImageRequest.Builder.blurConfig(
+    seed: String? = null,
+    ratio: CoverRatio = CoverRatio.NOVEL,
+    sourceOrigin: String? = null,
+    extraTransformations: List<Transformation> = emptyList(),
+): ImageRequest.Builder = apply {
+    sourceOrigin(sourceOrigin)
+    transformations(listOf(BlurTransformation()) + extraTransformations)
 }

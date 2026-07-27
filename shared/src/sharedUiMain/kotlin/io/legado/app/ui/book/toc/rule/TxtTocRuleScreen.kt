@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,8 +39,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * TXT 目录规则管理 UI 状态 (KMP 版, commonMain 共享)。
@@ -226,33 +226,37 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
     }
     OverflowMenu { dismiss ->
         DropdownMenuItem(
-            text = { Text(rememberString("import_local"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportLocal()
             },
-        )
+        ) {
+            Text(rememberString("import_local"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_on_line"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportOnline()
             },
-        )
+        ) {
+            Text(rememberString("import_on_line"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("import_default_rule"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onImportDefault()
             },
-        )
+        ) {
+            Text(rememberString("import_default_rule"), color = colors.primaryText)
+        }
         DropdownMenuItem(
-            text = { Text(rememberString("help"), color = colors.primaryText) },
             onClick = {
                 dismiss()
                 actions.onHelp()
             },
-        )
+        ) {
+            Text(rememberString("help"), color = colors.primaryText)
+        }
     }
 }
 
@@ -262,7 +266,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
  * 当规则带示例时, 名称行下方显示 example 文案 (对照原 item_layout)。
  */
 @Composable
-private fun ReorderableCollectionItemScope.TxtTocRuleItem(
+private fun RuleItemScope.TxtTocRuleItem(
     item: TxtTocRule,
     checked: Boolean,
     actions: TxtTocRuleUiActions,
@@ -313,17 +317,20 @@ private fun ReorderableCollectionItemScope.TxtTocRuleItem(
                 }
                 AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text(rememberString("to_top"), color = colors.primaryText) },
                         onClick = { showMenu = false; actions.onToTop(item) },
-                    )
+                    ) {
+                        Text(rememberString("to_top"), color = colors.primaryText)
+                    }
                     DropdownMenuItem(
-                        text = { Text(rememberString("to_bottom"), color = colors.primaryText) },
                         onClick = { showMenu = false; actions.onToBottom(item) },
-                    )
+                    ) {
+                        Text(rememberString("to_bottom"), color = colors.primaryText)
+                    }
                     DropdownMenuItem(
-                        text = { Text(rememberString("delete"), color = colors.primaryText) },
                         onClick = { showMenu = false; onDelete() },
-                    )
+                    ) {
+                        Text(rememberString("delete"), color = colors.primaryText)
+                    }
                 }
             }
         }

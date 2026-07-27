@@ -39,6 +39,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -303,9 +304,9 @@ class ImportBookSourceVmAdapter(
     override fun itemState(index: Int): String {
         val local = vm.checkSources[index]
         return when {
-            local == null -> "新增"
-            vm.allSources[index].lastUpdateTime > local.lastUpdateTime -> "更新"
-            else -> "已有"
+            local == null -> jvmGetString("import_state_new")
+            vm.allSources[index].lastUpdateTime > local.lastUpdateTime -> jvmGetString("import_state_update")
+            else -> jvmGetString("import_state_existing")
         }
     }
 
@@ -356,12 +357,12 @@ class ImportReplaceRuleVmAdapter(
         val local = vm.checkRules[index]
         val item = vm.allRules[index]
         return when {
-            local == null -> "新增"
+            local == null -> jvmGetString("import_state_new")
             item.pattern != local.pattern
                 || item.replacement != local.replacement
                 || item.isRegex != local.isRegex
-                || item.scope != local.scope -> "更新"
-            else -> "已有"
+                || item.scope != local.scope -> jvmGetString("import_state_update")
+            else -> jvmGetString("import_state_existing")
         }
     }
 
@@ -406,9 +407,9 @@ class ImportTxtTocRuleVmAdapter(
     override fun itemState(index: Int): String {
         val local = vm.checkSources[index]
         return when {
-            local == null -> "新增"
-            vm.allSources[index] != local -> "更新"
-            else -> "已有"
+            local == null -> jvmGetString("import_state_new")
+            vm.allSources[index] != local -> jvmGetString("import_state_update")
+            else -> jvmGetString("import_state_existing")
         }
     }
 
@@ -450,7 +451,7 @@ class ImportDictRuleVmAdapter(
     override fun itemLabel(index: Int): String = vm.allSources[index].name
 
     override fun itemState(index: Int): String =
-        if (vm.checkSources[index] == null) "新增" else "已有"
+        if (vm.checkSources[index] == null) jvmGetString("import_state_new") else jvmGetString("import_state_existing")
 
     override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
 
@@ -492,9 +493,9 @@ class ImportHttpTtsVmAdapter(
     override fun itemState(index: Int): String {
         val local = vm.checkSources[index]
         return when {
-            local == null -> "新增"
-            vm.allSources[index].lastUpdateTime > local.lastUpdateTime -> "更新"
-            else -> "已有"
+            local == null -> jvmGetString("import_state_new")
+            vm.allSources[index].lastUpdateTime > local.lastUpdateTime -> jvmGetString("import_state_update")
+            else -> jvmGetString("import_state_existing")
         }
     }
 
@@ -524,7 +525,7 @@ class ImportHttpTtsVmAdapter(
  * - itemLabel: `allSources[it].themeName`
  * - itemState: 按 `allSources[it] != checkSources[it]` 比对 (新增/更新/已有)
  *
- * 注: 主题数据源在桌面端有特殊性 ([DesktopThemeConfigProvider] 是内存版不持久化到 prefStore,
+ * 注: 主题数据源在桌面端有特殊性 ([InMemoryThemeConfigProvider] 是内存版不持久化到 prefStore,
  * 与 [io.legado.desktop.ui.config.ThemeListDialog] 用的 `desktop.theme.customList` prefStore 不一致),
  * 故主题导入在 [io.legado.desktop.ui.config.ThemeListDialog] 内走简化路径 (不调 importSelect 写
  * 内存 Provider, 而是直接读 vm.allSources 合并到 prefStore 保持数据一致)。此适配器仅供其他场景
@@ -544,9 +545,9 @@ class ImportThemeVmAdapter(
     override fun itemState(index: Int): String {
         val local = vm.checkSources[index]
         return when {
-            local == null -> "新增"
-            vm.allSources[index] != local -> "更新"
-            else -> "已有"
+            local == null -> jvmGetString("import_state_new")
+            vm.allSources[index] != local -> jvmGetString("import_state_update")
+            else -> jvmGetString("import_state_existing")
         }
     }
 
@@ -598,12 +599,12 @@ class ImportSourceFilterRuleVmAdapter(
         val local = vm.checkRules[index]
         val item = vm.allRules[index]
         return when {
-            local == null -> "新增"
+            local == null -> jvmGetString("import_state_new")
             item.pattern != local.pattern
                 || item.fields != local.fields
-                || item.scope != local.scope -> "更新"
+                || item.scope != local.scope -> jvmGetString("import_state_update")
 
-            else -> "已有"
+            else -> jvmGetString("import_state_existing")
         }
     }
 

@@ -214,6 +214,7 @@ class ReviewPostActivity : AppCompatActivity() {
                         .padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 保留 BasicTextField: 自定义 decorationBox 实现 18dp 圆角气泡式聊天输入, Md2TextField outlined 边框不匹配
                     BasicTextField(
                         value = text,
                         onValueChange = { text = it },

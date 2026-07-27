@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +49,7 @@ import io.legado.app.ui.book.filter.SourceFilterRuleActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.ConfigActivity
@@ -194,7 +194,7 @@ private fun MyTitleBar(onHelp: () -> Unit) {
             )
             IconButton(onClick = onHelp) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_help),
+                    painter = rememberPainter("ic_help"),
                     contentDescription = stringResource(R.string.help),
                     tint = colors.primaryText,
                 )

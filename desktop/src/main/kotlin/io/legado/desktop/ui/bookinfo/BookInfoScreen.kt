@@ -45,6 +45,8 @@ import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -479,7 +481,7 @@ private class DesktopBookInfoActions(
         )}]"
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
         clipboard.setContents(StringSelection(json), null)
-        Toasters.get().toast("已复制书籍信息")
+        Toasters.get().toast(jvmGetString("book_info_copied"))
     }
 
     override fun onRefresh() {
@@ -496,13 +498,13 @@ private class DesktopBookInfoActions(
         // TODO: 依赖 AppWebDav.defaultBookWebDav (RemoteBookWebDav) 上传整本书到远程,
         //   该类依赖 Android 专属组件 (withNetworkCheck/Uri), 未下沉 shared;
         //   AppWebDavShared 仅有 uploadBookProgress (进度同步), 无 upload(book) 整本上传
-        Toasters.get().toast("桌面端暂不支持上传书籍到远程")
+        Toasters.get().toast(jvmGetString("desktop_upload_not_supported"))
     }
 
     override fun onDownloadToLocal() {
         // TODO: 依赖 DesktopFileBookAccessor.downloadRemoteBook (当前抛 UnsupportedOperationException)
         //   或 app 端 FileBook.downloadRemoteBook (依赖 Android Uri), 桌面端未实现
-        Toasters.get().toast("桌面端暂不支持下载到本地")
+        Toasters.get().toast(jvmGetString("desktop_download_local_not_supported"))
     }
 
     override fun onTopBook() {
@@ -595,7 +597,7 @@ private class DesktopBookInfoActions(
             AppDbProviders.get().bookDao.update(b)
         }
         if (!newValue) {
-            Toasters.get().toast("正文过长时可能需要更多时间加载内容")
+            Toasters.get().toast(jvmGetString("need_more_time_load_content"))
         }
     }
 
@@ -609,10 +611,10 @@ private class DesktopBookInfoActions(
                 runCatching {
                     io.legado.app.help.book.BookStorageProviders.get().clearCache(b)
                 }.onFailure {
-                    AppLog.put("清缓存失败: ${b.name}\n${it.localizedMessage}", it)
+                    AppLog.put(jvmGetString("clear_cache_failed", b.name, it.localizedMessage), it)
                 }
             }
-            io.legado.app.help.toast.Toasters.get().toast("清缓存成功")
+            io.legado.app.help.toast.Toasters.get().toast(jvmGetString("clear_cache_success"))
         }
     }
 
@@ -689,7 +691,7 @@ private class DesktopBookInfoActions(
         scope.launch {
             val source = AppDbProviders.get().bookSourceDao.getBookSource(b.origin)
             if (source == null) {
-                Toasters.get().toast("无书源")
+                Toasters.get().toast(jvmGetString("no_book_source"))
                 return@launch
             }
             try {
@@ -697,7 +699,7 @@ private class DesktopBookInfoActions(
                     this["book"] = b
                 }
             } catch (e: Exception) {
-                AppLog.put("简介动作派发失败: ${e.localizedMessage}", e)
+                AppLog.put(jvmGetString("intro_action_dispatch_failed", e.localizedMessage), e)
                 Toasters.get().toast(e.localizedMessage ?: e.javaClass.simpleName)
             }
         }
@@ -770,7 +772,7 @@ private fun DesktopPhotoDialog(src: String, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(rememberString("close"))
             }
         },
         text = {
@@ -781,7 +783,7 @@ private fun DesktopPhotoDialog(src: String, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f),
                     contentScale = ContentScale.Fit,
                 )
-            } ?: Text("加载中...")
+            } ?: Text(rememberString("loading"))
         },
     )
 }

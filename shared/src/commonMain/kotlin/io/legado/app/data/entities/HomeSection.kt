@@ -1,6 +1,8 @@
 package io.legado.app.data.entities
 
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class HomeSection(
     val id: String,
     val title: String,

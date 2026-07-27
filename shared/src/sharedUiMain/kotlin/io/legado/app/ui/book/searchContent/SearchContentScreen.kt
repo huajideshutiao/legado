@@ -21,10 +21,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -241,10 +241,12 @@ private fun SearchContentActions(state: SearchContentUiState, actions: SearchCon
     val colors = AppTheme.colors
     OverflowMenu { dismiss ->
         DropdownMenuItem(
-            text = { Text(rememberString("replace"), color = colors.primaryText) },
-            trailingIcon = { AppMenuCheckbox(checked = state.replaceEnabled) },
             onClick = { dismiss(); actions.onToggleReplaceEnabled() },
-        )
+        ) {
+            Text(rememberString("replace"), color = colors.primaryText)
+            Spacer(Modifier.weight(1f))
+            AppMenuCheckbox(checked = state.replaceEnabled)
+        }
     }
 }
 
@@ -330,7 +332,7 @@ private fun RefreshBar(visible: Boolean, modifier: Modifier) {
     } else {
         LinearProgressIndicator(
             color = colors.accent,
-            trackColor = Color.Transparent,
+            backgroundColor = Color.Transparent,
             modifier = modifier
                 .fillMaxWidth()
                 .height(2.dp),

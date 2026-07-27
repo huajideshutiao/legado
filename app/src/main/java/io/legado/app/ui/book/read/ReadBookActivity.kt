@@ -1338,9 +1338,6 @@ class ReadBookActivity : BaseReadBookActivity(),
          * 音量键翻页
          */
         private fun volumeKeyPage(direction: PageDirection): Boolean {
-            if (!AppConfig.volumeKeyPage) {
-                return false
-            }
             if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
                 return false
             }

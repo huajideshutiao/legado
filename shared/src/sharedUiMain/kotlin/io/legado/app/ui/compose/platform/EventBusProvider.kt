@@ -13,4 +13,12 @@ import kotlinx.coroutines.flow.Flow
 interface EventBusProvider {
     /** 主题变更/重建事件流, 对应 EventBus.RECREATE */
     val recreateEvent: Flow<Unit>
+
+    /**
+     * 触发 recreate 事件 (供 ThemeCustomizeDialog/ThemeListDialog 下沉后跨平台调用)。
+     *
+     * - Android actual: 包装 postEvent(EventBus.RECREATE, "")
+     * - 桌面/iOS/鸿蒙 actual: emit 本地 SharedFlow 触发 AppTheme 重组
+     */
+    fun emitRecreate()
 }

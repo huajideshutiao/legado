@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.explore.ExploreViewModelShared
@@ -146,7 +147,7 @@ private fun ExploreContent(
     // 收集分组列表 (对应 app 端 ExploreTabState.collectGroups, 桌面端无 lifecycle 直接 collect)
     LaunchedEffect(Unit) {
         AppDbProviders.get().bookSourceDao.flowExploreGroups().catch {
-            AppLog.put("发现界面更新分组出错", it)
+            AppLog.put(jvmGetString("explore_update_groups_error"), it)
         }.collect { groups ->
             state.updateGroups(groups)
         }
@@ -162,7 +163,7 @@ private fun ExploreContent(
             else -> dao.flowExplore(key)
         }
         flow.catch {
-            AppLog.put("发现界面更新数据出错", it)
+            AppLog.put(jvmGetString("explore_update_data_error"), it)
         }.collect { sources ->
             state.updateSources(sources)
         }
@@ -422,7 +423,7 @@ private class ExploreStateHolder(
             if (source != null) {
                 openExploreCb(source, pin.categoryName, pin.categoryUrl)
             } else {
-                AppLog.put("发现收藏: 书源未找到 ${pin.sourceUrl}")
+                AppLog.put(jvmGetString("explore_pinned_source_not_found", pin.sourceUrl))
             }
         }
     }
@@ -455,7 +456,7 @@ private class ExploreStateHolder(
             }.onFailure { e ->
                 // 协程取消不记日志 (对照 app 端 ensureActive())
                 if (e is kotlinx.coroutines.CancellationException) return@onFailure
-                AppLog.put("JS错误${e.localizedMessage}", e, true)
+                AppLog.put(jvmGetString("explore_js_error", e.localizedMessage), e, true)
             }
         }
     }

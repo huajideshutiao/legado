@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -127,16 +126,16 @@ fun ReplaceEditScreen(
                 }
                 OverflowMenu { dismiss ->
                     DropdownMenuItem(
-                        text = { Text(rememberString("copy_rule"), color = AppTheme.colors.primaryText) },
                         onClick = {
                             dismiss()
                             rule?.let {
                                 onCopyRule(buildReplaceRule(it, name, group, pattern, replacement, scopeField, excludeScope, timeout, useRegex, scopeTitle, scopeContent))
                             }
                         },
-                    )
+                    ) {
+                        Text(rememberString("copy_rule"), color = AppTheme.colors.primaryText)
+                    }
                     DropdownMenuItem(
-                        text = { Text(rememberString("paste_rule"), color = AppTheme.colors.primaryText) },
                         onClick = {
                             dismiss()
                             // 宿主端在 lambda 内读剪贴板, 调 viewModel.pasteRule 解析后回调回填表单
@@ -156,7 +155,9 @@ fun ReplaceEditScreen(
                                 },
                             )
                         },
-                    )
+                    ) {
+                        Text(rememberString("paste_rule"), color = AppTheme.colors.primaryText)
+                    }
                 }
             },
         )
@@ -231,29 +232,19 @@ private fun FormField(
     number: Boolean = false,
     onFocusChanged: (FieldState?) -> Unit,
 ) {
-    val colors = AppTheme.colors
-    OutlinedTextField(
+    Md2TextField(
         value = field.value,
         onValueChange = { new ->
             field.onChange(
                 if (number) new.copy(text = new.text.filter { it.isDigit() }) else new
             )
         },
-        label = { Text(label) },
+        label = label,
         keyboardOptions = if (number) {
             KeyboardOptions(keyboardType = KeyboardType.Number)
         } else {
             KeyboardOptions.Default
         },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = colors.primaryText,
-            unfocusedTextColor = colors.primaryText,
-            cursorColor = colors.accent,
-            focusedBorderColor = colors.accent,
-            unfocusedBorderColor = colors.secondaryText,
-            focusedLabelColor = colors.accent,
-            unfocusedLabelColor = colors.secondaryText,
-        ),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)

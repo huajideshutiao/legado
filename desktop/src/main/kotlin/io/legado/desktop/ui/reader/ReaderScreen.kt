@@ -6,11 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DrawerValue
+import androidx.compose.material.DrawerValue
+import androidx.compose.material.ModalDrawer
+import androidx.compose.material.rememberDrawerState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -115,7 +115,7 @@ import kotlinx.coroutines.withContext
  *   注入 [LocalReadConfigProviders]
  * - **菜单层**: 调用 shared [ReadMenuOverlay]，传入桌面端 [DesktopReadMenuState] 实现
  *   `ReadMenuState` 接口（与 app 端 `ReadMenu` 类对应）
- * - **目录侧栏**: [ModalNavigationDrawer] + [TocDrawerContent]（由底栏 `clickCatalog` 触发）
+ * - **目录侧栏**: [ModalDrawer] + [TocDrawerContent]（由底栏 `clickCatalog` 触发）
  * - **TTS 控制**: [TtsControlPanel] 浮动在底栏上方（由 [rememberReadAloudController] 创建）
  *
  * # 点击 / 长按事件
@@ -269,7 +269,7 @@ fun ReaderScreen(
         val readAloudController = rememberReadAloudController(viewModel)
 
         // KP2-D P1: 目录侧栏状态 + 章节列表 / 当前章节订阅 (供 TocDrawerContent 高亮 + 跳转联动)
-        // drawerState 用 ModalNavigationDrawer 标准状态, 默认 Closed; scope.launch { open/close } 切换
+        // drawerState 用 ModalDrawer 标准状态, 默认 Closed; scope.launch { open/close } 切换
         val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
         // 桌面端 ReadMenuState 实现：桥接 shared ReadMenuOverlay 与 ReadBookViewModelShared
@@ -427,11 +427,11 @@ fun ReaderScreen(
             searchMenuState?.updateSearchInfo(curTextPage?.title)
         }
 
-        // KP2-D P1: 用 ModalNavigationDrawer 包裹原 Box, drawerContent 渲染 TocDrawerContent
+        // KP2-D P1: 用 ModalDrawer 包裹原 Box, drawerContent 渲染 TocDrawerContent
         // 对照 app 端 ReadBookActivity 用 DrawerLayout + RecyclerView 展示目录
         // - drawerContent: 章节列表 (LazyColumn + 当前章节高亮 + 点击跳转 + 搜索/反转/卷折叠/字数显示)
         // - content: 原 Box (ReadViewComposable + ReadMenuOverlay + TtsControlPanel) 不动
-        ModalNavigationDrawer(
+        ModalDrawer(
             drawerState = drawerState,
             drawerContent = {
                 TocDrawerContent(
@@ -511,7 +511,7 @@ fun ReaderScreen(
                                     showTextSelectionDialog = true
                                 }.onFailure {
                                     loadingTextSelection = false
-                                    AppLog.put("加载章节内容失败", it)
+                                    AppLog.put(jvmGetString("load_chapter_content_failed"), it)
                                     Toasters.get().toast(it.localizedMessage ?: jvmGetString("load_chapter_content_failed"))
                                 }
                             }
@@ -833,7 +833,7 @@ fun ReaderScreen(
  *   调 [upBookView] 同步顶栏标题 + 底栏进度 + 上一/下一章可用性
  * - **回调桥接**:
  *   - [supportFinishAfterTransition] → [onBack] 回书架
- *   - [clickCatalog] → 打开 ModalNavigationDrawer 目录侧栏
+ *   - [clickCatalog] → 打开 ModalDrawer 目录侧栏
  *   - [clickPre] / [clickNext] → viewModel 切章
  *   - [clickFont] / [onTopMenuAction](`PAGE_ANIM`) → 显示 ReadConfigPanel 配置面板
  *   - [onTopMenuAction](`REFRESH` / `REFRESH_DUR`) → 重载当前章节
@@ -1170,7 +1170,7 @@ private class DesktopReadMenuState(
     }
 
     override fun clickCatalog() {
-        // 打开目录侧栏（与 app 端 openChapterList 对应，桌面端用 ModalNavigationDrawer 实现）
+        // 打开目录侧栏（与 app 端 openChapterList 对应，桌面端用 ModalDrawer 实现）
         openCatalog()
     }
 

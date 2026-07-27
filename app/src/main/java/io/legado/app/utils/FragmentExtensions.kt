@@ -24,6 +24,8 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.rss.ReadRssActivity
 import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.web.utils.WebAssetSources
+import kotlinx.coroutines.runBlocking
 
 inline fun <reified T : DialogFragment> Fragment.showDialogFragment(
     arguments: Bundle.() -> Unit = {}
@@ -109,7 +111,7 @@ fun Fragment.startActivityForBook(
 }
 
 fun Fragment.showHelp(fileName: String) {
-    val mdText = String(requireContext().assets.open("web/help/md/${fileName}.md").readBytes())
+    val mdText = String(runBlocking { WebAssetSources.get().read("web/help/md/${fileName}.md") })
     showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
 }
 

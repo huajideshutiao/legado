@@ -139,7 +139,6 @@
     <string name="replace_to">Thay thế</string>
     <string name="img_cover">Bìa</string>
     <string name="book">Sách</string>
-    <string name="volume_key_page">Phím âm lượng lật trang</string>
     <string name="mouse_wheel_page">Con lăn chuột lật trang</string>
     <string name="page_anim">Hiệu ứng lật trang</string>
     <string name="book_page_anim">Hiệu ứng lật trang (sách này)</string>
@@ -544,7 +543,7 @@
     <string name="use_default_cover">Luôn hiển thị bìa mặc định</string>
     <string name="use_default_cover_s">Luôn hiển thị bìa mặc định, không hiển thị bìa từ mạng</string>
     <string name="search_src">Tìm kiếm mã nguồn</string>
-    <string name="boo_src">Mã nguồn sách</string>
+    <string name="book_src">Mã nguồn sách</string>
     <string name="toc_src">Mã nguồn chương</string>
     <string name="content_src">Mã nguồn nội dung</string>
     <string name="title_font_size">Cỡ chữ</string>
@@ -740,7 +739,6 @@
     <string name="no_books_dir">Không có vị trí lưu sách nào được đặt!</string>
     <string name="no_book_found_bookshelf">Không tìm thấy sách trong tủ sách, nhập lại?</string>
     <string name="archive_not_found">Không thể tìm thấy kho lưu trữ đã chọn, tiếp tục tải xuống?</string>
-    <string name="privacy_policy">Quyền riêng tư và Thỏa thuận người dùng</string>
     <string name="agree">Đồng ý</string>
     <string name="refuse">Từ chối</string>
     <string name="create_folder">Tạo thư mục</string>

@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
@@ -43,6 +42,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -109,7 +109,7 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                 actions = {
                     IconButton(onClick = { showDialogFragment<HttpTtsEditDialog>() }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_add),
+                            painter = rememberPainter("ic_add"),
                             contentDescription = stringResource(R.string.add),
                             tint = colors.primaryText,
                         )
@@ -231,7 +231,7 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
             if (onEdit != null) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_edit),
+                        painter = rememberPainter("ic_edit"),
                         contentDescription = stringResource(R.string.edit),
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),
@@ -241,7 +241,7 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
             if (onDelete != null) {
                 IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_clear_all),
+                        painter = rememberPainter("ic_clear_all"),
                         contentDescription = stringResource(R.string.delete),
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),

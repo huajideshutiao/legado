@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +54,7 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -154,7 +154,7 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
                 Icon(
-                    painter = painterResource(R.drawable.ic_edit),
+                    painter = rememberPainter("ic_edit"),
                     contentDescription = stringResource(R.string.edit),
                     tint = colors.secondaryText,
                     modifier = Modifier
@@ -217,7 +217,7 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                     textColor = colors.secondaryText,
                     modifier = Modifier.weight(5f).padding(start = 8.dp),
                 ) { showBgColorPicker = true }
-                ActionIcon(R.drawable.ic_import, stringResource(R.string.import_str), colors) {
+                ActionIcon("ic_import", stringResource(R.string.import_str), colors) {
                     selectImportDoc.launch {
                         mode = HandleFileContract.FILE
                         title = getString(R.string.import_str)
@@ -225,12 +225,12 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                         otherActions = arrayListOf(SelectItem(importFormNet, -1))
                     }
                 }
-                ActionIcon(R.drawable.ic_export, stringResource(R.string.export_str), colors) {
+                ActionIcon("ic_export", stringResource(R.string.export_str), colors) {
                     selectExportDir.launch {
                         title = getString(R.string.export_str)
                     }
                 }
-                ActionIcon(R.drawable.ic_clear_all, stringResource(R.string.delete), colors) {
+                ActionIcon("ic_clear_all", stringResource(R.string.delete), colors) {
                     if (ReadBookConfig.deleteDur()) {
                         ReadBookEvents.postConfig(BG, STYLE, PAGE_ANIM, LOAD_CONTENT)
                         dismissAllowingStateLoss()
@@ -254,7 +254,7 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                     BgItem(
                         label = stringResource(R.string.select_image),
                         colors = colors,
-                        icon = R.drawable.ic_image,
+                        iconKey = "ic_image",
                     ) {
                         selectBgImage.launch {
                             mode = HandleFileContract.IMAGE
@@ -327,13 +327,13 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
 
     @Composable
     private fun ActionIcon(
-        iconRes: Int,
+        iconKey: String,
         description: String,
         colors: ReadMenuColors,
         onClick: () -> Unit,
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            painter = rememberPainter(iconKey),
             contentDescription = description,
             tint = colors.text,
             modifier = Modifier
@@ -348,7 +348,7 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
     private fun BgItem(
         label: String,
         colors: ReadMenuColors,
-        icon: Int? = null,
+        iconKey: String? = null,
         previewName: String? = null,
         onClick: () -> Unit,
     ) {
@@ -358,12 +358,12 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                 .height(88.dp)
                 .padding(2.dp)
                 .clickable(onClick = onClick),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (icon != null) {
+                if (iconKey != null) {
                     Icon(
-                        painter = painterResource(icon),
+                        painter = rememberPainter(iconKey),
                         contentDescription = label,
                         tint = colors.text,
                     )

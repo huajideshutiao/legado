@@ -22,8 +22,10 @@ import io.legado.app.ui.widget.image.CoverImageView
  *   painterResource(R.drawable.xxx) → rememberPainter("xxx")
  * - Android API: LocalContext/LocalConfiguration/AppConfig/ThemeConfig/ColorUtils →
  *   provider 间接访问 + 回调注入 + 内联实现
- * - 封面: AndroidView + CoverImageView (Glide) → coverSlot: @Composable (Book) -> Unit
- *   参数注入, app 端调用 shared 版条目时用本文件 ShelfCover 包装注入
+ * - 封面: AndroidView + CoverImageView (Glide) → coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit
+ *   参数注入, app 端调用 shared 版条目时用本文件 ShelfCover 包装注入;
+ *   isVideoCover 由条目按 tier 决定 (List=isVideoStyle, Grid=false, Video=true,
+ *   GroupList=false, GroupGrid=false, GroupVideo=true), 对照原 adapter 的 coverRatio 赋值
  * - Lifecycle: repeatOnLifecycle(RESUMED) → LaunchedEffect + while(true) + delay
  *   (shared 不依赖 androidx.lifecycle)
  *
@@ -36,24 +38,24 @@ import io.legado.app.ui.widget.image.CoverImageView
  * ```
  * ShelfBooksContent(
  *     ...,
- *     bookCoverSlot = { book ->
+ *     bookCoverSlot = { book, modifier, isVideoCover ->
  *         ShelfCover(
  *             path = book.getDisplayCover(),
  *             name = book.name,
  *             author = book.author,
  *             origin = book.origin,
- *             ratio = CoverRatio.NOVEL,
- *             reloadKey = configTick,
- *             modifier = Modifier.fillMaxWidth(),
+ *             ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
+ *             reloadKey = coverReloadTick,
+ *             modifier = modifier,
  *         )
  *     },
- *     groupCoverSlot = { group ->
+ *     groupCoverSlot = { group, modifier, isVideoCover ->
  *         ShelfCover(
  *             path = group.cover,
  *             name = null, author = null, origin = null,
- *             ratio = CoverRatio.NOVEL,
- *             reloadKey = configTick,
- *             modifier = Modifier.fillMaxWidth(),
+ *             ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
+ *             reloadKey = coverReloadTick,
+ *             modifier = modifier,
  *         )
  *     },
  * )

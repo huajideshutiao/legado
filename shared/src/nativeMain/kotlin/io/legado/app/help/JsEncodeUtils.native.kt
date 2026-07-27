@@ -1,12 +1,9 @@
 package io.legado.app.help
 
-import com.soywiz.krypto.Hmac
-import com.soywiz.krypto.MD5
-import com.soywiz.krypto.SHA1
-import com.soywiz.krypto.SHA256
-import com.soywiz.krypto.SHA512
 import io.legado.app.help.crypto.AsymmetricCrypto
 import io.legado.app.help.crypto.NativeAsymmetricCrypto
+import io.legado.app.help.crypto.NativeDigestOps
+import io.legado.app.help.crypto.NativeHmacOps
 import io.legado.app.help.crypto.NativeSign
 import io.legado.app.help.crypto.NativeSymmetricCrypto
 import io.legado.app.help.crypto.Sign
@@ -22,20 +19,17 @@ import io.legado.app.utils.toHexLower
  * 两端 actual interface 实现完全一致, 下沉到 nativeMain 共用 (nativeMain 是 iosMain / ohosMain
  * 的父源集, 此处提供 actual 自动满足两端)。
  *
- * 默认实现 (krypto) 移至 [JsEncodeUtilsDefaults] interface, 由调用方多继承注入。
+ * 默认实现移至 [JsEncodeUtilsDefaults] interface, 由调用方多继承注入。
  *
- * - md5Encode / md5Encode16: 复用 commonMain [MD5Utils] (expect object, iOS/鸿蒙 actual 已用 krypto 实现)。
- * - digestHex / digestBase64Str: krypto 提供 MD5/SHA-1/SHA-256/SHA-512, 与 jvmAndAndroidMain
+ * - md5Encode / md5Encode16: 复用 commonMain [MD5Utils] (expect object, 纯 Kotlin 实现)。
+ * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-256/SHA-512, 与 jvmAndAndroidMain
  *   的 hutool DigestUtil 字节级一致 (标准 FIPS 180-4 / RFC 1321 算法)。
- * - HMacHex / HMacBase64: krypto HMAC, 与 jvmAndAndroidMain 的 hutool HMac 字节级一致 (RFC 2104)。
+ * - HMacHex / HMacBase64: [NativeHmacOps] HMAC, 与 jvmAndAndroidMain 的 hutool HMac 字节级一致 (RFC 2104)。
  * - Base64 编码: [encodeBase64Standard] (标准字母表 + padding + 不换行, 对齐 java.util.Base64.getEncoder())。
  * - 摘要/HMAC 输出小写 hex (hutool DigestUtil.digestHex 默认小写, [toHexLower] 对齐)。
  *
  * 算法名归一化: 接受 hutool/JDK 常见别名 (MD5/SHA-1/SHA1/SHA-256/SHA256/SHA-512/SHA512,
  * HMAC 前缀含连字符或无连字符均识别)。
- *
- * 注: krypto 4.0.10 已发布 linuxArm64 变体, 鸿蒙端走 linuxArm64 target, 可直接复用 iOS 端实现,
- * 故两端下沉到 nativeMain 共用。
  */
 @Suppress("unused")
 actual interface JsEncodeUtils {
@@ -58,12 +52,12 @@ actual interface JsEncodeUtils {
 }
 
 /**
- * nativeMain: [JsEncodeUtils] 默认实现 (krypto 库, iOS / 鸿蒙 两端共用)。
+ * nativeMain: [JsEncodeUtils] 默认实现 (iOS / 鸿蒙 两端共用)。
  *
  * KMP 限制: actual interface 成员 modality 必须与 expect 一致 (abstract), 不能带方法体;
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入。
  *
- * 行为零变化: 6 个方法体原样搬迁自原两端 actual interface, 仅 host 类型变化。
+ * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): iOS krypto actual, 鸿蒙 napi actual。
  */
 @Suppress("unused")
 interface JsEncodeUtilsDefaults : JsEncodeUtils {
@@ -74,23 +68,23 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 
     override fun digestHex(data: String, algorithm: String): String {
         val bytes = data.encodeToByteArray()
-        return digestByAlgorithm(algorithm, bytes).toHexLower()
+        return NativeDigestOps.digest(algorithm, bytes).toHexLower()
     }
 
     override fun digestBase64Str(data: String, algorithm: String): String {
         val bytes = data.encodeToByteArray()
-        return digestByAlgorithm(algorithm, bytes).encodeBase64Standard()
+        return NativeDigestOps.digest(algorithm, bytes).encodeBase64Standard()
     }
 
     @Suppress("FunctionName")
     override fun HMacHex(data: String, algorithm: String, key: String): String {
-        val mac = hmacByAlgorithm(algorithm, key.encodeToByteArray(), data.encodeToByteArray())
+        val mac = NativeHmacOps.hmac(algorithm, key.encodeToByteArray(), data.encodeToByteArray())
         return mac.toHexLower()
     }
 
     @Suppress("FunctionName")
     override fun HMacBase64(data: String, algorithm: String, key: String): String {
-        val mac = hmacByAlgorithm(algorithm, key.encodeToByteArray(), data.encodeToByteArray())
+        val mac = NativeHmacOps.hmac(algorithm, key.encodeToByteArray(), data.encodeToByteArray())
         return mac.encodeBase64Standard()
     }
 
@@ -147,7 +141,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     //******************非对称加密解密工厂************************//
 
     /**
-     * native 端工厂: 创建 [NativeAsymmetricCrypto] (P0 阶段降级 stub, 不抛异常, 返回空值)。
+     * native 端工厂: 创建 [NativeAsymmetricCrypto] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
      * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createAsymmetricCrypto] 签名对齐。
      */
     fun createAsymmetricCrypto(
@@ -159,7 +153,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     //******************签名工厂************************//
 
     /**
-     * native 端工厂: 创建 [NativeSign] (P0 阶段降级 stub, 仅缓存 key 不抛异常)。
+     * native 端工厂: 创建 [NativeSign] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
      * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createSign] 签名对齐。
      */
     fun createSign(
@@ -167,36 +161,4 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     ): Sign {
         return NativeSign(algorithm)
     }
-}
-
-/** 摘要算法分发: 接受 hutool/JDK 常见命名 (大小写/连字符不敏感)。 */
-private fun digestByAlgorithm(algorithm: String, data: ByteArray): ByteArray {
-    // krypto 顶层对象: MD5 / SHA1 / SHA256 / SHA512, digest(ByteArray) 返回原始摘要字节
-    return when (algorithm.uppercase()) {
-        "MD5" -> MD5.digest(data)
-        "SHA-1", "SHA1" -> SHA1.digest(data)
-        "SHA-256", "SHA256" -> SHA256.digest(data)
-        "SHA-512", "SHA512" -> SHA512.digest(data)
-        else -> throw IllegalArgumentException("Unsupported digest algorithm: $algorithm")
-    }
-}
-
-/** HMAC 算法分发: 算法名归一化 (去掉 Hmac/HMAC 前缀, 含连字符变体)。 */
-private fun hmacByAlgorithm(algorithm: String, key: ByteArray, data: ByteArray): ByteArray {
-    // 去掉 HMAC/Hmac 前缀 (含连字符变体), 归一为标准算法名后再匹配 krypto HMAC.Algorithm
-    val upper = algorithm.uppercase()
-    val normalized = when {
-        upper.startsWith("HMAC-") -> upper.substring(5)
-        upper.startsWith("HMAC") -> upper.substring(4)
-        else -> upper
-    }
-    // krypto HMAC 构造: HMAC(algorithm, key).digest(data) 返回原始 HMAC 字节
-    val alg = when (normalized) {
-        "MD5" -> Hmac.Algorithm.MD5
-        "SHA-1", "SHA1" -> Hmac.Algorithm.SHA1
-        "SHA-256", "SHA256" -> Hmac.Algorithm.SHA256
-        "SHA-512", "SHA512" -> Hmac.Algorithm.SHA512
-        else -> throw IllegalArgumentException("Unsupported HMac algorithm: $algorithm")
-    }
-    return Hmac(alg, key).digest(data)
 }

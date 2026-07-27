@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -257,9 +257,10 @@ private fun TypeSelector(
             AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 types.forEachIndexed { index, s ->
                     DropdownMenuItem(
-                        text = { Text(s, color = AppTheme.colors.primaryText) },
                         onClick = { actions.onTypeChange(index); expanded = false },
-                    )
+                    ) {
+                        Text(s, color = AppTheme.colors.primaryText)
+                    }
                 }
             }
         }

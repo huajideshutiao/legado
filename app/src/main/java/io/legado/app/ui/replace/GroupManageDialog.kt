@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +28,7 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.requestInputMethod
 import kotlinx.coroutines.flow.conflate
@@ -63,7 +63,7 @@ class GroupManageDialog : BaseComposeDialogFragment() {
                     actions = {
                         IconButton(onClick = { addGroup() }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_add),
+                                painter = rememberPainter("ic_add"),
                                 contentDescription = getString(R.string.add_group),
                                 tint = AppTheme.colors.primaryText,
                             )
@@ -94,7 +94,7 @@ class GroupManageDialog : BaseComposeDialogFragment() {
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { viewModel.delGroup(item) }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_clear_all),
+                    painter = rememberPainter("ic_clear_all"),
                     contentDescription = stringResource(R.string.delete),
                     tint = colors.primaryText,
                 )

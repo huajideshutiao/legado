@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -267,7 +268,7 @@ private fun BackupConfigScreenContent() {
                 refreshSummaries()
             }.onFailure {
                 statusText = restoreFailedLabel.format(it.localizedMessage)
-                AppLog.put("本地恢复失败\n${it.localizedMessage}", it)
+                AppLog.put(jvmGetString("restore_from_local_failed") + "\n" + it.localizedMessage, it)
             }
             isLoading = false
         }
@@ -308,7 +309,7 @@ private fun BackupConfigScreenContent() {
                         }
                         .onFailure {
                             statusText = backupFailedLabel.format(it.localizedMessage)
-                            AppLog.put("WebDav 备份失败\n${it.localizedMessage}", it)
+                            AppLog.put(jvmGetString("webdav_backup_failed") + "\n" + it.localizedMessage, it)
                         }
                     isLoading = false
                 }
@@ -327,7 +328,7 @@ private fun BackupConfigScreenContent() {
                         }
                         .onFailure {
                             statusText = localBackupFailedLabel.format(it.localizedMessage)
-                            AppLog.put("WebDav 本地备份失败\n${it.localizedMessage}", it)
+                            AppLog.put(jvmGetString("webdav_local_backup_failed") + "\n" + it.localizedMessage, it)
                         }
                     isLoading = false
                 }
@@ -345,7 +346,7 @@ private fun BackupConfigScreenContent() {
                         AppWebDavShared.getBackupNames()
                     }.onFailure {
                         // 对齐 app 端 loadBackupNames.onError: AppLog.put (桌面端无 toastOnUi, 仅日志)
-                        AppLog.put("获取WebDav备份列表出错\n${it.localizedMessage}", it)
+                        AppLog.put(jvmGetString("get_webdav_backup_list_failed") + "\n" + it.localizedMessage, it)
                     }.getOrNull() ?: emptyList()
                     if (names.isNotEmpty()) {
                         // 有备份 → 弹选择列表 (对齐 app 端 selector)
@@ -416,7 +417,7 @@ private fun BackupConfigScreenContent() {
                                 refreshSummaries()
                             }.onFailure {
                                 statusText = restoreFailedLabel.format(it.localizedMessage)
-                                AppLog.put("WebDav 恢复失败\n${it.localizedMessage}", it)
+                                AppLog.put(jvmGetString("webdav_restore_failed") + "\n" + it.localizedMessage, it)
                             }
                             isLoading = false
                         }

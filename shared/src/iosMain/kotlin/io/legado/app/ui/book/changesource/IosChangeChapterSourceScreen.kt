@@ -75,6 +75,9 @@ fun IosChangeChapterSourceScreen(
     val loadInfoLabel = rememberString("load_info")
     val loadTocLabel = rememberString("load_toc")
     val groupLabel = rememberString("group")
+    // 文案模板 (onError lambda 非 @Composable, 预先 remember)
+    val changeChapterSourceTocFailedTemplate = rememberString("change_chapter_source_toc_failed_log")
+    val loadTocFailedText = rememberString("load_toc_failed")
 
     // UI 状态
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
@@ -236,8 +239,8 @@ fun IosChangeChapterSourceScreen(
                                     onError = { e ->
                                         tocVisible = false
                                         tocLoading = false
-                                        AppLog.put("单章换源获取目录出错\n$e", e)
-                                        Toasters.get().toast(e.localizedMessage ?: "加载目录失败")
+                                        AppLog.put(String.format(changeChapterSourceTocFailedTemplate, e), e)
+                                        Toasters.get().toast(e.localizedMessage ?: loadTocFailedText)
                                     },
                                 )
                             },

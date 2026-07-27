@@ -144,7 +144,6 @@
     <string name="replace_to">Substituição</string>
     <string name="img_cover">Capa</string>
     <string name="book">Livro</string>
-    <string name="volume_key_page">Botões de volume para virar páginas</string>
     <string name="mouse_wheel_page">Rolagem do mouse para virar páginas</string>
     <string name="page_anim">Virar animação</string>
     <string name="book_page_anim">Virar animação (livro)</string>
@@ -542,7 +541,7 @@
     <string name="use_default_cover">Sempre mostrar capa padrão</string>
     <string name="use_default_cover_s">Sempre mostrar capa padrão, não mostrar capa da rede</string>
     <string name="search_src">Procurar código fonte</string>
-    <string name="boo_src">Código fonte do livro</string>
+    <string name="book_src">Código fonte do livro</string>
     <string name="toc_src">Código fonte dos capítulos</string>
     <string name="content_src">Código fonte do conteúdo</string>
     <string name="title_font_size">Tamanho de letra</string>
@@ -746,7 +745,6 @@
     <string name="no_books_dir">没有设置书籍保存位置!</string>
     <string name="no_book_found_bookshelf">No book found in bookshelf, import again ?</string>
     <string name="archive_not_found">Can not find archive selected, continue to download ?</string>
-    <string name="privacy_policy">用户隐私与协议</string>
     <string name="agree">同意</string>
     <string name="refuse">拒绝</string>
     <string name="create_folder">创建文件夹</string>

@@ -25,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -43,9 +40,11 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfig
 import io.legado.app.ui.widget.keyboard.KeyboardToolbar
@@ -217,7 +216,7 @@ class ReplaceEditActivity : BaseComposeActivity() {
             }
         }) {
             Icon(
-                painter = painterResource(R.drawable.ic_save),
+                painter = rememberPainter("ic_save"),
                 contentDescription = stringResource(R.string.action_save),
                 tint = colors.primaryText,
             )
@@ -243,8 +242,7 @@ class ReplaceEditActivity : BaseComposeActivity() {
     /** 对照 TextInputLayout+EditText：label 浮动提示，聚焦时登记为辅助键目标 */
     @Composable
     private fun FormField(field: FieldState, label: String, number: Boolean = false) {
-        val colors = AppTheme.colors
-        OutlinedTextField(
+        Md2TextField(
             value = field.value,
             onValueChange = { new ->
                 if (number) {
@@ -253,21 +251,12 @@ class ReplaceEditActivity : BaseComposeActivity() {
                     field.onChange(new)
                 }
             },
-            label = { Text(label) },
+            label = label,
             keyboardOptions = if (number) {
                 KeyboardOptions(keyboardType = KeyboardType.Number)
             } else {
                 KeyboardOptions.Default
             },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = colors.primaryText,
-                unfocusedTextColor = colors.primaryText,
-                cursorColor = colors.accent,
-                focusedBorderColor = colors.accent,
-                unfocusedBorderColor = colors.secondaryText,
-                focusedLabelColor = colors.accent,
-                unfocusedLabelColor = colors.secondaryText,
-            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
@@ -297,7 +286,7 @@ class ReplaceEditActivity : BaseComposeActivity() {
             }
             IconButton(onClick = { showHelp("regexHelp") }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_help),
+                    painter = rememberPainter("ic_help"),
                     contentDescription = stringResource(R.string.help),
                     tint = colors.primaryText,
                     modifier = Modifier.size(24.dp),

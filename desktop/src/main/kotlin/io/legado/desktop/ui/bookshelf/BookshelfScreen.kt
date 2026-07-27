@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -44,6 +44,7 @@ import io.legado.app.ui.bookshelf.BookshelfScreen as SharedBookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfTier
 import io.legado.app.ui.bookshelf.BookshelfViewModel
 import io.legado.app.ui.bookshelf.DefaultBookCoverPlaceholder
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -53,6 +54,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import io.legado.desktop.ui.component.FileDialogs
+import io.legado.desktop.ui.component.getOrLoadCover
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -277,10 +279,10 @@ fun BookshelfScreen(
             onDismissRequest = { if (!addingBook) showAddBookByUrlDialog = false },
             title = { Text(addBookUrlLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = addBookUrlText,
                     onValueChange = { addBookUrlText = it },
-                    label = { Text("url") },
+                    label = "url",
                     singleLine = false,
                 )
             },
@@ -299,7 +301,7 @@ fun BookshelfScreen(
                                     runCatching {
                                         val book = WebBook.getBookInfoByUrlAwait(url)
                                         val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                                            ?: throw NoStackTraceException("书源不存在")
+                                            ?: throw NoStackTraceException(jvmGetString("no_book_source"))
                                         val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
                                         val dbBook = AppDbProviders.get().bookDao.getBook(book.name, book.author)
                                         if (dbBook != null) {
@@ -313,7 +315,7 @@ fun BookshelfScreen(
                                         AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
                                         successCount++
                                     }.onFailure { e ->
-                                        AppLog.put("添加 $url 失败\n${e.localizedMessage}", e)
+                                        AppLog.put(jvmGetString("add_book_url_failed", url, e.localizedMessage), e)
                                     }
                                 }
                             }
@@ -321,11 +323,11 @@ fun BookshelfScreen(
                             showAddBookByUrlDialog = false
                             addBookUrlText = ""
                             Toasters.get().toast(
-                                if (successCount > 0) "$successCount/${urls.size} 成功" else "添加网址失败"
+                                if (successCount > 0) jvmGetString("add_book_url_success", successCount, urls.size) else jvmGetString("add_book_url_all_failed")
                             )
                         }
                     },
-                ) { Text(if (addingBook) "添加中..." else okLabel) }
+                ) { Text(if (addingBook) rememberString("adding_book") else okLabel) }
             },
             dismissButton = {
                 TextButton(
@@ -347,10 +349,10 @@ fun BookshelfScreen(
             title = { Text(importBookshelfLabel) },
             text = {
                 Column {
-                    OutlinedTextField(
+                    Md2TextField(
                         value = importBookshelfText,
                         onValueChange = { importBookshelfText = it },
-                        label = { Text("url/json") },
+                        label = "url/json",
                         singleLine = false,
                     )
                     TextButton(onClick = {
@@ -360,7 +362,7 @@ fun BookshelfScreen(
                         if (selected != null) {
                             runCatching { selected.readText() }
                                 .onSuccess { importBookshelfText = it }
-                                .onFailure { Toasters.get().toast(it.localizedMessage ?: "读取文件失败") }
+                                .onFailure { Toasters.get().toast(it.localizedMessage ?: jvmGetString("read_file_failed")) }
                         }
                     }) { Text(selectFileLabel) }
                 }
@@ -378,7 +380,7 @@ fun BookshelfScreen(
                             runCatching {
                                 val text = importBookshelfText.trim()
                                 if (!text.startsWith("[")) {
-                                    throw NoStackTraceException("格式不对")
+                                    throw NoStackTraceException(jvmGetString("wrong_format"))
                                 }
                                 withContext(Dispatchers.IO) {
                                     val bookInfoList = GSON.fromJsonArray<Map<String, Any>>(text).getOrThrow()
@@ -407,7 +409,7 @@ fun BookshelfScreen(
                                             AppDbProviders.get().bookDao.insert(book)
                                             successCount++
                                         }.onFailure { e ->
-                                            AppLog.put("导入<$name>失败\n${e.localizedMessage}", e)
+                                            AppLog.put(jvmGetString("import_book_failed", name, e.localizedMessage), e)
                                         }
                                     }
                                     successCount
@@ -416,15 +418,15 @@ fun BookshelfScreen(
                                 importing = false
                                 showImportBookshelfDialog = false
                                 importBookshelfText = ""
-                                Toasters.get().toast("导入完成 $count")
+                                Toasters.get().toast(jvmGetString("import_complete", count))
                             }.onFailure { e ->
                                 importing = false
-                                AppLog.put("导入书架失败\n${e.localizedMessage}", e)
+                                AppLog.put(jvmGetString("import_bookshelf_failed", e.localizedMessage), e)
                                 Toasters.get().toast(e.localizedMessage ?: "ERROR")
                             }
                         }
                     },
-                ) { Text(if (importing) "导入中..." else okLabel) }
+                ) { Text(if (importing) rememberString("importing_book") else okLabel) }
             },
             dismissButton = {
                 TextButton(
@@ -457,6 +459,7 @@ private fun DesktopBookCover(book: Book) {
         book.getDisplayCover()
     }
     // 异步加载: 本地用 ImageIO (阻塞 IO 在 IO dispatcher 跑), 网络用 OkHttp suspend 下载
+    // 缓存命中/写入由 loadCoverBitmap -> getOrLoadCover 统一处理
     val bitmap by produceState<ImageBitmap?>(null, coverPath) {
         value = loadCoverBitmap(coverPath)
     }
@@ -485,31 +488,34 @@ private fun DesktopBookCover(book: Book) {
  * - `content://` / 其他: 返回 null (调用方走占位)
  * - 加载失败 (IO 异常/损坏/网络错误): 返回 null
  *
+ * 缓存命中/写入由 [getOrLoadCover] 统一处理 (书架 + 详情页共享 LRU, 含失败 null 避免重试)。
  * 本地文件读取是阻塞 IO, 用 [withContext] 切到 [Dispatchers.IO]; 网络下载走
  * [newCallResponseBody] (内部已 suspend), 同样在 IO dispatcher 跑。
  */
 private suspend fun loadCoverBitmap(path: String?): ImageBitmap? {
     if (path == null) return null
-    return runCatching {
-        withContext(Dispatchers.IO) {
-            when {
-                path.startsWith("file://") -> {
-                    val file = File(path.removePrefix("file://"))
-                    if (!file.exists()) return@withContext null
-                    ImageIO.read(file)
-                }
-                path.startsWith("/") -> {
-                    val file = File(path)
-                    if (!file.exists()) return@withContext null
-                    ImageIO.read(file)
-                }
-                path.startsWith("http://") || path.startsWith("https://") -> {
-                    // 网络封面: OkHttp 下载字节流 → ImageIO 解码 (对照 app 端 Glide 网络加载)
-                    val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody { url(path) }
-                    body.use { ImageIO.read(ByteArrayInputStream(it.bytes())) }
-                }
-                else -> return@withContext null
-            }?.toComposeImageBitmap()
-        }
-    }.getOrNull()
+    return getOrLoadCover(path) {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                when {
+                    path.startsWith("file://") -> {
+                        val file = File(path.removePrefix("file://"))
+                        if (!file.exists()) return@withContext null
+                        ImageIO.read(file)
+                    }
+                    path.startsWith("/") -> {
+                        val file = File(path)
+                        if (!file.exists()) return@withContext null
+                        ImageIO.read(file)
+                    }
+                    path.startsWith("http://") || path.startsWith("https://") -> {
+                        // 网络封面: OkHttp 下载字节流 → ImageIO 解码 (对照 app 端 Glide 网络加载)
+                        val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody { url(path) }
+                        body.use { ImageIO.read(ByteArrayInputStream(it.bytes())) }
+                    }
+                    else -> return@withContext null
+                }?.toComposeImageBitmap()
+            }
+        }.getOrNull()
+    }
 }

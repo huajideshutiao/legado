@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -27,6 +29,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AboutScreen as SharedAboutScreen
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -39,7 +42,6 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopAppUpdate
@@ -77,11 +79,11 @@ import kotlinx.coroutines.withContext
  *   替代 app 端 [io.legado.app.help.update.AppUpdate] (走自建更新源 + DownloadManager 自动安装)
  * - 加入 Telegram 群: app 端 openUrl(Intent), 桌面端用 [java.awt.Desktop.browse] 替代
  * - 贡献者: 同上, 用 [java.awt.Desktop.browse] 打开 contributors_url
- * - 隐私协议/开源许可/免责声明: app 端读 assets 下 .md 文件, 用 TextDialog(MD 模式) +
+ * - 开源许可/免责声明: app 端读 assets 下 .md 文件, 用 TextDialog(MD 模式) +
  *   Markwon 渲染显示; 桌面端无 assets, 改从 shared/commonMain/resources classpath 用
- *   getResourceAsStream 读同一份 .md 文件, 调 shared/sharedUiMain 下沉的 TextDialog
- *   (TEXT 模式) 显示纯文本 (shared TextDialog 不依赖 Markwon/Glide, KMP 版仅 TEXT 模式;
- *   MD 标记不渲染但内容可读, 对齐 shared TextDialog.kt KDoc 说明)
+ *   getResourceAsStream 读同一份 .md 文件, 用 AlertDialog + shared MarkdownContentSelectable
+ *   (基于 mikepenz/multiplatform-markdown-renderer) 渲染 MD, verticalScroll 包裹保证长文可滚动,
+ *   SelectionContainer 支持选择复制 (替代之前 TextDialog TEXT 模式纯文本显示, MD 标记已正确渲染)
  * - 崩溃日志: onCrashLog 接入 [AppLogDialog] (shared/sharedUiMain 下沉, 替代 app 端 CrashLogsDialog)
  * - 保存日志: onSaveLog 用 [JFileChooser] 选保存文件, 格式化 [AppLog.logs] 写入文本
  *   (替代 app 端 copy logs/crash/logcat 到 backupPath 打包 logs.zip; 桌面端无 externalCache/CrashHandler)
@@ -143,17 +145,9 @@ private fun AboutContent() {
 
     // 应用日志对话框状态 (false=隐藏, true=显示; onCrashLog 触发, 末尾 AppLogDialog 渲染)
     var showLogDialog by remember { mutableStateOf(false) }
-    // 隐私政策/开源许可/免责声明对话框状态 (末尾 TextDialog 渲染)
-    var showPrivacyPolicy by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
     var showDisclaimer by remember { mutableStateOf(false) }
 
-    // 从 shared/commonMain/resources classpath 加载 md 文本 (app/desktop 共用同一份资源)
-    val privacyPolicyText = remember {
-        try {
-            {}::class.java.getResourceAsStream("/privacyPolicy.md")?.bufferedReader()?.use { it.readText() } ?: ""
-        } catch (e: Exception) { "" }
-    }
     val licenseText = remember {
         try {
             {}::class.java.getResourceAsStream("/LICENSE.md")?.bufferedReader()?.use { it.readText() } ?: ""
@@ -166,7 +160,6 @@ private fun AboutContent() {
     }
 
     // 文案标签 (rememberString 是 @Composable, 顶层缓存; key 对齐 shared AboutScreen)
-    val privacyPolicyTitle = rememberString("privacy_policy")
     val licenseTitle = rememberString("license")
     val disclaimerTitle = rememberString("disclaimer")
 
@@ -209,7 +202,7 @@ private fun AboutContent() {
                         }.onSuccess {
                             Toasters.get().toast(jvmGetString("log_saved"))
                         }.onFailure {
-                            AppLog.put("保存日志失败\n${it.localizedMessage}", it)
+                            AppLog.put(jvmGetString("save_log_failed") + "\n" + it.localizedMessage, it)
                             Toasters.get().toast(it.localizedMessage ?: jvmGetString("save_log_failed"))
                         }
                     }
@@ -235,23 +228,19 @@ private fun AboutContent() {
                         }.onSuccess {
                             Toasters.get().toast(jvmGetString("heap_dump_saved"))
                         }.onFailure {
-                            AppLog.put("保存堆转储失败\n${it.localizedMessage}", it)
+                            AppLog.put(jvmGetString("save_heap_dump_failed") + "\n" + it.localizedMessage, it)
                             Toasters.get().toast(it.localizedMessage ?: jvmGetString("save_heap_dump_failed"))
                         }
                     }
                 }
             }
         },
-        onPrivacyPolicy = {
-            // 显示隐私政策 TextDialog (从 classpath 读 privacyPolicy.md)
-            showPrivacyPolicy = true
-        },
         onLicense = {
-            // 显示开源许可 TextDialog (从 classpath 读 LICENSE.md)
+            // 显示开源许可 MD 对话框 (从 classpath 读 LICENSE.md)
             showLicense = true
         },
         onDisclaimer = {
-            // 显示免责声明 TextDialog (从 classpath 读 disclaimer.md)
+            // 显示免责声明 MD 对话框 (从 classpath 读 disclaimer.md)
             showDisclaimer = true
         },
     )
@@ -261,33 +250,35 @@ private fun AboutContent() {
         AppLogDialog(onDismiss = { showLogDialog = false })
     }
 
-    // ---- 隐私政策对话框 (onPrivacyPolicy 触发, 调用 shared/sharedUiMain 下沉的 TextDialog) ----
-    if (showPrivacyPolicy) {
-        TextDialog(
-            title = privacyPolicyTitle,
-            content = privacyPolicyText,
-            onConfirm = { showPrivacyPolicy = false },
-            onDismiss = { showPrivacyPolicy = false },
-        )
-    }
-
     // ---- 开源许可对话框 (onLicense 触发) ----
     if (showLicense) {
-        TextDialog(
-            title = licenseTitle,
-            content = licenseText,
-            onConfirm = { showLicense = false },
-            onDismiss = { showLicense = false },
+        AlertDialog(
+            onDismissRequest = { showLicense = false },
+            title = { Text(licenseTitle) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    MarkdownContentSelectable(content = licenseText)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLicense = false }) { Text(rememberString("ok")) }
+            },
         )
     }
 
     // ---- 免责声明对话框 (onDisclaimer 触发) ----
     if (showDisclaimer) {
-        TextDialog(
-            title = disclaimerTitle,
-            content = disclaimerText,
-            onConfirm = { showDisclaimer = false },
-            onDismiss = { showDisclaimer = false },
+        AlertDialog(
+            onDismissRequest = { showDisclaimer = false },
+            title = { Text(disclaimerTitle) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    MarkdownContentSelectable(content = disclaimerText)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDisclaimer = false }) { Text(rememberString("ok")) }
+            },
         )
     }
 
@@ -300,7 +291,7 @@ private fun AboutContent() {
             text = {
                 Text(
                     buildString {
-                        append("最新版本: ${info.latestVersion}")
+                        append(jvmGetString("latest_version") + ": " + info.latestVersion)
                         if (info.releaseNotes.isNotBlank()) {
                             append("\n\n")
                             append(info.releaseNotes)

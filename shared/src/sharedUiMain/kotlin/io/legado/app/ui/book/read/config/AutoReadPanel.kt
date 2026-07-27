@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,7 +24,6 @@ import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-import java.util.Locale
 
 /**
  * 自动翻页速度调节控制器：把 app 端 `ReadBookConfig.autoReadSpeed` 读写抽象为接口，
@@ -100,7 +99,7 @@ fun AutoReadPanel(
                 modifier = Modifier.weight(1f).padding(8.dp),
             )
             Text(
-                String.format(Locale.ROOT, "%ds", speed),
+                "${speed}s",
                 color = colors.primaryText, fontSize = 14.sp,
                 modifier = Modifier.padding(8.dp),
             )

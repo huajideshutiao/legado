@@ -66,6 +66,9 @@ import kotlin.math.min
 
 @Suppress("MemberVisibilityCanBePrivate")
 object ReadBook : CoroutineScope by MainScope() {
+    // 跨平台 Compose UI 消费的共享状态载体 (TODO 后续同步 app 端状态到 shared)
+    val shared: ReadBookShared = ReadBookShared()
+
     var book: Book? = null
     var callBack: CallBack? = null
     var inBookshelf = false

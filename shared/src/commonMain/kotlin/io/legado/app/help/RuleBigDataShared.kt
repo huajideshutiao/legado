@@ -78,6 +78,10 @@ class RuleBigDataShared(
         return listOf(bookDataDir)
     }
 
+    override fun clearInvalidBookData(bookUrls: Set<String>) {
+        // 待后续实现: 遍历 bookDataDir 子目录, 读 bookUrl.txt, 不在 bookUrls 中则删除
+    }
+
     /** 路径拼接 (对齐 FileUtils.getPath: 跳过空串, 仅在非分隔符结尾时补分隔符)。 */
     private fun joinPath(root: String, vararg parts: String): String {
         val sb = StringBuilder(root)

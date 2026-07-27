@@ -49,6 +49,11 @@ class NativeBookHelpAccessor : BookHelpAccessor {
         // bookSource 在 Native 端忽略: 不下载图片, 仅落盘文本
         BookStorageProviders.get().saveText(book, bookChapter, content)
     }
+
+    // BookHelpShared 下沉新增: 平台专属临时文件清理 (Native 端无 ArchiveUtils.TEMP_PATH 等, no-op)
+    override suspend fun clearCacheExtra() {
+        // Native 端无平台专属临时文件需清理
+    }
 }
 
 /**

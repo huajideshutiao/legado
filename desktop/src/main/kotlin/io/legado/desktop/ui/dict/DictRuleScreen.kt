@@ -3,7 +3,6 @@ package io.legado.desktop.ui.dict
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.DictRule
@@ -29,6 +29,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dict.rule.DictRuleEditDialog
@@ -138,7 +139,7 @@ private fun DictRuleContent(onBack: () -> Unit) {
     // 收集全部字典规则 (按 sortNumber 排序, DAO SQL 已排序)
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.dictRuleDao.flowAll()
-            .catch { AppLog.put("字典规则界面获取数据失败\n${it.localizedMessage}", it) }
+            .catch { AppLog.put(jvmGetString("dict_rule_load_failed", it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { rules ->
@@ -192,7 +193,7 @@ private fun DictRuleContent(onBack: () -> Unit) {
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         runCatching { DefaultDataShared.importDefaultDictRules() }
-                            .onFailure { AppLog.put("导入默认字典规则失败", it) }
+                            .onFailure { AppLog.put(jvmGetString("import_default_dict_rule_failed"), it) }
                     }
                 }
             }
@@ -332,10 +333,10 @@ private fun DictRuleContent(onBack: () -> Unit) {
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(dictRuleNetImportTitleLabel) },
             text = {
-                OutlinedTextField(
+                Md2TextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
-                    label = { Text(dictRuleInputUrlLabel) },
+                    label = dictRuleInputUrlLabel,
                     singleLine = true,
                 )
             },
@@ -397,7 +398,7 @@ private suspend fun importDictRulesFromLocalFile(dialogTitle: String): String? {
         val file = dialog.files?.firstOrNull() ?: return@withContext null
         file.readText()
     } ?: run {
-        AppLog.put("导入字典规则: 用户取消选择")
+        AppLog.put(jvmGetString("import_dict_rule_user_canceled"))
         return null
     }
     return json
@@ -411,7 +412,7 @@ private suspend fun importDictRulesFromLocalFile(dialogTitle: String): String? {
  */
 private suspend fun exportDictRulesToLocalFile(rules: List<DictRule>, dialogTitle: String) {
     if (rules.isEmpty()) {
-        AppLog.put("导出字典规则: 未选中任何规则")
+        AppLog.put(jvmGetString("export_dict_rule_no_selection"))
         return
     }
     val targetPath = withContext(Dispatchers.IO) {
@@ -422,7 +423,7 @@ private suspend fun exportDictRulesToLocalFile(rules: List<DictRule>, dialogTitl
         val file = dialog.file ?: return@withContext null
         dir + file
     } ?: run {
-        AppLog.put("导出字典规则: 用户取消选择")
+        AppLog.put(jvmGetString("export_dict_rule_user_canceled"))
         return
     }
     val targetFile = File(targetPath)
@@ -431,8 +432,8 @@ private suspend fun exportDictRulesToLocalFile(rules: List<DictRule>, dialogTitl
             val json = GSON.toJson(rules)
             targetFile.writeText(json)
         }
-        AppLog.put("导出字典规则完成, 共 ${rules.size} 条 → ${targetFile.absolutePath}")
+        AppLog.put(jvmGetString("export_dict_rule_done", rules.size, targetFile.absolutePath))
     }.onFailure {
-        AppLog.put("导出字典规则失败", it)
+        AppLog.put(jvmGetString("export_dict_rule_failed"), it)
     }
 }

@@ -11,12 +11,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+// MD2 TextField (filled 形态, indicator/container 透明)
+import androidx.compose.material.TextField
+import androidx.compose.material.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -109,6 +110,7 @@ fun CodeDialogContent(
                 )
             }
         } else {
+            // MD2 TextField (filled 形态, indicator/container 透明)
             TextField(
                 value = editCode,
                 onValueChange = { editCode = it },
@@ -121,15 +123,13 @@ fun CodeDialogContent(
                     fontSize = 13.sp,
                 ),
                 // 无边框无背景, 对齐 app 端 CodeView 内嵌呈现
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = colors.primaryText,
-                    unfocusedTextColor = colors.primaryText,
+                colors = TextFieldDefaults.textFieldColors(
+                    textColor = colors.primaryText,
                     cursorColor = colors.accent,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
+                    backgroundColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
                 ),
             )
         }

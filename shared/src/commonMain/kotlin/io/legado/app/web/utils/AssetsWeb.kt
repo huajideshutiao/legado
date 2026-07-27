@@ -28,9 +28,9 @@ data class WebAssetResponse(
  * - Ktor (nativeMain): call.respondBytes(bytes, ContentType.parse(mime))
  *
  * # 单一数据源
- * web 资源本体存 `shared/src/jvmMain/resources/web/` (jvmMain resources 经 shared jar
- * 暴露给 Android + 桌面 JVM classpath); iOS/鸿蒙端用 `commonMain/composeResources/files/web/`
- * (compose.components.resources, 经 generateComposeResClass task 暴露)。
+ * web 资源唯一数据源在 `shared/src/commonMain/composeResources/files/web/`, 四端 actual
+ * (Android/桌面 JVM/iOS/鸿蒙) 均通过 composeResources [org.jetbrains.compose.resources.Res.readBytes]
+ * 读取, 无平台端副本。
  *
  * # 与原 jvmAndAndroidMain 实现的差异
  * - `File.separator` → `/` (原代码统一用 /, 保持不变)

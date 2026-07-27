@@ -35,11 +35,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -280,23 +280,21 @@ private fun ListHeader(
                 onDismissRequest = { sortMenuOpen = false },
             ) {
                 DropdownMenuItem(
-                    text = {
-                        Text(
-                            rememberString("review_sort_hot"),
-                            color = AppTheme.colors.primaryText,
-                        )
-                    },
                     onClick = { sortMenuOpen = false; onChangeSort(0) },
-                )
+                ) {
+                    Text(
+                        rememberString("review_sort_hot"),
+                        color = AppTheme.colors.primaryText,
+                    )
+                }
                 DropdownMenuItem(
-                    text = {
-                        Text(
-                            rememberString("review_sort_latest"),
-                            color = AppTheme.colors.primaryText,
-                        )
-                    },
                     onClick = { sortMenuOpen = false; onChangeSort(1) },
-                )
+                ) {
+                    Text(
+                        rememberString("review_sort_latest"),
+                        color = AppTheme.colors.primaryText,
+                    )
+                }
             }
         }
     }
@@ -410,14 +408,13 @@ private fun ReviewItem(
                             onDismissRequest = { menuOpen = false },
                         ) {
                             DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        rememberString("delete"),
-                                        color = AppTheme.colors.primaryText,
-                                    )
-                                },
                                 onClick = { menuOpen = false; onDeleteClick(item) },
-                            )
+                            ) {
+                                Text(
+                                    rememberString("delete"),
+                                    color = AppTheme.colors.primaryText,
+                                )
+                            }
                         }
                     }
                 }

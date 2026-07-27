@@ -253,3 +253,60 @@ afterEvaluate {
 // - quickjs JNI 桥通过反射查找 native 方法
 // 配置 ProGuard 需要逐一保留上述反射类, 漏配置会导致运行时崩溃, 风险大于减小体积的收益。
 // 故本方案不实施 ProGuard, 体积优化依赖 jlink 精简 JRE (方案 A) + 7z 压缩 (方案 B)。
+
+// ============================================================
+// Windows 便携版 zip 打包 task
+// ============================================================
+// 背景: jpackage 默认产物是 MSI/Exe 安装包 (需安装), 无法满足"拷贝即用"便携场景。
+// 本 task 在 createDistributable (jpackage app-image) 后, 把 legado.exe + runtime/ + app/ + data/
+// 打成 zip, 用户解压即用, 数据存 exe 同级 data/ 目录 (便携模式 InstallType=PORTABLE)。
+// CI 通过 -Plegado.installType=portable 触发, 确保打包的 app image 用便携 InstallType 编译。
+
+// data/ 目录占位 (空目录无法直接打 zip, 用 README 占位)
+val portableDataPlaceholderDir = file("build/generated/portable-data-placeholder/")
+val generatePortableDataPlaceholder by tasks.registering {
+    outputs.dir(portableDataPlaceholderDir)
+    doLast {
+        portableDataPlaceholderDir.mkdirs()
+        file("${portableDataPlaceholderDir.path}/README.txt").writeText(
+            "便携版数据目录\n应用运行时数据 (数据库/书源/缓存) 存放于此\n"
+        )
+    }
+}
+
+val packagePortableZip by tasks.registering(Zip::class) {
+    description = "Windows 便携版 zip 打包: jpackage app image + data/ 占位 → zip"
+    group = "compose desktop distribution"
+
+    // 仅 Windows 平台执行 (便携版特化)
+    onlyIf { OperatingSystem.current().isWindows }
+
+    // 依赖 jpackage app image 生成 task (createDistributable 是 packageMsi/Exe 的上游, 产物含 legado.exe + runtime/ + app/)
+    dependsOn("createDistributable", generatePortableDataPlaceholder)
+
+    // app image 输出路径 (compose desktop createDistributable 产物, 路径: build/compose/binaries/main/app/{packageName}/)
+    val appImageDir = file("build/compose/binaries/main/app/legado")
+
+    // 路径不存在时给清晰错误 (避免 Zip task 静默跳过)
+    doFirst {
+        if (!appImageDir.exists()) {
+            throw GradleException(
+                "App image directory not found: $appImageDir\n" +
+                    "Ensure createDistributable task ran successfully on Windows."
+            )
+        }
+    }
+
+    // 排除 app image 内运行时数据, 由 placeholder task 注入干净 data/
+    from(appImageDir) {
+        into("legado-portable-windows-x64")
+        exclude("data/**")
+    }
+    from(portableDataPlaceholderDir) { into("legado-portable-windows-x64/data") }
+
+    // 从 nativeDistributions 读 packageVersion (CI 用 sed 注入实际版本号), 拼到 zip 文件名
+    val version = compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
+    archiveFileName.set("legado-portable-windows-x64-${version}.zip")
+    // 独立输出目录, 避免与 jpackage 产物 (build/compose/binaries/) 及 Gradle 默认 distributions 目录混淆
+    destinationDirectory.set(layout.buildDirectory.dir("outputs/portable"))
+}

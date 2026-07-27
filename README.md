@@ -65,7 +65,7 @@ https://gedoor.github.io/Disclaimer
 
 ##### 阅读3.0
 * [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
+* [帮助文档](/shared/src/commonMain/composeResources/files/web/help/md/appHelp.md)
 * [web端书架](https://github.com/gedoor/legado_web_bookshelf)
 * [web端源编辑](https://github.com/gedoor/legado_web_source_editor)
 

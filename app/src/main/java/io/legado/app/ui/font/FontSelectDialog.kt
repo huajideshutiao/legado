@@ -26,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -42,6 +41,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
@@ -139,7 +139,7 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                 Box {
                     IconButton(onClick = { showOverflow = true }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_more_vert),
+                            painter = rememberPainter("ic_more_vert"),
                             contentDescription = null,
                             tint = colors.primaryText
                         )

@@ -35,12 +35,6 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putLong("lastBackup", value)
         }
 
-    var privacyPolicyOk: Boolean
-        get() = getBoolean("privacyPolicyOk")
-        set(value) {
-            putBoolean("privacyPolicyOk", value)
-        }
-
     val readHelpVersionIsLast: Boolean
         get() = isLastVersion(1, "readHelpVersion", "firstRead")
 

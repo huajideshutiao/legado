@@ -43,12 +43,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.Slider
+import androidx.compose.material.SliderDefaults
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -260,7 +260,7 @@ fun ReadAloudDialog(
                         onClick = { onSetTimer(timer) },
                     )
                     // 滑条 0..180 分钟 (与原版 AppSlider(value=timer, max=180) 对齐)
-                    // 用 material3.Slider (Float) 替代 AppSlider (Int), 因为 AppSlider 没有 Float 重载
+                    // 用 material.Slider (Float) 替代 AppSlider (Int), 因为 AppSlider 没有 Float 重载
                     Slider(
                         value = timer.toFloat(),
                         onValueChange = {
@@ -293,13 +293,14 @@ fun ReadAloudDialog(
                             val times = intArrayOf(0, 5, 10, 15, 30, 60, 90, 180)
                             times.forEach { t ->
                                 DropdownMenuItem(
-                                    text = { Text(rememberString("timer_m", t)) },
                                     onClick = {
                                         timerMenuExpanded = false
                                         timer = t
                                         onSetTimer(t)
                                     },
-                                )
+                                ) {
+                                    Text(rememberString("timer_m", t))
+                                }
                             }
                         }
                     }

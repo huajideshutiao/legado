@@ -77,8 +77,8 @@ import kotlinx.cinterop.toKString
  * - 100-199: JsEncodeUtilsDefaults 摘要/HMAC 面 (md5Encode/md5Encode16/digestHex/digestBase64Str/HMacHex/HMacBase64)
  * - 200-299: 工厂方法 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 返回 handle (Float64)
  * - 1000-1099: SymmetricCrypto 对象方法 (encryptBase64/decryptStr/decrypt/setIv)
- * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt) [native 降级 stub]
- * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey) [native 降级 stub]
+ * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt) [iOS Security.framework 真实 / 鸿蒙 stub 抛异常]
+ * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey) [JS 桥暂未接 sign/verify]
  *
  * 注: AnalyzeUrlCore/AnalyzeRuleCore 实现 JsExtensionsCommon 但不实现 JsEncodeUtilsDefaults,
  * 故 md5Encode 等摘要方法在 AnalyzeUrlCore/AnalyzeRuleCore 路径下不可用 (JS 调用返回 undefined);
@@ -317,14 +317,14 @@ object NativeJsExtensionsBridge {
                 qjs_NewFloat64(ctx, handle.toDouble())
             }
             obj is JsExtensionsCommon && methodId == 202 -> {
-                // createAsymmetricCrypto(transformation) → cryptoHandle (native 降级 stub)
+                // createAsymmetricCrypto(transformation) → cryptoHandle (iOS Security.framework 真实 / 鸿蒙 stub 抛异常)
                 val transformation = args.getString(0)
                 val crypto = NativeAsymmetricCrypto(transformation)
                 val handle = registerObject(crypto)
                 qjs_NewFloat64(ctx, handle.toDouble())
             }
             obj is JsExtensionsCommon && methodId == 203 -> {
-                // createSign(algorithm) → signHandle (native 降级 stub)
+                // createSign(algorithm) → signHandle (iOS Security.framework 真实 / 鸿蒙 stub 抛异常)
                 val algorithm = args.getString(0)
                 val sign = NativeSign(algorithm)
                 val handle = registerObject(sign)
@@ -353,7 +353,7 @@ object NativeJsExtensionsBridge {
                 jsUndefined() // setIv 在 JS 层直接返回 this, 不走 dispatch
             }
 
-            // ============ AsymmetricCrypto 对象方法 (1100-1199, native 降级 stub) ============
+            // ============ AsymmetricCrypto 对象方法 (1100-1199, iOS Security.framework 真实 / 鸿蒙 stub 抛异常) ============
             obj is AsymmetricCrypto && methodId == 1101 -> {
                 // setPrivateKey(key) → this
                 obj.setPrivateKey(args.getString(0))
@@ -365,12 +365,12 @@ object NativeJsExtensionsBridge {
                 qjs_NewFloat64(ctx, 1.0)
             }
             obj is AsymmetricCrypto && methodId == 1103 -> {
-                // decrypt(data, usePublicKey) → ByteArray (native 降级 stub 返回空)
+                // decrypt(data, usePublicKey) → ByteArray (iOS 真实 / 鸿蒙抛异常)
                 val usePublicKey = (args.getOrNull(1) as? Boolean) ?: true
                 byteArrayToJsArray(ctx, obj.decrypt(args.getString(0), usePublicKey))
             }
             obj is AsymmetricCrypto && methodId == 1104 -> {
-                // encrypt(data, usePublicKey) → ByteArray (native 降级 stub 返回空)
+                // encrypt(data, usePublicKey) → ByteArray (iOS 真实 / 鸿蒙抛异常)
                 val usePublicKey = (args.getOrNull(1) as? Boolean) ?: true
                 byteArrayToJsArray(ctx, obj.encrypt(args.getString(0), usePublicKey))
             }

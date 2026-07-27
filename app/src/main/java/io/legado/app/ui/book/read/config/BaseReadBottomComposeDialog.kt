@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.base.BasePrefDialogFragment
@@ -37,6 +36,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.setupAsBottomDialog
 
@@ -110,7 +110,7 @@ abstract class BaseReadBottomComposeDialog : BasePrefDialogFragment() {
 /** 底部弹窗图标按钮：图标在上 + 12sp 文字（复刻 drawableTop 的 TextView 按钮） */
 @Composable
 fun ReadMenuIconButton(
-    iconRes: Int,
+    iconKey: String,
     text: String,
     tint: Color,
     modifier: Modifier = Modifier,
@@ -124,7 +124,7 @@ fun ReadMenuIconButton(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            painter = rememberPainter(iconKey),
             contentDescription = text,
             tint = tint,
             modifier = Modifier.size(20.dp),

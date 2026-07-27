@@ -52,6 +52,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -261,14 +262,14 @@ private fun DesktopSectionTitleRow(title: String) {
         )
         // "更多" + 右箭头 (视觉与 app 端一致; 跳发现详情需异步查书源, 桌面端暂不接入点击)
         Text(
-            text = "更多",
+            text = rememberString("more"),
             color = colors.secondaryText,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
         Icon(
             painter = rememberPainter("ic_arrow_right"),
-            contentDescription = "更多",
+            contentDescription = rememberString("more"),
             tint = colors.secondaryText,
             modifier = Modifier.size(16.dp),
         )
@@ -290,7 +291,7 @@ private fun DesktopSectionPlaceholder(loading: Boolean, error: Boolean) {
                 modifier = Modifier.size(24.dp),
             )
             error -> Text(
-                text = "书源失效",
+                text = rememberString("source_invalid"),
                 color = colors.secondaryText,
                 fontSize = 12.sp,
             )
@@ -636,7 +637,7 @@ private fun TabManageItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${tab.sections.size}个组件",
+                text = rememberString("widget_count", tab.sections.size),
                 color = colors.secondaryText,
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -691,7 +692,7 @@ private fun DesktopHomeSectionManageDialog(
                 )
                 if (sections.isEmpty()) {
                     Text(
-                        text = "暂无组件",
+                        text = rememberString("no_widget"),
                         color = colors.secondaryText,
                         fontSize = 14.sp,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -774,8 +775,8 @@ private fun SectionManageItem(
 
 /** 展示项样式名 (对照 app 端 home_style_* string, jvm 资源表未注册, 硬编码中文)。 */
 private fun styleName(style: Int): String = when (style) {
-    HomeSection.STYLE_RANK_LIST -> "排行榜"
-    HomeSection.STYLE_FOUR_ROW -> "四行"
-    HomeSection.STYLE_INFINITE_GRID -> "无限网格"
-    else -> "封面行"
+    HomeSection.STYLE_RANK_LIST -> jvmGetString("home_style_rank_list")
+    HomeSection.STYLE_FOUR_ROW -> jvmGetString("home_style_four_row")
+    HomeSection.STYLE_INFINITE_GRID -> jvmGetString("home_style_infinite_grid")
+    else -> jvmGetString("home_style_cover_row")
 }

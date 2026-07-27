@@ -1,35 +1,14 @@
 package io.legado.desktop.ui.book.audio
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LastPage
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -46,19 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
@@ -68,7 +40,8 @@ import io.legado.app.constant.Status
 import io.legado.app.data.entities.Book
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.AudioPlayShared
-import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.book.audio.AudioPlayScreenContent
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +52,7 @@ import java.io.File
 import javax.imageio.ImageIO
 
 /**
- * 桌面端音频播放 Screen (对照 app 端 [io.legado.app.ui.book.audio.AudioPlayScreen])。
+ * 桌面端音频播放 Screen (薄壳): 主体 UI 调用 shared [AudioPlayScreenContent], 平台特殊部分以 slot 注入。
  *
  * # 职责
  *
@@ -87,21 +60,14 @@ import javax.imageio.ImageIO
  * [EventBus].AUDIO_* 事件刷新 UI, 命令面经 [AudioPlayShared] 派发到
  * [io.legado.desktop.audio.DesktopAudioPlayProvider] (已注册为 AudioPlayCommander)。
  *
- * # 与 app 端 AudioPlayScreen 对照
+ * # 平台 slot
  *
- * - **结构**: 模糊封面背景 + 遮罩 → 标题栏 → 副标题(章节名) → 封面/歌词区 → 进度条 → 播放控制排
- *   (布局结构与宽高边距对齐 app 端, 不擅自修改 UI 样式)
- * - **状态订阅**: app 端用 observeEventSticky(LiveDataBus), 桌面端用 [FlowBus.withSticky]
- *   + [produceState] 收集为 Compose State (语义等价, FlowBus 是 shared commonMain 下沉实现)
- * - **封面**: app 端用 Glide + AndroidView(ImageView), 桌面端用 [produceState] +
- *   OkHttp + ImageIO 加载为 [ImageBitmap] (参照 DesktopBookCover 加载策略, 不引入 Glide)
- * - **歌词**: app 端用自绘 LrcView(AndroidView 桥接), 桌面端用 LazyColumn 简化文本列表 +
- *   当前行高亮 (DesktopAudioPlayProvider.loadLrcData 用 AnalyzeRuleCore + LrcParser 加载,
- *   经 EventBus.AUDIO_LRC / AUDIO_LRCPROGRESS 推送, 此组件订阅展示)
- * - **进度条**: 自绘 Canvas + pointerInput(点击/拖动 seek), 与 app 端 AudioSeekBar 一致
- * - **速度/定时**: app 端用 Popup + Slider, 桌面端用 AlertDialog + Slider (桌面端常见交互)
- * - **PlayMode 图标**: app 端用 R.drawable.ic_play_mode_*, 桌面端 shared SVG 资源缺失,
- *   改用 Material Icons (Repeat/RepeatOne/Shuffle/LastPage) 替代, 视觉语义对齐
+ * - [AudioPlayScreenContent.coverSlot]: 圆形封面 (produceState + OkHttp + ImageIO, 失败兜底 "?")
+ * - [AudioPlayScreenContent.blurBgSlot]: 模糊背景 (加载策略同 coverSlot, 失败兜底深色底)
+ * - [AudioPlayScreenContent.lrcSlot]: LazyColumn 简化文本列表 + 当前行高亮
+ * - [AudioPlayScreenContent.timerDialogSlot]/[speedDialogSlot]: AlertDialog + Slider
+ *   (桌面端常见交互, 与 app 端 Popup 形态不同)
+ * - [AudioPlayScreenContent.onStop]: 桌面端独有停止钮 (app 端传 null 不显示)
  *
  * # 生命周期
  *
@@ -123,8 +89,6 @@ fun AudioPlayScreen(
     onOpenChangeSource: (Book) -> Unit = {},
 ) {
     // ---- 初始化 AudioPlayShared (对照 app 端 AudioPlayViewModel.initData) ----
-    // resetData: stop + 设置 book + 加载章节列表 + upDurChapter (suspend)
-    // loadOrUpPlayUrl: 触发 DesktopAudioPlayProvider 加载播放 URL 并播放
     LaunchedEffect(book.bookUrl) {
         AudioPlayShared.inBookshelf = book.type and BookType.notShelf == 0
         AudioPlayShared.resetData(book)
@@ -133,7 +97,6 @@ fun AudioPlayScreen(
         }
     }
     // 退出时若非 PLAY 状态则停止播放, 释放 jlayer 播放器资源
-    // (对照 app 端 onDestroy: if (AudioPlay.status != Status.PLAY) viewModel.stop())
     DisposableEffect(book.bookUrl) {
         onDispose {
             if (AudioPlayShared.status != Status.PLAY) {
@@ -156,175 +119,77 @@ fun AudioPlayScreen(
     val lrcProgress by stickyEventState(EventBus.AUDIO_LRCPROGRESS, -1)
 
     val isPlaying = status == Status.PLAY
-    // 封面 URL: 优先 AUDIO_COVER 事件, 事件为空时回退 book.getDisplayCover()
-    // (DesktopAudioPlayProvider 暂未 post AUDIO_COVER, 实际走 getDisplayCover 兜底)
     val coverUrl by stickyEventState(EventBus.AUDIO_COVER, "")
     val resolvedCoverUrl = coverUrl.ifBlank { book.getDisplayCover() }
     var coverVisible by remember { mutableStateOf(true) }
 
-    // ---- UI (布局结构对齐 app 端 AudioPlayScreen) ----
-    Box(Modifier.fillMaxSize()) {
-        // 模糊封面背景 + 半透明遮罩 (对照 app 端 BlurBg + 0x3A000000 遮罩)
-        BlurBg(resolvedCoverUrl, Modifier.matchParentSize())
-        Box(Modifier.matchParentSize().background(Color(0x3A000000)))
-        Column(Modifier.fillMaxSize()) {
-            AudioTitleBar(
-                title = book.name,
-                onBack = onBack,
-                onOpenChangeSource = { onOpenChangeSource(book) },
-            )
-            Text(
-                text = subTitle,
-                color = Color.White,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (coverVisible && !resolvedCoverUrl.isNullOrEmpty()) {
-                        CoverImage(
-                            coverUrl = resolvedCoverUrl!!,
-                            modifier = Modifier.padding(top = 16.dp),
-                            onClick = { coverVisible = false },
-                        )
-                    }
-                    LrcPanel(
-                        lrcData = lrcData,
-                        lrcProgress = lrcProgress,
-                        modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 16.dp),
-                    )
-                }
-                // 定时回显标签 (左上, 对照 app 端 FilletLabel)
-                if (timerMinute > 0) {
-                    FilletLabel(
-                        text = "${timerMinute}m",
-                        iconKey = "ic_time_add_24dp",
-                        modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                    )
-                }
-                // 倍速回显标签 (右上, 对照 app 端 speedText)
-                if (speed != 1f) {
-                    FilletLabel(
-                        text = "%.1fX".format(speed),
-                        iconKey = null,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                    )
-                }
+    // ---- 调用 shared AudioPlayScreenContent, 注入桌面端平台 slot ----
+    AudioPlayScreenContent(
+        title = book.name,
+        subTitle = subTitle,
+        coverUrl = resolvedCoverUrl,
+        coverVisible = coverVisible && !resolvedCoverUrl.isNullOrEmpty(),
+        timerMinute = timerMinute,
+        speed = speed,
+        progressMs = progressMs,
+        durationMs = durationMs,
+        bufferMs = bufferMs,
+        isPlaying = isPlaying,
+        loading = loading,
+        playMode = playMode,
+        prevEnabled = AudioPlayShared.durChapterIndex > 0,
+        nextEnabled = AudioPlayShared.durChapterIndex < AudioPlayShared.simulatedChapterSize - 1,
+        accentColor = MaterialTheme.colorScheme.primary,
+        onBack = onBack,
+        onOpenChangeSource = { onOpenChangeSource(book) },
+        onCoverClick = { coverVisible = false },
+        onTogglePlay = {
+            when (AudioPlayShared.status) {
+                Status.PLAY -> AudioPlayShared.pause()
+                Status.PAUSE -> AudioPlayShared.resume()
+                else -> AudioPlayShared.loadOrUpPlayUrl()
             }
-            ProgressRow(
-                progressMs = progressMs,
-                bufferMs = bufferMs,
-                durationMs = durationMs,
-                onSeek = { AudioPlayShared.adjustProgress(it) },
-            )
-            PlayMenu(
-                isPlaying = isPlaying,
-                loading = loading,
-                playMode = playMode,
-                timerMinute = timerMinute,
-                speed = speed,
-                prevEnabled = AudioPlayShared.durChapterIndex > 0,
-                nextEnabled = AudioPlayShared.durChapterIndex < AudioPlayShared.simulatedChapterSize - 1,
-                onTogglePlay = {
-                    when (AudioPlayShared.status) {
-                        Status.PLAY -> AudioPlayShared.pause()
-                        Status.PAUSE -> AudioPlayShared.resume()
-                        else -> AudioPlayShared.loadOrUpPlayUrl()
-                    }
-                },
-                onStop = { AudioPlayShared.stop() },
-                onPrev = { AudioPlayShared.prev() },
-                onNext = { AudioPlayShared.next() },
-                onChangePlayMode = { AudioPlayShared.changePlayMode() },
-                onOpenToc = { onOpenToc(book) },
-            )
-        }
-    }
+        },
+        onPrev = { AudioPlayShared.prev() },
+        onNext = { AudioPlayShared.next() },
+        onChangePlayMode = { AudioPlayShared.changePlayMode() },
+        onOpenToc = { onOpenToc(book) },
+        onSeek = { AudioPlayShared.adjustProgress(it) },
+        onSetTimer = { AudioPlayShared.setTimer(it) },
+        onSetSpeed = { AudioPlayShared.adjustSpeed(it) },
+        onStop = { AudioPlayShared.stop() },
+        coverSlot = { url, modifier -> CoverSlot(url, modifier) },
+        // blurBgSlot: 模糊背景独立兜底 (深色底, 与圆形封面 "?" 占位区分)
+        blurBgSlot = { url, modifier -> BlurBgSlot(url, modifier) },
+        lrcSlot = { modifier -> LrcSlot(lrcData, lrcProgress, modifier) },
+        timerDialogSlot = { initial, onProgressChanged, onDismiss ->
+            TimerDialog(initial, onProgressChanged, onDismiss)
+        },
+        speedDialogSlot = { initial, onProgressChanged, onDismiss ->
+            SpeedDialog(initial, onProgressChanged, onDismiss)
+        },
+        // 桌面端默认参数: timerIconKey="ic_time_add_24dp", speedIconKey="ic_speed",
+        // chapterListIconKey="ic_toc", filletLabelColor=0x66000000, playMenuButtonPressedBgEnabled=false,
+        // playMenuAlpha=1f, titleBarHorizontalPadding=8dp, playModeIconPadding=4dp
+    )
 }
 
-// ---- 标题栏 (对照 app 端 AudioTitleBar: 返回 + 标题 + 换源) ----
+// ---- 平台 coverSlot: 圆形封面 (produceState + OkHttp + ImageIO, 失败兜底 "?") ----
 
+/**
+ * 圆形封面加载 Composable (modifier 由 shared 注入: 200dp + clip + border + clickable)。
+ *
+ * 加载成功: [Image] 铺满 modifier (contentScale=Crop 由 clip(CircleShape) 裁切为圆形);
+ * 加载中/失败: 居中显示 "?" 占位 (对照原 DesktopBookCover.InfoCover 占位风格)。
+ */
 @Composable
-private fun AudioTitleBar(
-    title: String,
-    onBack: () -> Unit,
-    onOpenChangeSource: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                painter = rememberPainter("ic_arrow_back"),
-                contentDescription = rememberString("back"),
-                tint = Color.White,
-            )
-        }
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 20.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onOpenChangeSource) {
-            Icon(
-                painter = rememberPainter("ic_exchange"),
-                contentDescription = rememberString("change_source"),
-                tint = Color.White,
-            )
-        }
-    }
-}
-
-// ---- 模糊背景 (对照 app 端 BlurBg: 封面铺满 + blur) ----
-
-@Composable
-private fun BlurBg(coverUrl: String?, modifier: Modifier) {
+private fun CoverSlot(coverUrl: String?, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, coverUrl) {
         if (coverUrl.isNullOrEmpty()) return@produceState
         value = loadAudioCover(coverUrl)
     }
-    Box(modifier) {
-        val bmp = bitmap
-        if (bmp != null) {
-            Image(
-                bitmap = bmp,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            // 加载中/失败: 深色兜底 (避免白底刺眼)
-            Box(Modifier.fillMaxSize().background(Color(0xFF1A1A1A)))
-        }
-    }
-}
-
-// ---- 圆形封面 (对照 app 端 CoverImage: 200dp 圆形 + accent 描边) ----
-
-@Composable
-private fun CoverImage(coverUrl: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary
-    val bitmap by produceState<ImageBitmap?>(null, coverUrl) {
-        if (coverUrl.isEmpty()) return@produceState
-        value = loadAudioCover(coverUrl)
-    }
     val bmp = bitmap
-    Box(
-        modifier
-            .size(200.dp)
-            .clip(CircleShape)
-            .border(2.dp, accent, CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         if (bmp != null) {
             Image(
                 bitmap = bmp,
@@ -344,7 +209,34 @@ private fun CoverImage(coverUrl: String, modifier: Modifier = Modifier, onClick:
     }
 }
 
-// ---- 歌词区 (简化版, 对照 app 端 LrcPanel) ----
+// ---- 平台 blurBgSlot: 模糊背景 (produceState + OkHttp + ImageIO, 失败兜底深色底) ----
+
+/**
+ * 模糊封面背景加载 Composable (modifier=matchParentSize)。
+ *
+ * 加载成功: [Image] 铺满 + Crop; 加载中/失败: 深色底兜底 (避免白底刺眼)。
+ */
+@Composable
+private fun BlurBgSlot(coverUrl: String?, modifier: Modifier) {
+    val bitmap by produceState<ImageBitmap?>(null, coverUrl) {
+        if (coverUrl.isNullOrEmpty()) return@produceState
+        value = loadAudioCover(coverUrl)
+    }
+    val bmp = bitmap
+    if (bmp != null) {
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        // 加载中/失败: 深色底兜底 (避免白底刺眼)
+        Box(modifier.fillMaxSize().background(Color(0xFF1A1A1A)))
+    }
+}
+
+// ---- 平台 lrcSlot: LazyColumn 简化文本列表 + 当前行高亮 ----
 
 /**
  * 歌词显示 (桌面端简化实现)。
@@ -355,7 +247,7 @@ private fun CoverImage(coverUrl: String, modifier: Modifier = Modifier, onClick:
  * 无歌词 (subContent 规则空 / 加载失败) 时显示占位文本。
  */
 @Composable
-private fun LrcPanel(
+private fun LrcSlot(
     lrcData: List<Pair<Int, String>>,
     lrcProgress: Int,
     modifier: Modifier = Modifier,
@@ -392,277 +284,7 @@ private fun LrcPanel(
     }
 }
 
-// ---- 定时/倍速回显标签 (对照 app 端 FilletLabel) ----
-
-@Composable
-private fun FilletLabel(text: String, iconKey: String?, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .background(Color(0x66000000), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (iconKey != null) {
-            Icon(
-                painter = rememberPainter(iconKey),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-        Text(text, color = Color.White, fontSize = 14.sp)
-    }
-}
-
-// ---- 进度条 (对照 app 端 ProgressRow + AudioSeekBar: 自绘 Canvas + 拖动 seek) ----
-
-@Composable
-private fun ProgressRow(
-    progressMs: Int,
-    bufferMs: Int,
-    durationMs: Int,
-    onSeek: (Int) -> Unit,
-) {
-    val accent = MaterialTheme.colorScheme.primary
-    // 拖动中的预览值 (拖动期间不回显事件进度, 对照 app 端 dragValue)
-    var dragValue by remember { mutableStateOf<Int?>(null) }
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            (dragValue ?: progressMs).toDurationTime(),
-            color = Color.White,
-            fontSize = 14.sp,
-        )
-        AudioSeekBar(
-            value = dragValue ?: progressMs,
-            secondary = bufferMs,
-            max = durationMs,
-            activeColor = accent,
-            bufferColor = accent.copy(alpha = 0.5f),
-            onDrag = { dragValue = it },
-            onDragFinished = {
-                dragValue?.let { onSeek(it) }
-                dragValue = null
-            },
-            modifier = Modifier.weight(1f).height(25.dp),
-        )
-        Text(durationMs.toDurationTime(), color = Color.White, fontSize = 14.sp)
-    }
-}
-
-/**
- * 自绘 SeekBar (对照 app 端 AudioSeekBar: 背景 + 缓冲层 + 已播层 + thumb)。
- *
- * 支持 点击跳转 + 水平拖动 seek, 与 app 端 pointerInput 行为一致。
- */
-@Composable
-private fun AudioSeekBar(
-    value: Int,
-    secondary: Int,
-    max: Int,
-    activeColor: Color,
-    bufferColor: Color,
-    onDrag: (Int) -> Unit,
-    onDragFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val range = max.coerceAtLeast(1)
-
-    fun fractionToValue(fraction: Float): Int =
-        (fraction * range).toInt().coerceIn(0, range)
-
-    Box(
-        modifier
-            .pointerInput(max) {
-                detectTapGestures(onTap = { pos ->
-                    onDrag(fractionToValue(pos.x / size.width))
-                    onDragFinished()
-                })
-            }
-            .pointerInput(max) {
-                detectHorizontalDragGestures(
-                    onDragEnd = { onDragFinished() },
-                    onDragCancel = { onDragFinished() },
-                ) { change, _ ->
-                    change.consume()
-                    onDrag(fractionToValue(change.position.x / size.width))
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val thumbR = 8.dp.toPx()
-            val trackH = 2.dp.toPx()
-            val cy = size.height / 2
-            val startX = thumbR
-            val endX = size.width - thumbR
-            val playFrac = (value.toFloat() / range).coerceIn(0f, 1f)
-            val bufFrac = (secondary.toFloat() / range).coerceIn(0f, 1f)
-            val playX = startX + (endX - startX) * playFrac
-            val bufX = startX + (endX - startX) * bufFrac
-            // 进度背景 (对照 app 端 0xB3FFFFFF)
-            drawLine(Color(0xB3FFFFFF), Offset(startX, cy), Offset(endX, cy), trackH, StrokeCap.Round)
-            if (bufX > startX) {
-                drawLine(bufferColor, Offset(startX, cy), Offset(bufX, cy), trackH, StrokeCap.Round)
-            }
-            drawLine(activeColor, Offset(startX, cy), Offset(playX, cy), trackH, StrokeCap.Round)
-            drawCircle(activeColor, thumbR, Offset(playX, cy))
-        }
-    }
-}
-
-// ---- 播放控制排 (对照 app 端 PlayMenu) ----
-
-@Composable
-private fun PlayMenu(
-    isPlaying: Boolean,
-    loading: Boolean,
-    playMode: AudioPlayShared.PlayMode,
-    timerMinute: Int,
-    speed: Float,
-    prevEnabled: Boolean,
-    nextEnabled: Boolean,
-    onTogglePlay: () -> Unit,
-    onStop: () -> Unit,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    onChangePlayMode: () -> Unit,
-    onOpenToc: () -> Unit,
-) {
-    // 定时/倍速弹窗状态 (对照 app 端 showTimer/showSpeed, 桌面端用 AlertDialog 替代 Popup)
-    var showTimer by remember { mutableStateOf(false) }
-    var showSpeed by remember { mutableStateOf(false) }
-
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 定时 (对照 app 端 ic_timer_black_24dp, 桌面端用 ic_time_add_24dp)
-        Box {
-            PlayMenuButton(
-                iconKey = "ic_time_add_24dp",
-                contentDescription = rememberString("set_timer"),
-            ) { showTimer = true }
-            if (showTimer) {
-                TimerDialog(
-                    initial = timerMinute,
-                    onProgressChanged = { AudioPlayShared.setTimer(it) },
-                    onDismiss = { showTimer = false },
-                )
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        // 倍速 (对照 app 端 ic_fast_forward, 桌面端用 ic_speed Material Icon)
-        Box {
-            PlayMenuButton(
-                iconKey = "ic_speed",
-                contentDescription = rememberString("speed"),
-            ) { showSpeed = true }
-            if (showSpeed) {
-                SpeedDialog(
-                    initial = speed,
-                    onProgressChanged = { AudioPlayShared.adjustSpeed(it) },
-                    onDismiss = { showSpeed = false },
-                )
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        // 上一章
-        PlayMenuButton(
-            iconKey = "ic_skip_previous",
-            contentDescription = rememberString("previous_chapter"),
-            enabled = prevEnabled,
-        ) { onPrev() }
-        // 播放/暂停 (圆形白底, 对照 app 端 FloatingActionButton 风格)
-        Box(contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .padding(12.dp)
-                    .size(56.dp)
-                    .shadow(6.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .clickable { onTogglePlay() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = rememberPainter(if (isPlaying) "ic_pause_24dp" else "ic_play_24dp"),
-                    contentDescription = rememberString("audio_play"),
-                    tint = Color.Black,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            if (loading) {
-                CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
-        }
-        // 下一章
-        PlayMenuButton(
-            iconKey = "ic_skip_next",
-            contentDescription = rememberString("next_chapter"),
-            enabled = nextEnabled,
-        ) { onNext() }
-        Spacer(Modifier.weight(1f))
-        // 停止 (任务要求, app 端 PlayMenu 无显式 stop, 桌面端补一个)
-        PlayMenuButton(
-            iconKey = "ic_stop_black_24dp",
-            contentDescription = rememberString("stop"),
-        ) { onStop() }
-        Spacer(Modifier.weight(1f))
-        // 播放模式 (对照 app 端 playMode.iconRes, 桌面端用 Material Icons 替代)
-        PlayMenuButton(
-            iconVector = playModeIcon(playMode),
-            contentDescription = rememberString("play_mode"),
-        ) { onChangePlayMode() }
-        Spacer(Modifier.weight(1f))
-        // 章节列表 (对照 app 端 ic_chapter_list, 桌面端用 ic_toc)
-        PlayMenuButton(
-            iconKey = "ic_toc",
-            contentDescription = rememberString("chapter_list"),
-        ) { onOpenToc() }
-    }
-}
-
-/** 46dp 圆钮 (对照 app 端 PlayMenuButton: 圆形按压态 + 白图标/禁用 25% 白) */
-@Composable
-private fun PlayMenuButton(
-    iconKey: String? = null,
-    iconVector: ImageVector? = null,
-    contentDescription: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        val tint = if (enabled) Color.White else Color(0x3FFFFFFF)
-        when {
-            iconVector != null -> Icon(
-                imageVector = iconVector,
-                contentDescription = contentDescription,
-                tint = tint,
-                modifier = Modifier.fillMaxSize().padding(4.dp),
-            )
-            iconKey != null -> Icon(
-                painter = rememberPainter(iconKey),
-                contentDescription = contentDescription,
-                tint = tint,
-                modifier = Modifier.fillMaxSize().padding(4.dp),
-            )
-        }
-    }
-}
-
-// ---- 定时/倍速弹窗 (对照 app 端 SliderPopupCard, 桌面端用 AlertDialog) ----
+// ---- 定时/倍速弹窗 (AlertDialog + Slider, 桌面端常见交互) ----
 
 @Composable
 private fun TimerDialog(
@@ -724,25 +346,6 @@ private fun SpeedDialog(
     )
 }
 
-// ---- 辅助: PlayMode 图标映射 (对照 app 端 PlayMode.iconRes, 桌面端用 Material Icons) ----
-
-/**
- * 播放模式 → Material Icon 映射。
- *
- * app 端用 R.drawable.ic_play_mode_* (SVG 资源未下沉到 shared), 桌面端用 Material Icons 替代,
- * 视觉语义对齐:
- * - LIST_END_STOP (列表结束停止) → [Icons.Filled.LastPage]
- * - SINGLE_LOOP (单曲循环) → [Icons.Filled.RepeatOne]
- * - RANDOM (随机) → [Icons.Filled.Shuffle]
- * - LIST_LOOP (列表循环) → [Icons.Filled.Repeat]
- */
-private fun playModeIcon(mode: AudioPlayShared.PlayMode): ImageVector = when (mode) {
-    AudioPlayShared.PlayMode.LIST_END_STOP -> Icons.Filled.LastPage
-    AudioPlayShared.PlayMode.SINGLE_LOOP -> Icons.Filled.RepeatOne
-    AudioPlayShared.PlayMode.RANDOM -> Icons.Filled.Shuffle
-    AudioPlayShared.PlayMode.LIST_LOOP -> Icons.Filled.Repeat
-}
-
 // ---- 辅助: sticky 事件订阅为 Compose State (对照 app 端 observeEventSticky) ----
 
 /**
@@ -751,9 +354,6 @@ private fun playModeIcon(mode: AudioPlayShared.PlayMode): ImageVector = when (mo
  * 桌面端等价 app 端 `observeEventSticky<EventBus.XXX> { ... }`:
  * FlowBus.withSticky 的 replay=1, 首次 collect 立即收到最近一次 post 的值;
  * 未 post 过时保持 [initial] 直到首次 post。
- *
- * @param key EventBus 常量 (如 [EventBus.AUDIO_STATE])
- * @param initial 初始值 (未 post 过时使用)
  */
 @Composable
 private fun <T> stickyEventState(key: String, initial: T): State<T> {
@@ -774,8 +374,6 @@ private fun <T> stickyEventState(key: String, initial: T): State<T> {
  * - `file://` / 绝对路径 `/...`: [ImageIO.read] 读文件
  * - `http://` / `https://`: [OkHttpClientProviders] 下载字节流后 [ImageIO.read] 解码
  * - 任意步骤异常: 返回 null (调用方走占位)
- *
- * 独立实现而非复用 DesktopBookCover.loadCoverBitmap (private), 避免修改其可见性。
  */
 private suspend fun loadAudioCover(src: String): ImageBitmap? = withContext(Dispatchers.IO) {
     runCatching {
@@ -793,15 +391,5 @@ private suspend fun loadAudioCover(src: String): ImageBitmap? = withContext(Disp
             else -> null
         }
         image?.toComposeImageBitmap()
-    }.onFailure { AppLog.put("桌面音频封面加载失败: $src\n${it.message}", it) }.getOrNull()
-}
-
-// ---- 辅助: 毫秒 → mm:ss 时长格式 (对照 app 端 toDurationTime) ----
-
-private fun Int.toDurationTime(): String {
-    if (this <= 0) return "00:00"
-    val totalSec = this / 1000
-    val min = totalSec / 60
-    val sec = totalSec % 60
-    return "%02d:%02d".format(min, sec)
+    }.onFailure { AppLog.put(jvmGetString("audio_cover_load_failed_log", src, it.message), it) }.getOrNull()
 }

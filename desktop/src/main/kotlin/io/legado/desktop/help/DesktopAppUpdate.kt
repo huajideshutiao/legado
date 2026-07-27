@@ -3,6 +3,7 @@ package io.legado.desktop.help
 import io.legado.app.constant.AppLog
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.desktop.constant.DesktopAppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,8 +57,8 @@ object DesktopAppUpdate {
         val info = runCatching {
             fetchLatestRelease()
         }.getOrElse {
-            AppLog.put("检查更新失败\n${it.localizedMessage}", it)
-            Toasters.get().toast(it.localizedMessage ?: "检查更新失败")
+            AppLog.put(jvmGetString("check_update_failed", it.localizedMessage), it)
+            Toasters.get().toast(it.localizedMessage ?: jvmGetString("check_update_failed_no_msg"))
             return
         }
         // 版本比对: 去 v/V 前缀 + trim, 简单字符串等值比较 (不引入 semver)
@@ -66,7 +67,7 @@ object DesktopAppUpdate {
         if (latest.isNotEmpty() && latest != current) {
             onResult(info)
         } else {
-            Toasters.get().toast("已是最新版本")
+            Toasters.get().toast(jvmGetString("already_latest_version"))
         }
     }
 

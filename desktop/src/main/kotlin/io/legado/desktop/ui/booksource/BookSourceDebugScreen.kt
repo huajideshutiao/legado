@@ -109,7 +109,7 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
     var loading by remember { mutableStateOf(false) }
     val myLabel = rememberString("my")
     var textMy by remember { mutableStateOf(myLabel) }
-    var textFx by remember { mutableStateOf("系统::http://xxx") }
+    var textFx by remember { mutableStateOf(jvmGetString("debug_fx_default")) }
     var clearFocusTick by remember { mutableStateOf(0) }
 
     // 书源 + 源码缓存 (对齐 app 端 BookSourceDebugModel 字段)

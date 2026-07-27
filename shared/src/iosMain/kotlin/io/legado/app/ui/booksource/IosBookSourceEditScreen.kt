@@ -3,9 +3,9 @@ package io.legado.app.ui.booksource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import io.legado.app.ui.compose.component.Md2TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -122,6 +122,9 @@ private fun BookSourceEditContent(
     val nonNullNameUrlLabel = rememberString("non_null_name_url")
     val saveFailedLabel = rememberString("save_failed")
     val saveSourceErrorLabel = rememberString("save_source_error")
+    // AppLog 文案 (saveSource/debugSource 内部 catch 用, 非 @Composable, 预先 remember)
+    val saveBookSourceFailedText = rememberString("save_book_source_failed_log")
+    val debugSourceSaveFailedText = rememberString("debug_source_save_failed_log")
 
     // upSourceView EditEntity label
     val sourceUrlLabel = rememberString("source_url")
@@ -533,7 +536,7 @@ private fun BookSourceEditContent(
                 bookSourceState.value = source
                 onSavedCallback(source.bookSourceUrl)
             } catch (e: Throwable) {
-                AppLog.put("保存书源失败", e)
+                AppLog.put(saveBookSourceFailedText, e)
                 saveErrorDialog = e.localizedMessage ?: saveFailedLabel
             }
         }
@@ -550,7 +553,7 @@ private fun BookSourceEditContent(
                     onDebugSource(source.bookSourceUrl)
                 }
             } catch (e: Throwable) {
-                AppLog.put("调试书源保存失败", e)
+                AppLog.put(debugSourceSaveFailedText, e)
             }
         }
     }
@@ -637,11 +640,11 @@ private fun BookSourceEditContent(
         callbacks = callbacks,
         editEntities = { tab -> editEntities(tab) },
         codeEditorSlot = { entity, modifier ->
-            OutlinedTextField(
+            Md2TextField(
                 value = entity.value.orEmpty(),
                 onValueChange = { entity.value = it },
                 modifier = modifier.fillMaxWidth(),
-                label = { Text(entity.hint) },
+                label = entity.hint,
                 textStyle = TextStyle(fontSize = 13.sp),
                 minLines = 2,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),

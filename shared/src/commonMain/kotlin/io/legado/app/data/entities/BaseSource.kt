@@ -236,8 +236,9 @@ interface BaseSource : JsExtensionsCommon {
         }
     }
 
-    fun getLoginInfoMap(): Map<String, String>? {
-        return decodeStringMapOrNull(getLoginInfo())
+    // 返回空 Map 而非 null,避免书源 JS 直接 .get(key) 时 NPE
+    fun getLoginInfoMap(): Map<String, String> {
+        return decodeStringMapOrNull(getLoginInfo()) ?: emptyMap()
     }
 
     /**

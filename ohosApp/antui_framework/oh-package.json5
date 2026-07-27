@@ -1,0 +1,11 @@
+{
+  "name": "antui_framework",
+  "version": "1.0.0",
+  "description": "AntUI KMP Framework Bridge",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "libmykmp_framework.so": "file:./src/main/cpp/types/libmykmp_framework"
+  }
+}

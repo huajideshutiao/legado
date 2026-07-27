@@ -64,4 +64,9 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
         val root = desktopAppRootDir()
         return Paths.get(root, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg").toString()
     }
+
+    // BookHelpShared 下沉新增: 平台专属临时文件清理 (桌面端无 ArchiveUtils.TEMP_PATH 等, no-op)
+    override suspend fun clearCacheExtra() {
+        // 桌面端无平台专属临时文件需清理
+    }
 }

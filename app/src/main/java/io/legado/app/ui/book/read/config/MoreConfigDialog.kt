@@ -78,12 +78,6 @@ class MoreConfigDialog : BasePrefDialogFragment(),
                         onClickRegionalConfig = {
                             (activity as? ReadBookActivity)?.showClickRegionalConfig()
                         },
-                        onCustomPageKey = {
-                            PageKeyDialog().show(
-                                requireActivity().supportFragmentManager,
-                                "pageKey"
-                            )
-                        },
                     )
                 }
             }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.source.clearExploreKindsCache
@@ -21,6 +22,7 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
+import splitties.init.appCtx
 
 /**
  * 书源调试(纯 Compose)。intent 契约不变: 入 `key` extra (sourceUrl)。
@@ -39,8 +41,8 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
     private var query by mutableStateOf("")
     private var helpVisible by mutableStateOf(true)
     private var loading by mutableStateOf(false)
-    private var textMy by mutableStateOf("我的")
-    private var textFx by mutableStateOf("系统::http://xxx")
+    private var textMy by mutableStateOf(appCtx.getString(R.string.my))
+    private var textFx by mutableStateOf(appCtx.getString(R.string.debug_fx_default))
     private var exploreKinds: List<ExploreKind> = emptyList()
 
     /** 对齐旧版 SearchView.clearFocus 语义：提交/出错后收键盘失焦，重新点搜索框可唤回帮助面板 */
@@ -80,12 +82,12 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
                 kinds.firstOrNull()?.let {
                     textFx = "${it.title}::${it.url}"
                     if (it.title.startsWith("ERROR:")) {
-                        logs.add("获取发现出错\n${it.url}")
+                        logs.add(appCtx.getString(R.string.debug_explore_error, it.url))
                         helpVisible = false
                     }
                 }
             } catch (e: NullPointerException) {
-                logs.add("获取发现出错 JSON 数据错误\n$e")
+                logs.add(appCtx.getString(R.string.debug_explore_json_error, e))
                 helpVisible = false
             }
         }
@@ -97,7 +99,7 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
         if (submit) {
             helpVisible = false
             clearFocusTick++
-            startSearch(text.ifBlank { "我的" })
+            startSearch(text.ifBlank { appCtx.getString(R.string.my) })
         }
     }
 
@@ -118,7 +120,7 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
         viewModel.startDebug(key, {
             loading = true
         }, {
-            toastOnUi("未获取到书源")
+            toastOnUi(appCtx.getString(R.string.no_source_found))
         })
     }
 
@@ -157,7 +159,7 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
 
     override fun onChipMyClick() = setQuery(textMy, true)
 
-    override fun onChipSystemClick() = setQuery("系统", true)
+    override fun onChipSystemClick() = setQuery(appCtx.getString(R.string.system), true)
 
     override fun onChipFxClick() = setQuery(textFx, true)
 
@@ -165,7 +167,7 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
         val kinds = exploreKinds
         if (kinds.isNotEmpty()) {
             @Suppress("USELESS_ELVIS")
-            selector("选择发现", kinds.map { it.title ?: "" }) { _, index ->
+            selector(appCtx.getString(R.string.select_explore), kinds.map { it.title ?: "" }) { _, index ->
                 val explore = kinds[index]
                 textFx = "${explore.title}::${explore.url}"
                 setQuery(textFx, true)

@@ -73,9 +73,16 @@ abstract class BaseBookshelfState(
     abstract val groupId: Long
     abstract val books: List<Book>
 
-    /** BOOKSHELF_REFRESH 自增: 封面重载 + AppConfig 显示项重读(等价 notifyDataSetChanged) */
-    var configTick by mutableIntStateOf(0)
+    /** BOOKSHELF_REFRESH 自增: 仅驱动 ShelfCover reloadKey + 封面高度重算 */
+    var coverReloadTick by mutableIntStateOf(0)
         private set
+
+    /** layout spec 重算 tick: 仅驱动 rememberShelfLayoutSpec, BOOKSHELF_REFRESH 不再触发 */
+    var layoutSpecTick by mutableIntStateOf(0)
+        private set
+
+    @Deprecated("已拆分为 coverReloadTick / layoutSpecTick, 旧引用按封面重载语义委托")
+    val configTick: Int get() = coverReloadTick
 
     /** upSort 自增: 各页重建 DB flow 重排序 */
     var sortTick by mutableIntStateOf(0)
@@ -108,7 +115,7 @@ abstract class BaseBookshelfState(
     // ---- BookshelfTab 事件接线 ----
 
     fun onBookshelfRefresh() {
-        configTick++
+        coverReloadTick++
     }
 
     fun onUpBookshelf(bookUrl: String) {

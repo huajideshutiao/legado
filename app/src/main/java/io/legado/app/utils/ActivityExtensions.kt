@@ -22,6 +22,8 @@ import androidx.fragment.app.DialogFragment
 import io.legado.app.R
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.web.utils.WebAssetSources
+import kotlinx.coroutines.runBlocking
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
     arguments: Bundle.() -> Unit = {}
@@ -186,7 +188,7 @@ fun Activity.toggleSystemBar(show: Boolean) {
  * 显示目录help下的帮助文档
  */
 fun AppCompatActivity.showHelp(fileName: String) {
-    val mdText = String(assets.open("web/help/md/${fileName}.md").readBytes())
+    val mdText = String(runBlocking { WebAssetSources.get().read("web/help/md/${fileName}.md") })
     showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
 }
 

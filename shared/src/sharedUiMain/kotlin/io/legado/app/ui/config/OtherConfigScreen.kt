@@ -41,6 +41,7 @@ fun OtherConfigScreen(
     onClearWebViewData: () -> Unit,
     onShrinkDatabase: () -> Unit,
     onThreadCount: () -> Unit,
+    onCustomPageKey: () -> Unit,
 ) {
     val languageEntries = rememberStringArray("language")
     val languageValues = rememberStringArray("language_value")
@@ -96,6 +97,7 @@ fun OtherConfigScreen(
     val summaryRecordLog = rememberString("record_debug_log")
     val titleRecordHeapDump = rememberString("record_heap_dump_t")
     val summaryRecordHeapDump = rememberString("record_heap_dump_s")
+    val titleCustomPageKey = rememberString("custom_page_key")
 
     AppTheme {
         PreferenceScreen {
@@ -263,6 +265,10 @@ fun OtherConfigScreen(
                 title = titleRecordHeapDump,
                 summary = summaryRecordHeapDump,
                 defaultValue = false,
+            )
+            preference(
+                title = titleCustomPageKey,
+                onClick = onCustomPageKey,
             )
         }
     }

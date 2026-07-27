@@ -24,7 +24,6 @@ fun AboutScreen(
     onCrashLog: () -> Unit,
     onSaveLog: () -> Unit,
     onCreateHeapDump: () -> Unit,
-    onPrivacyPolicy: () -> Unit,
     onLicense: () -> Unit,
     onDisclaimer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -38,7 +37,6 @@ fun AboutScreen(
     val titleCrashLog = rememberString("crash_log")
     val titleSaveLog = rememberString("save_log")
     val titleCreateHeapDump = rememberString("create_heap_dump")
-    val titlePrivacyPolicy = rememberString("privacy_policy")
     val titleLicense = rememberString("license")
     val titleDisclaimer = rememberString("disclaimer")
 
@@ -73,10 +71,6 @@ fun AboutScreen(
         preference(
             title = titleCreateHeapDump,
             onClick = onCreateHeapDump,
-        )
-        preference(
-            title = titlePrivacyPolicy,
-            onClick = onPrivacyPolicy,
         )
         preference(
             title = titleLicense,
